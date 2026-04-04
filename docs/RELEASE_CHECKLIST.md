@@ -20,6 +20,14 @@ Use this checklist for every tagged release until the release workflow is fully 
 7. Run `uv build`.
 8. Run `uvx --from twine twine check dist/*`.
 
+## Release Automation Prerequisites
+
+1. In GitHub, open repository Settings -> Actions -> General -> Workflow permissions.
+2. Set the default `GITHUB_TOKEN` permission to read and write.
+3. Enable Allow GitHub Actions to create and approve pull requests if release-please should use the default token.
+4. If that setting is blocked by organization policy, create a `RELEASE_PLEASE_TOKEN` secret and use a fine-grained PAT or GitHub App token with write access to Contents, Pull requests, and Issues.
+5. Re-run [release-please.yml](../.github/workflows/release-please.yml) after changing the setting or adding the secret.
+
 ## Publish Preparation
 
 1. Confirm the version to publish.
