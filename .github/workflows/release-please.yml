@@ -1,0 +1,61 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release/config.json
+          manifest-file: release/manifest.json
+
+      - name: Check out repository
+        if: ${{ steps.release.outputs.release_created }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.sha }}
+
+      - name: Set up Python
+        if: ${{ steps.release.outputs.release_created }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        if: ${{ steps.release.outputs.release_created }}
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        if: ${{ steps.release.outputs.release_created }}
+        run: uv sync --group dev --frozen
+
+      - name: Validate release artifacts
+        if: ${{ steps.release.outputs.release_created }}
+        run: |
+          uv run python scripts/generate_api_reference.py --check
+          uv run python scripts/check_markdown_links.py
+          uv run ruff check .
+          uv run ty check src tests examples scripts
+          uv run pytest --cov=star --cov-report=term-missing --cov-report=xml
+          uv build
+          uvx --from twine twine check dist/*
+
+      - name: Publish to PyPI
+        if: ${{ steps.release.outputs.release_created }}
+        uses: pypa/gh-action-pypi-publish@release/v1

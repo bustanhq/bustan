@@ -1,0 +1,69 @@
+[project]
+name = "star"
+version = "0.0.1"
+description = "NestJS-inspired application architecture on top of Starlette"
+keywords = ["asgi", "dependency injection", "starlette", "web framework"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "mosesgameli", email = "mosesgameli20@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "anyio>=4.9.0,<5.0.0",
+    "dependency-injector>=4.46.0,<5.0.0",
+    "starlette>=0.47.0,<1.0.0",
+]
+
+[project.scripts]
+star = "star.cli:main"
+
+[project.urls]
+Repository = "https://github.com/mosesgameli/star"
+Issues = "https://github.com/mosesgameli/star/issues"
+Documentation = "https://github.com/mosesgameli/star#readme"
+Changelog = "https://github.com/mosesgameli/star/blob/main/CHANGELOG.md"
+Support = "https://github.com/mosesgameli/star/issues"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0,<1.0.0",
+    "lefthook>=2.1.4",
+    "pytest>=8.3.0,<9.0.0",
+    "pytest-cov>=6.1.1,<7.0.0",
+    "ruff>=0.11.0,<0.12.0",
+    "ty",
+    "uvicorn>=0.34.0,<1.0.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["star"]
+
+[tool.coverage.report]
+fail_under = 84
+show_missing = true
+skip_covered = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[build-system]
+requires = ["uv_build>=0.11.1,<0.12.0"]
+build-backend = "uv_build"

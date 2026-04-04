@@ -1,0 +1,12 @@
+pre-commit:
+  parallel: true
+  commands:
+    ruff:
+      run: uv run ruff check .
+    ty:
+      run: uv run ty check src tests examples scripts
+
+pre-push:
+  commands:
+    pytest:
+      run: uv run pytest

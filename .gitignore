@@ -1,0 +1,17 @@
+.DS_Store
+.coverage
+.coverage.*
+coverage.xml
+.lefthook-local.yml
+.package-smoke/
+.published-smoke/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+build/
+dist/
+htmlcov/
+*.egg-info/
+*.py[cod]
+.draft/
