@@ -1,25 +1,25 @@
 """Example showing how to inspect the discovered module graph."""
 
-from star import controller, create_app, get, injectable, module
+from star import Controller, create_app, Get, Injectable, Module
 
 
-@injectable
+@Injectable
 class CatalogService:
     def list_categories(self) -> list[str]:
         return ["frameworks", "testing", "tooling"]
 
 
-@controller("/catalog")
+@Controller("/catalog")
 class CatalogController:
     def __init__(self, catalog_service: CatalogService) -> None:
         self.catalog_service = catalog_service
 
-    @get("/")
+    @Get("/")
     def list_categories(self) -> list[str]:
         return self.catalog_service.list_categories()
 
 
-@module(
+@Module(
     controllers=[CatalogController],
     providers=[CatalogService],
     exports=[CatalogService],
@@ -28,7 +28,7 @@ class CatalogModule:
     pass
 
 
-@module(imports=[CatalogModule])
+@Module(imports=[CatalogModule])
 class AppModule:
     pass
 

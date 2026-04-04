@@ -145,7 +145,7 @@ def _validate_module_definition(module_cls: type[object]) -> ModuleMetadata:
     module_metadata = get_module_metadata(module_cls)
     if module_metadata is None:
         raise InvalidModuleError(
-            f"{_qualname(module_cls)} is not a valid module. Did you forget to decorate it with @module?"
+            f"{_qualname(module_cls)} is not a valid module. Did you forget to decorate it with @Module?"
         )
 
     _validate_unique_entries(module_cls, "imports", module_metadata.imports)
@@ -205,7 +205,7 @@ def _require_module(module_candidate: object, *, owner: type[object]) -> type[ob
     if not isinstance(module_metadata, ModuleMetadata):
         raise InvalidModuleError(
             f"{_qualname(owner)} imports {_qualname(module_candidate)}, "
-            "which is not decorated with @module"
+            "which is not decorated with @Module"
         )
 
     return module_candidate
@@ -221,7 +221,7 @@ def _require_controller(controller_candidate: object, *, owner: type[object]) ->
     if not isinstance(controller_metadata, ControllerMetadata):
         raise InvalidControllerError(
             f"{_qualname(owner)} declares {_qualname(controller_candidate)} as a controller, "
-            "but it is not decorated with @controller"
+            "but it is not decorated with @Controller"
         )
 
     return controller_candidate
@@ -242,7 +242,7 @@ def _require_provider(
     if not isinstance(provider_metadata, ProviderMetadata):
         raise InvalidProviderError(
             f"{_qualname(owner)} declares {_qualname(provider_candidate)} in {field_name}, "
-            "but it is not decorated with @injectable"
+            "but it is not decorated with @Injectable"
         )
 
     return provider_candidate

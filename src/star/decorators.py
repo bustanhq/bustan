@@ -35,7 +35,7 @@ FunctionT = TypeVar("FunctionT", bound=FunctionType)
 DecoratedT = TypeVar("DecoratedT", bound=object)
 
 
-def module(
+def Module(
     *,
     imports: Iterable[type[object]] | None = None,
     controllers: Iterable[type[object]] | None = None,
@@ -53,38 +53,38 @@ def module(
 
     def decorate(module_cls: ClassT) -> ClassT:
         if not isinstance(module_cls, type):
-            raise InvalidModuleError("@module can only decorate classes")
+            raise InvalidModuleError("@Module can only decorate classes")
         return set_module_metadata(module_cls, module_metadata)
 
     return decorate
 
 
-def controller(prefix: str = "") -> Callable[[ClassT], ClassT]:
+def Controller(prefix: str = "") -> Callable[[ClassT], ClassT]:
     """Attach controller metadata to a class."""
 
     controller_metadata = ControllerMetadata(prefix=normalize_controller_prefix(prefix))
 
     def decorate(controller_cls: ClassT) -> ClassT:
         if not isinstance(controller_cls, type):
-            raise InvalidControllerError("@controller can only decorate classes")
+            raise InvalidControllerError("@Controller can only decorate classes")
         return set_controller_metadata(controller_cls, controller_metadata)
 
     return decorate
 
 
 @overload
-def injectable(target: ClassT, *, scope: ProviderScope | str = ProviderScope.SINGLETON) -> ClassT: ...
+def Injectable(target: ClassT, *, scope: ProviderScope | str = ProviderScope.SINGLETON) -> ClassT: ...
 
 
 @overload
-def injectable(
+def Injectable(
     target: None = None,
     *,
     scope: ProviderScope | str = ProviderScope.SINGLETON,
 ) -> Callable[[ClassT], ClassT]: ...
 
 
-def injectable(
+def Injectable(
     target: ClassT | None = None,
     *,
     scope: ProviderScope | str = ProviderScope.SINGLETON,
@@ -98,7 +98,7 @@ def injectable(
 
     def decorate(provider_cls: ClassT) -> ClassT:
         if not isinstance(provider_cls, type):
-            raise InvalidProviderError("@injectable can only decorate classes")
+            raise InvalidProviderError("@Injectable can only decorate classes")
         return set_provider_metadata(provider_cls, ProviderMetadata(scope=resolved_scope))
 
     if target is None:
@@ -107,7 +107,7 @@ def injectable(
     return decorate(target)
 
 
-def route(method: str, path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Route(method: str, path: str = "/") -> Callable[[FunctionT], FunctionT]:
     """Attach HTTP route metadata to a handler function."""
 
     normalized_method = _normalize_method(method)
@@ -142,55 +142,55 @@ def route(method: str, path: str = "/") -> Callable[[FunctionT], FunctionT]:
     return decorate
 
 
-def get(path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Get(path: str = "/") -> Callable[[FunctionT], FunctionT]:
     """Return a decorator that registers a GET route."""
 
-    return route("GET", path)
+    return Route("GET", path)
 
 
-def post(path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Post(path: str = "/") -> Callable[[FunctionT], FunctionT]:
     """Return a decorator that registers a POST route."""
 
-    return route("POST", path)
+    return Route("POST", path)
 
 
-def put(path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Put(path: str = "/") -> Callable[[FunctionT], FunctionT]:
     """Return a decorator that registers a PUT route."""
 
-    return route("PUT", path)
+    return Route("PUT", path)
 
 
-def patch(path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Patch(path: str = "/") -> Callable[[FunctionT], FunctionT]:
     """Return a decorator that registers a PATCH route."""
 
-    return route("PATCH", path)
+    return Route("PATCH", path)
 
 
-def delete(path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Delete(path: str = "/") -> Callable[[FunctionT], FunctionT]:
     """Return a decorator that registers a DELETE route."""
 
-    return route("DELETE", path)
+    return Route("DELETE", path)
 
 
-def use_guards(*guards: object) -> Callable[[DecoratedT], DecoratedT]:
+def UseGuards(*guards: object) -> Callable[[DecoratedT], DecoratedT]:
     """Attach one or more guards to a controller or handler."""
 
     return _pipeline_decorator("guards", guards)
 
 
-def use_pipes(*pipes: object) -> Callable[[DecoratedT], DecoratedT]:
+def UsePipes(*pipes: object) -> Callable[[DecoratedT], DecoratedT]:
     """Attach one or more pipes to a controller or handler."""
 
     return _pipeline_decorator("pipes", pipes)
 
 
-def use_interceptors(*interceptors: object) -> Callable[[DecoratedT], DecoratedT]:
+def UseInterceptors(*interceptors: object) -> Callable[[DecoratedT], DecoratedT]:
     """Attach one or more interceptors to a controller or handler."""
 
     return _pipeline_decorator("interceptors", interceptors)
 
 
-def use_filters(*filters: object) -> Callable[[DecoratedT], DecoratedT]:
+def UseFilters(*filters: object) -> Callable[[DecoratedT], DecoratedT]:
     """Attach one or more exception filters to a controller or handler."""
 
     return _pipeline_decorator("filters", filters)
@@ -237,7 +237,7 @@ def _pipeline_decorator(
     components: tuple[object, ...],
 ) -> Callable[[DecoratedT], DecoratedT]:
     if not components:
-        raise InvalidPipelineError(f"@use_{field_name} requires at least one component")
+        raise InvalidPipelineError(f"@Use{field_name.capitalize()} requires at least one component")
 
     def decorate(target: DecoratedT) -> DecoratedT:
         if isinstance(target, type):
@@ -249,7 +249,7 @@ def _pipeline_decorator(
         handler_function = _unwrap_handler(target)
         if handler_function is None:
             raise InvalidPipelineError(
-                f"@use_{field_name} can only decorate controller classes or handler callables"
+                f"@Use{field_name.capitalize()} can only decorate controller classes or handler callables"
             )
 
         extend_handler_pipeline_metadata(handler_function, **{field_name: components})

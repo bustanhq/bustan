@@ -1,6 +1,6 @@
 """Unit tests for metadata storage and route discovery helpers."""
 
-from star import controller, get, module
+from star import Controller, Get, Module
 from star.metadata import (
     ControllerRouteDefinition,
     get_controller_metadata,
@@ -11,7 +11,7 @@ from star.metadata import (
 
 
 def test_module_metadata_is_not_inherited_by_default() -> None:
-    @module()
+    @Module()
     class BaseModule:
         pass
 
@@ -24,7 +24,7 @@ def test_module_metadata_is_not_inherited_by_default() -> None:
 
 
 def test_controller_metadata_is_not_inherited_by_default() -> None:
-    @controller("/base")
+    @Controller("/base")
     class BaseController:
         pass
 
@@ -40,7 +40,7 @@ def test_controller_metadata_is_not_inherited_by_default() -> None:
 
 def test_iter_controller_routes_includes_inherited_handlers() -> None:
     class BaseController:
-        @get("/items")
+        @Get("/items")
         def list_items(self) -> None:
             return None
 
@@ -61,7 +61,7 @@ def test_iter_controller_routes_includes_inherited_handlers() -> None:
 
 def test_iter_controller_routes_respects_method_overrides() -> None:
     class BaseController:
-        @get("/items")
+        @Get("/items")
         def list_items(self) -> None:
             return None
 

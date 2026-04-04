@@ -2,24 +2,24 @@
 
 from starlette.applications import Starlette
 
-from star import controller, create_app, get, injectable, module
+from star import Controller, create_app, Get, Injectable, Module
 
 
 def test_create_app_returns_a_starlette_application_with_module_graph_state() -> None:
-    @injectable
+    @Injectable
     class UserService:
         pass
 
-    @controller("/users")
+    @Controller("/users")
     class UserController:
         def __init__(self, user_service: UserService) -> None:
             self.user_service = user_service
 
-        @get("/")
+        @Get("/")
         def list_users(self) -> list[dict[str, str]]:
             return [{"name": "Moses"}]
 
-    @module(controllers=[UserController], providers=[UserService], exports=[UserService])
+    @Module(controllers=[UserController], providers=[UserService], exports=[UserService])
     class AppModule:
         pass
 

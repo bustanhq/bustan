@@ -30,7 +30,7 @@ class ProviderScope(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ModuleMetadata:
-    """Static metadata captured from a @module declaration."""
+    """Static metadata captured from a @Module declaration."""
 
     imports: tuple[type[object], ...] = ()
     controllers: tuple[type[object], ...] = ()
@@ -40,14 +40,14 @@ class ModuleMetadata:
 
 @dataclass(frozen=True, slots=True)
 class ControllerMetadata:
-    """Static metadata captured from a @controller declaration."""
+    """Static metadata captured from a @Controller declaration."""
 
     prefix: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class ProviderMetadata:
-    """Static metadata captured from an @injectable declaration."""
+    """Static metadata captured from an @Injectable declaration."""
 
     scope: ProviderScope = ProviderScope.SINGLETON
 

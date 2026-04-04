@@ -9,18 +9,18 @@ import star.errors as star_errors
 import star.testing as star_testing
 from star.application import bootstrap, create_app
 from star.decorators import (
-    controller,
-    delete,
-    get,
-    injectable,
-    module,
-    patch,
-    post,
-    put,
-    use_filters,
-    use_guards,
-    use_interceptors,
-    use_pipes,
+    Controller,
+    Delete,
+    Get,
+    Injectable,
+    Module,
+    Patch,
+    Post,
+    Put,
+    UseFilters,
+    UseGuards,
+    UseInterceptors,
+    UsePipes,
 )
 from star.errors import (
     ExportViolationError,
@@ -48,19 +48,19 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "Interceptor",
         "Pipe",
         "bootstrap",
-        "controller",
+        "Controller",
         "create_app",
-        "delete",
-        "get",
-        "injectable",
-        "module",
-        "patch",
-        "post",
-        "put",
-        "use_filters",
-        "use_guards",
-        "use_interceptors",
-        "use_pipes",
+        "Delete",
+        "Get",
+        "Injectable",
+        "Module",
+        "Patch",
+        "Post",
+        "Put",
+        "UseFilters",
+        "UseGuards",
+        "UseInterceptors",
+        "UsePipes",
     )
     assert star.__version__ == importlib.metadata.version("star")
     assert star.ExceptionFilter is ExceptionFilter
@@ -68,19 +68,19 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert star.Interceptor is Interceptor
     assert star.Pipe is Pipe
     assert star.bootstrap is bootstrap
-    assert star.controller is controller
+    assert star.Controller is Controller
     assert star.create_app is create_app
-    assert star.delete is delete
-    assert star.get is get
-    assert star.injectable is injectable
-    assert star.module is module
-    assert star.patch is patch
-    assert star.post is post
-    assert star.put is put
-    assert star.use_filters is use_filters
-    assert star.use_guards is use_guards
-    assert star.use_interceptors is use_interceptors
-    assert star.use_pipes is use_pipes
+    assert star.Delete is Delete
+    assert star.Get is Get
+    assert star.Injectable is Injectable
+    assert star.Module is Module
+    assert star.Patch is Patch
+    assert star.Post is Post
+    assert star.Put is Put
+    assert star.UseFilters is UseFilters
+    assert star.UseGuards is UseGuards
+    assert star.UseInterceptors is UseInterceptors
+    assert star.UsePipes is UsePipes
 
 
 def test_testing_module_exposes_the_supported_helpers() -> None:

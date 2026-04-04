@@ -222,26 +222,26 @@ def _build_app_module(*, project_name: str, package_name: str) -> str:
 
     return dedent(
         f"""\
-        from star import controller, create_app, get, injectable, module
+        from star import Controller, create_app, Get, Injectable, Module
 
 
-        @injectable
+        @Injectable
         class AppService:
             def get_message(self) -> dict[str, str]:
                 return {{"message": "Hello from {project_name}"}}
 
 
-        @controller("/")
+        @Controller("/")
         class AppController:
             def __init__(self, app_service: AppService) -> None:
                 self.app_service = app_service
 
-            @get("/")
+            @Get("/")
             def read_root(self) -> dict[str, str]:
                 return self.app_service.get_message()
 
 
-        @module(controllers=[AppController], providers=[AppService], exports=[AppService])
+        @Module(controllers=[AppController], providers=[AppService], exports=[AppService])
         class AppModule:
             pass
 

@@ -9,7 +9,7 @@ from starlette.applications import Starlette
 
 from ..application import create_app
 from ..container import ContainerAdapter
-from ..decorators import module
+from ..decorators import Module
 
 
 def create_test_module(
@@ -23,7 +23,7 @@ def create_test_module(
     """Create a throwaway decorated module for isolated tests."""
 
     test_module_cls = cast(type[object], type(name, (), {}))
-    return module(
+    return Module(
         imports=imports,
         controllers=controllers,
         providers=providers,

@@ -3,7 +3,7 @@
 import pytest
 from typing import cast
 
-from star import controller, get, injectable, module
+from star import Controller, Get, Injectable, Module
 from star.errors import (
     ExportViolationError,
     InvalidControllerError,
@@ -15,21 +15,21 @@ from star.module_graph import build_module_graph
 
 
 def test_build_module_graph_preserves_import_order_and_visibility() -> None:
-    @injectable
+    @Injectable
     class UserService:
         pass
 
-    @injectable
+    @Injectable
     class HiddenService:
         pass
 
-    @controller("/users")
+    @Controller("/users")
     class UserController:
-        @get("/")
+        @Get("/")
         def list_users(self) -> list[dict[str, str]]:
             return [{"name": "Moses"}]
 
-    @module(
+    @Module(
         controllers=[UserController],
         providers=[UserService, HiddenService],
         exports=[UserService],
@@ -37,15 +37,15 @@ def test_build_module_graph_preserves_import_order_and_visibility() -> None:
     class UsersModule:
         pass
 
-    @injectable
+    @Injectable
     class AuthService:
         pass
 
-    @module(providers=[AuthService], exports=[AuthService])
+    @Module(providers=[AuthService], exports=[AuthService])
     class AuthModule:
         pass
 
-    @module(imports=[UsersModule, AuthModule])
+    @Module(imports=[UsersModule, AuthModule])
     class AppModule:
         pass
 
@@ -65,7 +65,7 @@ def test_build_module_graph_preserves_import_order_and_visibility() -> None:
 def test_build_module_graph_rejects_invalid_imports() -> None:
     invalid_import = cast(type[object], object())
 
-    @module(imports=[invalid_import])
+    @Module(imports=[invalid_import])
     class AppModule:
         pass
 
@@ -77,24 +77,24 @@ def test_build_module_graph_rejects_non_decorated_controller() -> None:
     class PlainController:
         pass
 
-    @module(controllers=[PlainController])
+    @Module(controllers=[PlainController])
     class AppModule:
         pass
 
-    with pytest.raises(InvalidControllerError, match="not decorated with @controller"):
+    with pytest.raises(InvalidControllerError, match="not decorated with @Controller"):
         build_module_graph(AppModule)
 
 
 def test_build_module_graph_rejects_export_outside_provider_set() -> None:
-    @injectable
+    @Injectable
     class UserService:
         pass
 
-    @injectable
+    @Injectable
     class ExportedService:
         pass
 
-    @module(providers=[UserService], exports=[ExportedService])
+    @Module(providers=[UserService], exports=[ExportedService])
     class AppModule:
         pass
 
@@ -109,25 +109,25 @@ def test_build_module_graph_detects_cycles_with_the_cycle_path() -> None:
     class AuthModule:
         pass
 
-    module(imports=[AuthModule])(AppModule)
-    module(imports=[AppModule])(AuthModule)
+    Module(imports=[AuthModule])(AppModule)
+    Module(imports=[AppModule])(AuthModule)
 
     with pytest.raises(ModuleCycleError, match="AppModule -> AuthModule -> AppModule"):
         build_module_graph(AppModule)
 
 
 def test_build_module_graph_rejects_duplicate_controller_routes() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UserController:
-        @get("/profile")
+        @Get("/profile")
         def read_profile(self) -> None:
             return None
 
-        @get("/profile")
+        @Get("/profile")
         def read_profile_again(self) -> None:
             return None
 
-    @module(controllers=[UserController])
+    @Module(controllers=[UserController])
     class AppModule:
         pass
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from star import controller, get, module
+from star import Controller, Get, Module
 from star.container import build_container
 from star.errors import ParameterBindingError, RouteDefinitionError
 from star.module_graph import build_module_graph
@@ -10,19 +10,19 @@ from star.routing import compile_routes
 
 
 def test_compile_routes_rejects_duplicate_application_routes() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @get("/")
+        @Get("/")
         def list_users(self) -> list[dict[str, str]]:
             return [{"name": "Ada"}]
 
-    @controller("/users")
+    @Controller("/users")
     class ProfilesController:
-        @get("/")
+        @Get("/")
         def list_profiles(self) -> list[dict[str, str]]:
             return [{"name": "Moses"}]
 
-    @module(controllers=[UsersController, ProfilesController])
+    @Module(controllers=[UsersController, ProfilesController])
     class AppModule:
         pass
 
@@ -34,13 +34,13 @@ def test_compile_routes_rejects_duplicate_application_routes() -> None:
 
 
 def test_compile_routes_rejects_variadic_handler_parameters() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @get("/{user_id}")
+        @Get("/{user_id}")
         def read_user(self, *user_ids: str) -> dict[str, str]:
             return {"ids": ",".join(user_ids)}
 
-    @module(controllers=[UsersController])
+    @Module(controllers=[UsersController])
     class AppModule:
         pass
 

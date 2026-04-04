@@ -1,11 +1,11 @@
 """Example showing test-time provider overrides with star.testing."""
 
-from star import controller, create_app, get, injectable, module
+from star import Controller, create_app, Get, Injectable, Module
 from star.testing import create_test_app, override_provider
 from starlette.testclient import TestClient
 
 
-@injectable
+@Injectable
 class GreetingService:
     def greet(self) -> str:
         return "production"
@@ -19,17 +19,17 @@ class FakeGreetingService:
         return self.message
 
 
-@controller("/greetings")
+@Controller("/greetings")
 class GreetingController:
     def __init__(self, greeting_service: GreetingService) -> None:
         self.greeting_service = greeting_service
 
-    @get("/")
+    @Get("/")
     def read_greeting(self) -> dict[str, str]:
         return {"message": self.greeting_service.greet()}
 
 
-@module(
+@Module(
     controllers=[GreetingController],
     providers=[GreetingService],
     exports=[GreetingService],

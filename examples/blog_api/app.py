@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from star import controller, create_app, get, injectable, module, post
+from star import Controller, create_app, Get, Injectable, Module, Post
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
@@ -25,7 +25,7 @@ class BlogPost:
     created_by: str
 
 
-@injectable
+@Injectable
 class PostRepository:
     def __init__(self) -> None:
         self._posts = [
@@ -61,7 +61,7 @@ class PostRepository:
         return next_post
 
 
-@injectable
+@Injectable
 class BlogService:
     def __init__(self, post_repository: PostRepository) -> None:
         self.post_repository = post_repository
@@ -76,44 +76,44 @@ class BlogService:
         return self.post_repository.create_post(payload, created_by=created_by)
 
 
-@injectable(scope="request")
+@Injectable(scope="request")
 class RequestActor:
     def __init__(self, request: Request) -> None:
         self.user_id = request.headers.get("x-user-id", "anonymous")
 
 
-@module(providers=[PostRepository, BlogService], exports=[BlogService])
+@Module(providers=[PostRepository, BlogService], exports=[BlogService])
 class BlogModule:
     pass
 
 
-@module(providers=[RequestActor], exports=[RequestActor])
+@Module(providers=[RequestActor], exports=[RequestActor])
 class IdentityModule:
     pass
 
 
-@controller("/posts")
+@Controller("/posts")
 class BlogController:
     def __init__(self, blog_service: BlogService, request_actor: RequestActor) -> None:
         self.blog_service = blog_service
         self.request_actor = request_actor
 
-    @get("/")
+    @Get("/")
     def list_posts(self, published: bool | None = None) -> list[dict[str, object]]:
         return [asdict(post) for post in self.blog_service.list_posts(published=published)]
 
-    @get("/{post_id}")
+    @Get("/{post_id}")
     def read_post(self, post_id: int) -> dict[str, object] | None:
         post = self.blog_service.read_post(post_id)
         return None if post is None else asdict(post)
 
-    @post("/")
+    @Post("/")
     def create_post(self, payload: CreatePostPayload) -> dict[str, object]:
         post = self.blog_service.create_post(payload, created_by=self.request_actor.user_id)
         return asdict(post)
 
 
-@module(imports=[BlogModule, IdentityModule], controllers=[BlogController])
+@Module(imports=[BlogModule, IdentityModule], controllers=[BlogController])
 class AppModule:
     pass
 

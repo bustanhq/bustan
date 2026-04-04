@@ -10,7 +10,7 @@ import anyio
 import pytest
 from starlette.requests import Request
 
-from star import controller, get, post
+from star import Controller, Get, Post
 from star.errors import ParameterBindingError
 from star.metadata import iter_controller_routes
 from star.params import bind_handler_arguments, compile_parameter_bindings
@@ -23,9 +23,9 @@ class CreateUserPayload:
 
 
 def test_bind_handler_arguments_injects_request_and_converts_path_and_query_values() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @get("/{user_id}")
+        @Get("/{user_id}")
         def read_user(
             self,
             request: Request,
@@ -52,9 +52,9 @@ def test_bind_handler_arguments_injects_request_and_converts_path_and_query_valu
 
 
 def test_bind_handler_arguments_binds_json_body_to_a_dataclass() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @post("/")
+        @Post("/")
         def create_user(self, payload: CreateUserPayload) -> None:
             return None
 
@@ -73,9 +73,9 @@ def test_bind_handler_arguments_binds_json_body_to_a_dataclass() -> None:
 
 
 def test_bind_handler_arguments_rejects_invalid_query_values() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @get("/")
+        @Get("/")
         def list_users(self, page: int) -> None:
             return None
 
@@ -92,9 +92,9 @@ def test_bind_handler_arguments_rejects_invalid_query_values() -> None:
 
 
 def test_bind_handler_arguments_supports_list_query_values_and_keyword_only_parameters() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @get("/")
+        @Get("/")
         def list_users(self, page: int, *, tags: list[int]) -> None:
             return None
 
@@ -113,9 +113,9 @@ def test_bind_handler_arguments_supports_list_query_values_and_keyword_only_para
 
 
 def test_bind_handler_arguments_uses_scalar_request_bodies_for_single_parameters() -> None:
-    @controller("/counters")
+    @Controller("/counters")
     class CountersController:
-        @post("/")
+        @Post("/")
         def set_count(self, count: int) -> None:
             return None
 
@@ -130,9 +130,9 @@ def test_bind_handler_arguments_uses_scalar_request_bodies_for_single_parameters
 
 
 def test_bind_handler_arguments_allows_null_for_optional_body_parameters() -> None:
-    @controller("/counters")
+    @Controller("/counters")
     class CountersController:
-        @post("/")
+        @Post("/")
         def set_count(self, count: int | None) -> None:
             return None
 
@@ -147,9 +147,9 @@ def test_bind_handler_arguments_allows_null_for_optional_body_parameters() -> No
 
 
 def test_bind_handler_arguments_requires_json_objects_for_multiple_body_fields() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @post("/")
+        @Post("/")
         def create_user(self, name: str, admin: bool) -> None:
             return None
 
@@ -162,9 +162,9 @@ def test_bind_handler_arguments_requires_json_objects_for_multiple_body_fields()
 
 
 def test_bind_handler_arguments_uses_defaults_when_request_data_is_missing() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @get("/")
+        @Get("/")
         def list_users(self, page: int = 7) -> None:
             return None
 
@@ -179,9 +179,9 @@ def test_bind_handler_arguments_uses_defaults_when_request_data_is_missing() -> 
 
 
 def test_bind_handler_arguments_reports_invalid_json_request_bodies() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @post("/")
+        @Post("/")
         def create_user(self, payload: CreateUserPayload) -> None:
             return None
 
@@ -194,9 +194,9 @@ def test_bind_handler_arguments_reports_invalid_json_request_bodies() -> None:
 
 
 def test_bind_handler_arguments_rejects_boolean_json_values_for_int_parameters() -> None:
-    @controller("/counters")
+    @Controller("/counters")
     class CountersController:
-        @post("/")
+        @Post("/")
         def set_count(self, count: int) -> None:
             return None
 
@@ -209,9 +209,9 @@ def test_bind_handler_arguments_rejects_boolean_json_values_for_int_parameters()
 
 
 def test_compile_parameter_bindings_resolves_string_annotations_and_ignores_return_annotations() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @post("/")
+        @Post("/")
         def create_user(self, payload: CreateUserPayload) -> None:
             return None
 
@@ -225,9 +225,9 @@ def test_compile_parameter_bindings_resolves_string_annotations_and_ignores_retu
 
 
 def test_compile_parameter_bindings_rejects_unresolvable_parameter_annotations() -> None:
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @post("/")
+        @Post("/")
         def create_user(self, payload: object) -> None:
             return None
 

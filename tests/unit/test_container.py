@@ -3,27 +3,27 @@
 import pytest
 from starlette.requests import Request
 
-from star import controller, get, injectable, module
+from star import Controller, Get, Injectable, Module
 from star.container import build_container
 from star.errors import ProviderResolutionError
 from star.module_graph import build_module_graph
 
 
 def test_container_resolves_singleton_providers_and_transient_controllers() -> None:
-    @injectable
+    @Injectable
     class UserService:
         pass
 
-    @controller("/users")
+    @Controller("/users")
     class UserController:
         def __init__(self, user_service: UserService) -> None:
             self.user_service = user_service
 
-        @get("/")
+        @Get("/")
         def list_users(self) -> list[dict[str, str]]:
             return [{"name": "Moses"}]
 
-    @module(
+    @Module(
         controllers=[UserController],
         providers=[UserService],
         exports=[UserService],
@@ -45,22 +45,22 @@ def test_container_resolves_singleton_providers_and_transient_controllers() -> N
 
 
 def test_container_resolves_exported_providers_from_imported_modules() -> None:
-    @injectable
+    @Injectable
     class UserService:
         pass
 
-    @injectable
+    @Injectable
     class HiddenService:
         pass
 
-    @module(
+    @Module(
         providers=[UserService, HiddenService],
         exports=[UserService],
     )
     class UsersModule:
         pass
 
-    @module(imports=[UsersModule])
+    @Module(imports=[UsersModule])
     class AppModule:
         pass
 
@@ -75,24 +75,24 @@ def test_container_resolves_exported_providers_from_imported_modules() -> None:
 
 
 def test_container_resolves_controller_dependencies_from_imported_exports() -> None:
-    @injectable
+    @Injectable
     class UserService:
         pass
 
-    @module(providers=[UserService], exports=[UserService])
+    @Module(providers=[UserService], exports=[UserService])
     class UsersModule:
         pass
 
-    @controller("/dashboard")
+    @Controller("/dashboard")
     class DashboardController:
         def __init__(self, user_service: UserService) -> None:
             self.user_service = user_service
 
-        @get("/")
+        @Get("/")
         def show_dashboard(self) -> dict[str, str]:
             return {"status": "ok"}
 
-    @module(
+    @Module(
         imports=[UsersModule],
         controllers=[DashboardController],
     )
@@ -106,12 +106,12 @@ def test_container_resolves_controller_dependencies_from_imported_exports() -> N
 
 
 def test_container_resolves_request_scoped_providers_once_per_request() -> None:
-    @injectable(scope="request")
+    @Injectable(scope="request")
     class RequestState:
         def __init__(self, request: Request) -> None:
             self.request = request
 
-    @module(providers=[RequestState], exports=[RequestState])
+    @Module(providers=[RequestState], exports=[RequestState])
     class AppModule:
         pass
 
@@ -133,17 +133,17 @@ def test_container_resolves_request_scoped_providers_once_per_request() -> None:
 
 
 def test_container_rejects_request_scoped_dependencies_from_singleton_providers() -> None:
-    @injectable(scope="request")
+    @Injectable(scope="request")
     class RequestState:
         def __init__(self, request: Request) -> None:
             self.request = request
 
-    @injectable
+    @Injectable
     class SingletonService:
         def __init__(self, request_state: RequestState) -> None:
             self.request_state = request_state
 
-    @module(providers=[RequestState, SingletonService])
+    @Module(providers=[RequestState, SingletonService])
     class AppModule:
         pass
 
@@ -154,12 +154,12 @@ def test_container_rejects_request_scoped_dependencies_from_singleton_providers(
 
 
 def test_container_rejects_missing_constructor_annotations() -> None:
-    @injectable
+    @Injectable
     class BrokenService:
         def __init__(self, dependency) -> None:
             self.dependency = dependency
 
-    @module(providers=[BrokenService])
+    @Module(providers=[BrokenService])
     class AppModule:
         pass
 
@@ -170,16 +170,16 @@ def test_container_rejects_missing_constructor_annotations() -> None:
 
 
 def test_container_rejects_unresolved_provider_dependencies() -> None:
-    @injectable
+    @Injectable
     class MissingService:
         pass
 
-    @injectable
+    @Injectable
     class ConsumerService:
         def __init__(self, missing_service: MissingService) -> None:
             self.missing_service = missing_service
 
-    @module(providers=[ConsumerService])
+    @Module(providers=[ConsumerService])
     class AppModule:
         pass
 
@@ -190,19 +190,19 @@ def test_container_rejects_unresolved_provider_dependencies() -> None:
 
 
 def test_container_rejects_circular_provider_dependencies() -> None:
-    @injectable
+    @Injectable
     class LeftService:
         def __init__(self, right_service: object) -> None:
             self.right_service = right_service
 
-    @injectable
+    @Injectable
     class RightService:
         def __init__(self, left_service: LeftService) -> None:
             self.left_service = left_service
 
     LeftService.__init__.__annotations__["right_service"] = RightService
 
-    @module(providers=[LeftService, RightService])
+    @Module(providers=[LeftService, RightService])
     class AppModule:
         pass
 
@@ -216,12 +216,12 @@ def test_container_rejects_circular_provider_dependencies() -> None:
 
 
 def test_container_separates_framework_owned_injections_from_provider_di() -> None:
-    @injectable
+    @Injectable
     class RequestAwareService:
         def __init__(self, request: Request) -> None:
             self.request = request
 
-    @module(providers=[RequestAwareService])
+    @Module(providers=[RequestAwareService])
     class AppModule:
         pass
 

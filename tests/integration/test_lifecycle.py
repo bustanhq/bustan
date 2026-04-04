@@ -3,14 +3,14 @@
 import pytest
 from starlette.testclient import TestClient
 
-from star import create_app, module
+from star import create_app, Module
 from star.errors import LifecycleError
 
 
 def test_create_app_runs_lifecycle_hooks_in_startup_and_shutdown_order() -> None:
     events: list[str] = []
 
-    @module()
+    @Module()
     class FeatureModule:
         def on_module_init(self) -> None:
             events.append("feature:module_init")
@@ -24,7 +24,7 @@ def test_create_app_runs_lifecycle_hooks_in_startup_and_shutdown_order() -> None
         def on_module_destroy(self) -> None:
             events.append("feature:module_destroy")
 
-    @module(imports=[FeatureModule])
+    @Module(imports=[FeatureModule])
     class AppModule:
         def on_module_init(self) -> None:
             events.append("app:module_init")
@@ -59,7 +59,7 @@ def test_create_app_runs_lifecycle_hooks_in_startup_and_shutdown_order() -> None
 
 
 def test_create_app_surfaces_lifecycle_hook_failures() -> None:
-    @module()
+    @Module()
     class BrokenModule:
         def on_module_init(self) -> None:
             raise RuntimeError("boom")

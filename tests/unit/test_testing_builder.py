@@ -1,18 +1,18 @@
 """Unit tests for dynamic test-module construction."""
 
-from star import controller, get, injectable
+from star import Controller, Get, Injectable
 from star.metadata import ModuleMetadata, get_module_metadata
 from star.testing import create_test_module
 
 
 def test_create_test_module_builds_module_metadata_from_arguments() -> None:
-    @injectable
+    @Injectable
     class UserService:
         pass
 
-    @controller("/users")
+    @Controller("/users")
     class UserController:
-        @get("/")
+        @Get("/")
         def list_users(self) -> list[dict[str, str]]:
             return [{"name": "Ada"}]
 

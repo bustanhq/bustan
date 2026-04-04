@@ -8,7 +8,7 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.testclient import TestClient
 
-from star import controller, create_app, get, injectable, module, post
+from star import Controller, create_app, Get, Injectable, Module, Post
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,36 +22,36 @@ def test_create_app_registers_http_routes_and_coerces_common_return_types() -> N
     class StatusPayload:
         status: str
 
-    @injectable
+    @Injectable
     class GreetingService:
         pass
 
-    @controller("/greetings")
+    @Controller("/greetings")
     class GreetingController:
         def __init__(self, greeting_service: GreetingService) -> None:
             self.greeting_service = greeting_service
 
-        @get("/dict")
+        @Get("/dict")
         def read_dict(self) -> dict[str, str]:
             return {"message": "hello"}
 
-        @get("/list")
+        @Get("/list")
         def read_list(self) -> list[str]:
             return ["hello", "world"]
 
-        @get("/dataclass")
+        @Get("/dataclass")
         def read_dataclass(self) -> StatusPayload:
             return StatusPayload(status="ok")
 
-        @get("/response")
+        @Get("/response")
         def read_response(self) -> PlainTextResponse:
             return PlainTextResponse("plain", status_code=202)
 
-        @get("/none")
+        @Get("/none")
         def read_none(self) -> None:
             return None
 
-    @module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
+    @Module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
     class AppModule:
         pass
 
@@ -75,23 +75,23 @@ def test_create_app_registers_http_routes_and_coerces_common_return_types() -> N
 
 
 def test_create_app_resolves_a_fresh_controller_instance_per_request() -> None:
-    @injectable
+    @Injectable
     class CounterService:
         pass
 
-    @controller("/controllers")
+    @Controller("/controllers")
     class ControllerIdentityController:
         def __init__(self, counter_service: CounterService) -> None:
             self.counter_service = counter_service
 
-        @get("/identity")
+        @Get("/identity")
         def read_identity(self) -> dict[str, int]:
             return {
                 "controller_id": id(self),
                 "service_id": id(self.counter_service),
             }
 
-    @module(
+    @Module(
         controllers=[ControllerIdentityController],
         providers=[CounterService],
         exports=[CounterService],
@@ -113,16 +113,16 @@ def test_create_app_resolves_a_fresh_controller_instance_per_request() -> None:
 
 
 def test_create_app_binds_request_path_query_and_json_body_values() -> None:
-    @injectable
+    @Injectable
     class UsersService:
         pass
 
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
         def __init__(self, users_service: UsersService) -> None:
             self.users_service = users_service
 
-        @get("/{user_id}")
+        @Get("/{user_id}")
         def read_user(
             self,
             request: Request,
@@ -137,21 +137,21 @@ def test_create_app_binds_request_path_query_and_json_body_values() -> None:
                 "page": page,
             }
 
-        @post("/")
+        @Post("/")
         def create_user(self, payload: CreateUserPayload) -> dict[str, object]:
             return {
                 "name": payload.name,
                 "admin": payload.admin,
             }
 
-        @post("/fields")
+        @Post("/fields")
         def create_user_from_fields(self, name: str, admin: bool) -> dict[str, object]:
             return {
                 "name": name,
                 "admin": admin,
             }
 
-    @module(controllers=[UsersController], providers=[UsersService], exports=[UsersService])
+    @Module(controllers=[UsersController], providers=[UsersService], exports=[UsersService])
     class AppModule:
         pass
 
@@ -174,20 +174,20 @@ def test_create_app_binds_request_path_query_and_json_body_values() -> None:
 
 
 def test_create_app_returns_a_400_response_for_invalid_bound_inputs() -> None:
-    @injectable
+    @Injectable
     class UsersService:
         pass
 
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
         def __init__(self, users_service: UsersService) -> None:
             self.users_service = users_service
 
-        @get("/{user_id}")
+        @Get("/{user_id}")
         def read_user(self, user_id: int) -> dict[str, int]:
             return {"user_id": user_id}
 
-    @module(controllers=[UsersController], providers=[UsersService], exports=[UsersService])
+    @Module(controllers=[UsersController], providers=[UsersService], exports=[UsersService])
     class AppModule:
         pass
 
@@ -201,23 +201,23 @@ def test_create_app_returns_a_400_response_for_invalid_bound_inputs() -> None:
 
 
 def test_create_app_resolves_request_scoped_providers_per_request() -> None:
-    @injectable(scope="request")
+    @Injectable(scope="request")
     class RequestState:
         def __init__(self, request: Request) -> None:
             self.request = request
 
-    @injectable(scope="request")
+    @Injectable(scope="request")
     class RequestAudit:
         def __init__(self, request_state: RequestState) -> None:
             self.request_state = request_state
 
-    @controller("/requests")
+    @Controller("/requests")
     class RequestController:
         def __init__(self, request_state: RequestState, request_audit: RequestAudit) -> None:
             self.request_state = request_state
             self.request_audit = request_audit
 
-        @get("/state")
+        @Get("/state")
         def read_state(self) -> dict[str, object]:
             return {
                 "request_id": self.request_state.request.headers["x-request-id"],
@@ -226,7 +226,7 @@ def test_create_app_resolves_request_scoped_providers_per_request() -> None:
                 "audit_request_state_id": id(self.request_audit.request_state),
             }
 
-    @module(
+    @Module(
         controllers=[RequestController],
         providers=[RequestState, RequestAudit],
         exports=[RequestState, RequestAudit],

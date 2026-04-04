@@ -1,31 +1,31 @@
 """Example showing cross-module provider visibility through exports."""
 
-from star import controller, create_app, get, injectable, module
+from star import Controller, create_app, Get, Injectable, Module
 
 
-@injectable
+@Injectable
 class UserService:
     def list_users(self) -> list[dict[str, str]]:
         return [{"name": "Moses"}, {"name": "Ada"}]
 
 
-@controller("/users")
+@Controller("/users")
 class UserController:
     def __init__(self, user_service: UserService) -> None:
         self.user_service = user_service
 
-    @get("/")
+    @Get("/")
     def list_users(self) -> list[dict[str, str]]:
         return self.user_service.list_users()
 
 
-@injectable
+@Injectable
 class AuthService:
     def issuer(self) -> str:
         return "star-auth"
 
 
-@module(
+@Module(
     controllers=[UserController],
     providers=[UserService],
     exports=[UserService],
@@ -34,7 +34,7 @@ class UsersModule:
     pass
 
 
-@module(
+@Module(
     providers=[AuthService],
     exports=[AuthService],
 )
@@ -42,7 +42,7 @@ class AuthModule:
     pass
 
 
-@module(imports=[UsersModule, AuthModule])
+@Module(imports=[UsersModule, AuthModule])
 class AppModule:
     pass
 

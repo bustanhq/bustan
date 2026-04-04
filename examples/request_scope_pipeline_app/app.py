@@ -7,20 +7,20 @@ from collections.abc import Awaitable, Callable
 from star import (
     Guard,
     Interceptor,
-    controller,
+    Controller,
     create_app,
-    get,
-    injectable,
-    module,
-    use_guards,
-    use_interceptors,
+    Get,
+    Injectable,
+    Module,
+    UseGuards,
+    UseInterceptors,
 )
 from star.pipeline.context import HandlerContext, RequestContext
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
 
-@injectable(scope="request")
+@Injectable(scope="request")
 class RequestIdentity:
     def __init__(self, request: Request) -> None:
         self.path = request.url.path
@@ -34,7 +34,7 @@ class RequestIdentity:
         return user_id
 
 
-@injectable
+@Injectable
 class ProfileService:
     def read_profile(self, user_id: str) -> dict[str, str]:
         return {
@@ -43,7 +43,7 @@ class ProfileService:
         }
 
 
-@injectable(scope="request")
+@Injectable(scope="request")
 class AuthenticatedGuard(Guard):
     def __init__(self, request_identity: RequestIdentity) -> None:
         self.request_identity = request_identity
@@ -52,7 +52,7 @@ class AuthenticatedGuard(Guard):
         return self.request_identity.user_id is not None
 
 
-@injectable(scope="request")
+@Injectable(scope="request")
 class RequestEnvelopeInterceptor(Interceptor):
     def __init__(self, request_identity: RequestIdentity) -> None:
         self.request_identity = request_identity
@@ -70,9 +70,9 @@ class RequestEnvelopeInterceptor(Interceptor):
         }
 
 
-@use_guards(AuthenticatedGuard)
-@use_interceptors(RequestEnvelopeInterceptor)
-@controller("/account")
+@UseGuards(AuthenticatedGuard)
+@UseInterceptors(RequestEnvelopeInterceptor)
+@Controller("/account")
 class AccountController:
     def __init__(
         self,
@@ -82,7 +82,7 @@ class AccountController:
         self.profile_service = profile_service
         self.request_identity = request_identity
 
-    @get("/me")
+    @Get("/me")
     def read_current_account(self) -> dict[str, str]:
         user_id = self.request_identity.require_user_id()
         profile = self.profile_service.read_profile(user_id)
@@ -92,7 +92,7 @@ class AccountController:
         }
 
 
-@module(
+@Module(
     controllers=[AccountController],
     providers=[
         ProfileService,

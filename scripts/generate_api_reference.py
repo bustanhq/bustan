@@ -23,7 +23,7 @@ STABLE_MODULES = (
 
 MODULE_IMPORT_EXAMPLES: dict[str, tuple[str, ...]] = {
     "star": (
-        "from star import __version__, controller, create_app, get, injectable, module",
+        "from star import __version__, Controller, create_app, Get, Injectable, Module",
         "from star import ExceptionFilter, Guard, Interceptor, Pipe",
     ),
     "star.testing": (

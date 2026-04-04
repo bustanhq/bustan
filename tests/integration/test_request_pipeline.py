@@ -12,15 +12,15 @@ from star import (
     Guard,
     Interceptor,
     Pipe,
-    controller,
+    Controller,
     create_app,
-    get,
-    injectable,
-    module,
-    use_filters,
-    use_guards,
-    use_interceptors,
-    use_pipes,
+    Get,
+    Injectable,
+    Module,
+    UseFilters,
+    UseGuards,
+    UseInterceptors,
+    UsePipes,
 )
 from star.errors import ParameterBindingError
 from star.pipeline.context import HandlerContext, ParameterContext, RequestContext
@@ -63,25 +63,25 @@ def test_request_pipeline_executes_in_the_expected_order() -> None:
             events.append("interceptor:inner:after")
             return {"inner": result}
 
-    @injectable
+    @Injectable
     class GreetingService:
         pass
 
-    @use_guards(AuthGuard())
-    @use_interceptors(OuterInterceptor())
-    @controller("/greetings")
+    @UseGuards(AuthGuard())
+    @UseInterceptors(OuterInterceptor())
+    @Controller("/greetings")
     class GreetingController:
         def __init__(self, greeting_service: GreetingService) -> None:
             self.greeting_service = greeting_service
 
-        @use_pipes(RecordingPipe())
-        @use_interceptors(InnerInterceptor())
-        @get("/{name}")
+        @UsePipes(RecordingPipe())
+        @UseInterceptors(InnerInterceptor())
+        @Get("/{name}")
         def greet(self, name: str, excited: bool = False) -> dict[str, object]:
             events.append(f"handler:{name}:{excited}")
             return {"message": name, "excited": excited}
 
-    @module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
+    @Module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
     class AppModule:
         pass
 
@@ -110,22 +110,22 @@ def test_request_pipeline_short_circuits_when_a_guard_rejects_the_request() -> N
             events.append("guard")
             return False
 
-    @injectable
+    @Injectable
     class SecretService:
         pass
 
-    @use_guards(DenyGuard())
-    @controller("/secret")
+    @UseGuards(DenyGuard())
+    @Controller("/secret")
     class SecretController:
         def __init__(self, secret_service: SecretService) -> None:
             self.secret_service = secret_service
 
-        @get("/")
+        @Get("/")
         def read_secret(self) -> dict[str, str]:
             events.append("handler")
             return {"secret": "classified"}
 
-    @module(controllers=[SecretController], providers=[SecretService], exports=[SecretService])
+    @Module(controllers=[SecretController], providers=[SecretService], exports=[SecretService])
     class AppModule:
         pass
 
@@ -147,14 +147,14 @@ def test_request_pipeline_uses_exception_filters_to_convert_handler_errors() -> 
                 status_code=418,
             )
 
-    @controller("/fails")
+    @Controller("/fails")
     class FailingController:
-        @use_filters(ValueErrorFilter())
-        @get("/boom")
+        @UseFilters(ValueErrorFilter())
+        @Get("/boom")
         def explode(self) -> None:
             raise ValueError("boom")
 
-    @module(controllers=[FailingController])
+    @Module(controllers=[FailingController])
     class AppModule:
         pass
 
@@ -175,14 +175,14 @@ def test_request_pipeline_uses_exception_filters_to_convert_binding_errors() -> 
                 status_code=422,
             )
 
-    @controller("/users")
+    @Controller("/users")
     class UsersController:
-        @use_filters(BindingErrorFilter())
-        @get("/{user_id}")
+        @UseFilters(BindingErrorFilter())
+        @Get("/{user_id}")
         def read_user(self, user_id: int) -> dict[str, int]:
             return {"user_id": user_id}
 
-    @module(controllers=[UsersController])
+    @Module(controllers=[UsersController])
     class AppModule:
         pass
 

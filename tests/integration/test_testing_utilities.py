@@ -2,12 +2,12 @@
 
 from starlette.testclient import TestClient
 
-from star import controller, create_app, get, injectable, module
+from star import Controller, create_app, Get, Injectable, Module
 from star.testing import create_test_app, override_provider
 
 
 def test_create_test_app_applies_provider_overrides() -> None:
-    @injectable
+    @Injectable
     class GreetingService:
         def greet(self) -> str:
             return "production"
@@ -16,16 +16,16 @@ def test_create_test_app_applies_provider_overrides() -> None:
         def greet(self) -> str:
             return "test"
 
-    @controller("/greetings")
+    @Controller("/greetings")
     class GreetingController:
         def __init__(self, greeting_service: GreetingService) -> None:
             self.greeting_service = greeting_service
 
-        @get("/")
+        @Get("/")
         def read_greeting(self) -> dict[str, str]:
             return {"message": self.greeting_service.greet()}
 
-    @module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
+    @Module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
     class AppModule:
         pass
 
@@ -42,7 +42,7 @@ def test_create_test_app_applies_provider_overrides() -> None:
 
 
 def test_override_provider_is_scoped_and_does_not_leak_between_apps() -> None:
-    @injectable
+    @Injectable
     class GreetingService:
         def greet(self) -> str:
             return "production"
@@ -51,16 +51,16 @@ def test_override_provider_is_scoped_and_does_not_leak_between_apps() -> None:
         def greet(self) -> str:
             return "test"
 
-    @controller("/greetings")
+    @Controller("/greetings")
     class GreetingController:
         def __init__(self, greeting_service: GreetingService) -> None:
             self.greeting_service = greeting_service
 
-        @get("/")
+        @Get("/")
         def read_greeting(self) -> dict[str, str]:
             return {"message": self.greeting_service.greet()}
 
-    @module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
+    @Module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
     class AppModule:
         pass
 

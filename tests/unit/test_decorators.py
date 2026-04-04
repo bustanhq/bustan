@@ -8,15 +8,15 @@ from star import (
     Guard,
     Interceptor,
     Pipe,
-    controller,
-    get,
-    injectable,
-    module,
-    post,
-    use_filters,
-    use_guards,
-    use_interceptors,
-    use_pipes,
+    Controller,
+    Get,
+    Injectable,
+    Module,
+    Post,
+    UseFilters,
+    UseGuards,
+    UseInterceptors,
+    UsePipes,
 )
 from star.errors import InvalidControllerError, InvalidPipelineError, InvalidProviderError, RouteDefinitionError
 from star.metadata import (
@@ -36,15 +36,15 @@ from star.metadata import (
 
 
 def test_decorators_attach_expected_metadata() -> None:
-    @injectable
+    @Injectable
     class UserService:
         pass
 
-    @controller("users")
+    @Controller("users")
     class UserController:
         pass
 
-    @module(
+    @Module(
         controllers=[UserController],
         providers=[UserService],
         exports=[UserService],
@@ -64,7 +64,7 @@ def test_decorators_attach_expected_metadata() -> None:
 
 def test_route_decorator_attaches_normalized_metadata() -> None:
     class UserController:
-        @get("users/{user_id}/")
+        @Get("users/{user_id}/")
         def read_user(self) -> None:
             return None
 
@@ -79,20 +79,20 @@ def test_duplicate_route_decorators_fail_with_clear_error() -> None:
     with pytest.raises(RouteDefinitionError, match="already has route metadata"):
 
         class UserController:
-            @get("/users")
-            @post("/users")
+            @Get("/users")
+            @Post("/users")
             def create_user(self) -> None:
                 return None
 
 
 def test_controller_prefix_must_be_a_string() -> None:
     with pytest.raises(InvalidControllerError, match="Controller prefix must be a string"):
-        controller(prefix=cast(str, None))
+        Controller(prefix=cast(str, None))
 
 
 def test_injectable_rejects_unsupported_scopes() -> None:
     with pytest.raises(InvalidProviderError, match="Unsupported provider scope"):
-        injectable(scope="scoped")
+        Injectable(scope="scoped")
 
 
 def test_pipeline_decorators_attach_controller_and_handler_metadata() -> None:
@@ -113,13 +113,13 @@ def test_pipeline_decorators_attach_controller_and_handler_metadata() -> None:
     controller_interceptor = EnvelopeInterceptor()
     route_filter = ValueErrorFilter()
 
-    @use_guards(controller_guard)
-    @use_interceptors(controller_interceptor)
-    @controller("/users")
+    @UseGuards(controller_guard)
+    @UseInterceptors(controller_interceptor)
+    @Controller("/users")
     class UserController:
-        @use_pipes(route_pipe)
-        @use_filters(route_filter)
-        @get("/")
+        @UsePipes(route_pipe)
+        @UseFilters(route_filter)
+        @Get("/")
         def list_users(self) -> None:
             return None
 
@@ -139,4 +139,4 @@ def test_pipeline_decorators_attach_controller_and_handler_metadata() -> None:
 
 def test_pipeline_decorators_require_at_least_one_component() -> None:
     with pytest.raises(InvalidPipelineError, match="requires at least one component"):
-        use_guards()
+        UseGuards()
