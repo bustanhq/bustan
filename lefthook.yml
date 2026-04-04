@@ -9,4 +9,4 @@ pre-commit:
 pre-push:
   commands:
     pytest:
-      run: uv run pytest
+      run: uv run python -m pytest
