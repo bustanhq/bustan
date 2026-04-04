@@ -38,6 +38,13 @@ SPECIAL_VALUE_DOCS: dict[tuple[str, str], str] = {
     ("star", "__version__"): "Installed distribution version string for the star package.",
 }
 
+SPECIAL_VALUE_NOTES: dict[tuple[str, str], str] = {
+    (
+        "star",
+        "__version__",
+    ): "Runtime behavior: resolved from the installed distribution metadata, or from local project metadata when running from a source checkout.",
+}
+
 SPECIAL_CLASS_ATTRIBUTES: dict[tuple[str, str], dict[str, str]] = {
     (
         "star",
@@ -208,6 +215,12 @@ def _render_value_export(module_name: str, export_name: str, exported_object: ob
 
     value_doc = SPECIAL_VALUE_DOCS.get((module_name, export_name)) or inspect.getdoc(exported_object)
     lines.extend(_render_doc_paragraphs(value_doc))
+
+    value_note = SPECIAL_VALUE_NOTES.get((module_name, export_name))
+    if value_note is not None:
+        lines.extend(("", value_note, ""))
+        return lines
+
     lines.extend(("", f"Current value: `{exported_object}`", ""))
     return lines
 

@@ -23,6 +23,16 @@ def test_render_api_reference_covers_the_stable_modules() -> None:
     assert "#### `ProviderResolutionError`" in rendered_reference
 
 
+def test_render_api_reference_keeps_version_docs_stable_across_releases() -> None:
+    generator = _load_generator_module()
+
+    rendered_reference = generator.render_api_reference()
+
+    assert "Installed distribution version string for the star package." in rendered_reference
+    assert "Runtime behavior: resolved from the installed distribution metadata" in rendered_reference
+    assert "Current value: `0.0.1`" not in rendered_reference
+
+
 def test_check_api_reference_succeeds_when_reference_is_current(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

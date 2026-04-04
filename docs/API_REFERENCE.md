@@ -25,7 +25,7 @@ from star import ExceptionFilter, Guard, Interceptor, Pipe
 
 Installed distribution version string for the star package.
 
-Current value: `0.0.1`
+Runtime behavior: resolved from the installed distribution metadata, or from local project metadata when running from a source checkout.
 
 #### `ExceptionFilter`
 
