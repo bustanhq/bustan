@@ -15,7 +15,7 @@ Supported public API for the bustan package.
 ### Import
 
 ```python
-from bustan import __version__, controller, create_app, get, injectable, module
+from bustan import __version__, Controller, create_app, Get, Injectable, Module
 from bustan import ExceptionFilter, Guard, Interceptor, Pipe
 ```
 
@@ -106,10 +106,10 @@ Defined in `bustan.application`.
 
 Compatibility alias for create_app().
 
-#### `controller`
+#### `Controller`
 
 ```python
-def controller(prefix: str = '') -> Callable[[ClassT], ClassT]
+def Controller(prefix: str = '') -> Callable[[ClassT], ClassT]
 ```
 
 Defined in `bustan.decorators`.
@@ -126,110 +126,110 @@ Defined in `bustan.application`.
 
 Build a Starlette application from a decorated root module.
 
-#### `delete`
+#### `Delete`
 
 ```python
-def delete(path: str = '/') -> Callable[[FunctionT], FunctionT]
+def Delete(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
 Defined in `bustan.decorators`.
 
 Return a decorator that registers a DELETE route.
 
-#### `get`
+#### `Get`
 
 ```python
-def get(path: str = '/') -> Callable[[FunctionT], FunctionT]
+def Get(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
 Defined in `bustan.decorators`.
 
 Return a decorator that registers a GET route.
 
-#### `injectable`
+#### `Injectable`
 
 ```python
-def injectable(target: ClassT | None = None, *, scope: ProviderScope | str = ProviderScope.SINGLETON) -> ClassT | Callable[[ClassT], ClassT]
+def Injectable(target: ClassT | None = None, *, scope: ProviderScope | str = ProviderScope.SINGLETON) -> ClassT | Callable[[ClassT], ClassT]
 ```
 
 Defined in `bustan.decorators`.
 
 Mark a class as a DI-managed provider with the selected scope.
 
-#### `module`
+#### `Module`
 
 ```python
-def module(*, imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object]] | None = None, exports: Iterable[type[object]] | None = None) -> Callable[[ClassT], ClassT]
+def Module(*, imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object]] | None = None, exports: Iterable[type[object]] | None = None) -> Callable[[ClassT], ClassT]
 ```
 
 Defined in `bustan.decorators`.
 
 Attach module metadata to a class without performing registration.
 
-#### `patch`
+#### `Patch`
 
 ```python
-def patch(path: str = '/') -> Callable[[FunctionT], FunctionT]
+def Patch(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
 Defined in `bustan.decorators`.
 
 Return a decorator that registers a PATCH route.
 
-#### `post`
+#### `Post`
 
 ```python
-def post(path: str = '/') -> Callable[[FunctionT], FunctionT]
+def Post(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
 Defined in `bustan.decorators`.
 
 Return a decorator that registers a POST route.
 
-#### `put`
+#### `Put`
 
 ```python
-def put(path: str = '/') -> Callable[[FunctionT], FunctionT]
+def Put(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
 Defined in `bustan.decorators`.
 
 Return a decorator that registers a PUT route.
 
-#### `use_filters`
+#### `UseFilters`
 
 ```python
-def use_filters(*filters: object) -> Callable[[DecoratedT], DecoratedT]
+def UseFilters(*filters: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
 Defined in `bustan.decorators`.
 
 Attach one or more exception filters to a controller or handler.
 
-#### `use_guards`
+#### `UseGuards`
 
 ```python
-def use_guards(*guards: object) -> Callable[[DecoratedT], DecoratedT]
+def UseGuards(*guards: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
 Defined in `bustan.decorators`.
 
 Attach one or more guards to a controller or handler.
 
-#### `use_interceptors`
+#### `UseInterceptors`
 
 ```python
-def use_interceptors(*interceptors: object) -> Callable[[DecoratedT], DecoratedT]
+def UseInterceptors(*interceptors: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
 Defined in `bustan.decorators`.
 
 Attach one or more interceptors to a controller or handler.
 
-#### `use_pipes`
+#### `UsePipes`
 
 ```python
-def use_pipes(*pipes: object) -> Callable[[DecoratedT], DecoratedT]
+def UsePipes(*pipes: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
 Defined in `bustan.decorators`.
