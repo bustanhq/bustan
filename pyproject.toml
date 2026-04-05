@@ -1,6 +1,6 @@
 [project]
 name = "bustan"
-version = "0.1.0"
+version = "1.0.0"
 description = "NestJS-inspired application architecture on top of Starlette"
 keywords = ["asgi", "dependency injection", "starlette", "web framework"]
 classifiers = [
