@@ -4,7 +4,7 @@
 
 Do not open a public GitHub issue for security vulnerabilities.
 
-Report security issues privately to `hello@bustan.dev` with:
+Report security issues privately to `security@bustan.dev` with:
 
 - a clear description of the issue
 - impact and affected surface
