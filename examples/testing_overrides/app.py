@@ -1,7 +1,7 @@
-"""Example showing test-time provider overrides with star.testing."""
+"""Example showing test-time provider overrides with bustan.testing."""
 
-from star import Controller, create_app, Get, Injectable, Module
-from star.testing import create_test_app, override_provider
+from bustan import Controller, create_app, Get, Injectable, Module
+from bustan.testing import create_test_app, override_provider
 from starlette.testclient import TestClient
 
 

@@ -7,7 +7,7 @@ labels: feedback
 
 ## Context
 
-How are you evaluating or using `star`?
+How are you evaluating or using `bustan`?
 
 ## What Worked
 

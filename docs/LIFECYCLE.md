@@ -19,7 +19,7 @@ Each hook may be synchronous or asynchronous.
 ## Example
 
 ```python
-from star import module
+from bustan import module
 
 
 @module()

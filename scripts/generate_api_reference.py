@@ -16,38 +16,38 @@ OUTPUT_PATH = REPO_ROOT / "docs" / "API_REFERENCE.md"
 GENERATE_COMMAND = "uv run python scripts/generate_api_reference.py"
 
 STABLE_MODULES = (
-    "star",
-    "star.testing",
-    "star.errors",
+    "bustan",
+    "bustan.testing",
+    "bustan.errors",
 )
 
 MODULE_IMPORT_EXAMPLES: dict[str, tuple[str, ...]] = {
-    "star": (
-        "from star import __version__, Controller, create_app, Get, Injectable, Module",
-        "from star import ExceptionFilter, Guard, Interceptor, Pipe",
+    "bustan": (
+        "from bustan import __version__, Controller, create_app, Get, Injectable, Module",
+        "from bustan import ExceptionFilter, Guard, Interceptor, Pipe",
     ),
-    "star.testing": (
-        "from star.testing import create_test_app, create_test_module, override_provider",
+    "bustan.testing": (
+        "from bustan.testing import create_test_app, create_test_module, override_provider",
     ),
-    "star.errors": (
-        "from star.errors import ProviderResolutionError, RouteDefinitionError, StarError",
+    "bustan.errors": (
+        "from bustan.errors import ProviderResolutionError, RouteDefinitionError, BustanError",
     ),
 }
 
 SPECIAL_VALUE_DOCS: dict[tuple[str, str], str] = {
-    ("star", "__version__"): "Installed distribution version string for the star package.",
+    ("bustan", "__version__"): "Installed distribution version string for the bustan package.",
 }
 
 SPECIAL_VALUE_NOTES: dict[tuple[str, str], str] = {
     (
-        "star",
+        "bustan",
         "__version__",
     ): "Runtime behavior: resolved from the installed distribution metadata, or from local project metadata when running from a source checkout.",
 }
 
 SPECIAL_CLASS_ATTRIBUTES: dict[tuple[str, str], dict[str, str]] = {
     (
-        "star",
+        "bustan",
         "ExceptionFilter",
     ): {
         "exception_types": "Tuple of exception classes the filter handles.",
@@ -113,9 +113,9 @@ def render_api_reference() -> str:
         f"Regenerate it with `{GENERATE_COMMAND}`.",
         "",
         "Stable modules:",
-        "- `star`",
-        "- `star.testing`",
-        "- `star.errors`",
+        "- `bustan`",
+        "- `bustan.testing`",
+        "- `bustan.errors`",
         "",
     ]
 

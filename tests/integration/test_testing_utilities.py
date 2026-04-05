@@ -2,8 +2,8 @@
 
 from starlette.testclient import TestClient
 
-from star import Controller, create_app, Get, Injectable, Module
-from star.testing import create_test_app, override_provider
+from bustan import Controller, create_app, Get, Injectable, Module
+from bustan.testing import create_test_app, override_provider
 
 
 def test_create_test_app_applies_provider_overrides() -> None:

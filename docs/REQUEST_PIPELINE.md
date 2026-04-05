@@ -1,6 +1,6 @@
 # Request Pipeline
 
-`star` runs request-time behavior in a fixed order so cross-cutting logic stays predictable.
+`bustan` runs request-time behavior in a fixed order so cross-cutting logic stays predictable.
 
 ## Execution Order
 
@@ -25,8 +25,8 @@ Exception filters wrap the downstream path and can translate binding errors, gua
 ```python
 from collections.abc import Awaitable, Callable
 
-from star import Guard, Interceptor, Pipe, controller, get, use_guards, use_interceptors, use_pipes
-from star.pipeline.context import HandlerContext, ParameterContext, RequestContext
+from bustan import Guard, Interceptor, Pipe, controller, get, use_guards, use_interceptors, use_pipes
+from bustan.pipeline.context import HandlerContext, ParameterContext, RequestContext
 
 
 class AuthGuard(Guard):

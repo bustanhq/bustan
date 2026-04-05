@@ -6,9 +6,9 @@ This repository is still pre-`0.1.0`, but release behavior is not arbitrary.
 
 Compatibility commitments apply to:
 
-- `star`
-- `star.errors`
-- `star.testing`
+- `bustan`
+- `bustan.errors`
+- `bustan.testing`
 
 Everything else is internal and may change between alpha releases without a deprecation period.
 

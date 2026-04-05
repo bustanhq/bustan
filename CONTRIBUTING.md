@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to `star`.
+Thanks for contributing to `bustan`.
 
 The project is still pre-`0.1.0`, so the main goals right now are tightening the public API boundary, improving release safety, and making the framework easier to adopt without source-diving.
 
@@ -23,7 +23,7 @@ uv run python scripts/check_markdown_links.py
 uv run ruff check .
 uv run ty check src tests examples scripts
 uv run pytest
-uv run pytest --cov=star --cov-report=term-missing --cov-report=xml
+uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
 ```
 
 If you change public docstrings in stable modules, regenerate the API reference with:
@@ -51,7 +51,7 @@ This project does not require a CLA or DCO sign-off today. That choice may be re
 - Prefer `uv` commands for local setup and execution.
 - Keep changes focused. Avoid reformatting unrelated files.
 - Preserve the supported public API boundary unless the change is explicitly about that contract.
-- Treat `star`, `star.errors`, and `star.testing` as the compatibility surface. Internal modules are not yet stable.
+- Treat `bustan`, `bustan.errors`, and `bustan.testing` as the compatibility surface. Internal modules are not yet stable.
 - Add or update tests for behavior changes.
 - Update docs when user-visible behavior, policy, or examples change.
 - Do not introduce benchmark claims unless the repository also gains a benchmark harness and methodology.

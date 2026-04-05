@@ -1,4 +1,4 @@
-"""Supported public API for the star package."""
+"""Supported public API for the bustan package."""
 
 from ._version import __version__
 from .application import bootstrap, create_app

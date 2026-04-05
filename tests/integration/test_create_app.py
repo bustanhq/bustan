@@ -2,7 +2,7 @@
 
 from starlette.applications import Starlette
 
-from star import Controller, create_app, Get, Injectable, Module
+from bustan import Controller, create_app, Get, Injectable, Module
 
 
 def test_create_app_returns_a_starlette_application_with_module_graph_state() -> None:
@@ -26,11 +26,11 @@ def test_create_app_returns_a_starlette_application_with_module_graph_state() ->
     application = create_app(AppModule)
 
     assert isinstance(application, Starlette)
-    controller_instance = application.state.star_container.resolve_controller(UserController)
+    controller_instance = application.state.bustan_container.resolve_controller(UserController)
 
-    assert application.state.star_root_module is AppModule
-    assert controller_instance.user_service is application.state.star_container.resolve_provider(
+    assert application.state.bustan_root_module is AppModule
+    assert controller_instance.user_service is application.state.bustan_container.resolve_provider(
         UserService,
         AppModule,
     )
-    assert application.state.star_module_graph.root_module is AppModule
+    assert application.state.bustan_module_graph.root_module is AppModule

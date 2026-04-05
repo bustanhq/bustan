@@ -15,7 +15,7 @@ These guides sit on top of the main [README.md](../README.md). Start there for t
 - [STABILITY.md](STABILITY.md): what is public, what is internal, and how alpha compatibility is treated.
 - [VERSIONING.md](VERSIONING.md): release compatibility rules for public modules versus internal implementation details.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md): the most common framework errors and how to fix them.
-- [COMPARISONS.md](COMPARISONS.md): how `star` differs from Starlette, FastAPI, and NestJS.
+- [COMPARISONS.md](COMPARISONS.md): how `bustan` differs from Starlette, FastAPI, and NestJS.
 - [ESCAPE_HATCHES.md](ESCAPE_HATCHES.md): direct use of Starlette and low-level integration points.
 
 ## Reference And Release

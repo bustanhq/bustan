@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import importlib.metadata
 
-import star
-import star.errors as star_errors
-import star.testing as star_testing
-from star.application import bootstrap, create_app
-from star.decorators import (
+import bustan
+import bustan.errors as star_errors
+import bustan.testing as star_testing
+from bustan.application import bootstrap, create_app
+from bustan.decorators import (
     Controller,
     Delete,
     Get,
@@ -22,7 +22,7 @@ from star.decorators import (
     UseInterceptors,
     UsePipes,
 )
-from star.errors import (
+from bustan.errors import (
     ExportViolationError,
     GuardRejectedError,
     InvalidControllerError,
@@ -34,14 +34,14 @@ from star.errors import (
     ParameterBindingError,
     ProviderResolutionError,
     RouteDefinitionError,
-    StarError,
+    BustanError,
 )
-from star.pipeline import ExceptionFilter, Guard, Interceptor, Pipe
-from star.testing import create_test_app, create_test_module, override_provider
+from bustan.pipeline import ExceptionFilter, Guard, Interceptor, Pipe
+from bustan.testing import create_test_app, create_test_module, override_provider
 
 
 def test_root_package_exposes_the_supported_public_api() -> None:
-    assert star.__all__ == (
+    assert bustan.__all__ == (
         "__version__",
         "ExceptionFilter",
         "Guard",
@@ -62,25 +62,25 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "UseInterceptors",
         "UsePipes",
     )
-    assert star.__version__ == importlib.metadata.version("star")
-    assert star.ExceptionFilter is ExceptionFilter
-    assert star.Guard is Guard
-    assert star.Interceptor is Interceptor
-    assert star.Pipe is Pipe
-    assert star.bootstrap is bootstrap
-    assert star.Controller is Controller
-    assert star.create_app is create_app
-    assert star.Delete is Delete
-    assert star.Get is Get
-    assert star.Injectable is Injectable
-    assert star.Module is Module
-    assert star.Patch is Patch
-    assert star.Post is Post
-    assert star.Put is Put
-    assert star.UseFilters is UseFilters
-    assert star.UseGuards is UseGuards
-    assert star.UseInterceptors is UseInterceptors
-    assert star.UsePipes is UsePipes
+    assert bustan.__version__ == importlib.metadata.version("bustan")
+    assert bustan.ExceptionFilter is ExceptionFilter
+    assert bustan.Guard is Guard
+    assert bustan.Interceptor is Interceptor
+    assert bustan.Pipe is Pipe
+    assert bustan.bootstrap is bootstrap
+    assert bustan.Controller is Controller
+    assert bustan.create_app is create_app
+    assert bustan.Delete is Delete
+    assert bustan.Get is Get
+    assert bustan.Injectable is Injectable
+    assert bustan.Module is Module
+    assert bustan.Patch is Patch
+    assert bustan.Post is Post
+    assert bustan.Put is Put
+    assert bustan.UseFilters is UseFilters
+    assert bustan.UseGuards is UseGuards
+    assert bustan.UseInterceptors is UseInterceptors
+    assert bustan.UsePipes is UsePipes
 
 
 def test_testing_module_exposes_the_supported_helpers() -> None:
@@ -107,7 +107,7 @@ def test_errors_module_exposes_the_supported_exception_types() -> None:
         "ParameterBindingError",
         "ProviderResolutionError",
         "RouteDefinitionError",
-        "StarError",
+        "BustanError",
     )
     assert star_errors.ExportViolationError is ExportViolationError
     assert star_errors.GuardRejectedError is GuardRejectedError
@@ -120,4 +120,4 @@ def test_errors_module_exposes_the_supported_exception_types() -> None:
     assert star_errors.ParameterBindingError is ParameterBindingError
     assert star_errors.ProviderResolutionError is ProviderResolutionError
     assert star_errors.RouteDefinitionError is RouteDefinitionError
-    assert star_errors.StarError is StarError
+    assert star_errors.BustanError is BustanError

@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 
-import star._version as version_module
+import bustan._version as version_module
 
 
 def test_get_installed_version_prefers_installed_distribution(monkeypatch) -> None:

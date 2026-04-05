@@ -40,7 +40,7 @@ jobs:
         run: uv run ty check src tests examples scripts
 
       - name: Pytest with coverage
-        run: uv run pytest --cov=star --cov-report=term-missing --cov-report=xml
+        run: uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
@@ -133,10 +133,10 @@ jobs:
           . .package-smoke/bin/activate
           python -m pip install --upgrade pip
           python -m pip install dist/*.whl
-          python -c "import star; print(star.__version__)"
-          star --help
+          python -c "import bustan; print(bustan.__version__)"
+          bustan --help
           cli_smoke_root="$(mktemp -d)"
-          star new smoke-app --directory "$cli_smoke_root"
+          bustan create smoke-app --directory "$cli_smoke_root"
           test -f "$cli_smoke_root/smoke-app/pyproject.toml"
           test -f "$cli_smoke_root/smoke-app/README.md"
           test -f "$cli_smoke_root/smoke-app/src/smoke_app/app.py"

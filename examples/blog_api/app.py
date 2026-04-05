@@ -1,10 +1,10 @@
-"""Reference-style example showing a small blog API built with star."""
+"""Reference-style example showing a small blog API built with bustan."""
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from star import Controller, create_app, Get, Injectable, Module, Post
+from bustan import Controller, create_app, Get, Injectable, Module, Post
 from starlette.requests import Request
 from starlette.testclient import TestClient
 

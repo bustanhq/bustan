@@ -1,4 +1,4 @@
-"""Command-line scaffolding for Star applications."""
+"""Command-line scaffolding for Bustan applications."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
-    if command in {"new", "create"}:
+    if command == "create":
         return _run_new_command(arguments)
 
     parser.error(f"Unsupported command: {command}")
@@ -29,18 +29,17 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Create the top-level argument parser for the `star` command."""
+    """Create the top-level argument parser for the `bustan` command."""
 
     parser = argparse.ArgumentParser(
-        prog="star",
-        description="Scaffold and manage Star applications.",
+        prog="bustan",
+        description="Scaffold and manage Bustan applications.",
     )
     subparsers = parser.add_subparsers(dest="command")
 
     new_parser = subparsers.add_parser(
-        "new",
-        aliases=["create"],
-        help="Create a new Star application.",
+        "create",
+        help="Create a new Bustan application.",
     )
     new_parser.add_argument("name", help="Project directory name.")
     new_parser.add_argument(
@@ -81,7 +80,7 @@ def _run_new_command(arguments: argparse.Namespace) -> int:
         return 1
 
     scaffold_project(target_directory, project_name=project_name, package_name=package_name)
-    print(f"Created Star application at {target_directory}")
+    print(f"Created Bustan application at {target_directory}")
     print("Next steps:")
     print(f"  cd {target_directory}")
     print("  uv sync --group dev")
@@ -151,7 +150,7 @@ def _build_readme(*, project_name: str, package_name: str) -> str:
         f"""\
         # {project_name}
 
-        This project was scaffolded with `star`.
+        This project was scaffolded with `bustan`.
 
         ## Quick start
 
@@ -174,17 +173,17 @@ def _build_readme(*, project_name: str, package_name: str) -> str:
 def _build_pyproject(*, project_name: str, package_name: str) -> str:
     """Return the scaffolded pyproject content."""
 
-    star_version = _installed_star_version()
+    bustan_version = _installed_bustan_version()
     return dedent(
         f"""\
         [project]
         name = "{project_name}"
         version = "0.1.0"
-        description = "A Star application"
+        description = "A Bustan application"
         readme = "README.md"
         requires-python = ">=3.13"
         dependencies = [
-            "star>={star_version}",
+            "bustan>={bustan_version}",
             "uvicorn>=0.30.0,<1.0.0",
         ]
 
@@ -222,7 +221,7 @@ def _build_app_module(*, project_name: str, package_name: str) -> str:
 
     return dedent(
         f"""\
-        from star import Controller, create_app, Get, Injectable, Module
+        from bustan import Controller, create_app, Get, Injectable, Module
 
 
         @Injectable
@@ -299,11 +298,11 @@ def _is_valid_package_name(package_name: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", package_name))
 
 
-def _installed_star_version() -> str:
-    """Return the installed version of star for scaffolded dependencies."""
+def _installed_bustan_version() -> str:
+    """Return the installed version of bustan for scaffolded dependencies."""
 
     try:
-        return importlib.metadata.version("star")
+        return importlib.metadata.version("bustan")
     except importlib.metadata.PackageNotFoundError:
         return "0.0.1"
 

@@ -47,4 +47,4 @@ def _resolve_container(target: Starlette | ContainerAdapter) -> ContainerAdapter
     if isinstance(target, ContainerAdapter):
         return target
 
-    return cast(ContainerAdapter, target.state.star_container)
+    return cast(ContainerAdapter, target.state.bustan_container)

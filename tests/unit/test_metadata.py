@@ -1,7 +1,7 @@
 """Unit tests for metadata storage and route discovery helpers."""
 
-from star import Controller, Get, Module
-from star.metadata import (
+from bustan import Controller, Get, Module
+from bustan.metadata import (
     ControllerRouteDefinition,
     get_controller_metadata,
     get_module_metadata,

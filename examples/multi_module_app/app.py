@@ -1,6 +1,6 @@
 """Example showing cross-module provider visibility through exports."""
 
-from star import Controller, create_app, Get, Injectable, Module
+from bustan import Controller, create_app, Get, Injectable, Module
 
 
 @Injectable
@@ -22,7 +22,7 @@ class UserController:
 @Injectable
 class AuthService:
     def issuer(self) -> str:
-        return "star-auth"
+        return "bustan-auth"
 
 
 @Module(

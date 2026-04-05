@@ -4,26 +4,26 @@ This document is generated from docstrings in the stable public modules.
 Regenerate it with `uv run python scripts/generate_api_reference.py`.
 
 Stable modules:
-- `star`
-- `star.testing`
-- `star.errors`
+- `bustan`
+- `bustan.testing`
+- `bustan.errors`
 
-## `star`
+## `bustan`
 
-Supported public API for the star package.
+Supported public API for the bustan package.
 
 ### Import
 
 ```python
-from star import __version__, controller, create_app, get, injectable, module
-from star import ExceptionFilter, Guard, Interceptor, Pipe
+from bustan import __version__, controller, create_app, get, injectable, module
+from bustan import ExceptionFilter, Guard, Interceptor, Pipe
 ```
 
 ### Exports
 
 #### `__version__`
 
-Installed distribution version string for the star package.
+Installed distribution version string for the bustan package.
 
 Runtime behavior: resolved from the installed distribution metadata, or from local project metadata when running from a source checkout.
 
@@ -33,7 +33,7 @@ Runtime behavior: resolved from the installed distribution metadata, or from loc
 class ExceptionFilter
 ```
 
-Defined in `star.pipeline.filters`.
+Defined in `bustan.pipeline.filters`.
 
 Base class for mapping exceptions to handler results.
 
@@ -57,7 +57,7 @@ handle.
 class Guard
 ```
 
-Defined in `star.pipeline.guards`.
+Defined in `bustan.pipeline.guards`.
 
 Base class for authorization and policy gates.
 
@@ -72,7 +72,7 @@ Base class for authorization and policy gates.
 class Interceptor
 ```
 
-Defined in `star.pipeline.interceptors`.
+Defined in `bustan.pipeline.interceptors`.
 
 Base class for around-handler behaviors.
 
@@ -87,7 +87,7 @@ Base class for around-handler behaviors.
 class Pipe
 ```
 
-Defined in `star.pipeline.pipes`.
+Defined in `bustan.pipeline.pipes`.
 
 Base class for parameter transformation and validation.
 
@@ -102,7 +102,7 @@ Base class for parameter transformation and validation.
 def bootstrap(root_module: type) -> Starlette
 ```
 
-Defined in `star.application`.
+Defined in `bustan.application`.
 
 Compatibility alias for create_app().
 
@@ -112,7 +112,7 @@ Compatibility alias for create_app().
 def controller(prefix: str = '') -> Callable[[ClassT], ClassT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Attach controller metadata to a class.
 
@@ -122,7 +122,7 @@ Attach controller metadata to a class.
 def create_app(root_module: type) -> Starlette
 ```
 
-Defined in `star.application`.
+Defined in `bustan.application`.
 
 Build a Starlette application from a decorated root module.
 
@@ -132,7 +132,7 @@ Build a Starlette application from a decorated root module.
 def delete(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Return a decorator that registers a DELETE route.
 
@@ -142,7 +142,7 @@ Return a decorator that registers a DELETE route.
 def get(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Return a decorator that registers a GET route.
 
@@ -152,7 +152,7 @@ Return a decorator that registers a GET route.
 def injectable(target: ClassT | None = None, *, scope: ProviderScope | str = ProviderScope.SINGLETON) -> ClassT | Callable[[ClassT], ClassT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Mark a class as a DI-managed provider with the selected scope.
 
@@ -162,7 +162,7 @@ Mark a class as a DI-managed provider with the selected scope.
 def module(*, imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object]] | None = None, exports: Iterable[type[object]] | None = None) -> Callable[[ClassT], ClassT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Attach module metadata to a class without performing registration.
 
@@ -172,7 +172,7 @@ Attach module metadata to a class without performing registration.
 def patch(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Return a decorator that registers a PATCH route.
 
@@ -182,7 +182,7 @@ Return a decorator that registers a PATCH route.
 def post(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Return a decorator that registers a POST route.
 
@@ -192,7 +192,7 @@ Return a decorator that registers a POST route.
 def put(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Return a decorator that registers a PUT route.
 
@@ -202,7 +202,7 @@ Return a decorator that registers a PUT route.
 def use_filters(*filters: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Attach one or more exception filters to a controller or handler.
 
@@ -212,7 +212,7 @@ Attach one or more exception filters to a controller or handler.
 def use_guards(*guards: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Attach one or more guards to a controller or handler.
 
@@ -222,7 +222,7 @@ Attach one or more guards to a controller or handler.
 def use_interceptors(*interceptors: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Attach one or more interceptors to a controller or handler.
 
@@ -232,18 +232,18 @@ Attach one or more interceptors to a controller or handler.
 def use_pipes(*pipes: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
-Defined in `star.decorators`.
+Defined in `bustan.decorators`.
 
 Attach one or more pipes to a controller or handler.
 
-## `star.testing`
+## `bustan.testing`
 
-Supported testing helpers for the star package.
+Supported testing helpers for the bustan package.
 
 ### Import
 
 ```python
-from star.testing import create_test_app, create_test_module, override_provider
+from bustan.testing import create_test_app, create_test_module, override_provider
 ```
 
 ### Exports
@@ -254,7 +254,7 @@ from star.testing import create_test_app, create_test_module, override_provider
 def create_test_app(root_module: type[object], *, provider_overrides: Mapping[type[object], object] | None = None) -> Starlette
 ```
 
-Defined in `star.testing.builder`.
+Defined in `bustan.testing.builder`.
 
 Create an application and apply any requested provider overrides.
 
@@ -264,7 +264,7 @@ Create an application and apply any requested provider overrides.
 def create_test_module(*, name: str = 'TestModule', imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object]] | None = None, exports: Iterable[type[object]] | None = None) -> type[object]
 ```
 
-Defined in `star.testing.builder`.
+Defined in `bustan.testing.builder`.
 
 Create a throwaway decorated module for isolated tests.
 
@@ -274,18 +274,18 @@ Create a throwaway decorated module for isolated tests.
 def override_provider(target: Starlette | ContainerAdapter, provider_cls: type[ResolvedT], replacement: ResolvedT, *, module_cls: type[object] | None = None) -> Iterator[None]
 ```
 
-Defined in `star.testing.overrides`.
+Defined in `bustan.testing.overrides`.
 
 Temporarily replace a provider for the duration of a context block.
 
-## `star.errors`
+## `bustan.errors`
 
-Public exception types for the star package.
+Public exception types for the bustan package.
 
 ### Import
 
 ```python
-from star.errors import ProviderResolutionError, RouteDefinitionError, StarError
+from bustan.errors import ProviderResolutionError, RouteDefinitionError, BustanError
 ```
 
 ### Exports
@@ -296,67 +296,67 @@ from star.errors import ProviderResolutionError, RouteDefinitionError, StarError
 class ExportViolationError(InvalidModuleError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when a module exports a provider it does not declare.
 
 #### `GuardRejectedError`
 
 ```python
-class GuardRejectedError(StarError)
+class GuardRejectedError(BustanError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when a guard blocks request execution.
 
 #### `InvalidControllerError`
 
 ```python
-class InvalidControllerError(StarError)
+class InvalidControllerError(BustanError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when a controller declaration is invalid.
 
 #### `InvalidModuleError`
 
 ```python
-class InvalidModuleError(StarError)
+class InvalidModuleError(BustanError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when module declarations or imports are invalid.
 
 #### `InvalidPipelineError`
 
 ```python
-class InvalidPipelineError(StarError)
+class InvalidPipelineError(BustanError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when pipeline decorators or components are invalid.
 
 #### `InvalidProviderError`
 
 ```python
-class InvalidProviderError(StarError)
+class InvalidProviderError(BustanError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when a provider declaration is invalid.
 
 #### `LifecycleError`
 
 ```python
-class LifecycleError(StarError)
+class LifecycleError(BustanError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when application lifecycle hooks fail.
 
@@ -366,46 +366,46 @@ Raised when application lifecycle hooks fail.
 class ModuleCycleError(InvalidModuleError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when a module import cycle is detected.
 
 #### `ParameterBindingError`
 
 ```python
-class ParameterBindingError(StarError)
+class ParameterBindingError(BustanError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when request parameters cannot be bound.
 
 #### `ProviderResolutionError`
 
 ```python
-class ProviderResolutionError(StarError)
+class ProviderResolutionError(BustanError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when dependency resolution fails.
 
 #### `RouteDefinitionError`
 
 ```python
-class RouteDefinitionError(StarError)
+class RouteDefinitionError(BustanError)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Raised when route metadata is malformed or duplicated.
 
-#### `StarError`
+#### `BustanError`
 
 ```python
-class StarError(Exception)
+class BustanError(Exception)
 ```
 
-Defined in `star.errors`.
+Defined in `bustan.errors`.
 
 Base exception for the framework.

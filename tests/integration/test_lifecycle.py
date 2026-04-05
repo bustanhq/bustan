@@ -3,8 +3,8 @@
 import pytest
 from starlette.testclient import TestClient
 
-from star import create_app, Module
-from star.errors import LifecycleError
+from bustan import create_app, Module
+from bustan.errors import LifecycleError
 
 
 def test_create_app_runs_lifecycle_hooks_in_startup_and_shutdown_order() -> None:

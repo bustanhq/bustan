@@ -4,7 +4,7 @@
 
 Do not open a public GitHub issue for security vulnerabilities.
 
-Report security issues privately to `mosesgameli20@gmail.com` with:
+Report security issues privately to `hello@bustan.dev` with:
 
 - a clear description of the issue
 - impact and affected surface
@@ -22,7 +22,7 @@ You should receive an acknowledgement within 5 business days.
 
 ## Supported Versions
 
-While `star` is still pre-`0.1.0`, security support is best effort for:
+While `bustan` is still pre-`0.1.0`, security support is best effort for:
 
 - the default branch
 - the most recent tagged pre-`1.0` release, once releases begin

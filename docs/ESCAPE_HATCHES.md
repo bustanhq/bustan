@@ -1,6 +1,6 @@
 # Escape Hatches
 
-`star` is opinionated about structure, not about hiding Starlette.
+`bustan` is opinionated about structure, not about hiding Starlette.
 
 ## Inject The Raw Request
 
@@ -42,8 +42,8 @@ app.mount("/static", static_app)
 
 `create_app()` stores bootstrap artifacts on the Starlette application state:
 
-- `app.state.star_container`
-- `app.state.star_module_graph`
-- `app.state.star_root_module`
+- `app.state.bustan_container`
+- `app.state.bustan_module_graph`
+- `app.state.bustan_root_module`
 
 Those values are useful for advanced tests, graph inspection, and framework-level integrations.

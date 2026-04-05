@@ -16,7 +16,7 @@ Use this checklist for every tagged release until the release workflow is fully 
 3. Run `uv run ruff check .`.
 4. Run `uv run ty check src tests examples scripts`.
 5. Run `uv run pytest`.
-6. Run `uv run pytest --cov=star --cov-report=term-missing --cov-report=xml`.
+6. Run `uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml`.
 7. Run `uv build`.
 8. Run `uvx --from twine twine check dist/*`.
 
@@ -47,8 +47,8 @@ Use this checklist for every tagged release until the release workflow is fully 
 
 1. Watch [published-package-verification.yml](../.github/workflows/published-package-verification.yml) succeed for the released version, or run it manually with the new version number.
 2. If manual verification is needed, install the package in a clean environment.
-3. Verify `import star` succeeds.
-4. Verify `star --help` succeeds.
-5. Verify `uvx --from "star==<version>" star new my-app` scaffolds an application from the published artifact.
+3. Verify `import bustan` succeeds.
+4. Verify `bustan --help` succeeds.
+5. Verify `uvx --from "bustan==<version>" bustan new my-app` scaffolds an application from the published artifact.
 6. Publish or verify the GitHub release notes.
 7. Announce the release if it is externally relevant.

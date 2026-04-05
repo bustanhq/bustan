@@ -11,7 +11,7 @@ def test_slugify_heading_generates_github_like_anchors() -> None:
     checker = _load_checker_module()
 
     assert checker.slugify_heading("Open Source Project Docs") == "open-source-project-docs"
-    assert checker.slugify_heading("Use `star.testing` safely") == "use-startesting-safely"
+    assert checker.slugify_heading("Use `bustan.testing` safely") == "use-bustantesting-safely"
 
 
 def test_check_markdown_links_accepts_valid_relative_links(tmp_path: Path) -> None:

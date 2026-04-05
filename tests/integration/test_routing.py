@@ -8,7 +8,7 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.testclient import TestClient
 
-from star import Controller, create_app, Get, Injectable, Module, Post
+from bustan import Controller, create_app, Get, Injectable, Module, Post
 
 
 @dataclass(frozen=True, slots=True)

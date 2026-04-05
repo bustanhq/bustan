@@ -1,6 +1,6 @@
 """Example showing how to inspect the discovered module graph."""
 
-from star import Controller, create_app, Get, Injectable, Module
+from bustan import Controller, create_app, Get, Injectable, Module
 
 
 @Injectable
@@ -39,7 +39,7 @@ app = create_app(AppModule)
 def describe_graph() -> None:
     """Print the imported modules and exported providers for each node."""
 
-    graph = app.state.star_module_graph
+    graph = app.state.bustan_module_graph
     for node in graph.nodes:
         imported_module_names = [imported_module.__name__ for imported_module in node.imports]
         exported_provider_names = [provider.__name__ for provider in node.exported_providers]

@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a defect, regression, or unexpected behavior in star.
+about: Report a defect, regression, or unexpected behavior in bustan.
 title: "bug: "
 labels: bug
 ---
@@ -23,7 +23,7 @@ Provide the smallest reproducible example, including code, commands, and configu
 
 ## Environment
 
-- star version:
+- bustan version:
 - Python version:
 - OS:
 

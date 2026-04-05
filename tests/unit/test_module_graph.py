@@ -3,15 +3,15 @@
 import pytest
 from typing import cast
 
-from star import Controller, Get, Injectable, Module
-from star.errors import (
+from bustan import Controller, Get, Injectable, Module
+from bustan.errors import (
     ExportViolationError,
     InvalidControllerError,
     InvalidModuleError,
     ModuleCycleError,
     RouteDefinitionError,
 )
-from star.module_graph import build_module_graph
+from bustan.module_graph import build_module_graph
 
 
 def test_build_module_graph_preserves_import_order_and_visibility() -> None:

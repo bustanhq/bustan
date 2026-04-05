@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from star import (
+from bustan import (
     Guard,
     Interceptor,
     Controller,
@@ -15,7 +15,7 @@ from star import (
     UseGuards,
     UseInterceptors,
 )
-from star.pipeline.context import HandlerContext, RequestContext
+from bustan.pipeline.context import HandlerContext, RequestContext
 from starlette.requests import Request
 from starlette.testclient import TestClient
 

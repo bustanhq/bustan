@@ -3,10 +3,10 @@
 import pytest
 from starlette.requests import Request
 
-from star import Controller, Get, Injectable, Module
-from star.container import build_container
-from star.errors import ProviderResolutionError
-from star.module_graph import build_module_graph
+from bustan import Controller, Get, Injectable, Module
+from bustan.container import build_container
+from bustan.errors import ProviderResolutionError
+from bustan.module_graph import build_module_graph
 
 
 def test_container_resolves_singleton_providers_and_transient_controllers() -> None:

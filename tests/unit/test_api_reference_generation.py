@@ -15,11 +15,11 @@ def test_render_api_reference_covers_the_stable_modules() -> None:
     rendered_reference = generator.render_api_reference()
 
     assert "# API Reference" in rendered_reference
-    assert "## `star`" in rendered_reference
+    assert "## `bustan`" in rendered_reference
     assert "#### `create_app`" in rendered_reference
-    assert "## `star.testing`" in rendered_reference
+    assert "## `bustan.testing`" in rendered_reference
     assert "#### `override_provider`" in rendered_reference
-    assert "## `star.errors`" in rendered_reference
+    assert "## `bustan.errors`" in rendered_reference
     assert "#### `ProviderResolutionError`" in rendered_reference
 
 
@@ -28,7 +28,7 @@ def test_render_api_reference_keeps_version_docs_stable_across_releases() -> Non
 
     rendered_reference = generator.render_api_reference()
 
-    assert "Installed distribution version string for the star package." in rendered_reference
+    assert "Installed distribution version string for the bustan package." in rendered_reference
     assert "Runtime behavior: resolved from the installed distribution metadata" in rendered_reference
     assert "Current value: `0.0.1`" not in rendered_reference
 

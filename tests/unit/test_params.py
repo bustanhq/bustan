@@ -10,10 +10,10 @@ import anyio
 import pytest
 from starlette.requests import Request
 
-from star import Controller, Get, Post
-from star.errors import ParameterBindingError
-from star.metadata import iter_controller_routes
-from star.params import bind_handler_arguments, compile_parameter_bindings
+from bustan import Controller, Get, Post
+from bustan.errors import ParameterBindingError
+from bustan.metadata import iter_controller_routes
+from bustan.params import bind_handler_arguments, compile_parameter_bindings
 
 
 @dataclass(frozen=True, slots=True)

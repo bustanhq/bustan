@@ -1,10 +1,10 @@
-# star
+# bustan
 
-star is an architecture-first Python web framework for teams that like Starlette's runtime but want stronger application structure.
+bustan is an architecture-first Python web framework for teams that like Starlette's runtime but want stronger application structure.
 
 It brings NestJS-style modules, controllers, providers, constructor injection, lifecycle hooks, and a request pipeline to Python, while keeping direct access to Starlette when you need an escape hatch.
 
-## Why star
+## Why bustan
 
 - Use modules as real composition boundaries instead of ad hoc import graphs.
 - Keep controllers thin and move business logic into DI-managed providers.
@@ -14,14 +14,14 @@ It brings NestJS-style modules, controllers, providers, constructor injection, l
 
 ## Status
 
-- `star` is alpha and still pre-`0.1.0`.
+- `bustan` is alpha and still pre-`0.1.0`.
 - The first public compatibility target is `0.1.0` alpha.
 - Package metadata currently targets Python `>=3.13`.
 - The Python floor is intentionally narrow while the public surface, packaging, and release process are still settling.
 - Python `3.13` remains the floor because the project is still tightening its first public contract and release automation around one supported runtime before widening support.
-- Compatibility is currently promised only for `star`, `star.errors`, and `star.testing`.
-- Internal modules such as `star.container`, `star.routing`, `star.params`, and `star.metadata` are still implementation details.
-- Alpha stability means behavior may still change between pre-`0.1.0` releases, but the project is already treating `star`, `star.errors`, and `star.testing` as the intended long-term public surface.
+- Compatibility is currently promised only for `bustan`, `bustan.errors`, and `bustan.testing`.
+- Internal modules such as `bustan.container`, `bustan.routing`, `bustan.params`, and `bustan.metadata` are still implementation details.
+- Alpha stability means behavior may still change between pre-`0.1.0` releases, but the project is already treating `bustan`, `bustan.errors`, and `bustan.testing` as the intended long-term public surface.
 - No benchmark suite or benchmark claims are published yet.
 
 ## Installation
@@ -39,13 +39,13 @@ That installs the framework, test dependencies, linting, typing, and the local C
 ### Use the CLI from a source checkout
 
 ```bash
-uv run star new my-app
+uv run bustan new my-app
 ```
 
 `create` is available as an alias:
 
 ```bash
-uv run star create my-app
+uv run bustan create my-app
 ```
 
 ### Use as a published package
@@ -53,44 +53,44 @@ uv run star create my-app
 Once the PyPI distribution name is confirmed and published, the intended install path is:
 
 ```bash
-uv add star
+uv add bustan
 # or
-pip install star
+pip install bustan
 ```
 
 Once published, the CLI entry point will also be usable through `uvx`:
 
 ```bash
-uvx star new my-app
+uvx bustan create my-app
 ```
 
-The distribution name `star` still needs to be confirmed at publish time. The current repository is prepared for that name, but the final PyPI availability check should happen immediately before the first release.
+The distribution name `bustan` still needs to be confirmed at publish time. The current repository is prepared for that name, but the final PyPI availability check should happen immediately before the first release.
 
 ## Five-Minute Quickstart
 
 Create an application module, one provider, and one controller:
 
 ```python
-from star import controller, create_app, get, injectable, module
+from bustan import controller, create_app, get, injectable, module
 
 
-@injectable
+@Injectable
 class GreetingService:
 	def greet(self) -> dict[str, str]:
-		return {"message": "hello from star"}
+		return {"message": "hello from bustan"}
 
 
-@controller("/hello")
+@Controller("/hello")
 class GreetingController:
 	def __init__(self, greeting_service: GreetingService) -> None:
 		self.greeting_service = greeting_service
 
-	@get("/")
+	@Get("/")
 	def read_greeting(self) -> dict[str, str]:
 		return self.greeting_service.greet()
 
 
-@module(
+@Module(
 	controllers=[GreetingController],
 	providers=[GreetingService],
 	exports=[GreetingService],
@@ -117,7 +117,7 @@ curl http://127.0.0.1:8000/hello
 Expected response:
 
 ```json
-{"message":"hello from star"}
+{"message":"hello from bustan"}
 ```
 
 ## What You Get Today
@@ -142,16 +142,16 @@ The first compatibility boundary is intentionally small.
 
 Stable import paths:
 
-- `star`
-- `star.errors`
-- `star.testing`
+- `bustan`
+- `bustan.errors`
+- `bustan.testing`
 
 Example supported imports:
 
 ```python
-from star import __version__, controller, create_app, get, injectable, module
-from star.errors import ProviderResolutionError
-from star.testing import create_test_app, override_provider
+from bustan import __version__, controller, create_app, get, injectable, module
+from bustan.errors import ProviderResolutionError
+from bustan.testing import create_test_app, override_provider
 ```
 
 The generated API reference for the stable surface lives in [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
@@ -188,7 +188,7 @@ The repository includes focused examples beyond the minimal quickstart:
 - `examples/multi_module_app/app.py`: feature modules with exported providers
 - `examples/graph_inspection/app.py`: print the discovered module graph
 - `examples/request_scope_pipeline_app/app.py`: request-scoped providers shared across guards, interceptors, and controllers
-- `examples/testing_overrides/app.py`: test-time provider overrides with `star.testing`
+- `examples/testing_overrides/app.py`: test-time provider overrides with `bustan.testing`
 
 Run them with:
 
@@ -201,12 +201,12 @@ uv run python examples/testing_overrides/app.py
 
 ## Testing Utilities
 
-`star.testing` is the intended entry point for test-time application assembly.
+`bustan.testing` is the intended entry point for test-time application assembly.
 
 Use `create_test_app()` to start an app with one or more providers replaced:
 
 ```python
-from star.testing import create_test_app
+from bustan.testing import create_test_app
 
 
 application = create_test_app(
@@ -218,7 +218,7 @@ application = create_test_app(
 Use `override_provider()` when you want a scoped override that is restored automatically:
 
 ```python
-from star.testing import override_provider
+from bustan.testing import override_provider
 
 
 with override_provider(application, GreetingService, FakeGreetingService()):
@@ -231,7 +231,7 @@ Use `create_test_module()` when you want a temporary module class for an isolate
 
 Use GitHub Issues for questions, bug reports, feature requests, and adoption feedback:
 
-- https://github.com/mosesgameli/star/issues
+- https://github.com/bustanhq/bustan/issues
 
 Do not use public issues for sensitive security reports. Follow the private disclosure guidance in [SECURITY.md](SECURITY.md).
 
@@ -263,12 +263,12 @@ uv run python scripts/check_markdown_links.py
 uv run ruff check .
 uv run ty check src tests examples scripts
 uv run pytest
-uv run pytest --cov=star --cov-report=term-missing --cov-report=xml
+uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
 ```
 
 ## Project Direction
 
-`star` is trying to be opinionated about application structure, not to hide Starlette or compete on benchmark claims.
+`bustan` is trying to be opinionated about application structure, not to hide Starlette or compete on benchmark claims.
 
 If you want a small ASGI core with explicit module boundaries, DI-managed services, and a predictable request pipeline, that is the target use case.
 

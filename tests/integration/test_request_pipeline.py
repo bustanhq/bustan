@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
-from star import (
+from bustan import (
     ExceptionFilter,
     Guard,
     Interceptor,
@@ -22,8 +22,8 @@ from star import (
     UseInterceptors,
     UsePipes,
 )
-from star.errors import ParameterBindingError
-from star.pipeline.context import HandlerContext, ParameterContext, RequestContext
+from bustan.errors import ParameterBindingError
+from bustan.pipeline.context import HandlerContext, ParameterContext, RequestContext
 
 
 def test_request_pipeline_executes_in_the_expected_order() -> None:

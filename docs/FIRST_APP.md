@@ -1,17 +1,17 @@
 # First App
 
-This walkthrough builds a small `star` application with one provider, one controller, one module, and one focused test.
+This walkthrough builds a small `bustan` application with one provider, one controller, one module, and one focused test.
 
 ## Application Code
 
 ```python
-from star import controller, create_app, get, injectable, module
+from bustan import controller, create_app, get, injectable, module
 
 
 @injectable
 class GreetingService:
     def greet(self) -> dict[str, str]:
-        return {"message": "hello from star"}
+        return {"message": "hello from bustan"}
 
 
 @controller("/hello")
@@ -46,7 +46,7 @@ curl http://127.0.0.1:8000/hello
 Expected response:
 
 ```json
-{"message":"hello from star"}
+{"message":"hello from bustan"}
 ```
 
 ## Test It
@@ -64,13 +64,13 @@ def test_read_greeting() -> None:
         response = client.get("/hello")
 
     assert response.status_code == 200
-    assert response.json() == {"message": "hello from star"}
+    assert response.json() == {"message": "hello from bustan"}
 ```
 
-When you want to replace providers in tests, use `star.testing.create_test_app()`:
+When you want to replace providers in tests, use `bustan.testing.create_test_app()`:
 
 ```python
-from star.testing import create_test_app
+from bustan.testing import create_test_app
 
 
 class FakeGreetingService:
@@ -88,6 +88,6 @@ application = create_test_app(
 
 - `@injectable` marks a DI-managed provider.
 - `@controller` groups related routes behind one prefix.
-- `@module` is the composition boundary that tells `star` what to wire.
+- `@module` is the composition boundary that tells `bustan` what to wire.
 - `create_app()` turns the root module into a Starlette application.
-- `star.testing` lets you swap providers without mutating global state.
+- `bustan.testing` lets you swap providers without mutating global state.

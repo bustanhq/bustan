@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import tomllib
 
-PACKAGE_NAME = "star"
+PACKAGE_NAME = "bustan"
 DEFAULT_VERSION = "0.0.0"
 PYPROJECT_PATH = Path(__file__).resolve().parents[2] / "pyproject.toml"
 

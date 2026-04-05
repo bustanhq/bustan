@@ -1,5 +1,5 @@
 [project]
-name = "star"
+name = "bustan"
 version = "0.1.0"
 description = "NestJS-inspired application architecture on top of Starlette"
 keywords = ["asgi", "dependency injection", "starlette", "web framework"]
@@ -17,7 +17,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
-    { name = "mosesgameli", email = "mosesgameli20@gmail.com" }
+    { name = "mosesgameli", email = "hello@bustan.dev" }
 ]
 requires-python = ">=3.13"
 dependencies = [
@@ -27,14 +27,14 @@ dependencies = [
 ]
 
 [project.scripts]
-star = "star.cli:main"
+bustan = "bustan.cli:main"
 
 [project.urls]
-Repository = "https://github.com/mosesgameli/star"
-Issues = "https://github.com/mosesgameli/star/issues"
-Documentation = "https://github.com/mosesgameli/star#readme"
-Changelog = "https://github.com/mosesgameli/star/blob/main/CHANGELOG.md"
-Support = "https://github.com/mosesgameli/star/issues"
+Repository = "https://github.com/bustanhq/bustan"
+Issues = "https://github.com/bustanhq/bustan/issues"
+Documentation = "https://bustan.dev"
+Changelog = "https://github.com/bustanhq/bustan/blob/main/CHANGELOG.md"
+Support = "https://github.com/bustanhq/bustan/issues"
 
 [dependency-groups]
 dev = [
@@ -53,7 +53,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["star"]
+source = ["bustan"]
 
 [tool.coverage.report]
 fail_under = 84

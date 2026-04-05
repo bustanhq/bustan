@@ -26,7 +26,7 @@ This code of conduct applies to project discussions, issues, pull requests, revi
 
 ## Reporting
 
-To report conduct problems, contact the maintainer privately at `mosesgameli20@gmail.com`.
+To report conduct problems, contact the maintainer privately at `hello@bustan.dev`.
 
 Please include enough context for the report to be actionable. Reports will be handled as confidentially as practical.
 

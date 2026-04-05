@@ -17,9 +17,9 @@ def create_app(root_module: type[object]) -> Starlette:
 
     application = Starlette(routes=list(routes), lifespan=build_lifespan(module_graph))
     # Expose bootstrap artifacts for tests, examples, and advanced integrations.
-    application.state.star_container = container
-    application.state.star_module_graph = module_graph
-    application.state.star_root_module = root_module
+    application.state.bustan_container = container
+    application.state.bustan_module_graph = module_graph
+    application.state.bustan_root_module = root_module
     return application
 
 

@@ -1,26 +1,26 @@
-"""Public exception types for the star package."""
+"""Public exception types for the bustan package."""
 
-class StarError(Exception):
+class BustanError(Exception):
     """Base exception for the framework."""
 
 
-class InvalidModuleError(StarError):
+class InvalidModuleError(BustanError):
     """Raised when module declarations or imports are invalid."""
 
 
-class InvalidControllerError(StarError):
+class InvalidControllerError(BustanError):
     """Raised when a controller declaration is invalid."""
 
 
-class InvalidProviderError(StarError):
+class InvalidProviderError(BustanError):
     """Raised when a provider declaration is invalid."""
 
 
-class InvalidPipelineError(StarError):
+class InvalidPipelineError(BustanError):
     """Raised when pipeline decorators or components are invalid."""
 
 
-class LifecycleError(StarError):
+class LifecycleError(BustanError):
     """Raised when application lifecycle hooks fail."""
 
 
@@ -32,19 +32,19 @@ class ExportViolationError(InvalidModuleError):
     """Raised when a module exports a provider it does not declare."""
 
 
-class ProviderResolutionError(StarError):
+class ProviderResolutionError(BustanError):
     """Raised when dependency resolution fails."""
 
 
-class RouteDefinitionError(StarError):
+class RouteDefinitionError(BustanError):
     """Raised when route metadata is malformed or duplicated."""
 
 
-class ParameterBindingError(StarError):
+class ParameterBindingError(BustanError):
     """Raised when request parameters cannot be bound."""
 
 
-class GuardRejectedError(StarError):
+class GuardRejectedError(BustanError):
     """Raised when a guard blocks request execution."""
 
 
@@ -60,5 +60,5 @@ __all__ = (
     "ParameterBindingError",
     "ProviderResolutionError",
     "RouteDefinitionError",
-    "StarError",
+    "BustanError",
 )

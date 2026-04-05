@@ -3,7 +3,7 @@
 import pytest
 from typing import cast
 
-from star import (
+from bustan import (
     ExceptionFilter,
     Guard,
     Interceptor,
@@ -18,8 +18,8 @@ from star import (
     UseInterceptors,
     UsePipes,
 )
-from star.errors import InvalidControllerError, InvalidPipelineError, InvalidProviderError, RouteDefinitionError
-from star.metadata import (
+from bustan.errors import InvalidControllerError, InvalidPipelineError, InvalidProviderError, RouteDefinitionError
+from bustan.metadata import (
     ControllerMetadata,
     ModuleMetadata,
     PipelineMetadata,

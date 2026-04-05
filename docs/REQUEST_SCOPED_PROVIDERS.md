@@ -5,7 +5,7 @@ Use request scope when a provider should exist once per incoming request and the
 ## Declare Request Scope
 
 ```python
-from star import injectable
+from bustan import injectable
 from starlette.requests import Request
 
 

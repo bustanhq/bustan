@@ -39,7 +39,7 @@ def create_test_app(
     """Create an application and apply any requested provider overrides."""
 
     application = create_app(root_module)
-    container = cast(ContainerAdapter, application.state.star_container)
+    container = cast(ContainerAdapter, application.state.bustan_container)
 
     if provider_overrides is not None:
         for provider_cls, replacement in provider_overrides.items():

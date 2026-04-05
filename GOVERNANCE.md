@@ -1,6 +1,6 @@
 # Governance
 
-This document defines how `star` is currently reviewed, merged, released, and kept healthy while the project is still early.
+This document defines how `bustan` is currently reviewed, merged, released, and kept healthy while the project is still early.
 
 ## Maintainer Authority
 
@@ -11,7 +11,7 @@ This document defines how `star` is currently reviewed, merged, released, and ke
 ## Review And Merge Expectations
 
 - User-facing behavior changes should include tests and docs updates.
-- Public API changes should stay within `star`, `star.errors`, or `star.testing` unless the compatibility boundary is intentionally being expanded.
+- Public API changes should stay within `bustan`, `bustan.errors`, or `bustan.testing` unless the compatibility boundary is intentionally being expanded.
 - Larger changes should be reviewed before merge once the project has more than one active maintainer.
 
 ## Release Ownership

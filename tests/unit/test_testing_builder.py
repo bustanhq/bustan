@@ -1,8 +1,8 @@
 """Unit tests for dynamic test-module construction."""
 
-from star import Controller, Get, Injectable
-from star.metadata import ModuleMetadata, get_module_metadata
-from star.testing import create_test_module
+from bustan import Controller, Get, Injectable
+from bustan.metadata import ModuleMetadata, get_module_metadata
+from bustan.testing import create_test_module
 
 
 def test_create_test_module_builds_module_metadata_from_arguments() -> None:

@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Propose a new capability or improvement for star.
+about: Propose a new capability or improvement for bustan.
 title: "feat: "
 labels: enhancement
 ---

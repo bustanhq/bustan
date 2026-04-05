@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import pytest
 from starlette.responses import PlainTextResponse, Response
 
-from star.responses import coerce_response
+from bustan.responses import coerce_response
 
 
 def test_coerce_response_passes_through_response_instances() -> None:
@@ -18,10 +18,10 @@ def test_coerce_response_passes_through_response_instances() -> None:
 
 def test_coerce_response_serializes_dict_and_list_values() -> None:
     dict_response = coerce_response({"status": "ok"})
-    list_response = coerce_response(["star", "lette"])
+    list_response = coerce_response(["bustan", "lette"])
 
     assert dict_response.body == b'{"status":"ok"}'
-    assert list_response.body == b'["star","lette"]'
+    assert list_response.body == b'["bustan","lette"]'
 
 
 def test_coerce_response_serializes_dataclass_instances() -> None:

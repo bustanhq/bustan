@@ -1,11 +1,11 @@
 # Routing And Parameter Binding
 
-`star` compiles controller handlers into Starlette routes. Route decorators stay close to the handler, while the controller prefix supplies the shared path segment.
+`bustan` compiles controller handlers into Starlette routes. Route decorators stay close to the handler, while the controller prefix supplies the shared path segment.
 
 ## Route Declaration
 
 ```python
-from star import controller, get, post
+from bustan import controller, get, post
 
 
 @controller("/users")
