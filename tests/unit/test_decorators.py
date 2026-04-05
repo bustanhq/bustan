@@ -20,6 +20,7 @@ from bustan import (
 )
 from bustan.errors import InvalidControllerError, InvalidPipelineError, InvalidProviderError, RouteDefinitionError
 from bustan.metadata import (
+    ClassProviderDef,
     ControllerMetadata,
     ModuleMetadata,
     PipelineMetadata,
@@ -57,7 +58,7 @@ def test_decorators_attach_expected_metadata() -> None:
     assert get_module_metadata(UserModule) == ModuleMetadata(
         imports=(),
         controllers=(UserController,),
-        providers=(UserService,),
+        providers=(ClassProviderDef(provide=UserService, use_class=UserService, scope=ProviderScope.SINGLETON),),
         exports=(UserService,),
     )
 

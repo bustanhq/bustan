@@ -16,7 +16,15 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from .errors import InvalidControllerError, ProviderResolutionError
-from .metadata import ProviderScope, get_provider_metadata
+from .metadata import (
+    ClassProviderDef,
+    ExistingProviderDef,
+    FactoryProviderDef,
+    ProviderDef,
+    ProviderScope,
+    ValueProviderDef,
+    get_provider_metadata,
+)
 from .module_graph import ModuleGraph
 
 ProviderFactory = Callable[[], object]
@@ -72,12 +80,12 @@ class ResolutionContext:
 
 @dataclass(frozen=True, slots=True)
 class ProviderRegistration:
-    """Container-side registration record for a provider class."""
+    """Container-side registration record for a provider."""
 
-    provider: type[object]
+    token: object
     module: type[object]
     scope: ProviderScope
-    factory: ProviderFactory | None = field(repr=False)
+    factory: ProviderFactory = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,12 +94,12 @@ class ModuleRegistry:
 
     module: type[object]
     controllers: tuple[type[object], ...]
-    accessible_provider_modules: Mapping[type[object], type[object]] = field(repr=False)
+    accessible_provider_modules: Mapping[object, type[object]] = field(repr=False)
 
-    def declaring_module_for(self, provider_cls: type[object]) -> type[object] | None:
+    def declaring_module_for(self, token: object) -> type[object] | None:
         """Return the module that legally exposes a provider to this module."""
 
-        return self.accessible_provider_modules.get(provider_cls)
+        return self.accessible_provider_modules.get(token)
 
 
 class ContainerAdapter:
@@ -100,15 +108,15 @@ class ContainerAdapter:
     def __init__(self, module_graph: ModuleGraph) -> None:
         self.module_graph = module_graph
         self._module_registries = MappingProxyType(self._build_module_registries())
-        self._provider_registrations: dict[tuple[type[object], type[object]], ProviderRegistration] = {}
-        self._provider_overrides: dict[tuple[type[object], type[object]], object] = {}
+        self._provider_registrations: dict[tuple[type[object], object], ProviderRegistration] = {}
+        self._provider_overrides: dict[tuple[type[object], object], object] = {}
         self._controller_modules: dict[type[object], type[object]] = {}
         self._controller_factories: dict[type[object], ProviderFactory] = {}
         self._active_request: ContextVar[Request | None] = ContextVar(
             "star_active_request",
             default=None,
         )
-        self._resolution_stack: ContextVar[tuple[type[object], ...]] = ContextVar(
+        self._resolution_stack: ContextVar[tuple[object, ...]] = ContextVar(
             "star_resolution_stack",
             default=(),
         )
@@ -151,7 +159,7 @@ class ContainerAdapter:
             if provider_override is not NO_OVERRIDE:
                 return cast(ResolvedT, provider_override)
 
-            return self._resolve_registered_provider(provider_cls, declaring_module)
+            return cast(ResolvedT, self._resolve_registered_provider(provider_cls, declaring_module))
         finally:
             self._reset_active_request(active_request_token)
 
@@ -232,20 +240,20 @@ class ContainerAdapter:
         for node in self.module_graph.nodes:
             # Providers are visible from their own module plus explicit exports
             # from directly imported modules. Everything else stays private.
-            accessible_provider_modules: dict[type[object], type[object]] = {
-                provider_cls: node.module for provider_cls in node.providers
+            accessible_provider_modules: dict[object, type[object]] = {
+                token: node.module for token in node.providers
             }
 
             for imported_module in node.imports:
-                for exported_provider in self.module_graph.exports_for(imported_module):
-                    existing_module = accessible_provider_modules.get(exported_provider)
+                for exported_token in self.module_graph.exports_for(imported_module):
+                    existing_module = accessible_provider_modules.get(exported_token)
                     if existing_module is not None and existing_module is not node.module:
                         raise ProviderResolutionError(
-                            f"{_qualname(node.module)} can access {_qualname(exported_provider)} "
+                            f"{_qualname(node.module)} can access {_qualname(exported_token)} "
                             f"from both {_qualname(existing_module)} and {_qualname(imported_module)}"
                         )
 
-                    accessible_provider_modules.setdefault(exported_provider, imported_module)
+                    accessible_provider_modules.setdefault(exported_token, imported_module)
 
             module_registries[node.module] = ModuleRegistry(
                 module=node.module,
@@ -257,20 +265,14 @@ class ContainerAdapter:
 
     def _build_registrations(self) -> None:
         for node in self.module_graph.nodes:
-            for provider_cls in node.providers:
-                provider_metadata = get_provider_metadata(provider_cls)
-                assert provider_metadata is not None
-
-                provider_factory = self._build_provider_factory(
-                    provider_cls,
-                    node.module,
-                    provider_metadata.scope,
-                )
-                self._provider_registrations[(node.module, provider_cls)] = ProviderRegistration(
-                    provider=provider_cls,
+            for pdef in node.provider_defs:
+                token = pdef.provide
+                factory, scope = self._build_provider_factory(pdef, node.module)
+                self._provider_registrations[(node.module, token)] = ProviderRegistration(
+                    token=token,
                     module=node.module,
-                    scope=provider_metadata.scope,
-                    factory=provider_factory,
+                    scope=scope,
+                    factory=factory,
                 )
 
             for controller_cls in node.controllers:
@@ -288,37 +290,54 @@ class ContainerAdapter:
 
     def _build_provider_factory(
         self,
-        provider_cls: type[object],
+        provider_def: ProviderDef,
         module_cls: type[object],
-        scope: ProviderScope,
-    ) -> ProviderFactory | None:
-        if scope is ProviderScope.REQUEST:
-            return None
+    ) -> tuple[ProviderFactory, ProviderScope]:
+        """Return a (factory, scope) pair for the given ProviderDef."""
 
-        if scope is ProviderScope.TRANSIENT:
-            return _FactoryProvider(self._instantiate_class, provider_cls, module_cls)
+        if isinstance(provider_def, ValueProviderDef):
+            value = provider_def.use_value
+            return _SingletonProvider(lambda: value), ProviderScope.SINGLETON
 
-        return _SingletonProvider(self._instantiate_class, provider_cls, module_cls)
+        if isinstance(provider_def, ExistingProviderDef):
+            use_existing = provider_def.use_existing
+            # Delegate resolution to the aliased token on every call; the
+            # underlying provider handles its own caching.
+            return _FactoryProvider(self.resolve_provider, use_existing, module_cls), ProviderScope.TRANSIENT
+
+        if isinstance(provider_def, FactoryProviderDef):
+            scope = provider_def.scope
+            invoke = self._make_factory_invoke(provider_def.use_factory, provider_def.inject, module_cls)
+            if scope is ProviderScope.SINGLETON:
+                return _SingletonProvider(invoke), scope
+            return _FactoryProvider(invoke), scope
+
+        # ClassProviderDef
+        use_class = provider_def.use_class
+        scope = provider_def.scope
+        if scope is ProviderScope.SINGLETON:
+            return _SingletonProvider(self._instantiate_class, use_class, module_cls), scope
+        return _FactoryProvider(self._instantiate_class, use_class, module_cls), scope
 
     def _resolve_registered_provider(
         self,
-        provider_cls: type[ResolvedT],
+        token: object,
         module_cls: type[object],
-    ) -> ResolvedT:
-        registration_key = (module_cls, provider_cls)
+    ) -> object:
+        registration_key = (module_cls, token)
         try:
             registration = self._provider_registrations[registration_key]
         except KeyError as exc:
             raise ProviderResolutionError(
-                f"{_qualname(provider_cls)} is not registered in {_qualname(module_cls)}"
+                f"{_qualname(token)} is not registered in {_qualname(module_cls)}"
             ) from exc
 
         active_request = self._active_request.get()
-        request_scope_cache: dict[tuple[type[object], type[object]], object] | None = None
+        request_scope_cache: dict[tuple[type[object], object], object] | None = None
         if registration.scope is ProviderScope.REQUEST:
             if active_request is None:
                 raise ProviderResolutionError(
-                    f"Request-scoped provider {_qualname(provider_cls)} requires an active request"
+                    f"Request-scoped provider {_qualname(token)} requires an active request"
                 )
 
             # Request-scoped objects are stored on request.state so every
@@ -326,28 +345,24 @@ class ContainerAdapter:
             request_scope_cache = self._get_request_scope_cache(active_request)
             cached_instance = request_scope_cache.get(registration_key, NO_OVERRIDE)
             if cached_instance is not NO_OVERRIDE:
-                return cast(ResolvedT, cached_instance)
+                return cached_instance
 
         current_stack = self._resolution_stack.get()
         # Track the active resolution chain so circular dependencies surface as
         # a deterministic error instead of recursive instantiation.
-        if provider_cls in current_stack:
+        if token in current_stack:
             cycle_path = " -> ".join(
-                _display_name(dependency) for dependency in (*current_stack, provider_cls)
+                _display_name(dependency) for dependency in (*current_stack, token)
             )
             raise ProviderResolutionError(f"Circular provider dependencies detected: {cycle_path}")
 
-        stack_token = self._resolution_stack.set((*current_stack, provider_cls))
+        stack_token = self._resolution_stack.set((*current_stack, token))
         try:
+            instance = registration.factory()
             if registration.scope is ProviderScope.REQUEST:
-                instance = self._instantiate_class(provider_cls, module_cls)
                 assert request_scope_cache is not None
                 request_scope_cache[registration_key] = instance
-                return instance
-
-            provider_factory = registration.factory
-            assert provider_factory is not None
-            return cast(ResolvedT, provider_factory())
+            return instance
         finally:
             self._resolution_stack.reset(stack_token)
 
@@ -363,6 +378,20 @@ class ContainerAdapter:
             ),
         )
         return class_cls(*positional_arguments, **keyword_arguments)
+
+    def _make_factory_invoke(
+        self,
+        use_factory: object,
+        inject_tokens: tuple[object, ...],
+        module_cls: type[object],
+    ) -> ProviderFactory:
+        """Return a no-arg callable that resolves inject tokens and calls use_factory."""
+
+        def invoke() -> object:
+            args = [self.resolve_provider(t, module_cls) for t in inject_tokens]
+            return use_factory(*args)  # type: ignore[operator]
+
+        return invoke
 
     def _resolve_constructor_dependencies(
         self,
@@ -499,8 +528,9 @@ class ContainerAdapter:
         for controller_cls in module_registry.controllers:
             namespace.setdefault(controller_cls.__name__, controller_cls)
 
-        for provider_cls in module_registry.accessible_provider_modules:
-            namespace.setdefault(provider_cls.__name__, provider_cls)
+        for token in module_registry.accessible_provider_modules:
+            if isinstance(token, type):
+                namespace.setdefault(token.__name__, token)
 
         return namespace
 
@@ -522,18 +552,18 @@ class ContainerAdapter:
     def _get_request_scope_cache(
         self,
         request: Request,
-    ) -> dict[tuple[type[object], type[object]], object]:
+    ) -> dict[tuple[type[object], object], object]:
         request_scope_cache = getattr(request.state, REQUEST_SCOPE_CACHE_ATTR, None)
         if request_scope_cache is None:
             request_scope_cache = {}
             setattr(request.state, REQUEST_SCOPE_CACHE_ATTR, request_scope_cache)
-        return cast(dict[tuple[type[object], type[object]], object], request_scope_cache)
+        return cast(dict[tuple[type[object], object], object], request_scope_cache)
 
     def _resolve_override_key(
         self,
         provider_cls: type[object],
         module_cls: type[object] | None,
-    ) -> tuple[type[object], type[object]]:
+    ) -> tuple[type[object], object]:
         if module_cls is not None:
             override_key = (module_cls, provider_cls)
             if override_key not in self._provider_registrations:
@@ -544,8 +574,8 @@ class ContainerAdapter:
 
         declaring_modules = [
             registered_module
-            for registered_module, registered_provider in self._provider_registrations
-            if registered_provider is provider_cls
+            for registered_module, registered_token in self._provider_registrations
+            if registered_token is provider_cls
         ]
 
         if not declaring_modules:

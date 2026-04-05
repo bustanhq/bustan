@@ -1,7 +1,7 @@
 """Unit tests for dynamic test-module construction."""
 
 from bustan import Controller, Get, Injectable
-from bustan.metadata import ModuleMetadata, get_module_metadata
+from bustan.metadata import ClassProviderDef, ModuleMetadata, ProviderScope, get_module_metadata
 from bustan.testing import create_test_module
 
 
@@ -27,6 +27,6 @@ def test_create_test_module_builds_module_metadata_from_arguments() -> None:
     assert get_module_metadata(TestUsersModule) == ModuleMetadata(
         imports=(),
         controllers=(UserController,),
-        providers=(UserService,),
+        providers=(ClassProviderDef(provide=UserService, use_class=UserService, scope=ProviderScope.SINGLETON),),
         exports=(UserService,),
     )

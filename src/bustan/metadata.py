@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from types import FunctionType
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from .errors import InvalidControllerError, RouteDefinitionError
 
@@ -29,13 +30,51 @@ class ProviderScope(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class ClassProviderDef:
+    """Provide a token by instantiating a class."""
+
+    provide: object
+    use_class: type[Any]
+    scope: ProviderScope = ProviderScope.SINGLETON
+
+
+@dataclass(frozen=True, slots=True)
+class FactoryProviderDef:
+    """Provide a token by calling a factory function."""
+
+    provide: object
+    use_factory: Callable[..., Any]
+    inject: tuple[object, ...] = ()
+    scope: ProviderScope = ProviderScope.SINGLETON
+
+
+@dataclass(frozen=True, slots=True)
+class ValueProviderDef:
+    """Provide a token by returning a static value."""
+
+    provide: object
+    use_value: Any = None
+
+
+@dataclass(frozen=True, slots=True)
+class ExistingProviderDef:
+    """Provide a token by aliasing another registered token."""
+
+    provide: object
+    use_existing: object
+
+
+ProviderDef = ClassProviderDef | FactoryProviderDef | ValueProviderDef | ExistingProviderDef
+
+
+@dataclass(frozen=True, slots=True)
 class ModuleMetadata:
     """Static metadata captured from a @Module declaration."""
 
     imports: tuple[type[object], ...] = ()
     controllers: tuple[type[object], ...] = ()
-    providers: tuple[type[object], ...] = ()
-    exports: tuple[type[object], ...] = ()
+    providers: tuple[ProviderDef, ...] = ()
+    exports: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

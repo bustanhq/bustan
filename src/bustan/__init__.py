@@ -16,14 +16,24 @@ from .decorators import (
     UseInterceptors,
     UsePipes,
 )
+from .metadata import (
+    ClassProviderDef,
+    ExistingProviderDef,
+    FactoryProviderDef,
+    ValueProviderDef,
+)
 from .pipeline import ExceptionFilter, Guard, Interceptor, Pipe
 
 __all__ = (
     "__version__",
+    "ClassProviderDef",
     "ExceptionFilter",
+    "ExistingProviderDef",
+    "FactoryProviderDef",
     "Guard",
     "Interceptor",
     "Pipe",
+    "ValueProviderDef",
     "bootstrap",
     "Controller",
     "create_app",

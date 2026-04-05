@@ -14,13 +14,19 @@ from .errors import (
     RouteDefinitionError,
 )
 from .metadata import (
+    ClassProviderDef,
     ControllerMetadata,
+    ExistingProviderDef,
+    FactoryProviderDef,
     ModuleMetadata,
+    ProviderDef,
     ProviderMetadata,
     ProviderScope,
     RouteMetadata,
+    ValueProviderDef,
     extend_controller_pipeline_metadata,
     extend_handler_pipeline_metadata,
+    get_provider_metadata,
     get_route_metadata,
     normalize_controller_prefix,
     normalize_route_path,
@@ -39,15 +45,15 @@ def Module(
     *,
     imports: Iterable[type[object]] | None = None,
     controllers: Iterable[type[object]] | None = None,
-    providers: Iterable[type[object]] | None = None,
-    exports: Iterable[type[object]] | None = None,
+    providers: Iterable[type[object] | dict[str, object] | ProviderDef] | None = None,
+    exports: Iterable[object] | None = None,
 ) -> Callable[[ClassT], ClassT]:
     """Attach module metadata to a class without performing registration."""
 
     module_metadata = ModuleMetadata(
         imports=_coerce_tuple(imports, field_name="imports"),
         controllers=_coerce_tuple(controllers, field_name="controllers"),
-        providers=_coerce_tuple(providers, field_name="providers"),
+        providers=_normalize_providers(providers),
         exports=_coerce_tuple(exports, field_name="exports"),
     )
 
@@ -197,10 +203,10 @@ def UseFilters(*filters: object) -> Callable[[DecoratedT], DecoratedT]:
 
 
 def _coerce_tuple(
-    values: Iterable[type[object]] | None,
+    values: Iterable[object] | None,
     *,
     field_name: str,
-) -> tuple[type[object], ...]:
+) -> tuple[object, ...]:
     if values is None:
         return ()
     if isinstance(values, (str, bytes)):
@@ -210,6 +216,98 @@ def _coerce_tuple(
         return tuple(values)
     except TypeError as exc:
         raise InvalidModuleError(f"Module {field_name} must be an iterable of objects") from exc
+
+
+def _normalize_providers(
+    entries: Iterable[type[object] | dict[str, object] | ProviderDef] | None,
+) -> tuple[ProviderDef, ...]:
+    """Normalize a raw providers list into a tuple of ProviderDef objects."""
+
+    if entries is None:
+        return ()
+    if isinstance(entries, (str, bytes)):
+        raise InvalidModuleError("Module providers must be an iterable of objects")
+
+    try:
+        raw = tuple(entries)
+    except TypeError as exc:
+        raise InvalidModuleError("Module providers must be an iterable of objects") from exc
+
+    return tuple(_normalize_provider_def(entry) for entry in raw)
+
+
+def _normalize_provider_def(
+    entry: type[object] | dict[str, object] | ProviderDef,
+) -> ProviderDef:
+    """Convert a class, dict, or ProviderDef into a canonical ProviderDef."""
+
+    if isinstance(entry, (ClassProviderDef, FactoryProviderDef, ValueProviderDef, ExistingProviderDef)):
+        return entry
+
+    if isinstance(entry, type):
+        provider_metadata = get_provider_metadata(entry)
+        scope = provider_metadata.scope if provider_metadata is not None else ProviderScope.SINGLETON
+        return ClassProviderDef(provide=entry, use_class=entry, scope=scope)
+
+    if isinstance(entry, dict):
+        return _normalize_dict_provider_def(entry)
+
+    raise InvalidProviderError(
+        f"Invalid provider entry: {entry!r}. Expected a class, dict, or ProviderDef."
+    )
+
+
+def _normalize_dict_provider_def(d: dict[str, object]) -> ProviderDef:
+    """Parse a dict-form provider declaration into a ProviderDef."""
+
+    if "provide" not in d:
+        raise InvalidProviderError("Provider dict must include a 'provide' key")
+
+    token = d["provide"]
+
+    if "use_value" in d:
+        return ValueProviderDef(provide=token, use_value=d["use_value"])
+
+    if "use_existing" in d:
+        return ExistingProviderDef(provide=token, use_existing=d["use_existing"])
+
+    if "use_factory" in d:
+        scope = _parse_provider_scope(d.get("scope", ProviderScope.SINGLETON))
+        inject_raw = d.get("inject", ())
+        if isinstance(inject_raw, (str, bytes)):
+            raise InvalidProviderError("Provider dict 'inject' must be an iterable of tokens")
+        try:
+            inject: tuple[object, ...] = tuple(inject_raw)  # type: ignore[arg-type]
+        except TypeError as exc:
+            raise InvalidProviderError("Provider dict 'inject' must be an iterable of tokens") from exc
+        factory = d["use_factory"]
+        if not callable(factory):
+            raise InvalidProviderError(
+                f"Provider dict 'use_factory' must be callable, got {factory!r}"
+            )
+        return FactoryProviderDef(provide=token, use_factory=factory, inject=inject, scope=scope)
+
+    if "use_class" in d:
+        scope = _parse_provider_scope(d.get("scope", ProviderScope.SINGLETON))
+        use_class = d["use_class"]
+        if not isinstance(use_class, type):
+            raise InvalidProviderError(
+                f"Provider dict 'use_class' must be a class, got {use_class!r}"
+            )
+        return ClassProviderDef(provide=token, use_class=use_class, scope=scope)
+
+    raise InvalidProviderError(
+        "Provider dict must include one of: 'use_class', 'use_factory', 'use_value', 'use_existing'"
+    )
+
+
+def _parse_provider_scope(scope_value: object) -> ProviderScope:
+    if isinstance(scope_value, ProviderScope):
+        return scope_value
+    try:
+        return ProviderScope(scope_value)
+    except ValueError as exc:
+        raise InvalidProviderError(f"Unsupported provider scope: {scope_value!r}") from exc
 
 
 def _normalize_method(method: str) -> str:

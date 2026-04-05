@@ -36,6 +36,7 @@ from bustan.errors import (
     RouteDefinitionError,
     BustanError,
 )
+from bustan.metadata import ClassProviderDef, ExistingProviderDef, FactoryProviderDef, ValueProviderDef
 from bustan.pipeline import ExceptionFilter, Guard, Interceptor, Pipe
 from bustan.testing import create_test_app, create_test_module, override_provider
 
@@ -43,10 +44,14 @@ from bustan.testing import create_test_app, create_test_module, override_provide
 def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.__all__ == (
         "__version__",
+        "ClassProviderDef",
         "ExceptionFilter",
+        "ExistingProviderDef",
+        "FactoryProviderDef",
         "Guard",
         "Interceptor",
         "Pipe",
+        "ValueProviderDef",
         "bootstrap",
         "Controller",
         "create_app",
@@ -63,10 +68,14 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "UsePipes",
     )
     assert bustan.__version__ == importlib.metadata.version("bustan")
+    assert bustan.ClassProviderDef is ClassProviderDef
     assert bustan.ExceptionFilter is ExceptionFilter
+    assert bustan.ExistingProviderDef is ExistingProviderDef
+    assert bustan.FactoryProviderDef is FactoryProviderDef
     assert bustan.Guard is Guard
     assert bustan.Interceptor is Interceptor
     assert bustan.Pipe is Pipe
+    assert bustan.ValueProviderDef is ValueProviderDef
     assert bustan.bootstrap is bootstrap
     assert bustan.Controller is Controller
     assert bustan.create_app is create_app

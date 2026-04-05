@@ -231,6 +231,121 @@ def test_container_separates_framework_owned_injections_from_provider_di() -> No
         container.resolve_provider(RequestAwareService, AppModule)
 
 
+def test_container_resolves_value_provider_def() -> None:
+    DATABASE_URL = "database_url"
+
+    @Module(
+        providers=[{"provide": DATABASE_URL, "use_value": "postgres://localhost/mydb"}],
+        exports=[DATABASE_URL],
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    first = container.resolve_provider(DATABASE_URL, AppModule)
+    second = container.resolve_provider(DATABASE_URL, AppModule)
+
+    assert first == "postgres://localhost/mydb"
+    assert first is second
+
+
+def test_container_resolves_factory_provider_def_with_inject() -> None:
+    @Injectable
+    class ConfigService:
+        base_url = "https://api.example.com"
+
+    def build_client(config: ConfigService) -> dict[str, str]:
+        return {"base_url": config.base_url}
+
+    @Module(
+        providers=[
+            ConfigService,
+            {"provide": "http_client", "use_factory": build_client, "inject": [ConfigService]},
+        ],
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    first = container.resolve_provider("http_client", AppModule)
+    second = container.resolve_provider("http_client", AppModule)
+
+    assert isinstance(first, dict)
+    assert first["base_url"] == "https://api.example.com"
+    assert first is second
+
+
+def test_container_resolves_class_provider_def_with_interface_token() -> None:
+    class IUserRepo:
+        pass
+
+    @Injectable
+    class SqlUserRepo(IUserRepo):
+        pass
+
+    @Module(
+        providers=[{"provide": IUserRepo, "use_class": SqlUserRepo}],
+        exports=[IUserRepo],
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    instance = container.resolve_provider(IUserRepo, AppModule)
+
+    assert isinstance(instance, SqlUserRepo)
+    assert isinstance(instance, IUserRepo)
+
+
+def test_container_resolves_existing_provider_def() -> None:
+    @Injectable
+    class UserService:
+        pass
+
+    @Module(
+        providers=[
+            UserService,
+            {"provide": "user_service_alias", "use_existing": UserService},
+        ],
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    original = container.resolve_provider(UserService, AppModule)
+    alias = container.resolve_provider("user_service_alias", AppModule)
+
+    assert original is alias
+
+
+def test_container_resolves_transient_factory_provider_def() -> None:
+    call_count = 0
+
+    def build_handler() -> dict[str, int]:
+        nonlocal call_count
+        call_count += 1
+        return {"id": call_count}
+
+    @Module(
+        providers=[{"provide": "handler", "use_factory": build_handler, "scope": "transient"}],
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    first = container.resolve_provider("handler", AppModule)
+    second = container.resolve_provider("handler", AppModule)
+
+    assert first is not second
+    assert first["id"] == 1
+    assert second["id"] == 2
+
+
 def _build_request(path: str) -> Request:
     """Construct a minimal Request object for container tests."""
 
