@@ -74,7 +74,7 @@ class ResolutionContext:
     """Resolution-time state passed through constructor injection."""
 
     module: type[object]
-    dependency_stack: tuple[type[object], ...] = ()
+    dependency_stack: tuple[object, ...] = ()
     request: Request | None = None
 
 
@@ -134,11 +134,11 @@ class ContainerAdapter:
 
     def resolve_provider(
         self,
-        provider_cls: type[ResolvedT],
+        token: object,
         module_cls: type[object],
         *,
         request: Request | None = None,
-    ) -> ResolvedT:
+    ) -> object:
         """Resolve a provider visible from the given module.
 
         When a request is supplied, request-scoped providers are cached on that
@@ -148,69 +148,69 @@ class ContainerAdapter:
         active_request_token = self._push_active_request(request)
         try:
             module_registry = self.get_module_registry(module_cls)
-            declaring_module = module_registry.declaring_module_for(provider_cls)
+            declaring_module = module_registry.declaring_module_for(token)
             if declaring_module is None:
                 raise ProviderResolutionError(
-                    f"{_qualname(provider_cls)} is not available to {_qualname(module_cls)}. "
+                    f"{_qualname(token)} is not available to {_qualname(module_cls)}. "
                     "Dependencies must come from the same module or an imported module export"
                 )
 
-            provider_override = self._provider_overrides.get((declaring_module, provider_cls), NO_OVERRIDE)
+            provider_override = self._provider_overrides.get((declaring_module, token), NO_OVERRIDE)
             if provider_override is not NO_OVERRIDE:
-                return cast(ResolvedT, provider_override)
+                return provider_override
 
-            return cast(ResolvedT, self._resolve_registered_provider(provider_cls, declaring_module))
+            return self._resolve_registered_provider(token, declaring_module)
         finally:
             self._reset_active_request(active_request_token)
 
     def has_provider_override(
         self,
-        provider_cls: type[object],
+        token: object,
         *,
         module_cls: type[object] | None = None,
     ) -> bool:
         """Return whether an override exists for the selected provider."""
 
-        override_key = self._resolve_override_key(provider_cls, module_cls)
+        override_key = self._resolve_override_key(token, module_cls)
         return override_key in self._provider_overrides
 
     def get_provider_override(
         self,
-        provider_cls: type[ResolvedT],
+        token: object,
         *,
         module_cls: type[object] | None = None,
-    ) -> ResolvedT:
+    ) -> object:
         """Return the active override for a provider."""
 
-        override_key = self._resolve_override_key(provider_cls, module_cls)
+        override_key = self._resolve_override_key(token, module_cls)
         try:
-            return cast(ResolvedT, self._provider_overrides[override_key])
+            return self._provider_overrides[override_key]
         except KeyError as exc:
             raise ProviderResolutionError(
-                f"No provider override is registered for {_qualname(provider_cls)}"
+                f"No provider override is registered for {_qualname(token)}"
             ) from exc
 
     def set_provider_override(
         self,
-        provider_cls: type[ResolvedT],
-        replacement: ResolvedT,
+        token: object,
+        replacement: object,
         *,
         module_cls: type[object] | None = None,
     ) -> None:
         """Register a replacement object for a provider."""
 
-        override_key = self._resolve_override_key(provider_cls, module_cls)
+        override_key = self._resolve_override_key(token, module_cls)
         self._provider_overrides[override_key] = replacement
 
     def clear_provider_override(
         self,
-        provider_cls: type[object],
+        token: object,
         *,
         module_cls: type[object] | None = None,
     ) -> None:
         """Remove any override registered for a provider."""
 
-        override_key = self._resolve_override_key(provider_cls, module_cls)
+        override_key = self._resolve_override_key(token, module_cls)
         self._provider_overrides.pop(override_key, None)
 
     def resolve_controller(
@@ -561,34 +561,34 @@ class ContainerAdapter:
 
     def _resolve_override_key(
         self,
-        provider_cls: type[object],
+        token: object,
         module_cls: type[object] | None,
     ) -> tuple[type[object], object]:
         if module_cls is not None:
-            override_key = (module_cls, provider_cls)
+            override_key = (module_cls, token)
             if override_key not in self._provider_registrations:
                 raise ProviderResolutionError(
-                    f"{_qualname(provider_cls)} is not registered in {_qualname(module_cls)}"
+                    f"{_qualname(token)} is not registered in {_qualname(module_cls)}"
                 )
             return override_key
 
         declaring_modules = [
             registered_module
             for registered_module, registered_token in self._provider_registrations
-            if registered_token is provider_cls
+            if registered_token is token
         ]
 
         if not declaring_modules:
-            raise ProviderResolutionError(f"{_qualname(provider_cls)} is not registered in the container")
+            raise ProviderResolutionError(f"{_qualname(token)} is not registered in the container")
 
         if len(declaring_modules) > 1:
             module_names = ", ".join(_qualname(registered_module) for registered_module in declaring_modules)
             raise ProviderResolutionError(
-                f"{_qualname(provider_cls)} is registered in multiple modules ({module_names}); "
+                f"{_qualname(token)} is registered in multiple modules ({module_names}); "
                 "specify module_cls when overriding it"
             )
 
-        return declaring_modules[0], provider_cls
+        return declaring_modules[0], token
 
 
 def build_container(module_graph: ModuleGraph) -> ContainerAdapter:
