@@ -3,7 +3,7 @@
   "release-type": "python",
   "packages": {
     ".": {
-      "package-name": "star",
+      "package-name": "bustan",
       "changelog-path": "CHANGELOG.md",
       "include-component-in-tag": false
     }

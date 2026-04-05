@@ -26,27 +26,27 @@ jobs:
           manifest-file: release/manifest.json
 
       - name: Check out repository
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.releases_created }}
         uses: actions/checkout@v6
         with:
           ref: ${{ steps.release.outputs.sha }}
 
       - name: Set up Python
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.releases_created }}
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
       - name: Set up uv
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.releases_created }}
         uses: astral-sh/setup-uv@v7
 
       - name: Install dependencies
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.releases_created }}
         run: uv sync --group dev --frozen
 
       - name: Validate release artifacts
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.releases_created }}
         run: |
           uv run python scripts/generate_api_reference.py --check
           uv run python scripts/check_markdown_links.py
@@ -57,5 +57,5 @@ jobs:
           uvx --from twine twine check dist/*
 
       - name: Publish to PyPI
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.releases_created }}
         uses: pypa/gh-action-pypi-publish@release/v1
