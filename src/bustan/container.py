@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import inspect
 import sys
+import threading
 from contextvars import ContextVar, Token
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TypeVar, cast, get_type_hints
 
-from dependency_injector import providers
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import Response
@@ -25,6 +25,40 @@ NO_OVERRIDE = object()
 REQUEST_SCOPE_CACHE_ATTR = "star_request_provider_cache"
 
 FRAMEWORK_OWNED_TYPES = frozenset({Request, Response, Starlette})
+
+_UNSET = object()
+
+
+class _FactoryProvider:
+    """Creates a new instance on every call."""
+
+    __slots__ = ("_fn", "_args")
+
+    def __init__(self, fn: Callable[..., object], *args: object) -> None:
+        self._fn = fn
+        self._args = args
+
+    def __call__(self) -> object:
+        return self._fn(*self._args)
+
+
+class _SingletonProvider:
+    """Creates one instance on first call and returns the same object thereafter."""
+
+    __slots__ = ("_fn", "_args", "_instance", "_lock")
+
+    def __init__(self, fn: Callable[..., object], *args: object) -> None:
+        self._fn = fn
+        self._args = args
+        self._instance: object = _UNSET
+        self._lock = threading.Lock()
+
+    def __call__(self) -> object:
+        if self._instance is _UNSET:
+            with self._lock:
+                if self._instance is _UNSET:
+                    self._instance = self._fn(*self._args)
+        return self._instance
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,9 +282,8 @@ class ContainerAdapter:
                     )
 
                 self._controller_modules[controller_cls] = node.module
-                self._controller_factories[controller_cls] = cast(
-                    ProviderFactory,
-                    providers.Factory(self._instantiate_class, controller_cls, node.module),
+                self._controller_factories[controller_cls] = _FactoryProvider(
+                    self._instantiate_class, controller_cls, node.module
                 )
 
     def _build_provider_factory(
@@ -263,15 +296,9 @@ class ContainerAdapter:
             return None
 
         if scope is ProviderScope.TRANSIENT:
-            return cast(
-                ProviderFactory,
-                providers.Factory(self._instantiate_class, provider_cls, module_cls),
-            )
+            return _FactoryProvider(self._instantiate_class, provider_cls, module_cls)
 
-        return cast(
-            ProviderFactory,
-            providers.Singleton(self._instantiate_class, provider_cls, module_cls),
-        )
+        return _SingletonProvider(self._instantiate_class, provider_cls, module_cls)
 
     def _resolve_registered_provider(
         self,
