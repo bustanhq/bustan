@@ -7,13 +7,14 @@ from contextlib import contextmanager
 from typing import cast
 
 from starlette.applications import Starlette
+from ..application import Application
 
-from ..container import ContainerAdapter
+from ..container import Container
 
 
 @contextmanager
 def override_provider(
-    target: Starlette | ContainerAdapter,
+    target: Starlette | Application | Container,
     token: object,
     replacement: object,
     *,
@@ -22,23 +23,25 @@ def override_provider(
     """Temporarily replace a provider for the duration of a context block."""
 
     container = _resolve_container(target)
-    had_override = container.has_provider_override(token, module_cls=module_cls)
+    had_override = container.has_override(token, module=module_cls)
     previous_override: object = None
     if had_override:
-        previous_override = container.get_provider_override(token, module_cls=module_cls)
+        previous_override = container.get_override(token, module=module_cls)
 
-    container.set_provider_override(token, replacement, module_cls=module_cls)
+    container.override(token, replacement, module=module_cls)
     try:
         yield
     finally:
         if had_override:
-            container.set_provider_override(token, previous_override, module_cls=module_cls)
+            container.override(token, previous_override, module=module_cls)
         else:
-            container.clear_provider_override(token, module_cls=module_cls)
+            container.clear_override(token, module=module_cls)
 
 
-def _resolve_container(target: Starlette | ContainerAdapter) -> ContainerAdapter:
-    if isinstance(target, ContainerAdapter):
+def _resolve_container(target: Starlette | Application | Container) -> Container:
+    if isinstance(target, Container):
         return target
+    if isinstance(target, Application):
+        return target._container
 
-    return cast(ContainerAdapter, target.state.bustan_container)
+    return cast(Container, getattr(target.state, "bustan_container"))

@@ -105,13 +105,17 @@ def scaffold_project(
 
     files = {
         target_directory / ".gitignore": _build_gitignore(),
-        target_directory / "README.md": _build_readme(project_name=project_name, package_name=package_name),
+        target_directory / "README.md": _build_readme(
+            project_name=project_name, package_name=package_name
+        ),
         target_directory / "pyproject.toml": _build_pyproject(
             project_name=project_name,
             package_name=package_name,
         ),
         package_directory / "__init__.py": _build_package_init(),
-        package_directory / "app.py": _build_app_module(project_name=project_name, package_name=package_name),
+        package_directory / "app.py": _build_app_module(
+            project_name=project_name, package_name=package_name
+        ),
         tests_directory / "test_app.py": _build_app_test(
             project_name=project_name,
             package_name=package_name,
@@ -213,7 +217,7 @@ def _build_pyproject(*, project_name: str, package_name: str) -> str:
 def _build_package_init() -> str:
     """Return the scaffolded package __init__ module."""
 
-    return "from .app import app\n\n__all__ = [\"app\"]\n"
+    return 'from .app import app\n\n__all__ = ["app"]\n'
 
 
 def _build_app_module(*, project_name: str, package_name: str) -> str:
@@ -286,7 +290,7 @@ def _default_package_name(project_name: str) -> str:
     sanitized_name = re.sub(r"[^a-zA-Z0-9_]+", "_", project_name.strip().lower())
     sanitized_name = sanitized_name.strip("_")
     if not sanitized_name:
-        return "star_app"
+        return "bustan_app"
     if sanitized_name[0].isdigit():
         return f"app_{sanitized_name}"
     return sanitized_name

@@ -44,7 +44,9 @@ def test_bind_handler_arguments_injects_request_and_converts_path_and_query_valu
         query_params={"verbose": "true", "page": "2"},
     )
 
-    positional_arguments, keyword_arguments = anyio.run(bind_handler_arguments, request, binding_plan)
+    positional_arguments, keyword_arguments = anyio.run(
+        bind_handler_arguments, request, binding_plan
+    )
 
     assert keyword_arguments == {}
     assert positional_arguments[0] is request
@@ -66,7 +68,9 @@ def test_bind_handler_arguments_binds_json_body_to_a_dataclass() -> None:
         json_body={"name": "Ada", "admin": True},
     )
 
-    positional_arguments, keyword_arguments = anyio.run(bind_handler_arguments, request, binding_plan)
+    positional_arguments, keyword_arguments = anyio.run(
+        bind_handler_arguments, request, binding_plan
+    )
 
     assert keyword_arguments == {}
     assert positional_arguments == (CreateUserPayload(name="Ada", admin=True),)
@@ -106,7 +110,9 @@ def test_bind_handler_arguments_supports_list_query_values_and_keyword_only_para
         query_params={"page": "2", "tags": ["1", "3", "5"]},
     )
 
-    positional_arguments, keyword_arguments = anyio.run(bind_handler_arguments, request, binding_plan)
+    positional_arguments, keyword_arguments = anyio.run(
+        bind_handler_arguments, request, binding_plan
+    )
 
     assert positional_arguments == (2,)
     assert keyword_arguments == {"tags": [1, 3, 5]}
@@ -123,7 +129,9 @@ def test_bind_handler_arguments_uses_scalar_request_bodies_for_single_parameters
     binding_plan = compile_parameter_bindings(CountersController, route_definition)
     request = _build_request(method="POST", path="/counters", json_body=5)
 
-    positional_arguments, keyword_arguments = anyio.run(bind_handler_arguments, request, binding_plan)
+    positional_arguments, keyword_arguments = anyio.run(
+        bind_handler_arguments, request, binding_plan
+    )
 
     assert positional_arguments == (5,)
     assert keyword_arguments == {}
@@ -140,7 +148,9 @@ def test_bind_handler_arguments_allows_null_for_optional_body_parameters() -> No
     binding_plan = compile_parameter_bindings(CountersController, route_definition)
     request = _build_request(method="POST", path="/counters", raw_body=b"null")
 
-    positional_arguments, keyword_arguments = anyio.run(bind_handler_arguments, request, binding_plan)
+    positional_arguments, keyword_arguments = anyio.run(
+        bind_handler_arguments, request, binding_plan
+    )
 
     assert positional_arguments == (None,)
     assert keyword_arguments == {}
@@ -172,7 +182,9 @@ def test_bind_handler_arguments_uses_defaults_when_request_data_is_missing() -> 
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
     request = _build_request(method="GET", path="/users")
 
-    positional_arguments, keyword_arguments = anyio.run(bind_handler_arguments, request, binding_plan)
+    positional_arguments, keyword_arguments = anyio.run(
+        bind_handler_arguments, request, binding_plan
+    )
 
     assert positional_arguments == (7,)
     assert keyword_arguments == {}
@@ -208,7 +220,9 @@ def test_bind_handler_arguments_rejects_boolean_json_values_for_int_parameters()
         anyio.run(bind_handler_arguments, request, binding_plan)
 
 
-def test_compile_parameter_bindings_resolves_string_annotations_and_ignores_return_annotations() -> None:
+def test_compile_parameter_bindings_resolves_string_annotations_and_ignores_return_annotations() -> (
+    None
+):
     @Controller("/users")
     class UsersController:
         @Post("/")

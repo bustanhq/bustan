@@ -6,6 +6,7 @@ import inspect
 
 from ..errors import GuardRejectedError
 from .context import RequestContext
+from ..utils import _qualname
 
 
 class Guard:
@@ -27,9 +28,3 @@ async def run_guards(context: RequestContext, guards: tuple[Guard, ...]) -> None
 
         if not bool(result):
             raise GuardRejectedError(f"Guard {_qualname(type(guard))} blocked the request")
-
-
-def _qualname(target: object) -> str:
-    if isinstance(target, type):
-        return f"{target.__module__}.{target.__qualname__}"
-    return repr(target)

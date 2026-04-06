@@ -12,6 +12,7 @@ from starlette.types import StatelessLifespan
 
 from .errors import LifecycleError
 from .module_graph import ModuleGraph, ModuleNode
+from .utils import _qualname
 
 LifecycleHookName: tuple[str, ...] = (
     "on_module_init",
@@ -29,7 +30,7 @@ def build_lifespan(
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         module_instances = _instantiate_lifecycle_modules(module_graph)
-        app.state.star_module_instances = module_instances
+        app.state.bustan_module_instances = module_instances
 
         await _run_lifecycle_stage(module_graph.nodes, module_instances, "on_module_init")
         await _run_lifecycle_stage(module_graph.nodes, module_instances, "on_app_startup")
@@ -98,9 +99,3 @@ async def _run_lifecycle_stage(
 
 def _has_lifecycle_hooks(module_cls: type[object]) -> bool:
     return any(callable(getattr(module_cls, hook_name, None)) for hook_name in LifecycleHookName)
-
-
-def _qualname(target: object) -> str:
-    if isinstance(target, type):
-        return f"{target.__module__}.{target.__qualname__}"
-    return repr(target)

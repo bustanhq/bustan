@@ -18,7 +18,9 @@ def test_cli_new_scaffolds_a_project_with_expected_files(tmp_path: Path, capsys)
     assert (project_directory / "tests" / "test_app.py").exists()
 
     pyproject_content = (project_directory / "pyproject.toml").read_text(encoding="utf-8")
-    app_content = (project_directory / "src" / "hello_bustan" / "app.py").read_text(encoding="utf-8")
+    app_content = (project_directory / "src" / "hello_bustan" / "app.py").read_text(
+        encoding="utf-8"
+    )
     stdout = capsys.readouterr().out
 
     assert "bustan.cli:main" not in pyproject_content

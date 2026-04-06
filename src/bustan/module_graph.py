@@ -15,19 +15,15 @@ from .errors import (
     RouteDefinitionError,
 )
 from .metadata import (
-    ClassProviderDef,
+    Binding,
     ControllerMetadata,
-    ExistingProviderDef,
-    FactoryProviderDef,
     ModuleMetadata,
-    ProviderDef,
-    ProviderMetadata,
-    ValueProviderDef,
     get_controller_metadata,
     get_module_metadata,
-    get_provider_metadata,
     iter_controller_routes,
+    normalize_provider,
 )
+from .utils import _display_name, _join_paths, _qualname
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +34,7 @@ class ModuleNode:
     metadata: ModuleMetadata
     exported_providers: frozenset[object]
     available_providers: frozenset[object]
+    bindings: tuple[Binding, ...]
     imported_exports: Mapping[type[object], frozenset[object]] = field(repr=False)
 
     @property
@@ -51,12 +48,7 @@ class ModuleNode:
     @property
     def providers(self) -> tuple[object, ...]:
         """Return the token for each provider registered in this module."""
-        return tuple(pdef.provide for pdef in self.metadata.providers)
-
-    @property
-    def provider_defs(self) -> tuple[ProviderDef, ...]:
-        """Return the full ProviderDef for each provider registered in this module."""
-        return self.metadata.providers
+        return tuple(b.token for b in self.bindings)
 
     @property
     def exports(self) -> tuple[object, ...]:
@@ -88,6 +80,7 @@ def build_module_graph(root_module: type[object]) -> ModuleGraph:
     metadata_by_module: dict[type[object], ModuleMetadata] = {}
     visited_modules: set[type[object]] = set()
     visiting_stack: list[type[object]] = []
+    bindings_by_module: dict[type[object], tuple[Binding, ...]] = {}
 
     def visit(module_cls: type[object]) -> None:
         if module_cls in visiting_stack:
@@ -99,8 +92,9 @@ def build_module_graph(root_module: type[object]) -> ModuleGraph:
         if module_cls in visited_modules:
             return
 
-        module_metadata = _validate_module_definition(module_cls)
+        module_metadata, bindings = _validate_module_definition(module_cls)
         metadata_by_module[module_cls] = module_metadata
+        bindings_by_module[module_cls] = bindings
 
         # Pre-order traversal preserves declaration order for deterministic
         # provider registration and lifecycle execution later on.
@@ -117,12 +111,14 @@ def build_module_graph(root_module: type[object]) -> ModuleGraph:
     nodes_by_module: dict[type[object], ModuleNode] = {}
     for module_cls in ordered_modules:
         module_metadata = metadata_by_module[module_cls]
+        bindings = bindings_by_module[module_cls]
+
         imported_exports = {
             imported_module: frozenset(metadata_by_module[imported_module].exports)
             for imported_module in module_metadata.imports
         }
-        # Own providers contribute their tokens; imported modules contribute their exports.
-        available_providers: set[object] = {pdef.provide for pdef in module_metadata.providers}
+
+        available_providers: set[object] = {b.token for b in bindings}
         for exported_tokens in imported_exports.values():
             available_providers.update(exported_tokens)
 
@@ -131,6 +127,7 @@ def build_module_graph(root_module: type[object]) -> ModuleGraph:
             metadata=module_metadata,
             exported_providers=frozenset(module_metadata.exports),
             available_providers=frozenset(available_providers),
+            bindings=bindings,
             imported_exports=MappingProxyType(imported_exports),
         )
 
@@ -152,7 +149,9 @@ def validate_module_graph(graph: ModuleGraph) -> ModuleGraph:
     return graph
 
 
-def _validate_module_definition(module_cls: type[object]) -> ModuleMetadata:
+def _validate_module_definition(
+    module_cls: type[object],
+) -> tuple[ModuleMetadata, tuple[Binding, ...]]:
     module_metadata = get_module_metadata(module_cls)
     if module_metadata is None:
         raise InvalidModuleError(
@@ -161,7 +160,6 @@ def _validate_module_definition(module_cls: type[object]) -> ModuleMetadata:
 
     _validate_unique_entries(module_cls, "imports", module_metadata.imports)
     _validate_unique_entries(module_cls, "controllers", module_metadata.controllers)
-    _validate_unique_provider_tokens(module_cls, module_metadata.providers)
     _validate_unique_entries(module_cls, "exports", module_metadata.exports)
 
     for imported_module in module_metadata.imports:
@@ -170,14 +168,29 @@ def _validate_module_definition(module_cls: type[object]) -> ModuleMetadata:
     for controller_cls in module_metadata.controllers:
         _require_controller(controller_cls, owner=module_cls)
 
-    for provider_def in module_metadata.providers:
-        _require_provider_def(provider_def, owner=module_cls)
+    bindings: list[Binding] = []
+    seen_tokens: set[object] = set()
 
-    return module_metadata
+    for provider_entry in module_metadata.providers:
+        try:
+            binding = normalize_provider(provider_entry, module_cls)
+        except TypeError as exc:
+            raise InvalidProviderError(
+                f"Invalid provider in {_qualname(module_cls)}: {exc}"
+            ) from exc
+
+        if binding.token in seen_tokens:
+            raise InvalidModuleError(
+                f"{_qualname(module_cls)} declares duplicate entries in providers: {binding.token!r}"
+            )
+        seen_tokens.add(binding.token)
+        bindings.append(binding)
+
+    return module_metadata, tuple(bindings)
 
 
 def _validate_exports(node: ModuleNode) -> None:
-    token_set = {pdef.provide for pdef in node.provider_defs}
+    token_set = {b.token for b in node.bindings}
     for export_token in node.exports:
         if export_token not in token_set:
             raise ExportViolationError(
@@ -235,38 +248,6 @@ def _require_controller(controller_candidate: object, *, owner: type[object]) ->
     return controller_candidate
 
 
-def _require_provider_def(provider_def: ProviderDef, *, owner: type[object]) -> None:
-    """Validate a ProviderDef entry declared in a module's providers list."""
-
-    if isinstance(provider_def, ClassProviderDef):
-        if not isinstance(provider_def.use_class, type):
-            raise InvalidProviderError(
-                f"{_qualname(owner)} declares a ClassProviderDef "
-                f"with use_class={provider_def.use_class!r}, which is not a class"
-            )
-        # Shorthand form (provide == use_class) requires @Injectable for backwards compatibility.
-        if provider_def.provide is provider_def.use_class:
-            _require_injectable(provider_def.use_class, owner=owner)
-
-    elif isinstance(provider_def, FactoryProviderDef):
-        if not callable(provider_def.use_factory):
-            raise InvalidProviderError(
-                f"{_qualname(owner)} declares a FactoryProviderDef "
-                f"with use_factory={provider_def.use_factory!r}, which is not callable"
-            )
-
-    # ValueProviderDef and ExistingProviderDef have no additional class-level constraints.
-
-
-def _require_injectable(provider_cls: type[object], *, owner: type[object]) -> None:
-    provider_metadata = get_provider_metadata(provider_cls)
-    if not isinstance(provider_metadata, ProviderMetadata):
-        raise InvalidProviderError(
-            f"{_qualname(owner)} declares {_qualname(provider_cls)} in providers, "
-            "but it is not decorated with @Injectable"
-        )
-
-
 def _validate_unique_entries(
     owner: type[object],
     field_name: str,
@@ -279,39 +260,3 @@ def _validate_unique_entries(
                 f"{_qualname(owner)} declares duplicate entries in {field_name}: {entry!r}"
             )
         seen_entries.append(entry)
-
-
-def _validate_unique_provider_tokens(
-    owner: type[object],
-    provider_defs: tuple[ProviderDef, ...],
-) -> None:
-    """Detect duplicate provider tokens (the 'provide' key) within a module."""
-
-    seen_tokens: list[object] = []
-    for pdef in provider_defs:
-        token = pdef.provide
-        if token in seen_tokens:
-            raise InvalidModuleError(
-                f"{_qualname(owner)} declares duplicate entries in providers: {token!r}"
-            )
-        seen_tokens.append(token)
-
-
-def _qualname(target: object) -> str:
-    if isinstance(target, type):
-        return f"{target.__module__}.{target.__qualname__}"
-    return repr(target)
-
-
-def _display_name(target: object) -> str:
-    if isinstance(target, type):
-        return target.__name__
-    return repr(target)
-
-
-def _join_paths(prefix: str, path: str) -> str:
-    if not prefix:
-        return path
-    if path == "/":
-        return prefix
-    return f"{prefix}{path}"

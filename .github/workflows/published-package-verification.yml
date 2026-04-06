@@ -43,21 +43,21 @@ jobs:
             echo "A version is required from the release tag or workflow input." >&2
             exit 1
           fi
-          echo "STAR_VERSION=$version" >> "$GITHUB_ENV"
+          echo "BUSTAN_VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Verify pip install and console entry point
         run: |
           python -m venv .published-smoke
           . .published-smoke/bin/activate
           python -m pip install --upgrade pip
-          python -m pip install "bustan==${STAR_VERSION}"
+          python -m pip install "bustan==${BUSTAN_VERSION}"
           python -c "import bustan; print(bustan.__version__)"
           bustan --help
 
       - name: Verify uvx scaffolding from published artifact
         run: |
           cli_smoke_root="$(mktemp -d)"
-          uvx --from "bustan==${STAR_VERSION}" bustan create smoke-app --directory "$cli_smoke_root"
+          uvx --from "bustan==${BUSTAN_VERSION}" bustan create smoke-app --directory "$cli_smoke_root"
           test -f "$cli_smoke_root/smoke-app/pyproject.toml"
           test -f "$cli_smoke_root/smoke-app/README.md"
           test -f "$cli_smoke_root/smoke-app/src/smoke_app/app.py"

@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import inspect
 from dataclasses import dataclass
 from enum import StrEnum
 from types import FunctionType
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from .errors import InvalidControllerError, RouteDefinitionError
+from .utils import _unwrap_handler
 
-MODULE_METADATA_ATTR = "__star_module_metadata__"
-CONTROLLER_METADATA_ATTR = "__star_controller_metadata__"
-PROVIDER_METADATA_ATTR = "__star_provider_metadata__"
-ROUTE_METADATA_ATTR = "__star_route_metadata__"
-CONTROLLER_PIPELINE_ATTR = "__star_controller_pipeline_metadata__"
-HANDLER_PIPELINE_ATTR = "__star_handler_pipeline_metadata__"
+MODULE_METADATA_ATTR = "__bustan_module_metadata__"
+CONTROLLER_METADATA_ATTR = "__bustan_controller_metadata__"
+ROUTE_METADATA_ATTR = "__bustan_route_metadata__"
+CONTROLLER_PIPELINE_ATTR = "__bustan_controller_pipeline_metadata__"
+HANDLER_PIPELINE_ATTR = "__bustan_handler_pipeline_metadata__"
+BUSTAN_PROVIDER_ATTR = "__bustan_provider__"
 
 ClassT = TypeVar("ClassT", bound=type[object])
 FunctionT = TypeVar("FunctionT", bound=FunctionType)
@@ -30,41 +31,14 @@ class ProviderScope(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class ClassProviderDef:
-    """Provide a token by instantiating a class."""
+class Binding:
+    """Normalized dependency injection binding."""
 
-    provide: object
-    use_class: type[Any]
-    scope: ProviderScope = ProviderScope.SINGLETON
-
-
-@dataclass(frozen=True, slots=True)
-class FactoryProviderDef:
-    """Provide a token by calling a factory function."""
-
-    provide: object
-    use_factory: Callable[..., Any]
-    inject: tuple[object, ...] = ()
-    scope: ProviderScope = ProviderScope.SINGLETON
-
-
-@dataclass(frozen=True, slots=True)
-class ValueProviderDef:
-    """Provide a token by returning a static value."""
-
-    provide: object
-    use_value: Any = None
-
-
-@dataclass(frozen=True, slots=True)
-class ExistingProviderDef:
-    """Provide a token by aliasing another registered token."""
-
-    provide: object
-    use_existing: object
-
-
-ProviderDef = ClassProviderDef | FactoryProviderDef | ValueProviderDef | ExistingProviderDef
+    token: object
+    declaring_module: type[object]
+    resolver_kind: str  # class | factory | value | existing
+    target: object
+    scope: ProviderScope
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +47,7 @@ class ModuleMetadata:
 
     imports: tuple[type[object], ...] = ()
     controllers: tuple[type[object], ...] = ()
-    providers: tuple[ProviderDef, ...] = ()
+    providers: tuple[object | dict[str, object], ...] = ()
     exports: tuple[object, ...] = ()
 
 
@@ -82,13 +56,6 @@ class ControllerMetadata:
     """Static metadata captured from a @Controller declaration."""
 
     prefix: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class ProviderMetadata:
-    """Static metadata captured from an @Injectable declaration."""
-
-    scope: ProviderScope = ProviderScope.SINGLETON
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,9 +114,7 @@ def get_module_metadata(
     return metadata if isinstance(metadata, ModuleMetadata) else None
 
 
-def set_controller_metadata(
-    controller_cls: ClassT, metadata: ControllerMetadata
-) -> ClassT:
+def set_controller_metadata(controller_cls: ClassT, metadata: ControllerMetadata) -> ClassT:
     setattr(controller_cls, CONTROLLER_METADATA_ATTR, metadata)
     return controller_cls
 
@@ -161,9 +126,7 @@ def get_controller_metadata(
     return metadata if isinstance(metadata, ControllerMetadata) else None
 
 
-def set_controller_pipeline_metadata(
-    controller_cls: ClassT, metadata: PipelineMetadata
-) -> ClassT:
+def set_controller_pipeline_metadata(controller_cls: ClassT, metadata: PipelineMetadata) -> ClassT:
     setattr(controller_cls, CONTROLLER_PIPELINE_ATTR, metadata)
     return controller_cls
 
@@ -173,18 +136,6 @@ def get_controller_pipeline_metadata(
 ) -> PipelineMetadata | None:
     metadata = _get_metadata(controller_cls, CONTROLLER_PIPELINE_ATTR, inherit=inherit)
     return metadata if isinstance(metadata, PipelineMetadata) else None
-
-
-def set_provider_metadata(provider_cls: ClassT, metadata: ProviderMetadata) -> ClassT:
-    setattr(provider_cls, PROVIDER_METADATA_ATTR, metadata)
-    return provider_cls
-
-
-def get_provider_metadata(
-    provider_cls: type[object], *, inherit: bool = False
-) -> ProviderMetadata | None:
-    metadata = _get_metadata(provider_cls, PROVIDER_METADATA_ATTR, inherit=inherit)
-    return metadata if isinstance(metadata, ProviderMetadata) else None
 
 
 def set_route_metadata(handler: FunctionT, metadata: RouteMetadata) -> FunctionT:
@@ -337,7 +288,63 @@ def _get_metadata(target: type[object], attribute_name: str, *, inherit: bool) -
     return target.__dict__.get(attribute_name)
 
 
-def _unwrap_handler(handler: object) -> FunctionType | None:
-    if isinstance(handler, (staticmethod, classmethod)):
-        handler = handler.__func__
-    return handler if isinstance(handler, FunctionType) else None
+def normalize_provider(defn: object | dict[str, object], declaring_module: type[object]) -> Binding:
+    if inspect.isclass(defn):
+        meta: dict[str, object] = getattr(defn, "__bustan_provider__", {})
+        return Binding(
+            token=meta.get("token", defn),
+            declaring_module=declaring_module,
+            resolver_kind="class",
+            target=meta.get("use_class", defn),
+            scope=ProviderScope(meta.get("scope", ProviderScope.SINGLETON)),
+        )
+
+    if isinstance(defn, dict):
+        defn = cast(dict[str, Any], defn)
+        token = defn.get("provide")
+        if token is None:
+            raise TypeError("Provider dict must provide a 'provide' key")
+
+        scope = ProviderScope(defn.get("scope", ProviderScope.SINGLETON))
+
+        if "use_class" in defn:
+            return Binding(
+                token=token,
+                declaring_module=declaring_module,
+                resolver_kind="class",
+                target=defn["use_class"],
+                scope=scope,
+            )
+        if "use_factory" in defn:
+            inject = tuple(defn.get("inject", ()))
+            # For factories, target can be the callable, but wait, Container will need inject
+            # Let's say target stores (factory, inject).
+            return Binding(
+                token=token,
+                declaring_module=declaring_module,
+                resolver_kind="factory",
+                target=(defn["use_factory"], inject),
+                scope=scope,
+            )
+        if "use_value" in defn:
+            return Binding(
+                token=token,
+                declaring_module=declaring_module,
+                resolver_kind="value",
+                target=defn["use_value"],
+                scope=ProviderScope.SINGLETON,
+            )
+        if "use_existing" in defn:
+            return Binding(
+                token=token,
+                declaring_module=declaring_module,
+                resolver_kind="existing",
+                target=defn["use_existing"],
+                scope=ProviderScope.TRANSIENT,
+            )
+
+        raise TypeError(
+            "Provider dict must have one of: use_class, use_factory, use_value, use_existing"
+        )
+
+    raise TypeError(f"Invalid provider definition: {defn!r}")

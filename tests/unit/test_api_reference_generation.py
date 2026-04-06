@@ -29,7 +29,9 @@ def test_render_api_reference_keeps_version_docs_stable_across_releases() -> Non
     rendered_reference = generator.render_api_reference()
 
     assert "Installed distribution version string for the bustan package." in rendered_reference
-    assert "Runtime behavior: resolved from the installed distribution metadata" in rendered_reference
+    assert (
+        "Runtime behavior: resolved from the installed distribution metadata" in rendered_reference
+    )
     assert "Current value: `0.0.1`" not in rendered_reference
 
 

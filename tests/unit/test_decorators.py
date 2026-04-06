@@ -18,20 +18,22 @@ from bustan import (
     UseInterceptors,
     UsePipes,
 )
-from bustan.errors import InvalidControllerError, InvalidPipelineError, InvalidProviderError, RouteDefinitionError
+from bustan.errors import (
+    InvalidControllerError,
+    InvalidPipelineError,
+    InvalidProviderError,
+    RouteDefinitionError,
+)
 from bustan.metadata import (
-    ClassProviderDef,
     ControllerMetadata,
     ModuleMetadata,
     PipelineMetadata,
-    ProviderMetadata,
     ProviderScope,
     RouteMetadata,
     get_controller_metadata,
     get_controller_pipeline_metadata,
     get_handler_pipeline_metadata,
     get_module_metadata,
-    get_provider_metadata,
     get_route_metadata,
 )
 
@@ -53,12 +55,16 @@ def test_decorators_attach_expected_metadata() -> None:
     class UserModule:
         pass
 
-    assert get_provider_metadata(UserService) == ProviderMetadata(scope=ProviderScope.SINGLETON)
+    assert getattr(UserService, "__bustan_provider__") == {
+        "scope": ProviderScope.SINGLETON,
+        "token": UserService,
+        "use_class": UserService,
+    }
     assert get_controller_metadata(UserController) == ControllerMetadata(prefix="/users")
     assert get_module_metadata(UserModule) == ModuleMetadata(
         imports=(),
         controllers=(UserController,),
-        providers=(ClassProviderDef(provide=UserService, use_class=UserService, scope=ProviderScope.SINGLETON),),
+        providers=(UserService,),
         exports=(UserService,),
     )
 

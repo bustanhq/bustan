@@ -38,12 +38,12 @@ app.add_middleware(...)
 app.mount("/static", static_app)
 ```
 
-## Reach Bootstrap Artifacts Through `app.state`
+## Reach Bootstrap Artifacts Through `Application` Properties
 
-`create_app()` stores bootstrap artifacts on the Starlette application state:
+`create_app()` returns an `Application` wrapper that exposes bootstrap artifacts:
 
-- `app.state.bustan_container`
-- `app.state.bustan_module_graph`
-- `app.state.bustan_root_module`
+- `app.container`
+- `app.module_graph`
+- `app.root_module`
 
 Those values are useful for advanced tests, graph inspection, and framework-level integrations.

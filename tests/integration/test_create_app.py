@@ -25,12 +25,19 @@ def test_create_app_returns_a_starlette_application_with_module_graph_state() ->
 
     application = create_app(AppModule)
 
-    assert isinstance(application, Starlette)
-    controller_instance = application.state.bustan_container.resolve_controller(UserController)
+    from typing import Any, cast
+    from bustan.application import Application
 
-    assert application.state.bustan_root_module is AppModule
-    assert controller_instance.user_service is application.state.bustan_container.resolve_provider(
-        UserService,
-        AppModule,
+    assert isinstance(application, Application)
+    assert isinstance(application._starlette_app, Starlette)
+    controller_instance = cast(Any, application.container.instantiate_class(UserController, module=AppModule))
+
+    assert application.root_module is AppModule
+    assert (
+        controller_instance.user_service
+        is application.container.resolve(
+            UserService,
+            module=AppModule,
+        )
     )
-    assert application.state.bustan_module_graph.root_module is AppModule
+    assert cast(Any, application.module_graph).root_module is AppModule

@@ -1,5 +1,6 @@
 """Integration tests for test-time provider override helpers."""
 
+from typing import Any, cast
 from starlette.testclient import TestClient
 
 from bustan import Controller, create_app, Get, Injectable, Module
@@ -25,7 +26,9 @@ def test_create_test_app_applies_provider_overrides() -> None:
         def read_greeting(self) -> dict[str, str]:
             return {"message": self.greeting_service.greet()}
 
-    @Module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
+    @Module(
+        controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService]
+    )
     class AppModule:
         pass
 
@@ -34,7 +37,7 @@ def test_create_test_app_applies_provider_overrides() -> None:
         provider_overrides={GreetingService: FakeGreetingService()},
     )
 
-    with TestClient(application) as client:
+    with TestClient(cast(Any, application)) as client:
         response = client.get("/greetings")
 
     assert response.status_code == 200
@@ -60,14 +63,19 @@ def test_override_provider_is_scoped_and_does_not_leak_between_apps() -> None:
         def read_greeting(self) -> dict[str, str]:
             return {"message": self.greeting_service.greet()}
 
-    @Module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
+    @Module(
+        controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService]
+    )
     class AppModule:
         pass
 
     first_application = create_app(AppModule)
     second_application = create_app(AppModule)
 
-    with TestClient(first_application) as first_client, TestClient(second_application) as second_client:
+    with (
+        TestClient(cast(Any, first_application)) as first_client,
+        TestClient(cast(Any, second_application)) as second_client,
+    ):
         assert first_client.get("/greetings").json() == {"message": "production"}
         assert second_client.get("/greetings").json() == {"message": "production"}
 

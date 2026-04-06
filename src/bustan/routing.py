@@ -1,4 +1,4 @@
-"""Route compilation and request execution orchestration."""
+"""Route compilation and request orchestration."""
 
 from __future__ import annotations
 
@@ -11,18 +11,24 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from .container import ContainerAdapter
-from .errors import GuardRejectedError, InvalidPipelineError, ParameterBindingError, RouteDefinitionError
+from .container import Container
+from .errors import (
+    GuardRejectedError,
+    InvalidPipelineError,
+    ParameterBindingError,
+    RouteDefinitionError,
+)
 from .metadata import (
+    BUSTAN_PROVIDER_ATTR,
     ControllerRouteDefinition,
     PipelineMetadata,
     get_controller_metadata,
     get_controller_pipeline_metadata,
     get_handler_pipeline_metadata,
-    get_provider_metadata,
     iter_controller_routes,
     merge_pipeline_metadata,
 )
+from .utils import _join_paths, _qualname
 from .module_graph import ModuleGraph
 from .params import (
     BoundParameter,
@@ -43,7 +49,7 @@ Endpoint = Callable[[Request], Awaitable[Response]]
 ComponentT = TypeVar("ComponentT")
 
 
-def compile_routes(module_graph: ModuleGraph, container: ContainerAdapter) -> tuple[Route, ...]:
+def compile_routes(module_graph: ModuleGraph, container: Container) -> tuple[Route, ...]:
     """Compile controller metadata into Starlette Route objects."""
 
     seen_routes: dict[tuple[str, str], str] = {}
@@ -94,7 +100,7 @@ def compile_routes(module_graph: ModuleGraph, container: ContainerAdapter) -> tu
 
 
 def create_endpoint(
-    container: ContainerAdapter,
+    container: Container,
     module_cls: type[object],
     controller_cls: type[object],
     route_definition: ControllerRouteDefinition,
@@ -106,7 +112,9 @@ def create_endpoint(
     is_async_handler = inspect.iscoroutinefunction(route_definition.handler)
 
     async def endpoint(request: Request) -> Response:
-        controller_instance = container.resolve_controller(controller_cls, request=request)
+        controller_instance = container.instantiate_class(
+            controller_cls, module=module_cls, request=request
+        )
         handler = getattr(controller_instance, route_definition.handler_name)
         request_context = RequestContext(
             request=request,
@@ -116,8 +124,8 @@ def create_endpoint(
             route=route_definition,
             container=container,
         )
-        # Resolve filters first so they can translate any downstream binding,
-        # guard, interceptor, or handler exception.
+
+        # Resolve filters first
         filters = _resolve_pipeline_components(
             pipeline_metadata.filters,
             expected_base_type=ExceptionFilter,
@@ -165,8 +173,6 @@ def create_endpoint(
             )
 
             async def final_handler() -> object:
-                # Interceptors should not care whether the underlying handler is
-                # sync or async, so normalize both shapes behind one callback.
                 if is_async_handler:
                     return await handler(*positional_arguments, **keyword_arguments)
                 return await run_in_threadpool(
@@ -200,20 +206,6 @@ def create_endpoint(
 
 def _handler_reference(controller_cls: type[object], handler_name: str) -> str:
     return f"{_qualname(controller_cls)}.{handler_name}"
-
-
-def _join_paths(prefix: str, path: str) -> str:
-    if not prefix:
-        return path
-    if path == "/":
-        return prefix
-    return f"{prefix}{path}"
-
-
-def _qualname(target: object) -> str:
-    if isinstance(target, type):
-        return f"{target.__module__}.{target.__qualname__}"
-    return repr(target)
 
 
 def _validate_pipeline_metadata(pipeline_metadata: PipelineMetadata) -> None:
@@ -257,7 +249,7 @@ def _resolve_pipeline_components(
     components: tuple[object, ...],
     *,
     expected_base_type: type[ComponentT],
-    container: ContainerAdapter,
+    container: Container,
     module_cls: type[object],
     component_kind: str,
     request: Request,
@@ -268,10 +260,10 @@ def _resolve_pipeline_components(
         resolved_component = component
         if isinstance(component, type):
             component_type = cast(type[ComponentT], component)
-            if get_provider_metadata(component_type) is not None:
-                resolved_component = container.resolve_provider(
+            if getattr(component_type, BUSTAN_PROVIDER_ATTR, None) is not None:
+                resolved_component = container.resolve(
                     component_type,
-                    module_cls,
+                    module=module_cls,
                     request=request,
                 )
             else:

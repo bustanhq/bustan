@@ -13,6 +13,7 @@ from starlette.requests import Request
 
 from .errors import ParameterBindingError
 from .metadata import ControllerRouteDefinition
+from .utils import _qualname
 
 _MISSING = object()
 _NO_BODY = object()
@@ -325,13 +326,19 @@ def _coerce_value(
             ) from exc
 
     if annotation is bool:
-        return _coerce_bool(raw_value, parameter_name=parameter_name, source_description=source_description)
+        return _coerce_bool(
+            raw_value, parameter_name=parameter_name, source_description=source_description
+        )
 
     if annotation is int:
-        return _coerce_number(int, raw_value, parameter_name=parameter_name, source_description=source_description)
+        return _coerce_number(
+            int, raw_value, parameter_name=parameter_name, source_description=source_description
+        )
 
     if annotation is float:
-        return _coerce_number(float, raw_value, parameter_name=parameter_name, source_description=source_description)
+        return _coerce_number(
+            float, raw_value, parameter_name=parameter_name, source_description=source_description
+        )
 
     if annotation is str:
         if isinstance(raw_value, str):
@@ -414,9 +421,7 @@ def _coerce_bool(
         if normalized_value in {"0", "false", "no", "off"}:
             return False
 
-    raise ParameterBindingError(
-        f"Could not bind {source_description} {parameter_name!r} to bool"
-    )
+    raise ParameterBindingError(f"Could not bind {source_description} {parameter_name!r} to bool")
 
 
 def _coerce_number(
@@ -518,9 +523,3 @@ def _display_annotation(annotation: object) -> str:
     if isinstance(annotation, type):
         return annotation.__name__
     return repr(annotation)
-
-
-def _qualname(target: object) -> str:
-    if isinstance(target, type):
-        return f"{target.__module__}.{target.__qualname__}"
-    return repr(target)

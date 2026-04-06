@@ -1,5 +1,6 @@
 """Public exception types for the bustan package."""
 
+
 class BustanError(Exception):
     """Base exception for the framework."""
 

@@ -1,6 +1,7 @@
 """Integration tests for route registration and request binding."""
 
 from __future__ import annotations
+from typing import Any, cast
 
 from dataclasses import dataclass
 
@@ -51,11 +52,13 @@ def test_create_app_registers_http_routes_and_coerces_common_return_types() -> N
         def read_none(self) -> None:
             return None
 
-    @Module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
+    @Module(
+        controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService]
+    )
     class AppModule:
         pass
 
-    with TestClient(create_app(AppModule)) as client:
+    with TestClient(cast(Any, create_app(AppModule))) as client:
         dict_response = client.get("/greetings/dict")
         list_response = client.get("/greetings/list")
         dataclass_response = client.get("/greetings/dataclass")
@@ -99,7 +102,7 @@ def test_create_app_resolves_a_fresh_controller_instance_per_request() -> None:
     class AppModule:
         pass
 
-    with TestClient(create_app(AppModule)) as client:
+    with TestClient(cast(Any, create_app(AppModule))) as client:
         first_response = client.get("/controllers/identity")
         second_response = client.get("/controllers/identity")
 
@@ -155,7 +158,7 @@ def test_create_app_binds_request_path_query_and_json_body_values() -> None:
     class AppModule:
         pass
 
-    with TestClient(create_app(AppModule)) as client:
+    with TestClient(cast(Any, create_app(AppModule))) as client:
         read_response = client.get("/users/41?verbose=true&page=2")
         payload_response = client.post("/users", json={"name": "Ada", "admin": True})
         field_response = client.post("/users/fields", json={"name": "Moses", "admin": False})
@@ -191,7 +194,7 @@ def test_create_app_returns_a_400_response_for_invalid_bound_inputs() -> None:
     class AppModule:
         pass
 
-    with TestClient(create_app(AppModule)) as client:
+    with TestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/users/not-a-number")
 
     assert response.status_code == 400
@@ -234,7 +237,7 @@ def test_create_app_resolves_request_scoped_providers_per_request() -> None:
     class AppModule:
         pass
 
-    with TestClient(create_app(AppModule)) as client:
+    with TestClient(cast(Any, create_app(AppModule))) as client:
         first_response = client.get("/requests/state", headers={"x-request-id": "first"})
         second_response = client.get("/requests/state", headers={"x-request-id": "second"})
 

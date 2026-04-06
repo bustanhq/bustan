@@ -3,6 +3,7 @@
 import pytest
 from starlette.testclient import TestClient
 
+from typing import Any, cast
 from bustan import create_app, Module
 from bustan.errors import LifecycleError
 
@@ -38,7 +39,7 @@ def test_create_app_runs_lifecycle_hooks_in_startup_and_shutdown_order() -> None
         async def on_module_destroy(self) -> None:
             events.append("app:module_destroy")
 
-    with TestClient(create_app(AppModule)):
+    with TestClient(cast(Any, create_app(AppModule))):
         assert events == [
             "app:module_init",
             "feature:module_init",
@@ -65,5 +66,5 @@ def test_create_app_surfaces_lifecycle_hook_failures() -> None:
             raise RuntimeError("boom")
 
     with pytest.raises(LifecycleError, match="BrokenModule.on_module_init failed: boom"):
-        with TestClient(create_app(BrokenModule)):
+        with TestClient(cast(Any, create_app(BrokenModule))):
             pass

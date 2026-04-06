@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
@@ -81,11 +82,13 @@ def test_request_pipeline_executes_in_the_expected_order() -> None:
             events.append(f"handler:{name}:{excited}")
             return {"message": name, "excited": excited}
 
-    @Module(controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService])
+    @Module(
+        controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService]
+    )
     class AppModule:
         pass
 
-    with TestClient(create_app(AppModule)) as client:
+    with TestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/greetings/moses?excited=true")
 
     assert response.status_code == 200
@@ -129,7 +132,7 @@ def test_request_pipeline_short_circuits_when_a_guard_rejects_the_request() -> N
     class AppModule:
         pass
 
-    with TestClient(create_app(AppModule)) as client:
+    with TestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/secret")
 
     assert response.status_code == 403
@@ -158,7 +161,7 @@ def test_request_pipeline_uses_exception_filters_to_convert_handler_errors() -> 
     class AppModule:
         pass
 
-    with TestClient(create_app(AppModule)) as client:
+    with TestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/fails/boom")
 
     assert response.status_code == 418
@@ -186,7 +189,7 @@ def test_request_pipeline_uses_exception_filters_to_convert_binding_errors() -> 
     class AppModule:
         pass
 
-    with TestClient(create_app(AppModule)) as client:
+    with TestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/users/not-a-number")
 
     assert response.status_code == 422

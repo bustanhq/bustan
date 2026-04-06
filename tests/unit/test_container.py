@@ -1,6 +1,7 @@
 """Unit tests for provider and controller resolution behavior."""
 
 import pytest
+from typing import Any, cast
 from starlette.requests import Request
 
 from bustan import Controller, Get, Injectable, Module
@@ -33,10 +34,10 @@ def test_container_resolves_singleton_providers_and_transient_controllers() -> N
 
     container = build_container(build_module_graph(AppModule))
 
-    first_service = container.resolve_provider(UserService, AppModule)
-    second_service = container.resolve_provider(UserService, AppModule)
-    first_controller = container.resolve_controller(UserController)
-    second_controller = container.resolve_controller(UserController)
+    first_service = container.resolve(UserService, module=AppModule)
+    second_service = container.resolve(UserService, module=AppModule)
+    first_controller = cast(Any, container.instantiate_class(UserController, module=AppModule))
+    second_controller = cast(Any, container.instantiate_class(UserController, module=AppModule))
 
     assert first_service is second_service
     assert first_controller is not second_controller
@@ -65,13 +66,10 @@ def test_container_resolves_exported_providers_from_imported_modules() -> None:
         pass
 
     container = build_container(build_module_graph(AppModule))
-    module_registry = container.get_module_registry(AppModule)
-
-    assert module_registry.declaring_module_for(UserService) is UsersModule
-    assert isinstance(container.resolve_provider(UserService, AppModule), UserService)
+    assert isinstance(container.resolve(UserService, module=AppModule), UserService)
 
     with pytest.raises(ProviderResolutionError, match="HiddenService"):
-        container.resolve_provider(HiddenService, AppModule)
+        container.resolve(HiddenService, module=AppModule)
 
 
 def test_container_resolves_controller_dependencies_from_imported_exports() -> None:
@@ -100,7 +98,9 @@ def test_container_resolves_controller_dependencies_from_imported_exports() -> N
         pass
 
     container = build_container(build_module_graph(AppModule))
-    controller_instance = container.resolve_controller(DashboardController)
+    controller_instance = cast(
+        Any, container.instantiate_class(DashboardController, module=AppModule)
+    )
 
     assert isinstance(controller_instance.user_service, UserService)
 
@@ -118,13 +118,13 @@ def test_container_resolves_request_scoped_providers_once_per_request() -> None:
     container = build_container(build_module_graph(AppModule))
 
     with pytest.raises(ProviderResolutionError, match="requires an active request"):
-        container.resolve_provider(RequestState, AppModule)
+        container.resolve(RequestState, module=AppModule)
 
     first_request = _build_request("/requests/one")
-    first_instance = container.resolve_provider(RequestState, AppModule, request=first_request)
-    second_instance = container.resolve_provider(RequestState, AppModule, request=first_request)
-    third_request = _build_request("/requests/two")
-    third_instance = container.resolve_provider(RequestState, AppModule, request=third_request)
+    first_instance = cast(Any, container.resolve(RequestState, module=AppModule, request=first_request))
+    second_instance = container.resolve(RequestState, module=AppModule, request=first_request)
+    third_request = _build_request("/requests/one")
+    third_instance = cast(Any, container.resolve(RequestState, module=AppModule, request=third_request))
 
     assert first_instance is second_instance
     assert first_instance is not third_instance
@@ -150,7 +150,7 @@ def test_container_rejects_request_scoped_dependencies_from_singleton_providers(
     container = build_container(build_module_graph(AppModule))
 
     with pytest.raises(ProviderResolutionError, match="request-scoped provider"):
-        container.resolve_provider(SingletonService, AppModule, request=_build_request("/scope"))
+        container.resolve(SingletonService, module=AppModule, request=_build_request("/scope"))
 
 
 def test_container_rejects_missing_constructor_annotations() -> None:
@@ -166,7 +166,7 @@ def test_container_rejects_missing_constructor_annotations() -> None:
     container = build_container(build_module_graph(AppModule))
 
     with pytest.raises(ProviderResolutionError, match="missing a type annotation"):
-        container.resolve_provider(BrokenService, AppModule)
+        container.resolve(BrokenService, module=AppModule)
 
 
 def test_container_rejects_unresolved_provider_dependencies() -> None:
@@ -186,7 +186,7 @@ def test_container_rejects_unresolved_provider_dependencies() -> None:
     container = build_container(build_module_graph(AppModule))
 
     with pytest.raises(ProviderResolutionError, match="MissingService"):
-        container.resolve_provider(ConsumerService, AppModule)
+        container.resolve(ConsumerService, module=AppModule)
 
 
 def test_container_rejects_circular_provider_dependencies() -> None:
@@ -212,7 +212,7 @@ def test_container_rejects_circular_provider_dependencies() -> None:
         ProviderResolutionError,
         match="LeftService -> RightService -> LeftService",
     ):
-        container.resolve_provider(LeftService, AppModule)
+        container.resolve(LeftService, module=AppModule)
 
 
 def test_container_separates_framework_owned_injections_from_provider_di() -> None:
@@ -228,7 +228,7 @@ def test_container_separates_framework_owned_injections_from_provider_di() -> No
     container = build_container(build_module_graph(AppModule))
 
     with pytest.raises(ProviderResolutionError, match="framework-owned type Request"):
-        container.resolve_provider(RequestAwareService, AppModule)
+        container.resolve(RequestAwareService, module=AppModule)
 
 
 def test_container_resolves_value_provider_def() -> None:
@@ -243,8 +243,8 @@ def test_container_resolves_value_provider_def() -> None:
 
     container = build_container(build_module_graph(AppModule))
 
-    first = container.resolve_provider(DATABASE_URL, AppModule)
-    second = container.resolve_provider(DATABASE_URL, AppModule)
+    first = container.resolve(DATABASE_URL, module=AppModule)
+    second = container.resolve(DATABASE_URL, module=AppModule)
 
     assert first == "postgres://localhost/mydb"
     assert first is second
@@ -269,10 +269,11 @@ def test_container_resolves_factory_provider_def_with_inject() -> None:
 
     container = build_container(build_module_graph(AppModule))
 
-    first = container.resolve_provider("http_client", AppModule)
-    second = container.resolve_provider("http_client", AppModule)
+    first = container.resolve("http_client", module=AppModule)
+    second = container.resolve("http_client", module=AppModule)
 
     assert isinstance(first, dict)
+    first = cast(dict[str, Any], first)
     assert first["base_url"] == "https://api.example.com"
     assert first is second
 
@@ -294,7 +295,7 @@ def test_container_resolves_class_provider_def_with_interface_token() -> None:
 
     container = build_container(build_module_graph(AppModule))
 
-    instance = container.resolve_provider(IUserRepo, AppModule)
+    instance = container.resolve(IUserRepo, module=AppModule)
 
     assert isinstance(instance, SqlUserRepo)
     assert isinstance(instance, IUserRepo)
@@ -316,8 +317,8 @@ def test_container_resolves_existing_provider_def() -> None:
 
     container = build_container(build_module_graph(AppModule))
 
-    original = container.resolve_provider(UserService, AppModule)
-    alias = container.resolve_provider("user_service_alias", AppModule)
+    original = container.resolve(UserService, module=AppModule)
+    alias = container.resolve("user_service_alias", module=AppModule)
 
     assert original is alias
 
@@ -338,10 +339,12 @@ def test_container_resolves_transient_factory_provider_def() -> None:
 
     container = build_container(build_module_graph(AppModule))
 
-    first = container.resolve_provider("handler", AppModule)
-    second = container.resolve_provider("handler", AppModule)
+    first = container.resolve("handler", module=AppModule)
+    second = container.resolve("handler", module=AppModule)
 
     assert first is not second
+    first = cast(dict[str, Any], first)
+    second = cast(dict[str, Any], second)
     assert first["id"] == 1
     assert second["id"] == 2
 

@@ -1,7 +1,7 @@
 """Supported public API for the bustan package."""
 
 from ._version import __version__
-from .application import bootstrap, create_app
+from .application import Application, bootstrap, create_app
 from .decorators import (
     Controller,
     Delete,
@@ -16,24 +16,17 @@ from .decorators import (
     UseInterceptors,
     UsePipes,
 )
-from .metadata import (
-    ClassProviderDef,
-    ExistingProviderDef,
-    FactoryProviderDef,
-    ValueProviderDef,
-)
+from .injection import InjectionToken
 from .pipeline import ExceptionFilter, Guard, Interceptor, Pipe
 
 __all__ = (
     "__version__",
-    "ClassProviderDef",
+    "Application",
     "ExceptionFilter",
-    "ExistingProviderDef",
-    "FactoryProviderDef",
     "Guard",
+    "InjectionToken",
     "Interceptor",
     "Pipe",
-    "ValueProviderDef",
     "bootstrap",
     "Controller",
     "create_app",

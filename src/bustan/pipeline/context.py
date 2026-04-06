@@ -11,7 +11,7 @@ from starlette.requests import Request
 from ..metadata import ControllerRouteDefinition
 
 if TYPE_CHECKING:
-    from ..container import ContainerAdapter
+    from ..container import Container
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,7 +23,7 @@ class RequestContext:
     controller_type: type[object]
     controller: object
     route: ControllerRouteDefinition
-    container: ContainerAdapter
+    container: Container
 
 
 @dataclass(frozen=True, slots=True)

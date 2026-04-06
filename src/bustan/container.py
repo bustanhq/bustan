@@ -6,9 +6,7 @@ import inspect
 import sys
 import threading
 from contextvars import ContextVar, Token
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
-from types import MappingProxyType
+from collections.abc import Callable
 from typing import TypeVar, cast, get_type_hints
 
 from starlette.applications import Starlette
@@ -16,232 +14,51 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from .errors import InvalidControllerError, ProviderResolutionError
-from .metadata import (
-    ClassProviderDef,
-    ExistingProviderDef,
-    FactoryProviderDef,
-    ProviderDef,
-    ProviderScope,
-    ValueProviderDef,
-    get_provider_metadata,
-)
+from .metadata import Binding, ProviderScope
 from .module_graph import ModuleGraph
+from .utils import _display_name, _qualname
 
-ProviderFactory = Callable[[], object]
 ResolvedT = TypeVar("ResolvedT")
 NO_OVERRIDE = object()
-REQUEST_SCOPE_CACHE_ATTR = "star_request_provider_cache"
+REQUEST_SCOPE_CACHE_ATTR = "bustan_request_provider_cache"
 
 FRAMEWORK_OWNED_TYPES = frozenset({Request, Response, Starlette})
 
-_UNSET = object()
 
-
-class _FactoryProvider:
-    """Creates a new instance on every call."""
-
-    __slots__ = ("_fn", "_args")
-
-    def __init__(self, fn: Callable[..., object], *args: object) -> None:
-        self._fn = fn
-        self._args = args
-
-    def __call__(self) -> object:
-        return self._fn(*self._args)
-
-
-class _SingletonProvider:
-    """Creates one instance on first call and returns the same object thereafter."""
-
-    __slots__ = ("_fn", "_args", "_instance", "_lock")
-
-    def __init__(self, fn: Callable[..., object], *args: object) -> None:
-        self._fn = fn
-        self._args = args
-        self._instance: object = _UNSET
-        self._lock = threading.Lock()
-
-    def __call__(self) -> object:
-        if self._instance is _UNSET:
-            with self._lock:
-                if self._instance is _UNSET:
-                    self._instance = self._fn(*self._args)
-        return self._instance
-
-
-@dataclass(frozen=True, slots=True)
-class ResolutionContext:
-    """Resolution-time state passed through constructor injection."""
-
-    module: type[object]
-    dependency_stack: tuple[object, ...] = ()
-    request: Request | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ProviderRegistration:
-    """Container-side registration record for a provider."""
-
-    token: object
-    module: type[object]
-    scope: ProviderScope
-    factory: ProviderFactory = field(repr=False)
-
-
-@dataclass(frozen=True, slots=True)
-class ModuleRegistry:
-    """Visibility map for providers reachable from one module."""
-
-    module: type[object]
-    controllers: tuple[type[object], ...]
-    accessible_provider_modules: Mapping[object, type[object]] = field(repr=False)
-
-    def declaring_module_for(self, token: object) -> type[object] | None:
-        """Return the module that legally exposes a provider to this module."""
-
-        return self.accessible_provider_modules.get(token)
-
-
-class ContainerAdapter:
+class Container:
     """Resolve providers and controllers against a validated module graph."""
 
     def __init__(self, module_graph: ModuleGraph) -> None:
         self.module_graph = module_graph
-        self._module_registries = MappingProxyType(self._build_module_registries())
-        self._provider_registrations: dict[tuple[type[object], object], ProviderRegistration] = {}
-        self._provider_overrides: dict[tuple[type[object], object], object] = {}
+        self._bindings: dict[tuple[type[object], object], Binding] = {}
+        self._module_visibility: dict[type[object], dict[object, type[object]]] = {}
+        self._singletons: dict[tuple[type[object], object], object] = {}
+        self._singleton_locks: dict[tuple[type[object], object], threading.Lock] = {}
+        self._overrides: dict[tuple[type[object], object], object] = {}
+
         self._controller_modules: dict[type[object], type[object]] = {}
-        self._controller_factories: dict[type[object], ProviderFactory] = {}
-        self._active_request: ContextVar[Request | None] = ContextVar(
-            "star_active_request",
-            default=None,
-        )
+
         self._resolution_stack: ContextVar[tuple[object, ...]] = ContextVar(
-            "star_resolution_stack",
-            default=(),
+            "bustan_resolution_stack", default=()
         )
-        self._build_registrations()
+        self._active_request: ContextVar[Request | None] = ContextVar(
+            "bustan_active_request", default=None
+        )
 
-    def get_module_registry(self, module_cls: type[object]) -> ModuleRegistry:
-        """Return the visibility registry for a known module."""
+        self._build_bindings()
 
-        try:
-            return self._module_registries[module_cls]
-        except KeyError as exc:
-            raise ProviderResolutionError(
-                f"{_qualname(module_cls)} is not part of the application container"
-            ) from exc
-
-    def resolve_provider(
-        self,
-        token: object,
-        module_cls: type[object],
-        *,
-        request: Request | None = None,
-    ) -> object:
-        """Resolve a provider visible from the given module.
-
-        When a request is supplied, request-scoped providers are cached on that
-        request so the same object instance is reused throughout the pipeline.
-        """
-
-        active_request_token = self._push_active_request(request)
-        try:
-            module_registry = self.get_module_registry(module_cls)
-            declaring_module = module_registry.declaring_module_for(token)
-            if declaring_module is None:
-                raise ProviderResolutionError(
-                    f"{_qualname(token)} is not available to {_qualname(module_cls)}. "
-                    "Dependencies must come from the same module or an imported module export"
-                )
-
-            provider_override = self._provider_overrides.get((declaring_module, token), NO_OVERRIDE)
-            if provider_override is not NO_OVERRIDE:
-                return provider_override
-
-            return self._resolve_registered_provider(token, declaring_module)
-        finally:
-            self._reset_active_request(active_request_token)
-
-    def has_provider_override(
-        self,
-        token: object,
-        *,
-        module_cls: type[object] | None = None,
-    ) -> bool:
-        """Return whether an override exists for the selected provider."""
-
-        override_key = self._resolve_override_key(token, module_cls)
-        return override_key in self._provider_overrides
-
-    def get_provider_override(
-        self,
-        token: object,
-        *,
-        module_cls: type[object] | None = None,
-    ) -> object:
-        """Return the active override for a provider."""
-
-        override_key = self._resolve_override_key(token, module_cls)
-        try:
-            return self._provider_overrides[override_key]
-        except KeyError as exc:
-            raise ProviderResolutionError(
-                f"No provider override is registered for {_qualname(token)}"
-            ) from exc
-
-    def set_provider_override(
-        self,
-        token: object,
-        replacement: object,
-        *,
-        module_cls: type[object] | None = None,
-    ) -> None:
-        """Register a replacement object for a provider."""
-
-        override_key = self._resolve_override_key(token, module_cls)
-        self._provider_overrides[override_key] = replacement
-
-    def clear_provider_override(
-        self,
-        token: object,
-        *,
-        module_cls: type[object] | None = None,
-    ) -> None:
-        """Remove any override registered for a provider."""
-
-        override_key = self._resolve_override_key(token, module_cls)
-        self._provider_overrides.pop(override_key, None)
-
-    def resolve_controller(
-        self,
-        controller_cls: type[ResolvedT],
-        *,
-        request: Request | None = None,
-    ) -> ResolvedT:
-        """Resolve a fresh controller instance for request handling."""
-
-        module_cls = self._controller_modules.get(controller_cls)
-        if module_cls is None:
-            raise InvalidControllerError(
-                f"{_qualname(controller_cls)} is not registered in the application container"
-            )
-
-        active_request_token = self._push_active_request(request)
-        try:
-            controller_factory = self._controller_factories[controller_cls]
-            return cast(ResolvedT, controller_factory())
-        finally:
-            self._reset_active_request(active_request_token)
-
-    def _build_module_registries(self) -> dict[type[object], ModuleRegistry]:
-        module_registries: dict[type[object], ModuleRegistry] = {}
-
+    def _build_bindings(self) -> None:
         for node in self.module_graph.nodes:
+            # Add all bindings to the registry
+            for binding in node.bindings:
+                self._bindings[(node.module, binding.token)] = binding
+                if binding.scope is ProviderScope.SINGLETON:
+                    self._singleton_locks[(node.module, binding.token)] = threading.Lock()
+
             # Providers are visible from their own module plus explicit exports
             # from directly imported modules. Everything else stays private.
             accessible_provider_modules: dict[object, type[object]] = {
-                token: node.module for token in node.providers
+                b.token: node.module for b in node.bindings
             }
 
             for imported_module in node.imports:
@@ -252,28 +69,9 @@ class ContainerAdapter:
                             f"{_qualname(node.module)} can access {_qualname(exported_token)} "
                             f"from both {_qualname(existing_module)} and {_qualname(imported_module)}"
                         )
+                    accessible_provider_modules[exported_token] = imported_module
 
-                    accessible_provider_modules.setdefault(exported_token, imported_module)
-
-            module_registries[node.module] = ModuleRegistry(
-                module=node.module,
-                controllers=node.controllers,
-                accessible_provider_modules=MappingProxyType(accessible_provider_modules),
-            )
-
-        return module_registries
-
-    def _build_registrations(self) -> None:
-        for node in self.module_graph.nodes:
-            for pdef in node.provider_defs:
-                token = pdef.provide
-                factory, scope = self._build_provider_factory(pdef, node.module)
-                self._provider_registrations[(node.module, token)] = ProviderRegistration(
-                    token=token,
-                    module=node.module,
-                    scope=scope,
-                    factory=factory,
-                )
+            self._module_visibility[node.module] = accessible_provider_modules
 
             for controller_cls in node.controllers:
                 existing_module = self._controller_modules.get(controller_cls)
@@ -282,127 +80,187 @@ class ContainerAdapter:
                         f"{_qualname(controller_cls)} is declared in multiple modules: "
                         f"{_qualname(existing_module)} and {_qualname(node.module)}"
                     )
-
                 self._controller_modules[controller_cls] = node.module
-                self._controller_factories[controller_cls] = _FactoryProvider(
-                    self._instantiate_class, controller_cls, node.module
-                )
 
-    def _build_provider_factory(
-        self,
-        provider_def: ProviderDef,
-        module_cls: type[object],
-    ) -> tuple[ProviderFactory, ProviderScope]:
-        """Return a (factory, scope) pair for the given ProviderDef."""
-
-        if isinstance(provider_def, ValueProviderDef):
-            value = provider_def.use_value
-            return _SingletonProvider(lambda: value), ProviderScope.SINGLETON
-
-        if isinstance(provider_def, ExistingProviderDef):
-            use_existing = provider_def.use_existing
-            # Delegate resolution to the aliased token on every call; the
-            # underlying provider handles its own caching.
-            return _FactoryProvider(self.resolve_provider, use_existing, module_cls), ProviderScope.TRANSIENT
-
-        if isinstance(provider_def, FactoryProviderDef):
-            scope = provider_def.scope
-            invoke = self._make_factory_invoke(provider_def.use_factory, provider_def.inject, module_cls)
-            if scope is ProviderScope.SINGLETON:
-                return _SingletonProvider(invoke), scope
-            return _FactoryProvider(invoke), scope
-
-        # ClassProviderDef
-        use_class = provider_def.use_class
-        scope = provider_def.scope
-        if scope is ProviderScope.SINGLETON:
-            return _SingletonProvider(self._instantiate_class, use_class, module_cls), scope
-        return _FactoryProvider(self._instantiate_class, use_class, module_cls), scope
-
-    def _resolve_registered_provider(
+    def resolve(
         self,
         token: object,
-        module_cls: type[object],
+        *,
+        module: type[object],
+        request: Request | None = None,
     ) -> object:
-        registration_key = (module_cls, token)
-        try:
-            registration = self._provider_registrations[registration_key]
-        except KeyError as exc:
-            raise ProviderResolutionError(
-                f"{_qualname(token)} is not registered in {_qualname(module_cls)}"
-            ) from exc
+        """Resolve a provider visible from the given module.
 
-        active_request = self._active_request.get()
-        request_scope_cache: dict[tuple[type[object], object], object] | None = None
-        if registration.scope is ProviderScope.REQUEST:
-            if active_request is None:
+        When a request is supplied, request-scoped providers are cached on that
+        request so the same object instance is reused throughout the pipeline.
+        """
+        active_request_token = self._push_active_request(request)
+        try:
+            declaring_module = self._get_declaring_module(token, module)
+            binding_key = (declaring_module, token)
+
+            override_val = self._overrides.get(binding_key, NO_OVERRIDE)
+            if override_val is not NO_OVERRIDE:
+                return override_val
+
+            binding = self._bindings[binding_key]
+
+            if binding.scope is ProviderScope.REQUEST:
+                active_req = self._active_request.get()
+                if active_req is None:
+                    raise ProviderResolutionError(
+                        f"Request-scoped provider {_qualname(token)} requires an active request"
+                    )
+                request_cache = self._get_request_scope_cache(active_req)
+                if binding_key in request_cache:
+                    return request_cache[binding_key]
+
+            elif binding.scope is ProviderScope.SINGLETON:
+                if binding_key in self._singletons:
+                    return self._singletons[binding_key]
+
+            # Detect circular dependencies
+            current_stack = self._resolution_stack.get()
+            if token in current_stack:
+                cycle_path = " -> ".join(
+                    _display_name(dependency) for dependency in (*current_stack, token)
+                )
                 raise ProviderResolutionError(
-                    f"Request-scoped provider {_qualname(token)} requires an active request"
+                    f"Circular provider dependencies detected: {cycle_path}"
                 )
 
-            # Request-scoped objects are stored on request.state so every
-            # resolution in the same request observes the same instance.
-            request_scope_cache = self._get_request_scope_cache(active_request)
-            cached_instance = request_scope_cache.get(registration_key, NO_OVERRIDE)
-            if cached_instance is not NO_OVERRIDE:
-                return cached_instance
+            stack_token = self._resolution_stack.set((*current_stack, token))
+            try:
+                # We do resolution according to resolver_kind
+                instance = self._resolve_binding(binding, module_cls=declaring_module)
+            finally:
+                self._resolution_stack.reset(stack_token)
 
-        current_stack = self._resolution_stack.get()
-        # Track the active resolution chain so circular dependencies surface as
-        # a deterministic error instead of recursive instantiation.
-        if token in current_stack:
-            cycle_path = " -> ".join(
-                _display_name(dependency) for dependency in (*current_stack, token)
-            )
-            raise ProviderResolutionError(f"Circular provider dependencies detected: {cycle_path}")
+            if binding.scope is ProviderScope.REQUEST:
+                active_req = self._active_request.get()
+                assert active_req is not None
+                request_cache = self._get_request_scope_cache(active_req)
+                request_cache[binding_key] = instance
+            elif binding.scope is ProviderScope.SINGLETON:
+                lock = self._singleton_locks[binding_key]
+                with lock:
+                    if binding_key not in self._singletons:
+                        self._singletons[binding_key] = instance
+                    instance = self._singletons[binding_key]
 
-        stack_token = self._resolution_stack.set((*current_stack, token))
-        try:
-            instance = registration.factory()
-            if registration.scope is ProviderScope.REQUEST:
-                assert request_scope_cache is not None
-                request_scope_cache[registration_key] = instance
             return instance
         finally:
-            self._resolution_stack.reset(stack_token)
+            self._reset_active_request(active_request_token)
 
-    def _instantiate_class(
-        self, class_cls: type[ResolvedT], module_cls: type[object]
-    ) -> ResolvedT:
-        positional_arguments, keyword_arguments = self._resolve_constructor_dependencies(
-            class_cls,
-            ResolutionContext(
-                module=module_cls,
-                dependency_stack=self._resolution_stack.get(),
-                request=self._active_request.get(),
-            ),
-        )
-        return class_cls(*positional_arguments, **keyword_arguments)
+    def _resolve_binding(self, binding: Binding, module_cls: type[object]) -> object:
+        if binding.resolver_kind == "value":
+            return binding.target
+        elif binding.resolver_kind == "existing":
+            # Delegate to existing token matching the bound target string/object.
+            return self.resolve(
+                binding.target, module=module_cls, request=self._active_request.get()
+            )
+        elif binding.resolver_kind == "class":
+            cls_target = cast(type[object], binding.target)
+            return self.instantiate_class(
+                cls_target, module=module_cls, request=self._active_request.get()
+            )
+        elif binding.resolver_kind == "factory":
+            factory, inject_tokens = binding.target  # type: ignore
+            return self.call_factory(
+                factory, inject_tokens, module=module_cls, request=self._active_request.get()
+            )
+        else:
+            raise ProviderResolutionError(f"Unknown resolver kind: {binding.resolver_kind}")
 
-    def _make_factory_invoke(
+    def instantiate_class(
         self,
-        use_factory: object,
-        inject_tokens: tuple[object, ...],
-        module_cls: type[object],
-    ) -> ProviderFactory:
-        """Return a no-arg callable that resolves inject tokens and calls use_factory."""
+        cls: type[object],
+        *,
+        module: type[object],
+        request: Request | None = None,
+    ) -> object:
+        """Resolve a fresh controller or class instance for request handling."""
 
-        def invoke() -> object:
-            args = [self.resolve_provider(t, module_cls) for t in inject_tokens]
-            return use_factory(*args)  # type: ignore[operator]
+        active_request_token = self._push_active_request(request)
+        try:
+            positional_arguments, keyword_arguments = self._resolve_constructor_dependencies(
+                cls, module
+            )
+            return cls(*positional_arguments, **keyword_arguments)
+        finally:
+            self._reset_active_request(active_request_token)
 
-        return invoke
+    def call_factory(
+        self,
+        factory: Callable[..., object],
+        inject: tuple[object, ...],
+        *,
+        module: type[object],
+        request: Request | None = None,
+    ) -> object:
+        """Resolve parameters using inject mapping and calls the factory."""
+
+        active_request_token = self._push_active_request(request)
+        try:
+            args = [self.resolve(t, module=module) for t in inject]
+            return factory(*args)
+        finally:
+            self._reset_active_request(active_request_token)
+
+    def override(self, token: object, value: object, *, module: type[object] | None = None) -> None:
+        """Register a replacement object for a provider."""
+        override_key = self._resolve_override_key(token, module)
+        self._overrides[override_key] = value
+
+    def clear_override(self, token: object, *, module: type[object] | None = None) -> None:
+        """Remove any override registered for a provider."""
+        override_key = self._resolve_override_key(token, module)
+        self._overrides.pop(override_key, None)
+
+    def has_override(self, token: object, *, module: type[object] | None = None) -> bool:
+        override_key = self._resolve_override_key(token, module)
+        return override_key in self._overrides
+
+    def get_override(self, token: object, *, module: type[object] | None = None) -> object:
+        override_key = self._resolve_override_key(token, module)
+        return self._overrides[override_key]
+
+    def _get_declaring_module(self, token: object, module_cls: type[object]) -> type[object]:
+        try:
+            visibility = self._module_visibility[module_cls]
+        except KeyError as exc:
+            raise ProviderResolutionError(
+                f"{_qualname(module_cls)} is not part of the application container"
+            ) from exc
+
+        declaring_module = visibility.get(token)
+        if declaring_module is None:
+            raise ProviderResolutionError(
+                f"{_qualname(token)} is not available to {_qualname(module_cls)}. "
+                "Dependencies must come from the same module or an imported module export"
+            )
+        return declaring_module
 
     def _resolve_constructor_dependencies(
         self,
         class_cls: type[object],
-        context: ResolutionContext,
+        module_cls: type[object],
     ) -> tuple[tuple[object, ...], dict[str, object]]:
-        provider_metadata = get_provider_metadata(class_cls)
-        owner_is_request_scoped_provider = (
-            provider_metadata is not None and provider_metadata.scope is ProviderScope.REQUEST
-        )
+
+        # Determine if we are a request-scoped entity parsing injection deps
+        # (Since we lack a standalone metadata checking helper here, we rely on the context's cache checks loosely, but let's be accurate if possible)
+        # Previously, owner was checked against _controller_modules and ProviderMetadata.
         owner_is_controller = class_cls in self._controller_modules
+        is_request_scoped = False
+
+        # Check if the class is actually registered as a binding to know its scope
+        # (Sometimes its not registered directly, e.g. a Controller)
+        for binding in self._bindings.values():
+            if binding.resolver_kind == "class" and binding.target is class_cls:
+                if binding.scope is ProviderScope.REQUEST:
+                    is_request_scoped = True
+                break
 
         constructor = class_cls.__init__
         if constructor is object.__init__:
@@ -416,8 +274,6 @@ class ContainerAdapter:
             ) from exc
 
         try:
-            # Build a local namespace containing controllers and providers that
-            # are visible from this module so forward references can resolve.
             type_hints = get_type_hints(
                 constructor,
                 globalns=getattr(
@@ -425,7 +281,7 @@ class ContainerAdapter:
                     "__dict__",
                     constructor.__globals__,
                 ),
-                localns=self._build_type_hint_namespace(class_cls, context.module),
+                localns=self._build_type_hint_namespace(class_cls, module_cls),
             )
         except (NameError, TypeError) as exc:
             raise ProviderResolutionError(
@@ -434,6 +290,7 @@ class ContainerAdapter:
 
         positional_arguments: list[object] = []
         keyword_arguments: dict[str, object] = {}
+        active_request = self._active_request.get()
 
         for parameter in signature.parameters.values():
             if parameter.name == "self":
@@ -444,8 +301,7 @@ class ContainerAdapter:
                 inspect.Parameter.VAR_KEYWORD,
             ):
                 raise ProviderResolutionError(
-                    f"{_qualname(class_cls)}.__init__ uses unsupported variadic parameter "
-                    f"{parameter.name!r}"
+                    f"{_qualname(class_cls)}.__init__ uses unsupported variadic parameter {parameter.name!r}"
                 )
 
             annotation = type_hints.get(parameter.name)
@@ -454,54 +310,50 @@ class ContainerAdapter:
                     f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} is missing a type annotation"
                 )
 
-            if not isinstance(annotation, type):
-                raise ProviderResolutionError(
-                    f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} must use a concrete class annotation"
-                )
-
             if annotation in FRAMEWORK_OWNED_TYPES:
                 if (
                     annotation is Request
-                    and owner_is_request_scoped_provider
-                    and context.request is not None
+                    and (is_request_scoped or owner_is_controller)
+                    and active_request is not None
                 ):
-                    dependency = context.request
                     if parameter.kind in (
                         inspect.Parameter.POSITIONAL_ONLY,
                         inspect.Parameter.POSITIONAL_OR_KEYWORD,
                     ):
-                        positional_arguments.append(dependency)
+                        positional_arguments.append(active_request)
                     else:
-                        keyword_arguments[parameter.name] = dependency
+                        keyword_arguments[parameter.name] = active_request
                     continue
 
                 raise ProviderResolutionError(
                     f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} requests "
-                    f"framework-owned type {annotation.__name__}, which is not available in provider DI"
+                    f"framework-owned type {annotation.__name__ if hasattr(annotation, '__name__') else annotation}, which is not available in provider DI"
                 )
 
-            dependency_declaring_module = self.get_module_registry(context.module).declaring_module_for(
-                annotation
-            )
-            if dependency_declaring_module is not None:
-                dependency_registration = self._provider_registrations[
-                    (dependency_declaring_module, annotation)
-                ]
-                # Request-scoped objects can safely flow into controllers and
-                # other request-scoped providers, but not into longer-lived
-                # singleton or transient providers.
-                if (
-                    dependency_registration.scope is ProviderScope.REQUEST
-                    and not owner_is_request_scoped_provider
-                    and not owner_is_controller
-                ):
-                    raise ProviderResolutionError(
-                        f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} depends on "
-                        f"request-scoped provider {_qualname(annotation)}, which can only be injected "
-                        "into request-scoped providers or controllers"
+            # verify scope correctness
+            if not isinstance(
+                annotation, str
+            ):  # basic check to bypass str types if evaluating to weird hints
+                dependency_declaring_module = self._module_visibility.get(module_cls, {}).get(
+                    annotation
+                )
+                if dependency_declaring_module is not None:
+                    dependency_binding = self._bindings.get(
+                        (dependency_declaring_module, annotation)
                     )
+                    if dependency_binding is not None:
+                        if (
+                            dependency_binding.scope is ProviderScope.REQUEST
+                            and not is_request_scoped
+                            and not owner_is_controller
+                        ):
+                            raise ProviderResolutionError(
+                                f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} depends on "
+                                f"request-scoped provider {_qualname(annotation)}, which can only be injected "
+                                "into request-scoped providers or controllers"
+                            )
 
-            dependency = self.resolve_provider(annotation, context.module, request=context.request)
+            dependency = self.resolve(annotation, module=module_cls, request=active_request)
             if parameter.kind in (
                 inspect.Parameter.POSITIONAL_ONLY,
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
@@ -517,7 +369,7 @@ class ContainerAdapter:
         class_cls: type[object],
         module_cls: type[object],
     ) -> dict[str, object]:
-        module_registry = self.get_module_registry(module_cls)
+
         namespace: dict[str, object] = {
             class_cls.__name__: class_cls,
             Request.__name__: Request,
@@ -525,10 +377,13 @@ class ContainerAdapter:
             Starlette.__name__: Starlette,
         }
 
-        for controller_cls in module_registry.controllers:
-            namespace.setdefault(controller_cls.__name__, controller_cls)
+        # Provide controller class names for resolution context
+        for controller_cls, mod in self._controller_modules.items():
+            if mod is module_cls:
+                namespace.setdefault(controller_cls.__name__, controller_cls)
 
-        for token in module_registry.accessible_provider_modules:
+        accessible_tokens = self._module_visibility.get(module_cls, {})
+        for token in accessible_tokens:
             if isinstance(token, type):
                 namespace.setdefault(token.__name__, token)
 
@@ -566,7 +421,7 @@ class ContainerAdapter:
     ) -> tuple[type[object], object]:
         if module_cls is not None:
             override_key = (module_cls, token)
-            if override_key not in self._provider_registrations:
+            if override_key not in self._bindings:
                 raise ProviderResolutionError(
                     f"{_qualname(token)} is not registered in {_qualname(module_cls)}"
                 )
@@ -574,7 +429,7 @@ class ContainerAdapter:
 
         declaring_modules = [
             registered_module
-            for registered_module, registered_token in self._provider_registrations
+            for registered_module, registered_token in self._bindings
             if registered_token is token
         ]
 
@@ -582,7 +437,9 @@ class ContainerAdapter:
             raise ProviderResolutionError(f"{_qualname(token)} is not registered in the container")
 
         if len(declaring_modules) > 1:
-            module_names = ", ".join(_qualname(registered_module) for registered_module in declaring_modules)
+            module_names = ", ".join(
+                _qualname(registered_module) for registered_module in declaring_modules
+            )
             raise ProviderResolutionError(
                 f"{_qualname(token)} is registered in multiple modules ({module_names}); "
                 "specify module_cls when overriding it"
@@ -591,19 +448,6 @@ class ContainerAdapter:
         return declaring_modules[0], token
 
 
-def build_container(module_graph: ModuleGraph) -> ContainerAdapter:
+def build_container(module_graph: ModuleGraph) -> Container:
     """Build the runtime container for a validated module graph."""
-
-    return ContainerAdapter(module_graph)
-
-
-def _display_name(target: object) -> str:
-    if isinstance(target, type):
-        return target.__name__
-    return repr(target)
-
-
-def _qualname(target: object) -> str:
-    if isinstance(target, type):
-        return f"{target.__module__}.{target.__qualname__}"
-    return repr(target)
+    return Container(module_graph)
