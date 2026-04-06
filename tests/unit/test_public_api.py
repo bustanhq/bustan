@@ -36,6 +36,7 @@ from bustan.errors import (
     RouteDefinitionError,
     BustanError,
 )
+from bustan.metadata import DynamicModule
 from bustan.pipeline import ExceptionFilter, Guard, Interceptor, Pipe
 from bustan.testing import create_test_app, create_test_module, override_provider
 
@@ -53,6 +54,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "Controller",
         "create_app",
         "Delete",
+        "DynamicModule",
         "Get",
         "Injectable",
         "Module",
@@ -75,6 +77,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.Controller is Controller
     assert bustan.create_app is create_app
     assert bustan.Delete is Delete
+    assert bustan.DynamicModule is DynamicModule
     assert bustan.Get is Get
     assert bustan.Injectable is Injectable
     assert bustan.Module is Module

@@ -1,7 +1,7 @@
 [project]
 name = "bustan"
 version = "1.0.1"
-description = "NestJS-inspired application architecture on top of Starlette"
+description = "Enterprise API Framework for Python"
 keywords = ["asgi", "dependency injection", "starlette", "web framework"]
 classifiers = [
     "Development Status :: 3 - Alpha",

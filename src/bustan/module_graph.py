@@ -85,6 +85,13 @@ class ModuleGraph:
     def available_providers_for(self, key: ModuleKey) -> frozenset[object]:
         return self.get_node(key).available_providers
 
+    @property
+    def root_module(self) -> type[object]:
+        """Return the root module class."""
+        if isinstance(self.root_key, type):
+            return self.root_key
+        return self.root_key.module
+
 
 def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph:
     """Discover modules reachable from the root and validate them."""
@@ -106,11 +113,6 @@ def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph
         if input_id in visited_inputs:
             return visited_inputs[input_id]
 
-        if input_id in visiting_inputs:
-            # Recursion on the same input object before a key is assigned
-            raise ModuleCycleError(
-                f"Circular module dependency detected on {_display_name(module_input)}"
-            )
 
         compiled = _expand_module_input(module_input, instance_id=str(dynamic_counter))
         if isinstance(module_input, DynamicModule):
@@ -124,6 +126,12 @@ def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph
             cycle_keys = visiting_stack[cycle_start:] + [key]
             cycle_path = " -> ".join(_display_name(k) for k in cycle_keys)
             raise ModuleCycleError(f"Circular module imports detected: {cycle_path}")
+
+        if input_id in visiting_inputs:
+            # Recursion on the same input object (handles recursive DynamicModule identity)
+            raise ModuleCycleError(
+                f"Circular module dependency detected on {_display_name(module_input)}"
+            )
 
         compiled_by_key[key] = compiled
 
