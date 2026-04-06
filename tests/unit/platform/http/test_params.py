@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Annotated
 from urllib.parse import urlencode
 
 import anyio
 import pytest
 from starlette.requests import Request
 
-from bustan import Controller, Get, Post
+from bustan import Body, Controller, Get, Header, Param, Post, Query
 from bustan.core.errors import ParameterBindingError
 from bustan.platform.http.metadata import iter_controller_routes
 from bustan.platform.http.params import (
+    ParameterSource,
     bind_handler_arguments,
     compile_parameter_bindings,
 )
@@ -256,25 +258,87 @@ def test_compile_parameter_bindings_rejects_unresolvable_parameter_annotations()
         compile_parameter_bindings(UsersController, route_definition)
 
 
+def test_bind_handler_arguments_supports_explicit_annotated_markers() -> None:
+    @Controller("/users")
+    class UsersController:
+        @Get("/{user_id}")
+        def read_user(
+            self,
+            user_id: Annotated[int, Param],
+            search: Annotated[str, Query("q")],
+            token: Annotated[str, Header("X-API-Token")],
+            payload: Annotated[CreateUserPayload, Body],
+        ) -> None:
+            return None
+
+    route_definition = iter_controller_routes(UsersController)[0]
+    binding_plan = compile_parameter_bindings(UsersController, route_definition)
+
+    # Verify compilation
+    param_bindings = {b.name: b for b in binding_plan.parameters}
+    assert param_bindings["user_id"].source == ParameterSource.PATH
+    assert param_bindings["search"].source == ParameterSource.QUERY
+    assert param_bindings["search"].alias == "q"
+    assert param_bindings["token"].source == ParameterSource.HEADER
+    assert param_bindings["token"].alias == "X-API-Token"
+    assert param_bindings["payload"].source == ParameterSource.BODY
+
+    request = _build_request(
+        method="POST",
+        path="/users/42",
+        path_params={"user_id": "42"},
+        query_params={"q": "Ada"},
+        headers=[(b"x-api-token", b"secret")],
+        json_body={"name": "Ada", "admin": True},
+    )
+
+    args, kwargs = anyio.run(bind_handler_arguments, request, binding_plan)
+
+    assert args == (42, "Ada", "secret", CreateUserPayload(name="Ada", admin=True))
+
+
+def test_bind_handler_arguments_supports_header_underscore_to_hyphen_conversion() -> None:
+    @Controller("/")
+    class TestController:
+        @Get("/")
+        def index(self, x_request_id: Annotated[str, Header]) -> None:
+            return None
+
+    route_definition = iter_controller_routes(TestController)[0]
+    binding_plan = compile_parameter_bindings(TestController, route_definition)
+    request = _build_request(
+        method="GET",
+        path="/",
+        headers=[(b"x-request-id", b"id-123")],
+    )
+
+    args, kwargs = anyio.run(bind_handler_arguments, request, binding_plan)
+    assert args == ("id-123",)
+
+
 def _build_request(
     *,
     method: str,
     path: str,
     path_params: dict[str, object] | None = None,
     query_params: dict[str, object] | None = None,
+    headers: list[tuple[bytes, bytes]] | None = None,
     json_body: object | None = None,
     raw_body: bytes | None = None,
 ) -> Request:
     """Construct a Request object with optional path, query, and JSON body data."""
 
     body_bytes = b""
-    headers = [(b"host", b"testserver")]
+    request_headers = [(b"host", b"testserver")]
+    if headers:
+        request_headers.extend(headers)
+
     if json_body is not None:
         body_bytes = json.dumps(json_body).encode("utf-8")
-        headers.append((b"content-type", b"application/json"))
+        request_headers.append((b"content-type", b"application/json"))
     elif raw_body is not None:
         body_bytes = raw_body
-        headers.append((b"content-type", b"application/json"))
+        request_headers.append((b"content-type", b"application/json"))
 
     query_string = urlencode(query_params or {}, doseq=True).encode("utf-8")
     scope = {
@@ -286,7 +350,7 @@ def _build_request(
         "path": path,
         "raw_path": path.encode("utf-8"),
         "query_string": query_string,
-        "headers": headers,
+        "headers": request_headers,
         "client": ("testclient", 50000),
         "server": ("testserver", 80),
         "path_params": path_params or {},

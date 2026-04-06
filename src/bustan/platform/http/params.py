@@ -102,15 +102,14 @@ def compile_parameter_bindings(
         real_annotation, marker = _extract_marker(annotation)
 
         if marker is not None:
-            if isinstance(marker, (_BodyMarker, _MarkerCallable)) and not isinstance(
-                marker, (_QueryMarker, _ParamMarker, _HeaderMarker)
-            ):
+            marker_cls_name = getattr(marker, "_cls", marker.__class__).__name__
+            if marker_cls_name == "_BodyMarker":
                 source = ParameterSource.BODY
-            elif isinstance(marker, _QueryMarker):
+            elif marker_cls_name == "_QueryMarker":
                 source = ParameterSource.QUERY
-            elif isinstance(marker, _ParamMarker):
+            elif marker_cls_name == "_ParamMarker":
                 source = ParameterSource.PATH
-            elif isinstance(marker, _HeaderMarker):
+            elif marker_cls_name == "_HeaderMarker":
                 source = ParameterSource.HEADER
             else:
                 source = ParameterSource.INFERRED
@@ -404,8 +403,9 @@ def _extract_marker(annotation: object) -> tuple[object, object]:
         inner = args[0]
         for meta in args[1:]:
             if isinstance(
-                meta, (_BodyMarker, _QueryMarker, _ParamMarker, _HeaderMarker, _MarkerCallable)
-            ):
+                meta,
+                (_BodyMarker, _QueryMarker, _ParamMarker, _HeaderMarker, _MarkerCallable),
+            ) or (hasattr(meta, "_cls") and meta.__class__.__name__ == "_MarkerCallable"):
                 return inner, meta
         return inner, None
     return annotation, None

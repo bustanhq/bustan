@@ -72,7 +72,7 @@ class _MarkerCallable:
         return self._cls(alias=alias)
 
     def __repr__(self) -> str:
-        return self._cls.__name__.lstrip("_")
+        return self._cls.__name__.lstrip("_").replace("Marker", "")
 
     # Allow use as bare annotation marker (not called)
     @property
@@ -80,7 +80,9 @@ class _MarkerCallable:
         return None
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, (_MarkerCallable, self._cls))
+        if isinstance(other, _MarkerCallable):
+            return self._cls is other._cls
+        return isinstance(other, self._cls)
 
     def __hash__(self) -> int:
         return hash(self._cls)
