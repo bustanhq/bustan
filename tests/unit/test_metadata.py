@@ -1,10 +1,10 @@
 """Unit tests for metadata storage and route discovery helpers."""
 
 from bustan import Controller, Get, Module
-from bustan.metadata import (
+from bustan.core.module.metadata import get_module_metadata
+from bustan.platform.http.metadata import (
     ControllerRouteDefinition,
     get_controller_metadata,
-    get_module_metadata,
     get_route_metadata,
     iter_controller_routes,
 )

@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING
 
 from starlette.requests import Request
 
-from ..metadata import ControllerRouteDefinition
+from ..platform.http.metadata import ControllerRouteDefinition
 
 if TYPE_CHECKING:
-    from ..container import Container
-    from ..metadata import ModuleKey
+    from ..core.ioc.container import Container
+    from ..core.module.dynamic import ModuleKey
 
 
 @dataclass(frozen=True, slots=True)

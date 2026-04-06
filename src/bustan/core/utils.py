@@ -6,7 +6,7 @@ from types import FunctionType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .metadata import ModuleInstanceKey  # noqa: F401
+    from .module.dynamic import ModuleInstanceKey  # noqa: F401
 
 
 def _qualname(target: object) -> str:
@@ -46,3 +46,35 @@ def _unwrap_handler(handler: object) -> FunctionType | None:
     if isinstance(handler, (staticmethod, classmethod)):
         handler = handler.__func__
     return handler if isinstance(handler, FunctionType) else None
+
+
+def _get_metadata(target: type[object] | object, attribute_name: str, *, inherit: bool) -> object | None:
+    """Retrieve metadata from a class, optionally inheriting from base classes."""
+    if inherit:
+        return getattr(target, attribute_name, None)
+    return getattr(target, "__dict__", {}).get(attribute_name)
+
+
+def _normalize_path(path: str, *, allow_empty: bool, kind: str) -> str:
+    """Normalize a URL path segment or prefix."""
+    from .errors import RouteDefinitionError
+
+    if not isinstance(path, str):
+        raise RouteDefinitionError(f"{kind.capitalize()} must be a string")
+
+    normalized_path = path.strip()
+    if not normalized_path:
+        if allow_empty:
+            return ""
+        raise RouteDefinitionError(f"{kind.capitalize()} cannot be empty")
+
+    if not normalized_path.startswith("/"):
+        normalized_path = f"/{normalized_path}"
+
+    if normalized_path != "/" and normalized_path.endswith("/"):
+        normalized_path = normalized_path.rstrip("/")
+
+    if allow_empty and normalized_path == "/":
+        return ""
+
+    return normalized_path

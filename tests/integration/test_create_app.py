@@ -26,7 +26,7 @@ def test_create_app_returns_a_starlette_application_with_module_graph_state() ->
     application = create_app(AppModule)
 
     from typing import Any, cast
-    from bustan.application import Application
+    from bustan.app.application import Application
 
     assert isinstance(application, Application)
     assert isinstance(application._starlette_app, Starlette)

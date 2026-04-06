@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import inspect
 
-from ..errors import GuardRejectedError
+from ..core.errors import GuardRejectedError
 from .context import RequestContext
-from ..utils import _qualname
+from ..core.utils import _qualname
 
 
 class Guard:

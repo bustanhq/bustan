@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import pytest
 from starlette.responses import PlainTextResponse, Response
 
-from bustan.responses import coerce_response
+from bustan.platform.http.responses import coerce_response
 
 
 def test_coerce_response_passes_through_response_instances() -> None:

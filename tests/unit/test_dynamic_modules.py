@@ -1,11 +1,11 @@
 import pytest
 from typing import Any, cast
-from bustan import Controller, DynamicModule, Get, Injectable, Module, create_app
-from bustan.errors import (
+from bustan import Controller, Get, Injectable, Module, create_app
+from bustan.core.errors import (
     ModuleCycleError,
 )
-from bustan.metadata import ModuleInstanceKey
-from bustan.module_graph import ModuleGraph, build_module_graph
+from bustan.core.module.dynamic import ModuleInstanceKey, DynamicModule
+from bustan.core.module.graph import ModuleGraph, build_module_graph
 
 
 def test_dynamic_module_merges_metadata() -> None:

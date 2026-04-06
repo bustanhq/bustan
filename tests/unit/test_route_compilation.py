@@ -3,10 +3,10 @@
 import pytest
 
 from bustan import Controller, Get, Module
-from bustan.container import build_container
+from bustan.core.ioc.container import build_container
 from bustan.errors import ParameterBindingError, RouteDefinitionError
-from bustan.module_graph import build_module_graph
-from bustan.routing import compile_routes
+from bustan.core.module.graph import build_module_graph
+from bustan.platform.http.routing import compile_routes
 
 
 def test_compile_routes_rejects_duplicate_application_routes() -> None:

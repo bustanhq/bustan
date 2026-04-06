@@ -1,6 +1,10 @@
-from typing import Generic, TypeVar
+"""Typed tokens for dependency injection."""
 
-T = TypeVar("T")
+from __future__ import annotations
+
+from typing import Generic
+
+from ...common.types import T
 
 
 class InjectionToken(Generic[T]):

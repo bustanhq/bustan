@@ -11,9 +11,12 @@ import pytest
 from starlette.requests import Request
 
 from bustan import Controller, Get, Post
-from bustan.errors import ParameterBindingError
-from bustan.metadata import iter_controller_routes
-from bustan.params import bind_handler_arguments, compile_parameter_bindings
+from bustan.core.errors import ParameterBindingError
+from bustan.platform.http.metadata import iter_controller_routes
+from bustan.platform.http.params import (
+    bind_handler_arguments,
+    compile_parameter_bindings,
+)
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,9 +5,9 @@ from typing import Any, cast
 from starlette.requests import Request
 
 from bustan import Controller, Get, Injectable, Module
-from bustan.container import build_container
-from bustan.errors import ProviderResolutionError
-from bustan.module_graph import build_module_graph
+from bustan.core.ioc.container import build_container
+from bustan.core.errors import ProviderResolutionError
+from bustan.core.module.graph import build_module_graph
 
 
 def test_container_resolves_singleton_providers_and_transient_controllers() -> None:
@@ -121,10 +121,14 @@ def test_container_resolves_request_scoped_providers_once_per_request() -> None:
         container.resolve(RequestState, module=AppModule)
 
     first_request = _build_request("/requests/one")
-    first_instance = cast(Any, container.resolve(RequestState, module=AppModule, request=first_request))
+    first_instance = cast(
+        Any, container.resolve(RequestState, module=AppModule, request=first_request)
+    )
     second_instance = container.resolve(RequestState, module=AppModule, request=first_request)
     third_request = _build_request("/requests/one")
-    third_instance = cast(Any, container.resolve(RequestState, module=AppModule, request=third_request))
+    third_instance = cast(
+        Any, container.resolve(RequestState, module=AppModule, request=third_request)
+    )
 
     assert first_instance is second_instance
     assert first_instance is not third_instance

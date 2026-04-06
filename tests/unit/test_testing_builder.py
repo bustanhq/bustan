@@ -1,7 +1,7 @@
 """Unit tests for dynamic test-module construction."""
 
 from bustan import Controller, Get, Injectable
-from bustan.metadata import ModuleMetadata, get_module_metadata
+from bustan.core.module.metadata import ModuleMetadata, get_module_metadata
 from bustan.testing import create_test_module
 
 

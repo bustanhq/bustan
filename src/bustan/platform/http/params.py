@@ -11,9 +11,18 @@ from typing import Any, Union, cast, get_args, get_origin
 
 from starlette.requests import Request
 
-from .errors import ParameterBindingError
+from ...core.errors import ParameterBindingError
+from ...core.utils import _qualname
+
+from ...common.decorators.parameter import (
+    _BodyMarker,
+    _QueryMarker,
+    _ParamMarker,
+    _HeaderMarker,
+    _MarkerCallable,
+)
+
 from .metadata import ControllerRouteDefinition
-from .utils import _qualname
 
 _MISSING = object()
 _NO_BODY = object()
@@ -25,6 +34,9 @@ class ParameterSource(StrEnum):
 
     REQUEST = "request"
     PATH = "path"
+    QUERY = "query"
+    BODY = "body"
+    HEADER = "header"
     INFERRED = "inferred"
 
 
@@ -38,6 +50,7 @@ class ParameterBinding:
     annotation: object
     has_default: bool
     default: object = None
+    alias: str | None = None  # Explicit name override (e.g. Header("x-api-token"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,14 +97,36 @@ def compile_parameter_bindings(
                 f"variadic parameter {parameter.name!r}"
             )
 
+        # Strip Annotated wrapper and check for explicit marker
         annotation = type_hints.get(parameter.name, parameter.annotation)
-        if annotation is Request:
+        real_annotation, marker = _extract_marker(annotation)
+
+        if marker is not None:
+            if isinstance(marker, (_BodyMarker, _MarkerCallable)) and not isinstance(
+                marker, (_QueryMarker, _ParamMarker, _HeaderMarker)
+            ):
+                source = ParameterSource.BODY
+            elif isinstance(marker, _QueryMarker):
+                source = ParameterSource.QUERY
+            elif isinstance(marker, _ParamMarker):
+                source = ParameterSource.PATH
+            elif isinstance(marker, _HeaderMarker):
+                source = ParameterSource.HEADER
+            else:
+                source = ParameterSource.INFERRED
+                inferred_parameter_names.append(parameter.name)
+        elif real_annotation is Request:
             source = ParameterSource.REQUEST
         elif parameter.name in path_parameter_names:
             source = ParameterSource.PATH
         else:
             source = ParameterSource.INFERRED
             inferred_parameter_names.append(parameter.name)
+
+        alias: str | None = None
+        if marker is not None and hasattr(marker, "alias") and isinstance(marker.alias, str):
+            alias = marker.alias
+        annotation = real_annotation
 
         bindings.append(
             ParameterBinding(
@@ -101,6 +136,7 @@ def compile_parameter_bindings(
                 annotation=annotation,
                 has_default=parameter.default is not inspect.Signature.empty,
                 default=None if parameter.default is inspect.Signature.empty else parameter.default,
+                alias=alias,
             )
         )
 
@@ -213,6 +249,91 @@ async def _bind_parameter(
             request_body,
         )
 
+    if binding.source is ParameterSource.QUERY:
+        lookup_name = binding.alias or binding.name
+        annotation_origin = get_origin(binding.annotation)
+        if annotation_origin is list:
+            values = request.query_params.getlist(lookup_name)
+            if values:
+                return (
+                    _coerce_value(
+                        values,
+                        annotation=binding.annotation,
+                        parameter_name=binding.name,
+                        source_description="query parameter",
+                    ),
+                    request_body,
+                )
+        elif lookup_name in request.query_params:
+            return (
+                _coerce_value(
+                    request.query_params[lookup_name],
+                    annotation=binding.annotation,
+                    parameter_name=binding.name,
+                    source_description="query parameter",
+                ),
+                request_body,
+            )
+        if binding.has_default:
+            return binding.default, request_body
+        raise ParameterBindingError(f"Missing required query parameter {binding.name!r}")
+
+    if binding.source is ParameterSource.BODY:
+        request_body = await _load_request_body(request, request_body)
+        lookup_name = binding.alias or binding.name
+        if request_body is _NO_BODY:
+            if binding.has_default:
+                return binding.default, request_body
+            raise ParameterBindingError(f"Missing required body parameter {binding.name!r}")
+        if isinstance(request_body, dict):
+            body_map = cast(dict[str, object], request_body)
+            if lookup_name in body_map:
+                return (
+                    _coerce_value(
+                        body_map[lookup_name],
+                        annotation=binding.annotation,
+                        parameter_name=binding.name,
+                        source_description="request body",
+                    ),
+                    request_body,
+                )
+            # whole-body binding
+            return (
+                _coerce_value(
+                    request_body,
+                    annotation=binding.annotation,
+                    parameter_name=binding.name,
+                    source_description="request body",
+                ),
+                request_body,
+            )
+        return (
+            _coerce_value(
+                request_body,
+                annotation=binding.annotation,
+                parameter_name=binding.name,
+                source_description="request body",
+            ),
+            request_body,
+        )
+
+    if binding.source is ParameterSource.HEADER:
+        lookup_name = binding.alias or binding.name.replace("_", "-")
+        header_value = request.headers.get(lookup_name)
+        if header_value is None:
+            if binding.has_default:
+                return binding.default, request_body
+            raise ParameterBindingError(f"Missing required header {lookup_name!r}")
+        return (
+            _coerce_value(
+                header_value,
+                annotation=binding.annotation,
+                parameter_name=binding.name,
+                source_description="header",
+            ),
+            request_body,
+        )
+
     if binding.has_default:
         return binding.default, request_body
 
@@ -272,6 +393,22 @@ def _extract_body_value(
         f"{_qualname(binding_plan.controller)}.{binding_plan.handler_name} requires a JSON object "
         "to bind multiple request body parameters"
     )
+
+
+def _extract_marker(annotation: object) -> tuple[object, object]:
+    """Unwrap ``Annotated[T, Marker]`` into ``(T, marker)`` or ``(annotation, None)``."""
+    from typing import Annotated, get_args, get_origin
+
+    if get_origin(annotation) is Annotated:
+        args = get_args(annotation)
+        inner = args[0]
+        for meta in args[1:]:
+            if isinstance(
+                meta, (_BodyMarker, _QueryMarker, _ParamMarker, _HeaderMarker, _MarkerCallable)
+            ):
+                return inner, meta
+        return inner, None
+    return annotation, None
 
 
 def _coerce_value(

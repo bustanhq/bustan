@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.scripts]
-bustan = "bustan.cli:main"
+bustan = "bustan.cli.main:main"
 
 [project.urls]
 Repository = "https://github.com/bustanhq/bustan"
@@ -62,7 +62,13 @@ skip_covered = false
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+exclude = ["src/bustan/cli/templates"]
 
 [build-system]
 requires = ["uv_build>=0.11.1,<0.12.0"]
 build-backend = "uv_build"
+
+[tool.ty]
+
+[tool.ty.src]
+exclude = ["src/bustan/cli/templates/**"]

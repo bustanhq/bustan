@@ -18,22 +18,26 @@ from bustan import (
     UseInterceptors,
     UsePipes,
 )
-from bustan.errors import (
+from bustan.core.errors import (
     InvalidControllerError,
     InvalidPipelineError,
     InvalidProviderError,
     RouteDefinitionError,
 )
-from bustan.metadata import (
-    ControllerMetadata,
+from bustan.common.types import ProviderScope
+from bustan.core.module.metadata import (
     ModuleMetadata,
+    get_module_metadata,
+)
+from bustan.pipeline.metadata import (
     PipelineMetadata,
-    ProviderScope,
-    RouteMetadata,
-    get_controller_metadata,
     get_controller_pipeline_metadata,
     get_handler_pipeline_metadata,
-    get_module_metadata,
+)
+from bustan.platform.http.metadata import (
+    ControllerMetadata,
+    RouteMetadata,
+    get_controller_metadata,
     get_route_metadata,
 )
 

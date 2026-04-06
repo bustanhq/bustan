@@ -7,22 +7,28 @@ import importlib.metadata
 import bustan
 import bustan.errors as bustan_errors
 import bustan.testing as bustan_testing
-from bustan.application import bootstrap, create_app
-from bustan.decorators import (
-    Controller,
-    Delete,
-    Get,
-    Injectable,
-    Module,
-    Patch,
-    Post,
-    Put,
-    UseFilters,
-    UseGuards,
-    UseInterceptors,
-    UsePipes,
+from bustan.app.application import Application as InternalApplication
+from bustan.app.bootstrap import bootstrap as internal_bootstrap
+from bustan.app.bootstrap import create_app as internal_create_app
+from bustan.common.decorators.controller import (
+    Controller as InternalController,
 )
-from bustan.errors import (
+from bustan.common.decorators.route import (
+    Delete as InternalDelete,
+    Get as InternalGet,
+    Patch as InternalPatch,
+    Post as InternalPost,
+    Put as InternalPut,
+)
+from bustan.common.decorators.injectable import Injectable as InternalInjectable
+from bustan.core.module.decorators import Module as InternalModule
+from bustan.pipeline.decorators import (
+    UseFilters as InternalUseFilters,
+    UseGuards as InternalUseGuards,
+    UseInterceptors as InternalUseInterceptors,
+    UsePipes as InternalUsePipes,
+)
+from bustan.core.errors import (
     ExportViolationError,
     GuardRejectedError,
     InvalidControllerError,
@@ -36,8 +42,12 @@ from bustan.errors import (
     RouteDefinitionError,
     BustanError,
 )
-from bustan.metadata import DynamicModule
-from bustan.pipeline import ExceptionFilter, Guard, Interceptor, Pipe
+from bustan.core.module.dynamic import DynamicModule as InternalDynamicModule
+from bustan.core.ioc.tokens import InjectionToken as InternalInjectionToken
+from bustan.pipeline import ExceptionFilter as InternalExceptionFilter
+from bustan.pipeline import Guard as InternalGuard
+from bustan.pipeline import Interceptor as InternalInterceptor
+from bustan.pipeline import Pipe as InternalPipe
 from bustan.testing import create_test_app, create_test_module, override_provider
 
 
@@ -45,49 +55,65 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.__all__ == (
         "__version__",
         "Application",
-        "ExceptionFilter",
-        "Guard",
-        "InjectionToken",
-        "Interceptor",
-        "Pipe",
+        "Body",
         "bootstrap",
-        "Controller",
         "create_app",
+        "BustanError",
+        "Controller",
         "Delete",
         "DynamicModule",
+        "ExceptionFilter",
+        "ExportViolationError",
         "Get",
+        "Guard",
+        "GuardRejectedError",
+        "Header",
         "Injectable",
+        "InjectionToken",
+        "Interceptor",
+        "InvalidControllerError",
+        "InvalidModuleError",
+        "InvalidPipelineError",
+        "InvalidProviderError",
+        "LifecycleError",
         "Module",
+        "ModuleCycleError",
+        "Param",
+        "ParameterBindingError",
         "Patch",
+        "Pipe",
         "Post",
+        "ProviderResolutionError",
         "Put",
+        "Query",
+        "RouteDefinitionError",
         "UseFilters",
         "UseGuards",
         "UseInterceptors",
         "UsePipes",
     )
     assert bustan.__version__ == importlib.metadata.version("bustan")
-    assert bustan.Application is bustan.application.Application
-    assert bustan.ExceptionFilter is ExceptionFilter
-    assert bustan.Guard is Guard
-    assert bustan.InjectionToken is bustan.injection.InjectionToken
-    assert bustan.Interceptor is Interceptor
-    assert bustan.Pipe is Pipe
-    assert bustan.bootstrap is bootstrap
-    assert bustan.Controller is Controller
-    assert bustan.create_app is create_app
-    assert bustan.Delete is Delete
-    assert bustan.DynamicModule is DynamicModule
-    assert bustan.Get is Get
-    assert bustan.Injectable is Injectable
-    assert bustan.Module is Module
-    assert bustan.Patch is Patch
-    assert bustan.Post is Post
-    assert bustan.Put is Put
-    assert bustan.UseFilters is UseFilters
-    assert bustan.UseGuards is UseGuards
-    assert bustan.UseInterceptors is UseInterceptors
-    assert bustan.UsePipes is UsePipes
+    assert bustan.Application is InternalApplication
+    assert bustan.ExceptionFilter is InternalExceptionFilter
+    assert bustan.Guard is InternalGuard
+    assert bustan.InjectionToken is InternalInjectionToken
+    assert bustan.Interceptor is InternalInterceptor
+    assert bustan.Pipe is InternalPipe
+    assert bustan.bootstrap is internal_bootstrap
+    assert bustan.Controller is InternalController
+    assert bustan.create_app is internal_create_app
+    assert bustan.Delete is InternalDelete
+    assert bustan.DynamicModule is InternalDynamicModule
+    assert bustan.Get is InternalGet
+    assert bustan.Injectable is InternalInjectable
+    assert bustan.Module is InternalModule
+    assert bustan.Patch is InternalPatch
+    assert bustan.Post is InternalPost
+    assert bustan.Put is InternalPut
+    assert bustan.UseFilters is InternalUseFilters
+    assert bustan.UseGuards is InternalUseGuards
+    assert bustan.UseInterceptors is InternalUseInterceptors
+    assert bustan.UsePipes is InternalUsePipes
 
 
 def test_testing_module_exposes_the_supported_helpers() -> None:

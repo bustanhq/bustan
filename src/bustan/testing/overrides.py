@@ -7,9 +7,8 @@ from contextlib import contextmanager
 from typing import cast
 
 from starlette.applications import Starlette
-from ..application import Application
-
-from ..container import Container
+from ..app.application import Application
+from ..core.ioc.container import Container
 
 
 @contextmanager

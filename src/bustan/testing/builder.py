@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import cast
 
-from ..application import Application, create_app
-from ..decorators import Module
+from ..app.application import Application
+from ..app.bootstrap import create_app
+from ..core.module.decorators import Module
 
 
 def create_test_module(

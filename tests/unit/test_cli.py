@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from bustan.cli import main
+from bustan.cli.main import main
 
 
 def test_cli_new_scaffolds_a_project_with_expected_files(tmp_path: Path, capsys) -> None:

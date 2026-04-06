@@ -4,14 +4,14 @@ import pytest
 from typing import cast
 
 from bustan import Controller, Get, Injectable, Module
-from bustan.errors import (
+from bustan.core.errors import (
     ExportViolationError,
     InvalidControllerError,
     InvalidModuleError,
     ModuleCycleError,
     RouteDefinitionError,
 )
-from bustan.module_graph import build_module_graph
+from bustan.core.module.graph import build_module_graph
 
 
 def test_build_module_graph_preserves_import_order_and_visibility() -> None:
