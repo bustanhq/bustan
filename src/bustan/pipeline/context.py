@@ -12,6 +12,7 @@ from ..metadata import ControllerRouteDefinition
 
 if TYPE_CHECKING:
     from ..container import Container
+    from ..metadata import ModuleKey
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,7 +20,7 @@ class RequestContext:
     """Request-wide context passed to guards and exception filters."""
 
     request: Request
-    module: type[object]
+    module: ModuleKey
     controller_type: type[object]
     controller: object
     route: ControllerRouteDefinition

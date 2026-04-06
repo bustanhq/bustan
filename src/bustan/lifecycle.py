@@ -11,8 +11,9 @@ from starlette.applications import Starlette
 from starlette.types import StatelessLifespan
 
 from .errors import LifecycleError
+from .metadata import ModuleKey
 from .module_graph import ModuleGraph, ModuleNode
-from .utils import _qualname
+from .utils import _display_name
 
 LifecycleHookName: tuple[str, ...] = (
     "on_module_init",
@@ -52,8 +53,8 @@ def build_lifespan(
     return lifespan
 
 
-def _instantiate_lifecycle_modules(module_graph: ModuleGraph) -> Mapping[type[object], object]:
-    module_instances: dict[type[object], object] = {}
+def _instantiate_lifecycle_modules(module_graph: ModuleGraph) -> Mapping[ModuleKey, object]:
+    module_instances: dict[ModuleKey, object] = {}
 
     for node in module_graph.nodes:
         # Plain modules stay uninstantiated unless they actually expose hooks.
@@ -61,10 +62,10 @@ def _instantiate_lifecycle_modules(module_graph: ModuleGraph) -> Mapping[type[ob
             continue
 
         try:
-            module_instances[node.module] = node.module()
+            module_instances[node.key] = node.module()
         except TypeError as exc:
             raise LifecycleError(
-                f"Could not instantiate module {_qualname(node.module)} for lifecycle hooks: {exc}"
+                f"Could not instantiate module {_display_name(node.key)} for lifecycle hooks: {exc}"
             ) from exc
 
     return MappingProxyType(module_instances)
@@ -72,14 +73,13 @@ def _instantiate_lifecycle_modules(module_graph: ModuleGraph) -> Mapping[type[ob
 
 async def _run_lifecycle_stage(
     nodes: tuple[ModuleNode, ...],
-    module_instances: Mapping[type[object], object],
+    module_instances: Mapping[ModuleKey, object],
     hook_name: str,
 ) -> None:
     """Execute one lifecycle stage for every module in the provided order."""
 
     for node in nodes:
-        module_cls = node.module
-        module_instance = module_instances.get(module_cls)
+        module_instance = module_instances.get(node.key)
         if module_instance is None:
             continue
 
@@ -93,7 +93,7 @@ async def _run_lifecycle_stage(
                 await result
         except Exception as exc:
             raise LifecycleError(
-                f"Lifecycle hook {_qualname(module_cls)}.{hook_name} failed: {exc}"
+                f"Lifecycle hook {_display_name(node.key)}.{hook_name} failed: {exc}"
             ) from exc
 
 

@@ -16,6 +16,7 @@ from .decorators import (
     UseInterceptors,
     UsePipes,
 )
+from .metadata import DynamicModule
 from .injection import InjectionToken
 from .pipeline import ExceptionFilter, Guard, Interceptor, Pipe
 
@@ -31,6 +32,7 @@ __all__ = (
     "Controller",
     "create_app",
     "Delete",
+    "DynamicModule",
     "Get",
     "Injectable",
     "Module",

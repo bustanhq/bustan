@@ -27,6 +27,21 @@ Installed distribution version string for the bustan package.
 
 Runtime behavior: resolved from the installed distribution metadata, or from local project metadata when running from a source checkout.
 
+#### `Application`
+
+```python
+class Application
+```
+
+Defined in `bustan.application`.
+
+Strongly typed wrapper around the Starlette ASGI app and DI container.
+
+##### Methods
+
+- `get(self, token: object) -> Any`
+- `override(self, token: object, value: object) -> None`
+
 #### `ExceptionFilter`
 
 ```python
@@ -66,6 +81,16 @@ Base class for authorization and policy gates.
 - `can_activate(self, context: RequestContext) -> bool`
   Return True to allow request execution to continue.
 
+#### `InjectionToken`
+
+```python
+class InjectionToken(Generic)
+```
+
+Defined in `bustan.injection`.
+
+A typed token representing a dependency for injection.
+
 #### `Interceptor`
 
 ```python
@@ -99,7 +124,7 @@ Base class for parameter transformation and validation.
 #### `bootstrap`
 
 ```python
-def bootstrap(root_module: type) -> Starlette
+def bootstrap(root_module: type[object] | DynamicModule) -> Application
 ```
 
 Defined in `bustan.application`.
@@ -119,12 +144,12 @@ Attach controller metadata to a class.
 #### `create_app`
 
 ```python
-def create_app(root_module: type) -> Starlette
+def create_app(root_module: type[object] | DynamicModule) -> Application
 ```
 
 Defined in `bustan.application`.
 
-Build a Starlette application from a decorated root module.
+Build an Application from a decorated root module.
 
 #### `Delete`
 
@@ -135,6 +160,16 @@ def Delete(path: str = '/') -> Callable[[FunctionT], FunctionT]
 Defined in `bustan.decorators`.
 
 Return a decorator that registers a DELETE route.
+
+#### `DynamicModule`
+
+```python
+class DynamicModule
+```
+
+Defined in `bustan.metadata`.
+
+Metadata overlay that compiles into a unique module instance.
 
 #### `Get`
 
@@ -159,7 +194,7 @@ Mark a class as a DI-managed provider with the selected scope.
 #### `Module`
 
 ```python
-def Module(*, imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object]] | None = None, exports: Iterable[type[object]] | None = None) -> Callable[[ClassT], ClassT]
+def Module(*, imports: Iterable[type[object] | DynamicModule] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[object | dict[str, Any]] | None = None, exports: Iterable[object] | None = None) -> Callable[[ClassT], ClassT]
 ```
 
 Defined in `bustan.decorators`.
@@ -251,7 +286,7 @@ from bustan.testing import create_test_app, create_test_module, override_provide
 #### `create_test_app`
 
 ```python
-def create_test_app(root_module: type[object], *, provider_overrides: Mapping[type[object], object] | None = None) -> Starlette
+def create_test_app(root_module: type[object], *, provider_overrides: Mapping[object, object] | None = None) -> Application
 ```
 
 Defined in `bustan.testing.builder`.
@@ -261,7 +296,7 @@ Create an application and apply any requested provider overrides.
 #### `create_test_module`
 
 ```python
-def create_test_module(*, name: str = 'TestModule', imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object]] | None = None, exports: Iterable[type[object]] | None = None) -> type[object]
+def create_test_module(*, name: str = 'TestModule', imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object] | dict[str, object]] | None = None, exports: Iterable[object] | None = None) -> type[object]
 ```
 
 Defined in `bustan.testing.builder`.
@@ -271,7 +306,7 @@ Create a throwaway decorated module for isolated tests.
 #### `override_provider`
 
 ```python
-def override_provider(target: Starlette | ContainerAdapter, provider_cls: type[ResolvedT], replacement: ResolvedT, *, module_cls: type[object] | None = None) -> Iterator[None]
+def override_provider(target: Starlette | Application | Container, token: object, replacement: object, *, module_cls: type[object] | None = None) -> Iterator[None]
 ```
 
 Defined in `bustan.testing.overrides`.

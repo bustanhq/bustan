@@ -22,6 +22,28 @@ ClassT = TypeVar("ClassT", bound=type[object])
 FunctionT = TypeVar("FunctionT", bound=FunctionType)
 
 
+@dataclass(frozen=True, slots=True)
+class ModuleInstanceKey:
+    """Unique identity for one dynamic registration of a module."""
+
+    module: type[object]
+    instance_id: str
+
+
+ModuleKey = type[object] | ModuleInstanceKey
+
+
+@dataclass(frozen=True, slots=True)
+class DynamicModule:
+    """Metadata overlay that compiles into a unique module instance."""
+
+    module: type[object]
+    providers: tuple[object | dict[str, Any], ...] = ()
+    imports: tuple[type[object] | DynamicModule, ...] = ()
+    controllers: tuple[type[object], ...] = ()
+    exports: tuple[object, ...] = ()
+
+
 class ProviderScope(StrEnum):
     """Supported provider lifetimes."""
 
@@ -35,7 +57,7 @@ class Binding:
     """Normalized dependency injection binding."""
 
     token: object
-    declaring_module: type[object]
+    declaring_module: ModuleKey
     resolver_kind: str  # class | factory | value | existing
     target: object
     scope: ProviderScope
@@ -45,9 +67,9 @@ class Binding:
 class ModuleMetadata:
     """Static metadata captured from a @Module declaration."""
 
-    imports: tuple[type[object], ...] = ()
+    imports: tuple[type[object] | DynamicModule, ...] = ()
     controllers: tuple[type[object], ...] = ()
-    providers: tuple[object | dict[str, object], ...] = ()
+    providers: tuple[object | dict[str, Any], ...] = ()
     exports: tuple[object, ...] = ()
 
 
@@ -288,7 +310,7 @@ def _get_metadata(target: type[object], attribute_name: str, *, inherit: bool) -
     return target.__dict__.get(attribute_name)
 
 
-def normalize_provider(defn: object | dict[str, object], declaring_module: type[object]) -> Binding:
+def normalize_provider(defn: object | dict[str, Any], declaring_module: ModuleKey) -> Binding:
     if inspect.isclass(defn):
         meta: dict[str, object] = getattr(defn, "__bustan_provider__", {})
         return Binding(

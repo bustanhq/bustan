@@ -21,6 +21,7 @@ from .errors import (
 from .metadata import (
     BUSTAN_PROVIDER_ATTR,
     ControllerRouteDefinition,
+    ModuleKey,
     PipelineMetadata,
     get_controller_metadata,
     get_controller_pipeline_metadata,
@@ -85,7 +86,7 @@ def compile_routes(module_graph: ModuleGraph, container: Container) -> tuple[Rou
                         path=route_path,
                         endpoint=create_endpoint(
                             container,
-                            node.module,
+                            node.key,
                             controller_cls,
                             route_definition,
                             binding_plan,
@@ -101,7 +102,7 @@ def compile_routes(module_graph: ModuleGraph, container: Container) -> tuple[Rou
 
 def create_endpoint(
     container: Container,
-    module_cls: type[object],
+    module_key: ModuleKey,
     controller_cls: type[object],
     route_definition: ControllerRouteDefinition,
     binding_plan: HandlerBindingPlan,
@@ -113,12 +114,12 @@ def create_endpoint(
 
     async def endpoint(request: Request) -> Response:
         controller_instance = container.instantiate_class(
-            controller_cls, module=module_cls, request=request
+            controller_cls, module=module_key, request=request
         )
         handler = getattr(controller_instance, route_definition.handler_name)
         request_context = RequestContext(
             request=request,
-            module=module_cls,
+            module=module_key,
             controller_type=controller_cls,
             controller=controller_instance,
             route=route_definition,
@@ -130,7 +131,7 @@ def create_endpoint(
             pipeline_metadata.filters,
             expected_base_type=ExceptionFilter,
             container=container,
-            module_cls=module_cls,
+            module_key=module_key,
             component_kind="filter",
             request=request,
         )
@@ -140,7 +141,7 @@ def create_endpoint(
                 pipeline_metadata.guards,
                 expected_base_type=Guard,
                 container=container,
-                module_cls=module_cls,
+                module_key=module_key,
                 component_kind="guard",
                 request=request,
             )
@@ -148,7 +149,7 @@ def create_endpoint(
                 pipeline_metadata.pipes,
                 expected_base_type=Pipe,
                 container=container,
-                module_cls=module_cls,
+                module_key=module_key,
                 component_kind="pipe",
                 request=request,
             )
@@ -156,7 +157,7 @@ def create_endpoint(
                 pipeline_metadata.interceptors,
                 expected_base_type=Interceptor,
                 container=container,
-                module_cls=module_cls,
+                module_key=module_key,
                 component_kind="interceptor",
                 request=request,
             )
@@ -250,7 +251,7 @@ def _resolve_pipeline_components(
     *,
     expected_base_type: type[ComponentT],
     container: Container,
-    module_cls: type[object],
+    module_key: ModuleKey,
     component_kind: str,
     request: Request,
 ) -> tuple[ComponentT, ...]:
@@ -263,7 +264,7 @@ def _resolve_pipeline_components(
             if getattr(component_type, BUSTAN_PROVIDER_ATTR, None) is not None:
                 resolved_component = container.resolve(
                     component_type,
-                    module=module_cls,
+                    module=module_key,
                     request=request,
                 )
             else:

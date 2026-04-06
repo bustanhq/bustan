@@ -10,6 +10,7 @@ from starlette.datastructures import State
 from .container import Container, build_container
 from .injection import InjectionToken
 from .lifecycle import build_lifespan
+from .metadata import DynamicModule, ModuleKey
 from .module_graph import ModuleGraph, ModuleNode, build_module_graph
 from .routing import compile_routes
 
@@ -23,13 +24,13 @@ class Application:
         self,
         starlette_app: Starlette,
         container: Container,
-        module_graph: ModuleNode | ModuleGraph,
-        root_module: type[object],
+        module_graph: ModuleGraph,
+        root_key: ModuleKey,
     ):
         self._starlette_app = starlette_app
         self._container = container
         self._module_graph = module_graph
-        self._root_module = root_module
+        self._root_key = root_key
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         """Implement ASGI protocol by forwarding to Starlette."""
@@ -42,10 +43,10 @@ class Application:
     def get(self, token: InjectionToken[T]) -> T: ...
 
     def get(self, token: object) -> Any:
-        return self._container.resolve(token, module=self._root_module)
+        return self._container.resolve(token, module=self._root_key)
 
     def override(self, token: object, value: object) -> None:
-        self._container.override(token, value, module=self._root_module)
+        self._container.override(token, value, module=self._root_key)
 
     @property
     def container(self) -> Container:
@@ -60,7 +61,9 @@ class Application:
     @property
     def root_module(self) -> type[object]:
         """Return the root module class."""
-        return self._root_module
+        if isinstance(self._root_key, type):
+            return self._root_key
+        return self._root_key.module
 
     @property
     def state(self) -> State:
@@ -68,7 +71,7 @@ class Application:
         return self._starlette_app.state
 
 
-def create_app(root_module: type[object]) -> Application:
+def create_app(root_module: type[object] | DynamicModule) -> Application:
     """Build an Application from a decorated root module."""
 
     module_graph = build_module_graph(root_module)
@@ -81,10 +84,10 @@ def create_app(root_module: type[object]) -> Application:
         starlette_app=starlette_app,
         container=container,
         module_graph=module_graph,
-        root_module=root_module,
+        root_key=module_graph.root_key,
     )
 
 
-def bootstrap(root_module: type[object]) -> Application:
+def bootstrap(root_module: type[object] | DynamicModule) -> Application:
     """Compatibility alias for create_app()."""
     return create_app(root_module)

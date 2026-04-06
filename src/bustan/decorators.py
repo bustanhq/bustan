@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from types import FunctionType
-from typing import TypeVar, cast, overload
+from typing import Any, TypeVar, cast, overload
 
 from .errors import (
     InvalidControllerError,
@@ -27,6 +27,7 @@ from .metadata import (
     set_module_metadata,
     set_route_metadata,
     BUSTAN_PROVIDER_ATTR,
+    DynamicModule,
 )
 
 ClassT = TypeVar("ClassT", bound=type[object])
@@ -36,15 +37,17 @@ DecoratedT = TypeVar("DecoratedT", bound=object)
 
 def Module(
     *,
-    imports: Iterable[type[object]] | None = None,
+    imports: Iterable[type[object] | DynamicModule] | None = None,
     controllers: Iterable[type[object]] | None = None,
-    providers: Iterable[object | dict[str, object]] | None = None,
+    providers: Iterable[object | dict[str, Any]] | None = None,
     exports: Iterable[object] | None = None,
 ) -> Callable[[ClassT], ClassT]:
     """Attach module metadata to a class without performing registration."""
 
     module_metadata = ModuleMetadata(
-        imports=cast(tuple[type[object], ...], _coerce_tuple(imports, field_name="imports")),
+        imports=cast(
+            tuple[type[object] | DynamicModule, ...], _coerce_tuple(imports, field_name="imports")
+        ),
         controllers=cast(
             tuple[type[object], ...], _coerce_tuple(controllers, field_name="controllers")
         ),

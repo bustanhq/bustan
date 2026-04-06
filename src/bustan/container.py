@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from .errors import InvalidControllerError, ProviderResolutionError
-from .metadata import Binding, ProviderScope
+from .metadata import Binding, ModuleKey, ProviderScope
 from .module_graph import ModuleGraph
 from .utils import _display_name, _qualname
 
@@ -30,13 +30,13 @@ class Container:
 
     def __init__(self, module_graph: ModuleGraph) -> None:
         self.module_graph = module_graph
-        self._bindings: dict[tuple[type[object], object], Binding] = {}
-        self._module_visibility: dict[type[object], dict[object, type[object]]] = {}
-        self._singletons: dict[tuple[type[object], object], object] = {}
-        self._singleton_locks: dict[tuple[type[object], object], threading.Lock] = {}
-        self._overrides: dict[tuple[type[object], object], object] = {}
+        self._bindings: dict[tuple[ModuleKey, object], Binding] = {}
+        self._module_visibility: dict[ModuleKey, dict[object, ModuleKey]] = {}
+        self._singletons: dict[tuple[ModuleKey, object], object] = {}
+        self._singleton_locks: dict[tuple[ModuleKey, object], threading.Lock] = {}
+        self._overrides: dict[tuple[ModuleKey, object], object] = {}
 
-        self._controller_modules: dict[type[object], type[object]] = {}
+        self._controller_modules: dict[type[object], ModuleKey] = {}
 
         self._resolution_stack: ContextVar[tuple[object, ...]] = ContextVar(
             "bustan_resolution_stack", default=()
@@ -51,42 +51,42 @@ class Container:
         for node in self.module_graph.nodes:
             # Add all bindings to the registry
             for binding in node.bindings:
-                self._bindings[(node.module, binding.token)] = binding
+                self._bindings[(node.key, binding.token)] = binding
                 if binding.scope is ProviderScope.SINGLETON:
-                    self._singleton_locks[(node.module, binding.token)] = threading.Lock()
+                    self._singleton_locks[(node.key, binding.token)] = threading.Lock()
 
             # Providers are visible from their own module plus explicit exports
             # from directly imported modules. Everything else stays private.
-            accessible_provider_modules: dict[object, type[object]] = {
-                b.token: node.module for b in node.bindings
+            accessible_provider_modules: dict[object, ModuleKey] = {
+                b.token: node.key for b in node.bindings
             }
 
-            for imported_module in node.imports:
-                for exported_token in self.module_graph.exports_for(imported_module):
+            for imported_key in node.imported_exports:
+                for exported_token in self.module_graph.exports_for(imported_key):
                     existing_module = accessible_provider_modules.get(exported_token)
-                    if existing_module is not None and existing_module is not node.module:
+                    if existing_module is not None and existing_module is not node.key:
                         raise ProviderResolutionError(
-                            f"{_qualname(node.module)} can access {_qualname(exported_token)} "
-                            f"from both {_qualname(existing_module)} and {_qualname(imported_module)}"
+                            f"{_display_name(node.key)} can access {_display_name(exported_token)} "
+                            f"from both {_display_name(existing_module)} and {_display_name(imported_key)}"
                         )
-                    accessible_provider_modules[exported_token] = imported_module
+                    accessible_provider_modules[exported_token] = imported_key
 
-            self._module_visibility[node.module] = accessible_provider_modules
+            self._module_visibility[node.key] = accessible_provider_modules
 
             for controller_cls in node.controllers:
                 existing_module = self._controller_modules.get(controller_cls)
-                if existing_module is not None and existing_module is not node.module:
+                if existing_module is not None and existing_module is not node.key:
                     raise InvalidControllerError(
                         f"{_qualname(controller_cls)} is declared in multiple modules: "
-                        f"{_qualname(existing_module)} and {_qualname(node.module)}"
+                        f"{_display_name(existing_module)} and {_display_name(node.key)}"
                     )
-                self._controller_modules[controller_cls] = node.module
+                self._controller_modules[controller_cls] = node.key
 
     def resolve(
         self,
         token: object,
         *,
-        module: type[object],
+        module: ModuleKey,
         request: Request | None = None,
     ) -> object:
         """Resolve a provider visible from the given module.
@@ -132,7 +132,7 @@ class Container:
             stack_token = self._resolution_stack.set((*current_stack, token))
             try:
                 # We do resolution according to resolver_kind
-                instance = self._resolve_binding(binding, module_cls=declaring_module)
+                instance = self._resolve_binding(binding, module_key=declaring_module)
             finally:
                 self._resolution_stack.reset(stack_token)
 
@@ -152,23 +152,23 @@ class Container:
         finally:
             self._reset_active_request(active_request_token)
 
-    def _resolve_binding(self, binding: Binding, module_cls: type[object]) -> object:
+    def _resolve_binding(self, binding: Binding, module_key: ModuleKey) -> object:
         if binding.resolver_kind == "value":
             return binding.target
         elif binding.resolver_kind == "existing":
             # Delegate to existing token matching the bound target string/object.
             return self.resolve(
-                binding.target, module=module_cls, request=self._active_request.get()
+                binding.target, module=module_key, request=self._active_request.get()
             )
         elif binding.resolver_kind == "class":
             cls_target = cast(type[object], binding.target)
             return self.instantiate_class(
-                cls_target, module=module_cls, request=self._active_request.get()
+                cls_target, module=module_key, request=self._active_request.get()
             )
         elif binding.resolver_kind == "factory":
             factory, inject_tokens = binding.target  # type: ignore
             return self.call_factory(
-                factory, inject_tokens, module=module_cls, request=self._active_request.get()
+                factory, inject_tokens, module=module_key, request=self._active_request.get()
             )
         else:
             raise ProviderResolutionError(f"Unknown resolver kind: {binding.resolver_kind}")
@@ -177,7 +177,7 @@ class Container:
         self,
         cls: type[object],
         *,
-        module: type[object],
+        module: ModuleKey,
         request: Request | None = None,
     ) -> object:
         """Resolve a fresh controller or class instance for request handling."""
@@ -196,7 +196,7 @@ class Container:
         factory: Callable[..., object],
         inject: tuple[object, ...],
         *,
-        module: type[object],
+        module: ModuleKey,
         request: Request | None = None,
     ) -> object:
         """Resolve parameters using inject mapping and calls the factory."""
@@ -208,36 +208,36 @@ class Container:
         finally:
             self._reset_active_request(active_request_token)
 
-    def override(self, token: object, value: object, *, module: type[object] | None = None) -> None:
+    def override(self, token: object, value: object, *, module: ModuleKey | None = None) -> None:
         """Register a replacement object for a provider."""
         override_key = self._resolve_override_key(token, module)
         self._overrides[override_key] = value
 
-    def clear_override(self, token: object, *, module: type[object] | None = None) -> None:
+    def clear_override(self, token: object, *, module: ModuleKey | None = None) -> None:
         """Remove any override registered for a provider."""
         override_key = self._resolve_override_key(token, module)
         self._overrides.pop(override_key, None)
 
-    def has_override(self, token: object, *, module: type[object] | None = None) -> bool:
+    def has_override(self, token: object, *, module: ModuleKey | None = None) -> bool:
         override_key = self._resolve_override_key(token, module)
         return override_key in self._overrides
 
-    def get_override(self, token: object, *, module: type[object] | None = None) -> object:
+    def get_override(self, token: object, *, module: ModuleKey | None = None) -> object:
         override_key = self._resolve_override_key(token, module)
         return self._overrides[override_key]
 
-    def _get_declaring_module(self, token: object, module_cls: type[object]) -> type[object]:
+    def _get_declaring_module(self, token: object, module_key: ModuleKey) -> ModuleKey:
         try:
-            visibility = self._module_visibility[module_cls]
+            visibility = self._module_visibility[module_key]
         except KeyError as exc:
             raise ProviderResolutionError(
-                f"{_qualname(module_cls)} is not part of the application container"
+                f"{_display_name(module_key)} is not part of the application container"
             ) from exc
 
         declaring_module = visibility.get(token)
         if declaring_module is None:
             raise ProviderResolutionError(
-                f"{_qualname(token)} is not available to {_qualname(module_cls)}. "
+                f"{_qualname(token)} is not available to {_display_name(module_key)}. "
                 "Dependencies must come from the same module or an imported module export"
             )
         return declaring_module
@@ -245,7 +245,7 @@ class Container:
     def _resolve_constructor_dependencies(
         self,
         class_cls: type[object],
-        module_cls: type[object],
+        module_key: ModuleKey,
     ) -> tuple[tuple[object, ...], dict[str, object]]:
 
         # Determine if we are a request-scoped entity parsing injection deps
@@ -281,7 +281,7 @@ class Container:
                     "__dict__",
                     constructor.__globals__,
                 ),
-                localns=self._build_type_hint_namespace(class_cls, module_cls),
+                localns=self._build_type_hint_namespace(class_cls, module_key),
             )
         except (NameError, TypeError) as exc:
             raise ProviderResolutionError(
@@ -334,7 +334,7 @@ class Container:
             if not isinstance(
                 annotation, str
             ):  # basic check to bypass str types if evaluating to weird hints
-                dependency_declaring_module = self._module_visibility.get(module_cls, {}).get(
+                dependency_declaring_module = self._module_visibility.get(module_key, {}).get(
                     annotation
                 )
                 if dependency_declaring_module is not None:
@@ -353,7 +353,7 @@ class Container:
                                 "into request-scoped providers or controllers"
                             )
 
-            dependency = self.resolve(annotation, module=module_cls, request=active_request)
+            dependency = self.resolve(annotation, module=module_key, request=active_request)
             if parameter.kind in (
                 inspect.Parameter.POSITIONAL_ONLY,
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
@@ -367,7 +367,7 @@ class Container:
     def _build_type_hint_namespace(
         self,
         class_cls: type[object],
-        module_cls: type[object],
+        module_key: ModuleKey,
     ) -> dict[str, object]:
 
         namespace: dict[str, object] = {
@@ -379,10 +379,10 @@ class Container:
 
         # Provide controller class names for resolution context
         for controller_cls, mod in self._controller_modules.items():
-            if mod is module_cls:
+            if mod == module_key:
                 namespace.setdefault(controller_cls.__name__, controller_cls)
 
-        accessible_tokens = self._module_visibility.get(module_cls, {})
+        accessible_tokens = self._module_visibility.get(module_key, {})
         for token in accessible_tokens:
             if isinstance(token, type):
                 namespace.setdefault(token.__name__, token)
@@ -407,23 +407,23 @@ class Container:
     def _get_request_scope_cache(
         self,
         request: Request,
-    ) -> dict[tuple[type[object], object], object]:
+    ) -> dict[tuple[ModuleKey, object], object]:
         request_scope_cache = getattr(request.state, REQUEST_SCOPE_CACHE_ATTR, None)
         if request_scope_cache is None:
             request_scope_cache = {}
             setattr(request.state, REQUEST_SCOPE_CACHE_ATTR, request_scope_cache)
-        return cast(dict[tuple[type[object], object], object], request_scope_cache)
+        return cast(dict[tuple[ModuleKey, object], object], request_scope_cache)
 
     def _resolve_override_key(
         self,
         token: object,
-        module_cls: type[object] | None,
-    ) -> tuple[type[object], object]:
-        if module_cls is not None:
-            override_key = (module_cls, token)
+        module_key: ModuleKey | None,
+    ) -> tuple[ModuleKey, object]:
+        if module_key is not None:
+            override_key = (module_key, token)
             if override_key not in self._bindings:
                 raise ProviderResolutionError(
-                    f"{_qualname(token)} is not registered in {_qualname(module_cls)}"
+                    f"{_display_name(token)} is not registered in {_display_name(module_key)}"
                 )
             return override_key
 
@@ -438,11 +438,11 @@ class Container:
 
         if len(declaring_modules) > 1:
             module_names = ", ".join(
-                _qualname(registered_module) for registered_module in declaring_modules
+                _display_name(registered_module) for registered_module in declaring_modules
             )
             raise ProviderResolutionError(
-                f"{_qualname(token)} is registered in multiple modules ({module_names}); "
-                "specify module_cls when overriding it"
+                f"{_display_name(token)} is registered in multiple modules ({module_names}); "
+                "specify module_key when overriding it"
             )
 
         return declaring_modules[0], token
