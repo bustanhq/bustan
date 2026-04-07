@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from ..core.ioc.container import Container
@@ -20,20 +20,17 @@ class ApplicationContext:
     def __init__(self, container: Container) -> None:
         self._container = container
 
-    @property
-    def _root_module(self) -> type[object]:
-        """Internal accessor for the root module class."""
-        from ..core.module.graph import ModuleGraph
-
-        return cast(ModuleGraph, self._container.module_graph).root_module
-
     def get(self, token: object) -> Any:
         """Resolve a provider from the root module context.
 
         This is a non-request-scoped resolution. For request-scoped
-        providers, use the container directly within a request context.
+        providers, use the dependency injection system directly via
+        decorators (@Param, @Body, etc.) or app.resolve().
         """
-        return self._container.resolve(token, module=self._root_module)
+        # Resolve from the root module defined in the container's graph
+        return self._container.resolve(
+            token, module=self._container.module_graph.root_module
+        )
 
     def resolve(self, token: object) -> Any:
         """Alias for app.get()."""

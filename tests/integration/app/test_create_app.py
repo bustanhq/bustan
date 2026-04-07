@@ -33,7 +33,8 @@ def test_create_app_returns_a_starlette_application_with_module_graph_state() ->
     # Use private container for internal instantiation checks in integration tests
     controller_instance = cast(Any, application._container.instantiate_class(UserController, module=AppModule))
 
-    assert application._root_module is AppModule
+    # Check internal module graph state for the root module
+    assert application._container.module_graph.root_module is AppModule
     assert (
         controller_instance.user_service
         is application._container.resolve(

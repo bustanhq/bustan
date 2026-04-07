@@ -39,5 +39,5 @@ async def test_application_close() -> None:
 
 def test_application_root_module() -> None:
     app = create_app(AppModule)
-    # Testing internal root module state
-    assert app._root_module is AppModule
+    # Testing internal root module state via container
+    assert app._container.module_graph.root_module is AppModule
