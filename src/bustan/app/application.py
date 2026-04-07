@@ -20,6 +20,21 @@ class ApplicationContext:
     def __init__(self, container: Container) -> None:
         self._container = container
 
+    @property
+    def container(self) -> Container:
+        """Accessor for the underlying dependency injection container."""
+        return self._container
+
+    @property
+    def module_graph(self) -> Any:
+        """Accessor for the discovered module graph."""
+        return self._container.module_graph
+
+    @property
+    def root_module(self) -> Any:
+        """Accessor for the application's root module (as a ModuleKey)."""
+        return self._container.module_graph.root_module
+
     def get(self, token: object) -> Any:
         """Resolve a provider from the root module context.
 

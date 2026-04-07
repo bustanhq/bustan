@@ -271,7 +271,11 @@ def _render_class_methods(exported_object: type[object]) -> list[str]:
         if method is None:
             continue
 
-        lines.append(f"- `{_format_signature(method_name, method)}`")
+        if isinstance(member, property):
+            lines.append(f"- `(property) {method_name}`")
+        else:
+            lines.append(f"- `{_format_signature(method_name, method)}`")
+
         method_doc = inspect.getdoc(method)
         if method_doc is not None:
             lines.append(f"  {method_doc}")
@@ -393,6 +397,8 @@ def _unwrap_descriptor(member: object) -> object | None:
 
     if isinstance(member, (staticmethod, classmethod)):
         return member.__func__
+    if isinstance(member, property):
+        return member.fget
     if inspect.isfunction(member):
         return member
     return None

@@ -1,6 +1,6 @@
 # Request Pipeline
 
-`bustan` runs request-time behavior in a fixed order so cross-cutting logic stays predictable.
+`Bustan` runs request-time behavior in a fixed order so cross-cutting logic stays predictable.
 
 ## Execution Order
 
@@ -25,7 +25,7 @@ Exception filters wrap the downstream path and can translate binding errors, gua
 ```python
 from collections.abc import Awaitable, Callable
 
-from bustan import Guard, Interceptor, Pipe, controller, get, use_guards, use_interceptors, use_pipes
+from bustan import Controller, Get, Guard, Interceptor, Pipe, UseGuards, UseInterceptors, UsePipes
 from bustan.pipeline.context import HandlerContext, ParameterContext, RequestContext
 
 
@@ -48,12 +48,12 @@ class EnvelopeInterceptor(Interceptor):
         return {"data": await call_next()}
 
 
-@use_guards(AuthGuard())
-@use_interceptors(EnvelopeInterceptor())
-@controller("/messages")
+@UseGuards(AuthGuard())
+@UseInterceptors(EnvelopeInterceptor())
+@Controller("/messages")
 class MessagesController:
-    @use_pipes(TrimPipe())
-    @get("/{name}")
+    @UsePipes(TrimPipe())
+    @Get("/{name}")
     def read_message(self, name: str) -> dict[str, str]:
         return {"message": f"hello {name}"}
 ```

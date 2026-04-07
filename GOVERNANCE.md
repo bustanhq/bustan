@@ -1,6 +1,6 @@
 # Governance
 
-This document defines how `bustan` is currently reviewed, merged, released, and kept healthy while the project is still early.
+This document defines how Bustan is currently reviewed, merged, released, and kept healthy.
 
 ## Maintainer Authority
 
@@ -35,8 +35,8 @@ This document defines how `bustan` is currently reviewed, merged, released, and 
 
 ## Tag And Release Signing
 
-- Tags and releases are not signed before `0.1.0` alpha.
-- This should be revisited once the release process is routine or if users ask for stronger supply-chain guarantees.
+- Tags and releases are currently not signed.
+- This will be revisited for the `2.0.0` production-ready release or if users require stronger supply-chain guarantees.
 
 ## Maintainer Absence Or Project Pause
 

@@ -48,6 +48,8 @@ via an AbstractHttpAdapter.
   Accessor for the underlying framework instance (e.g., Starlette App).
 - `listen(self, port: int, host: str = '127.0.0.1', reload: bool = False, **kwargs: Any) -> None`
   Start the ASGI server asynchronously via the adapter.
+- `(property) routes`
+  Accessor for the registered routes (by path).
 
 #### `ApplicationContext`
 
@@ -64,6 +66,12 @@ IoC container, without an associated HTTP server instance.
 
 ##### Methods
 
+- `(property) container`
+  Accessor for the underlying dependency injection container.
+- `(property) module_graph`
+  Accessor for the discovered module graph.
+- `(property) root_module`
+  Accessor for the application's root module (as a ModuleKey).
 - `get(self, token: object) -> Any`
   Resolve a provider from the root module context.
 

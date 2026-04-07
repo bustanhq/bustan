@@ -19,10 +19,10 @@ Each hook may be synchronous or asynchronous.
 ## Example
 
 ```python
-from bustan import module
+from bustan import Module
 
 
-@module()
+@Module()
 class AppModule:
     def on_module_init(self) -> None:
         print("module init")

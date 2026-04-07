@@ -1,30 +1,30 @@
 # First App
 
-This walkthrough builds a small `bustan` application with one provider, one controller, one module, and one focused test.
+This walkthrough builds a small `Bustan` application with one provider, one controller, one module, and one focused test.
 
 ## Application Code
 
 ```python
-from bustan import controller, create_app, get, injectable, module
+from bustan import Controller, Get, Injectable, Module, create_app
 
 
-@injectable
+@Injectable
 class GreetingService:
     def greet(self) -> dict[str, str]:
-        return {"message": "hello from bustan"}
+        return {"message": "hello from Bustan"}
 
 
-@controller("/hello")
+@Controller("/hello")
 class GreetingController:
     def __init__(self, greeting_service: GreetingService) -> None:
         self.greeting_service = greeting_service
 
-    @get("/")
+    @Get("/")
     def read_greeting(self) -> dict[str, str]:
         return self.greeting_service.greet()
 
 
-@module(
+@Module(
     controllers=[GreetingController],
     providers=[GreetingService],
     exports=[GreetingService],
@@ -46,7 +46,7 @@ curl http://127.0.0.1:8000/hello
 Expected response:
 
 ```json
-{"message":"hello from bustan"}
+{"message":"hello from Bustan"}
 ```
 
 ## Test It
@@ -64,7 +64,7 @@ def test_read_greeting() -> None:
         response = client.get("/hello")
 
     assert response.status_code == 200
-    assert response.json() == {"message": "hello from bustan"}
+    assert response.json() == {"message": "hello from Bustan"}
 ```
 
 When you want to replace providers in tests, use `bustan.testing.create_test_app()`:

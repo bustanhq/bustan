@@ -22,7 +22,7 @@ You should receive an acknowledgement within 5 business days.
 
 ## Supported Versions
 
-While `bustan` is still pre-`0.1.0`, security support is best effort for:
+While Bustan is currently in alpha (`v1.x`), security support is best-effort for:
 
 - the default branch
 - the most recent tagged pre-`1.0` release, once releases begin

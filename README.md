@@ -1,6 +1,6 @@
-# bustan
+# Bustan
 
-bustan is an architecture-first Python web framework for teams that like Starlette's runtime but want stronger application structure.
+Bustan is an architecture-first Python web framework for teams that like Starlette's runtime but want stronger application structure.
 
 It brings NestJS-style modules, controllers, providers, constructor injection, lifecycle hooks, and a request pipeline to Python, while keeping direct access to Starlette when you need an escape hatch.
 
@@ -14,14 +14,16 @@ It brings NestJS-style modules, controllers, providers, constructor injection, l
 
 ## Status
 
-- `bustan` is alpha and still pre-`0.1.0`.
-- The first public compatibility target is `0.1.0` alpha.
+> [!IMPORTANT]
+> Versions `1.0.0` and `1.0.1` were unintentionally released to PyPI and GitHub during CI/CD pipeline setup. These should be treated as early alpha orphans. The first real production-ready, non-alpha release will be `2.0.0`.
+
+- `bustan` is currently in an early alpha stage (v1.0.1).
+- The first intended production-ready target is `2.0.0`.
 - Package metadata currently targets Python `>=3.13`.
-- The Python floor is intentionally narrow while the public surface, packaging, and release process are still settling.
-- Python `3.13` remains the floor because the project is still tightening its first public contract and release automation around one supported runtime before widening support.
-- Compatibility is currently promised only for `bustan`, `bustan.errors`, and `bustan.testing`.
-- Internal modules such as `bustan.container`, `bustan.routing`, `bustan.params`, and `bustan.metadata` are still implementation details.
-- Alpha stability means behavior may still change between pre-`0.1.0` releases, but the project is already treating `bustan`, `bustan.errors`, and `bustan.testing` as the intended long-term public surface.
+- The Python floor is intentionally narrow while the public surface, packaging, and release automation are still settling.
+- Compatibility is currently promised only for the public surface of `bustan`, `bustan.errors`, and `bustan.testing`.
+- Internal modules such as `bustan.core.ioc`, `bustan.platform.http.routing`, and `bustan.metadata` are still implementation details.
+- Alpha stability means behavior may still change, but the project is already treating the PascalCase public API as the intended long-term contract.
 - No benchmark suite or benchmark claims are published yet.
 
 ## Installation
@@ -71,7 +73,7 @@ The distribution name `bustan` still needs to be confirmed at publish time. The 
 Create an application module, one provider, and one controller:
 
 ```python
-from bustan import controller, create_app, get, injectable, module
+from bustan import Controller, Get, Injectable, Module, create_app
 
 
 @Injectable
@@ -149,7 +151,7 @@ Stable import paths:
 Example supported imports:
 
 ```python
-from bustan import __version__, controller, create_app, get, injectable, module
+from bustan import __version__, Controller, Get, Injectable, Module, create_app
 from bustan.errors import ProviderResolutionError
 from bustan.testing import create_test_app, override_provider
 ```
@@ -237,10 +239,10 @@ Do not use public issues for sensitive security reports. Follow the private disc
 
 ## Roadmap
 
-Near-term priorities for the first public adoption push:
+Near-term priorities for the first production-ready release (`2.0.0`):
 
-- publish and verify the first PyPI release end to end
-- widen runtime support beyond Python `3.13` once release automation is routine
+- stabilize the PascalCase public contract
+- widen runtime support beyond Python `3.13`
 - collect external adopter feedback before calling any release stable
 - publish a fuller reference app or companion tutorial repository
 - move to a dedicated docs site if the docs set outgrow README-driven discovery
@@ -270,5 +272,5 @@ uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
 
 `bustan` is trying to be opinionated about application structure, not to hide Starlette or compete on benchmark claims.
 
-If you want a small ASGI core with explicit module boundaries, DI-managed services, and a predictable request pipeline, that is the target use case.
+If you want a small ASGI core with explicit module boundaries, DI-managed services, and a predictable request pipeline, that is the target use case for Bustan.
 
