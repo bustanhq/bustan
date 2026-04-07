@@ -21,6 +21,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anyio" },
     { name = "starlette" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -31,13 +32,13 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "ty" },
-    { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.9.0,<5.0.0" },
     { name = "starlette", specifier = ">=1.0.0,<2.0.0" },
+    { name = "uvicorn", specifier = ">=0.34.0,<1.0.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -48,7 +49,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.1.0,<8.0.0" },
     { name = "ruff", specifier = ">=0.15.9,<0.16.0" },
     { name = "ty" },
-    { name = "uvicorn", specifier = ">=0.34.0,<1.0.0" },
 ]
 
 [[package]]

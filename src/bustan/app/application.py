@@ -1,87 +1,90 @@
-"""Public application wrapper for Starlette with Bustan integration."""
+"""Public application wrapper and context for the Bustan framework."""
 
 from __future__ import annotations
 
-from typing import cast, Callable
 from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Callable, cast
 
-from starlette.applications import Starlette
+if TYPE_CHECKING:
+    from ..core.ioc.container import Container
+    from ..platform.http.adapter import AbstractHttpAdapter
 
-from ..core.ioc.container import Container
-from ..core.module.dynamic import ModuleKey
 
+class ApplicationContext:
+    """A standalone application context for dependency injection.
 
-class Application:
-    """A wrapper around Starlette that exposes the Bustan IoC container.
-
-    This provides a clean interface for application-wide services and
-    testing while delegating HTTP handling to the Starlette core.
+    This provides a clean interface for resolving services from the Bustan
+    IoC container, without an associated HTTP server instance.
     """
 
-    def __init__(self, starlette_app: Starlette, container: Container) -> None:
-        self._starlette_app = starlette_app
+    def __init__(self, container: Container) -> None:
         self._container = container
 
     @property
-    def starlette_app(self) -> Starlette:
-        """Accessor for the underlying Starlette instance."""
-        return self._starlette_app
-
-    @property
-    def container(self) -> Container:
-        """Accessor for the underlying IoC container."""
-        return self._container
-
-    def override(self, token: object, value: object, *, module: ModuleKey | None = None) -> None:
-        """Register a replacement object for a provider."""
-        self._container.override(token, value, module=module)
-
-    def clear_override(self, token: object, *, module: ModuleKey | None = None) -> None:
-        """Remove any override registered for a provider."""
-        self._container.clear_override(token, module=module)
-
-    def has_override(self, token: object, *, module: ModuleKey | None = None) -> bool:
-        """Check if an override is registered for a provider."""
-        return self._container.has_override(token, module=module)
-
-    def get_override(self, token: object, *, module: ModuleKey | None = None) -> object | None:
-        """Retrieve the replacement object for an overridden provider."""
-        return self._container.get_override(token, module=module)
-
-    @property
-    def module_graph(self) -> object:
-        """Accessor for the application module graph (available during lifespan)."""
-        return self.container.module_graph
-
-    @property
-    def root_module(self) -> type[object]:
-        """Accessor for the root module class."""
+    def _root_module(self) -> type[object]:
+        """Internal accessor for the root module class."""
         from ..core.module.graph import ModuleGraph
-        return cast(ModuleGraph, self.module_graph).root_module
 
-    @property
-    def module_instances(self) -> Mapping[ModuleKey, object]:
-        """Accessor for the instantiated modules (available during lifespan)."""
-        return cast(
-            Mapping[ModuleKey, object],
-            getattr(self.starlette_app.state, "bustan_module_instances", {}),
-        )
+        return cast(ModuleGraph, self._container.module_graph).root_module
 
-    @property
-    def controllers(self) -> Mapping[type[object], ModuleKey]:
-        """Accessor for the registered controller types to module keys."""
-        return self.container.registry.controller_modules
+    def get(self, token: object) -> Any:
+        """Resolve a provider from the root module context.
+
+        This is a non-request-scoped resolution. For request-scoped
+        providers, use the container directly within a request context.
+        """
+        return self._container.resolve(token, module=self._root_module)
+
+    def resolve(self, token: object) -> Any:
+        """Alias for app.get()."""
+        return self.get(token)
+
+    async def close(self) -> None:
+        """Trigger the application shutdown sequence.
+
+        Mainly used for graceful teardown in tests.
+        """
+        # Close the container (not yet implemented in Container but good for future)
+        pass
+
+
+class Application(ApplicationContext):
+    """A high-level application wrapper for HTTP services.
+
+    This class extends the ApplicationContext with an HTTP server instance managed
+    via an AbstractHttpAdapter.
+    """
+
+    def __init__(self, adapter: AbstractHttpAdapter, container: Container) -> None:
+        super().__init__(container)
+        self._adapter = adapter
+
+    def get_http_adapter(self) -> AbstractHttpAdapter:
+        """Accessor for the underlying HTTP framework adapter."""
+        return self._adapter
+
+    def get_http_server(self) -> Any:
+        """Accessor for the underlying framework instance (e.g., Starlette App)."""
+        return self._adapter.get_instance()
+
+    async def listen(
+        self, port: int, host: str = "127.0.0.1", reload: bool = False, **kwargs: Any
+    ) -> None:
+        """Start the ASGI server asynchronously via the adapter."""
+        await self._adapter.listen(port, host=host, reload=reload, **kwargs)
 
     @property
     def routes(self) -> Mapping[str, list[object]]:
-        """Accessor for the registered Starlette routes (by path)."""
+        """Accessor for the registered routes (by path)."""
         res: dict[str, list[object]] = {}
-        for route in self.starlette_app.routes:
-            path = getattr(route, "path", "")
-            if path:
-                res.setdefault(path, []).append(route)
+        instance = self.get_http_server()
+        if hasattr(instance, "routes"):
+            for route in instance.routes:
+                path = getattr(route, "path", "")
+                if path:
+                    res.setdefault(path, []).append(route)
         return res
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
-        """Forward ASGI calls directly to Starlette."""
-        await self.starlette_app(scope, receive, send)
+        """Forward ASGI calls directly to the underlying HTTP adapter."""
+        await self._adapter(scope, receive, send)

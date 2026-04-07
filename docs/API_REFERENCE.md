@@ -30,26 +30,51 @@ Runtime behavior: resolved from the installed distribution metadata, or from loc
 #### `Application`
 
 ```python
-class Application
+class Application(ApplicationContext)
 ```
 
 Defined in `bustan.app.application`.
 
-A wrapper around Starlette that exposes the Bustan IoC container.
+A high-level application wrapper for HTTP services.
 
-This provides a clean interface for application-wide services and
-testing while delegating HTTP handling to the Starlette core.
+This class extends the ApplicationContext with an HTTP server instance managed
+via an AbstractHttpAdapter.
 
 ##### Methods
 
-- `override(self, token: object, value: object, *, module: ModuleKey | None = None) -> None`
-  Register a replacement object for a provider.
-- `clear_override(self, token: object, *, module: ModuleKey | None = None) -> None`
-  Remove any override registered for a provider.
-- `has_override(self, token: object, *, module: ModuleKey | None = None) -> bool`
-  Check if an override is registered for a provider.
-- `get_override(self, token: object, *, module: ModuleKey | None = None) -> object | None`
-  Retrieve the replacement object for an overridden provider.
+- `get_http_adapter(self) -> AbstractHttpAdapter`
+  Accessor for the underlying HTTP framework adapter.
+- `get_http_server(self) -> Any`
+  Accessor for the underlying framework instance (e.g., Starlette App).
+- `listen(self, port: int, host: str = '127.0.0.1', reload: bool = False, **kwargs: Any) -> None`
+  Start the ASGI server asynchronously via the adapter.
+
+#### `ApplicationContext`
+
+```python
+class ApplicationContext
+```
+
+Defined in `bustan.app.application`.
+
+A standalone application context for dependency injection.
+
+This provides a clean interface for resolving services from the Bustan
+IoC container, without an associated HTTP server instance.
+
+##### Methods
+
+- `get(self, token: object) -> Any`
+  Resolve a provider from the root module context.
+
+This is a non-request-scoped resolution. For request-scoped
+providers, use the container directly within a request context.
+- `resolve(self, token: object) -> Any`
+  Alias for app.get().
+- `close(self) -> None`
+  Trigger the application shutdown sequence.
+
+Mainly used for graceful teardown in tests.
 
 #### `Body`
 
@@ -58,27 +83,27 @@ Defined in `bustan.common.decorators.parameter`.
 Makes a marker usable both bare (``Annotated[str, Body]``)
 and as a call (``Annotated[str, Body("field")]``).
 
-Current value: `BodyMarker`
-
-#### `bootstrap`
-
-```python
-def bootstrap(root_module: type[object] | DynamicModule) -> Application
-```
-
-Defined in `bustan.app.bootstrap`.
-
-Legacy alias for create_app.
+Current value: `Body`
 
 #### `create_app`
 
 ```python
-def create_app(root_module: type[object] | DynamicModule) -> Application
+def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | None = None) -> Application
 ```
 
 Defined in `bustan.app.bootstrap`.
 
 Create a fully assembled Bustan application from the root module.
+
+#### `create_app_context`
+
+```python
+def create_app_context(root_module: type[object] | DynamicModule) -> ApplicationContext
+```
+
+Defined in `bustan.app.bootstrap`.
+
+Create a standalone application context for dependency injection.
 
 #### `BustanError`
 
@@ -196,7 +221,7 @@ Defined in `bustan.common.decorators.parameter`.
 Makes a marker usable both bare (``Annotated[str, Body]``)
 and as a call (``Annotated[str, Body("field")]``).
 
-Current value: `HeaderMarker`
+Current value: `Header`
 
 #### `Injectable`
 
@@ -310,7 +335,7 @@ Defined in `bustan.common.decorators.parameter`.
 Makes a marker usable both bare (``Annotated[str, Body]``)
 and as a call (``Annotated[str, Body("field")]``).
 
-Current value: `ParamMarker`
+Current value: `Param`
 
 #### `ParameterBindingError`
 
@@ -384,7 +409,7 @@ Defined in `bustan.common.decorators.parameter`.
 Makes a marker usable both bare (``Annotated[str, Body]``)
 and as a call (``Annotated[str, Body("field")]``).
 
-Current value: `QueryMarker`
+Current value: `Query`
 
 #### `RouteDefinitionError`
 

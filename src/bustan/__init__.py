@@ -25,8 +25,8 @@ from .pipeline import ExceptionFilter, Guard, Interceptor, Pipe
 from .pipeline.decorators import UseFilters, UseGuards, UseInterceptors, UsePipes
 
 # Application Wrapper
-from .app.application import Application
-from .app.bootstrap import bootstrap, create_app
+from .app.application import Application, ApplicationContext
+from .app.bootstrap import create_app, create_app_context
 
 # Core Errors
 from .core.errors import (
@@ -47,9 +47,10 @@ from .core.errors import (
 __all__ = (
     "__version__",
     "Application",
+    "ApplicationContext",
     "Body",
-    "bootstrap",
     "create_app",
+    "create_app_context",
     "BustanError",
     "Controller",
     "Delete",

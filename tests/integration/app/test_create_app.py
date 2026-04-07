@@ -1,8 +1,9 @@
 """Integration tests for application bootstrap state."""
 
+from typing import Any, cast
 from starlette.applications import Starlette
-
 from bustan import Controller, create_app, Get, Injectable, Module
+from bustan.app.application import Application
 
 
 def test_create_app_returns_a_starlette_application_with_module_graph_state() -> None:
@@ -25,19 +26,20 @@ def test_create_app_returns_a_starlette_application_with_module_graph_state() ->
 
     application = create_app(AppModule)
 
-    from typing import Any, cast
-    from bustan.app.application import Application
-
     assert isinstance(application, Application)
-    assert isinstance(application._starlette_app, Starlette)
-    controller_instance = cast(Any, application.container.instantiate_class(UserController, module=AppModule))
+    # Check underlying server via public accessor
+    assert isinstance(application.get_http_server(), Starlette)
+    
+    # Use private container for internal instantiation checks in integration tests
+    controller_instance = cast(Any, application._container.instantiate_class(UserController, module=AppModule))
 
-    assert application.root_module is AppModule
+    assert application._root_module is AppModule
     assert (
         controller_instance.user_service
-        is application.container.resolve(
+        is application._container.resolve(
             UserService,
             module=AppModule,
         )
     )
-    assert cast(Any, application.module_graph).root_module is AppModule
+    # Check internal module graph state
+    assert application._container.module_graph.root_module is AppModule

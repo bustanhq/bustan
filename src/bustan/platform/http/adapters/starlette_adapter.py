@@ -1,0 +1,67 @@
+"""Starlette adapter implementation for the Bustan framework."""
+
+from __future__ import annotations
+
+from typing import Any, Callable
+
+import uvicorn
+from starlette.applications import Starlette
+from starlette.routing import BaseRoute
+
+from ..adapter import AbstractHttpAdapter
+
+
+class StarletteAdapter(AbstractHttpAdapter):
+    """Bustan adapter for the Starlette web framework.
+
+    This adapter manages a Starlette application instance and handles
+    asynchronous server initialization via Uvicorn.
+    """
+
+    def __init__(
+        self, 
+        starlette_app: Starlette | None = None,
+        *,
+        debug: bool = False,
+        lifespan: Any | None = None
+    ) -> None:
+        """Initialize the Starlette adapter.
+
+        If a Starlette app is not provided, a new one will be created with
+         the specified debug and lifespan configuration.
+        """
+        self._app = starlette_app or Starlette(debug=debug, lifespan=lifespan)
+
+    def get_instance(self) -> Starlette:
+        """Return the underlying Starlette instance."""
+        return self._app
+
+    def register_routes(self, routes: list[BaseRoute]) -> None:
+        """Register routes into the Starlette application."""
+        self._app.routes.extend(routes)
+
+    async def listen(
+        self, 
+        port: int, 
+        host: str = "127.0.0.1", 
+        reload: bool = False, 
+        **kwargs: Any
+    ) -> None:
+        """Start the ASGI server asynchronously using Uvicorn."""
+        config = uvicorn.Config(
+            self._app, 
+            host=host, 
+            port=port, 
+            reload=reload, 
+            **kwargs
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+
+    async def close(self) -> None:
+        """Shutdown the Starlette application."""
+        pass
+
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        """Forward ASGI calls directly to the Starlette instance."""
+        await self._app(scope, receive, send)

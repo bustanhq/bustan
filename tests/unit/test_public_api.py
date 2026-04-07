@@ -1,4 +1,4 @@
-"""Unit tests that lock down the supported public package surface."""
+"""Unit tests into the supported public package surface."""
 
 from __future__ import annotations
 
@@ -8,8 +8,9 @@ import bustan
 import bustan.errors as bustan_errors
 import bustan.testing as bustan_testing
 from bustan.app.application import Application as InternalApplication
-from bustan.app.bootstrap import bootstrap as internal_bootstrap
+from bustan.app.application import ApplicationContext as InternalApplicationContext
 from bustan.app.bootstrap import create_app as internal_create_app
+from bustan.app.bootstrap import create_app_context as internal_create_app_context
 from bustan.common.decorators.controller import (
     Controller as InternalController,
 )
@@ -55,9 +56,10 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.__all__ == (
         "__version__",
         "Application",
+        "ApplicationContext",
         "Body",
-        "bootstrap",
         "create_app",
+        "create_app_context",
         "BustanError",
         "Controller",
         "Delete",
@@ -94,14 +96,15 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     )
     assert bustan.__version__ == importlib.metadata.version("bustan")
     assert bustan.Application is InternalApplication
+    assert bustan.ApplicationContext is InternalApplicationContext
     assert bustan.ExceptionFilter is InternalExceptionFilter
     assert bustan.Guard is InternalGuard
     assert bustan.InjectionToken is InternalInjectionToken
     assert bustan.Interceptor is InternalInterceptor
     assert bustan.Pipe is InternalPipe
-    assert bustan.bootstrap is internal_bootstrap
     assert bustan.Controller is InternalController
     assert bustan.create_app is internal_create_app
+    assert bustan.create_app_context is internal_create_app_context
     assert bustan.Delete is InternalDelete
     assert bustan.DynamicModule is InternalDynamicModule
     assert bustan.Get is InternalGet

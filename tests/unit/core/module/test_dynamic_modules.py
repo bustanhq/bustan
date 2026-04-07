@@ -1,5 +1,5 @@
 import pytest
-from typing import Any, cast
+from typing import cast
 from bustan import Controller, Get, Injectable, Module, create_app
 from bustan.core.errors import (
     ModuleCycleError,
@@ -87,8 +87,9 @@ def test_dynamic_module_singleton_isolation() -> None:
 
     app = create_app(DynamicModule(AppModule, imports=(M1, M2)))
 
-    inst1 = cast(Counter, app.container.resolve(Counter, module=M1))
-    inst2 = cast(Counter, app.container.resolve(Counter, module=M2))
+    # Use internal container for module-specific resolution in tests
+    inst1 = cast(Counter, app._container.resolve(Counter, module=M1))
+    inst2 = cast(Counter, app._container.resolve(Counter, module=M2))
 
     assert inst1 is not inst2
     inst1.count += 1
@@ -166,13 +167,13 @@ def test_dynamic_module_controller_addition() -> None:
     dynamic = DynamicModule(RootModule, controllers=(DynamicController,))
     app = create_app(dynamic)
 
-    # Verify both controllers work
-    graph = cast(ModuleGraph, app.module_graph)
+    # Verify both controllers work via internal module graph access
+    graph = cast(ModuleGraph, app._container.module_graph)
     assert len(graph.get_node(graph.root_key).controllers) == 2
 
-    # We can check route count
-    routes = app._starlette_app.routes
-    paths = {cast(Any, r).path for r in routes}
+    # Verify routes via public accessor
+    server = app.get_http_server()
+    paths = {r.path for r in server.routes if hasattr(r, "path")}
     assert "/static" in paths
     assert "/dynamic" in paths
 

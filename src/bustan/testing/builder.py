@@ -40,6 +40,7 @@ def create_test_app(
 
     if provider_overrides is not None:
         for token, replacement in provider_overrides.items():
-            application.override(token, replacement)
+            # Use internal container for testing overrides
+            application._container.override(token, replacement)
 
     return application

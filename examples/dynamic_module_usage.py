@@ -1,4 +1,4 @@
-import uvicorn
+import anyio
 from bustan import (
     Module,
     DynamicModule,
@@ -62,12 +62,18 @@ class AppController:
     imports=[CacheModule.register("prod:")],
     controllers=[AppController],
 )
-class AppModule:
+class RootModule:
     pass
 
 
-app = create_app(AppModule)
+app = create_app(RootModule)
+
+
+async def main():
+    print("Starting example app on http://127.0.0.1:8000")
+    # Use the new async listen() API
+    await app.listen(8000)
+
 
 if __name__ == "__main__":
-    print("Starting example app on http://127.0.0.1:8000")
-    uvicorn.run(app._starlette_app, host="127.0.0.1", port=8000)
+    anyio.run(main)
