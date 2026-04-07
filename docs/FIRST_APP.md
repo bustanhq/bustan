@@ -51,7 +51,7 @@ Expected response:
 
 ## Test It
 
-For a direct application smoke test, use Starlette's test client:
+For a direct functional test, use any ASGI-compliant test client (Starlette's `TestClient` is recommended):
 
 ```python
 from starlette.testclient import TestClient
@@ -89,5 +89,5 @@ application = create_test_app(
 - `@injectable` marks a DI-managed provider.
 - `@controller` groups related routes behind one prefix.
 - `@module` is the composition boundary that tells `bustan` what to wire.
-- `create_app()` turns the root module into a Starlette application.
+- `create_app()` turns the root module into a fully-configured ASGI application (using the Starlette adapter by default).
 - `bustan.testing` lets you swap providers without mutating global state.

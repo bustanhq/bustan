@@ -1,15 +1,15 @@
 # Bustan
 
-Bustan is an architecture-first Python web framework for teams that like Starlette's runtime but want stronger application structure.
+Bustan is a modular architecture engine for building scalable, testable ASGI applications. Inspired by NestJS, it provides a structured alternative to assembling micro-frameworks by hand.
 
-It brings NestJS-style modules, controllers, providers, constructor injection, lifecycle hooks, and a request pipeline to Python, while keeping direct access to Starlette when you need an escape hatch.
+It brings modules, controllers, providers, constructor injection, lifecycle hooks, and a request pipeline to the Python ecosystem, while maintaining direct access to the underlying platform (Starlette by default).
 
 ## Why bustan
 
 - Use modules as real composition boundaries instead of ad hoc import graphs.
 - Keep controllers thin and move business logic into DI-managed providers.
 - Apply guards, pipes, interceptors, and exception filters in a predictable order.
-- Build on top of Starlette instead of replacing the ASGI layer with a closed runtime.
+- Decoupled from HTTP engines via the **Adapter** pattern (supporting Starlette, with Litestar planned).
 - Test applications with focused module builders and provider overrides.
 
 ## Status
@@ -169,7 +169,7 @@ The generated API reference for the stable surface lives in [docs/API_REFERENCE.
 - [docs/STABILITY.md](docs/STABILITY.md)
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - [docs/COMPARISONS.md](docs/COMPARISONS.md)
-- [docs/ESCAPE_HATCHES.md](docs/ESCAPE_HATCHES.md)
+- [docs/PLATFORM_INTEGRATION.md](docs/PLATFORM_INTEGRATION.md)
 - [docs/VERSIONING.md](docs/VERSIONING.md)
 
 ## Open Source Project Docs
@@ -270,7 +270,7 @@ uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
 
 ## Project Direction
 
-`bustan` is trying to be opinionated about application structure, not to hide Starlette or compete on benchmark claims.
+`Bustan` is trying to be opinionated about application structure, not to hide the underlying platform or compete on benchmark claims.
 
 If you want a small ASGI core with explicit module boundaries, DI-managed services, and a predictable request pipeline, that is the target use case for Bustan.
 

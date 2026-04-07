@@ -1,26 +1,26 @@
 # Comparisons
 
-`bustan` is easiest to evaluate when you place it next to the tools it overlaps with.
+`Bustan` is most effective when evaluated alongside the frameworks it integrates with or is inspired by.
 
-## `bustan` Vs Starlette
+## `Bustan` Vs Starlette
 
 - Choose Starlette when you want a minimal ASGI toolkit and prefer assembling architecture yourself.
-- Choose `bustan` when you still want Starlette underneath but want modules, DI-managed providers, lifecycle hooks, and a request pipeline as first-class patterns.
+- Choose `Bustan` when you want a structured application engine (modules, DI, lifecycle hooks) that uses Starlette as its high-performance execution driver.
 
-## `bustan` Vs FastAPI
+## `Bustan` Vs FastAPI
 
-- Choose FastAPI when schema-first API tooling, automatic OpenAPI generation, and request/response model ergonomics are the primary goal.
-- Choose `bustan` when the main problem is application structure, explicit module boundaries, and NestJS-style composition on top of Starlette.
+- Choose FastAPI when schema-first API tooling, automatic OpenAPI generation, and request/response model ergonomics are the primary goals.
+- Choose `Bustan` when the primary challenge is managing complex application structure, explicit module boundaries, and decoupled service layers.
 
-## `bustan` Vs NestJS
+## `Bustan` Vs Litestar
 
-- Choose NestJS when the team is already in the TypeScript and Node.js ecosystem.
-- Choose `bustan` when you want a similar architectural model in Python while staying close to ASGI and Starlette.
+- Choose Litestar when you want a feature-rich, high-performance ASGI framework with extensive built-in plugins.
+- Choose `Bustan` when you want a rigorous architectural pattern (inspired by NestJS) and cross-platform flexibility; while currently defaulting to Starlette, a Litestar adapter is a future planned integration point.
 
-## What `bustan` Is Optimizing For
+## What `Bustan` Is Optimizing For
 
-- explicit module boundaries
-- constructor injection for providers and controllers
-- request-local dependencies without global state
-- predictable cross-cutting hooks through guards, pipes, interceptors, and filters
-- direct escape hatches back to Starlette when needed
+- **Explicit Module Boundaries**: Encapsulate related functionality and explicitly declare imports and exports.
+- **Constructor Injection**: Use class-based provider and controller injection for better testability and type safety.
+- **Request-Local State**: Manage dependencies that exist only for the life of an incoming request without global state.
+- **Predictable Request Pipeline**: Apply guards, pipes, interceptors, and filters in a fixed, documented execution order.
+- **Platform Integration**: Maintain direct access to the underlying engine's features (e.g., Starlette middleware or mounts) through standardized accessors.
