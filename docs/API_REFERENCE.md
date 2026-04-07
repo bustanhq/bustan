@@ -68,7 +68,8 @@ IoC container, without an associated HTTP server instance.
   Resolve a provider from the root module context.
 
 This is a non-request-scoped resolution. For request-scoped
-providers, use the container directly within a request context.
+providers, use the dependency injection system directly via
+decorators (@Param, @Body, etc.) or app.resolve().
 - `resolve(self, token: object) -> Any`
   Alias for app.get().
 - `close(self) -> None`
