@@ -45,7 +45,10 @@ class Container:
 
             for imported_key in node.imported_exports:
                 for exported_token in self.module_graph.exports_for(imported_key):
-                    accessible_provider_modules[exported_token] = imported_key
+                    # Local bindings are authoritative: only add imported exports
+                    # for tokens not already defined locally.
+                    if exported_token not in accessible_provider_modules:
+                        accessible_provider_modules[exported_token] = imported_key
 
             self.registry.set_visibility(node.key, accessible_provider_modules)
 

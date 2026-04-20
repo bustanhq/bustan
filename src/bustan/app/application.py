@@ -32,8 +32,13 @@ class ApplicationContext:
 
     @property
     def root_module(self) -> Any:
-        """Accessor for the application's root module (as a ModuleKey)."""
+        """Accessor for the application's root module class."""
         return self._container.module_graph.root_module
+
+    @property
+    def root_key(self) -> Any:
+        """Accessor for the application's root module key (ModuleKey)."""
+        return self._container.module_graph.root_key
 
     def get(self, token: object) -> Any:
         """Resolve a provider from the root module context.
@@ -42,9 +47,9 @@ class ApplicationContext:
         providers, use the dependency injection system directly via
         decorators (@Param, @Body, etc.) or app.resolve().
         """
-        # Resolve from the root module defined in the container's graph
+        # Resolve from the root module key (works correctly for DynamicModule roots too)
         return self._container.resolve(
-            token, module=self._container.module_graph.root_module
+            token, module=self._container.module_graph.root_key
         )
 
     def resolve(self, token: object) -> Any:
