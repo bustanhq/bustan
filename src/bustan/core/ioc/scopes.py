@@ -19,6 +19,7 @@ class ScopeManager:
     def __init__(self) -> None:
         self.singletons: dict[tuple[ModuleKey, object], object] = {}
         self.singleton_locks: dict[tuple[ModuleKey, object], threading.Lock] = {}
+        self._singleton_locks_guard = threading.Lock()
         self.active_request: ContextVar[Request | None] = ContextVar(
             "bustan_active_request", default=None
         )
@@ -30,9 +31,11 @@ class ScopeManager:
         self.singletons[key] = instance
 
     def get_singleton_lock(self, key: tuple[ModuleKey, object]) -> threading.Lock:
-        if key not in self.singleton_locks:
-            self.singleton_locks[key] = threading.Lock()
-        return self.singleton_locks[key]
+        try:
+            return self.singleton_locks[key]
+        except KeyError:
+            with self._singleton_locks_guard:
+                return self.singleton_locks.setdefault(key, threading.Lock())
 
     def push_request(self, request: Request | None) -> Token[Request | None] | None:
         if request is None:
