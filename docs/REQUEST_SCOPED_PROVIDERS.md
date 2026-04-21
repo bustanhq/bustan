@@ -5,11 +5,11 @@ Use request scope when a provider should exist once per incoming request and the
 ## Declare Request Scope
 
 ```python
-from bustan import injectable
+from bustan import Injectable
 from starlette.requests import Request
 
 
-@injectable(scope="request")
+@Injectable(scope="request")
 class RequestIdentity:
     def __init__(self, request: Request) -> None:
         self.request_id = request.headers.get("x-request-id", "missing")
@@ -33,19 +33,22 @@ class RequestIdentity:
 Keep long-lived business services singleton, and inject the request-local provider into the controller or other request-scoped collaborators:
 
 ```python
-@injectable
+from bustan import Controller, Get
+
+
+@Injectable
 class BillingService:
     def read_plan(self, user_id: str) -> dict[str, str]:
         return {"user_id": user_id, "plan": "pro"}
 
 
-@controller("/account")
+@Controller("/account")
 class AccountController:
     def __init__(self, billing_service: BillingService, request_identity: RequestIdentity) -> None:
         self.billing_service = billing_service
         self.request_identity = request_identity
 
-    @get("/me")
+    @Get("/me")
     def read_account(self) -> dict[str, str]:
         return self.billing_service.read_plan(self.request_identity.user_id or "anonymous")
 ```

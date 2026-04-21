@@ -1,8 +1,8 @@
 # Contributing
 
-Thanks for contributing to `bustan`.
+Thanks for contributing to Bustan.
 
-The project is still pre-`0.1.0`, so the main goals right now are tightening the public API boundary, improving release safety, and making the framework easier to adopt without source-diving.
+`Bustan` is currently in alpha (`v1.x`). Versions `1.0.0` and `1.0.1` were released unintentionally during CI/CD setup and should be treated as early alpha orphans. The first production-ready release will be `2.0.0`.
 
 ## Development Setup
 

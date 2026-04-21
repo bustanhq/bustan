@@ -1,6 +1,6 @@
 # Stability Guide
 
-`bustan` is still pre-`0.1.0`, but not every import path is equally stable.
+`bustan` is currently in alpha (`v1.x`). Versions `1.0.0` and `1.0.1` were released unintentionally during CI/CD setup and should be treated as early alpha orphans. Stability is targeted for the `2.0.0` release.
 
 ## Supported Public Surface
 

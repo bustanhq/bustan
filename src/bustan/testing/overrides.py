@@ -4,47 +4,43 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import TypeVar, cast
+from typing import cast
 
 from starlette.applications import Starlette
-
-from ..container import ContainerAdapter
-
-ResolvedT = TypeVar("ResolvedT")
+from ..app.application import Application
+from ..core.ioc.container import Container
 
 
 @contextmanager
 def override_provider(
-    target: Starlette | ContainerAdapter,
-    provider_cls: type[ResolvedT],
-    replacement: ResolvedT,
+    target: Starlette | Application | Container,
+    token: object,
+    replacement: object,
     *,
     module_cls: type[object] | None = None,
 ) -> Iterator[None]:
     """Temporarily replace a provider for the duration of a context block."""
 
     container = _resolve_container(target)
-    had_override = container.has_provider_override(provider_cls, module_cls=module_cls)
-    previous_override: ResolvedT | None = None
+    had_override = container.has_override(token, module=module_cls)
+    previous_override: object = None
     if had_override:
-        previous_override = container.get_provider_override(provider_cls, module_cls=module_cls)
+        previous_override = container.get_override(token, module=module_cls)
 
-    container.set_provider_override(provider_cls, replacement, module_cls=module_cls)
+    container.override(token, replacement, module=module_cls)
     try:
         yield
     finally:
         if had_override:
-            container.set_provider_override(
-                provider_cls,
-                cast(ResolvedT, previous_override),
-                module_cls=module_cls,
-            )
+            container.override(token, previous_override, module=module_cls)
         else:
-            container.clear_provider_override(provider_cls, module_cls=module_cls)
+            container.clear_override(token, module=module_cls)
 
 
-def _resolve_container(target: Starlette | ContainerAdapter) -> ContainerAdapter:
-    if isinstance(target, ContainerAdapter):
+def _resolve_container(target: Starlette | Application | Container) -> Container:
+    if isinstance(target, Container):
         return target
+    if isinstance(target, Application):
+        return target._container
 
-    return cast(ContainerAdapter, target.state.bustan_container)
+    return cast(Container, getattr(target.state, "bustan_container"))

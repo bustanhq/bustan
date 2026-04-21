@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 
 from bustan import Controller, create_app, Get, Injectable, Module, Post
 from starlette.requests import Request
+from typing import Any, cast
 from starlette.testclient import TestClient
 
 
@@ -124,7 +125,7 @@ app = create_app(AppModule)
 def demo() -> None:
     """Show the seeded list endpoint and a write that carries request-local context."""
 
-    with TestClient(app) as client:
+    with TestClient(cast(Any, app)) as client:
         print(client.get("/posts").json())
         print(
             client.post(

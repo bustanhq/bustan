@@ -16,7 +16,7 @@ These guides sit on top of the main [README.md](../README.md). Start there for t
 - [VERSIONING.md](VERSIONING.md): release compatibility rules for public modules versus internal implementation details.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md): the most common framework errors and how to fix them.
 - [COMPARISONS.md](COMPARISONS.md): how `bustan` differs from Starlette, FastAPI, and NestJS.
-- [ESCAPE_HATCHES.md](ESCAPE_HATCHES.md): direct use of Starlette and low-level integration points.
+- [PLATFORM_INTEGRATION.md](PLATFORM_INTEGRATION.md): Direct platform access and low-level integration points.
 
 ## Reference And Release
 

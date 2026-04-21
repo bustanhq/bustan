@@ -5,11 +5,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import cast
 
-from starlette.applications import Starlette
-
-from ..application import create_app
-from ..container import ContainerAdapter
-from ..decorators import Module
+from ..app.application import Application
+from ..app.bootstrap import create_app
+from ..core.module.decorators import Module
 
 
 def create_test_module(
@@ -17,8 +15,8 @@ def create_test_module(
     name: str = "TestModule",
     imports: Iterable[type[object]] | None = None,
     controllers: Iterable[type[object]] | None = None,
-    providers: Iterable[type[object]] | None = None,
-    exports: Iterable[type[object]] | None = None,
+    providers: Iterable[type[object] | dict[str, object]] | None = None,
+    exports: Iterable[object] | None = None,
 ) -> type[object]:
     """Create a throwaway decorated module for isolated tests."""
 
@@ -34,15 +32,15 @@ def create_test_module(
 def create_test_app(
     root_module: type[object],
     *,
-    provider_overrides: Mapping[type[object], object] | None = None,
-) -> Starlette:
+    provider_overrides: Mapping[object, object] | None = None,
+) -> Application:
     """Create an application and apply any requested provider overrides."""
 
     application = create_app(root_module)
-    container = cast(ContainerAdapter, application.state.bustan_container)
 
     if provider_overrides is not None:
-        for provider_cls, replacement in provider_overrides.items():
-            container.set_provider_override(provider_cls, replacement)
+        for token, replacement in provider_overrides.items():
+            # Use internal container for testing overrides
+            application._container.override(token, replacement)
 
     return application

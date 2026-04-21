@@ -142,7 +142,9 @@ def _render_module(module_name: str, module: ModuleType) -> list[str]:
         lines.extend(("```", ""))
 
     lines.extend(("### Exports", ""))
-    for export_name in getattr(module, "__all__", ()):  # pragma: no branch - stable modules all define __all__
+    for export_name in getattr(
+        module, "__all__", ()
+    ):  # pragma: no branch - stable modules all define __all__
         exported_object = getattr(module, export_name)
         lines.extend(_render_export(module_name, export_name, exported_object))
 
@@ -161,7 +163,9 @@ def _render_export(module_name: str, export_name: str, exported_object: object) 
     return _render_value_export(module_name, export_name, exported_object)
 
 
-def _render_callable_export(module_name: str, export_name: str, exported_object: object) -> list[str]:
+def _render_callable_export(
+    module_name: str, export_name: str, exported_object: object
+) -> list[str]:
     """Render a function or callable export."""
 
     lines = [f"#### `{export_name}`", ""]
@@ -179,7 +183,9 @@ def _render_callable_export(module_name: str, export_name: str, exported_object:
     return lines
 
 
-def _render_class_export(module_name: str, export_name: str, exported_object: type[object]) -> list[str]:
+def _render_class_export(
+    module_name: str, export_name: str, exported_object: type[object]
+) -> list[str]:
     """Render a class export, including public methods and attributes."""
 
     lines = [f"#### `{export_name}`", ""]
@@ -213,7 +219,9 @@ def _render_value_export(module_name: str, export_name: str, exported_object: ob
     lines = [f"#### `{export_name}`", ""]
     lines.extend(_render_origin_line(exported_object))
 
-    value_doc = SPECIAL_VALUE_DOCS.get((module_name, export_name)) or inspect.getdoc(exported_object)
+    value_doc = SPECIAL_VALUE_DOCS.get((module_name, export_name)) or inspect.getdoc(
+        exported_object
+    )
     lines.extend(_render_doc_paragraphs(value_doc))
 
     value_note = SPECIAL_VALUE_NOTES.get((module_name, export_name))
@@ -263,7 +271,11 @@ def _render_class_methods(exported_object: type[object]) -> list[str]:
         if method is None:
             continue
 
-        lines.append(f"- `{_format_signature(method_name, method)}`")
+        if isinstance(member, property):
+            lines.append(f"- `(property) {method_name}`")
+        else:
+            lines.append(f"- `{_format_signature(method_name, method)}`")
+
         method_doc = inspect.getdoc(method)
         if method_doc is not None:
             lines.append(f"  {method_doc}")
@@ -319,7 +331,9 @@ def _format_signature(name: str, exported_object: object) -> str:
 
     if saw_positional_only:
         positional_only_count = sum(
-            1 for parameter in signature.parameters.values() if parameter.kind is inspect.Parameter.POSITIONAL_ONLY
+            1
+            for parameter in signature.parameters.values()
+            if parameter.kind is inspect.Parameter.POSITIONAL_ONLY
         )
         rendered_parameters.insert(positional_only_count, "/")
 
@@ -383,6 +397,8 @@ def _unwrap_descriptor(member: object) -> object | None:
 
     if isinstance(member, (staticmethod, classmethod)):
         return member.__func__
+    if isinstance(member, property):
+        return member.fget
     if inspect.isfunction(member):
         return member
     return None

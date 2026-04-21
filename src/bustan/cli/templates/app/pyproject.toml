@@ -1,0 +1,30 @@
+[project]
+name = "$project_name"
+version = "0.1.0"
+description = "A Bustan application"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "bustan>=$bustan_version",
+    "uvicorn>=0.30.0,<1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0,<1.0.0",
+    "pytest>=8.3.0,<9.0.0",
+    "ruff>=0.11.0,<0.12.0",
+    "ty",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[build-system]
+requires = ["uv_build>=0.11.1,<0.12.0"]
+build-backend = "uv_build"

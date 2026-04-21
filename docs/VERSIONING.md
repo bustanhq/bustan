@@ -1,6 +1,6 @@
 # Versioning Policy
 
-This repository is still pre-`0.1.0`, but release behavior is not arbitrary.
+`bustan` is currently in alpha (`v1.x`). Versions `1.0.0` and `1.0.1` were released unintentionally during CI/CD setup and should be treated as early alpha orphans. The first production-ready release will be `2.0.0`.
 
 ## Public Compatibility Boundary
 
@@ -18,9 +18,9 @@ Everything else is internal and may change between alpha releases without a depr
 - Public-surface additions, removals, and behavior changes should be called out explicitly.
 - Internal refactors may be summarized at a higher level when they do not change the supported public modules.
 
-## Breaking Changes Before `1.0`
+## Breaking Changes Before `2.0`
 
-- Public API breaks may still happen before `1.0`, but they should be deliberate and documented.
+- Public API breaks may still happen before `2.0`, but they should be deliberate and documented.
 - Compatibility breaks in the supported public surface should use clear release-note language and, when appropriate, `BREAKING CHANGE:` commit metadata.
 - Internal modules do not carry the same notice requirement because they are not part of the compatibility target.
 

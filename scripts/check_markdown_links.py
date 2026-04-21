@@ -51,7 +51,9 @@ def iter_markdown_files(root: Path) -> list[Path]:
 def check_markdown_links(markdown_files: tuple[Path, ...] | list[Path]) -> list[str]:
     """Return a list of validation errors for repo-local Markdown links."""
 
-    anchor_cache = {markdown_file: collect_heading_anchors(markdown_file) for markdown_file in markdown_files}
+    anchor_cache = {
+        markdown_file: collect_heading_anchors(markdown_file) for markdown_file in markdown_files
+    }
     markdown_file_set = set(markdown_files)
     errors: list[str] = []
 
@@ -96,7 +98,11 @@ def validate_markdown_target(
     if not resolved_path.exists():
         return format_error(source_file, line_number, target, "missing target file")
 
-    if separator and resolved_path in markdown_files and fragment not in anchor_cache[resolved_path]:
+    if (
+        separator
+        and resolved_path in markdown_files
+        and fragment not in anchor_cache[resolved_path]
+    ):
         return format_error(source_file, line_number, target, "missing target anchor")
 
     return None
@@ -167,8 +173,8 @@ def normalize_target(target: str) -> str:
     if normalized_target.startswith(("http://", "https://", "mailto:")):
         return normalized_target
 
-    if " \"" in normalized_target:
-        normalized_target = normalized_target.split(" \"", maxsplit=1)[0]
+    if ' "' in normalized_target:
+        normalized_target = normalized_target.split(' "', maxsplit=1)[0]
     if " '" in normalized_target:
         normalized_target = normalized_target.split(" '", maxsplit=1)[0]
 
@@ -189,7 +195,11 @@ def slugify_heading(heading: str) -> str:
 def format_error(source_file: Path, line_number: int, target: str, reason: str) -> str:
     """Format one Markdown link validation error."""
 
-    relative_path = source_file if not source_file.is_relative_to(REPO_ROOT) else source_file.relative_to(REPO_ROOT)
+    relative_path = (
+        source_file
+        if not source_file.is_relative_to(REPO_ROOT)
+        else source_file.relative_to(REPO_ROOT)
+    )
     return f"{relative_path}:{line_number}: {reason}: {target}"
 
 

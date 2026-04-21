@@ -16,6 +16,7 @@ from bustan import (
     UseInterceptors,
 )
 from bustan.pipeline.context import HandlerContext, RequestContext
+from typing import Any, cast
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
@@ -112,7 +113,7 @@ app = create_app(AppModule)
 def demo_pipeline() -> None:
     """Show the rejected and accepted paths for the request-scoped pipeline."""
 
-    with TestClient(app) as client:
+    with TestClient(cast(Any, app)) as client:
         # The first request omits authentication headers, so the guard rejects it.
         print(client.get("/account/me").status_code)
         print(

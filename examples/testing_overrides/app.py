@@ -1,5 +1,6 @@
 """Example showing test-time provider overrides with bustan.testing."""
 
+from typing import Any, cast
 from bustan import Controller, create_app, Get, Injectable, Module
 from bustan.testing import create_test_app, override_provider
 from starlette.testclient import TestClient
@@ -49,13 +50,15 @@ def demo_overrides() -> None:
         provider_overrides={GreetingService: FakeGreetingService("from create_test_app")},
     )
 
-    with TestClient(application) as client:
+    with TestClient(cast(Any, application)) as client:
         print(client.get("/greetings").json())
 
     application = create_test_app(AppModule)
-    with TestClient(application) as client:
+    with TestClient(cast(Any, application)) as client:
         print(client.get("/greetings").json())
-        with override_provider(application, GreetingService, FakeGreetingService("from override_provider")):
+        with override_provider(
+            application, GreetingService, FakeGreetingService("from override_provider")
+        ):
             print(client.get("/greetings").json())
         print(client.get("/greetings").json())
 

@@ -8,10 +8,11 @@ from typing import TYPE_CHECKING
 
 from starlette.requests import Request
 
-from ..metadata import ControllerRouteDefinition
+from ..platform.http.metadata import ControllerRouteDefinition
 
 if TYPE_CHECKING:
-    from ..container import ContainerAdapter
+    from ..core.ioc.container import Container
+    from ..core.module.dynamic import ModuleKey
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,11 +20,11 @@ class RequestContext:
     """Request-wide context passed to guards and exception filters."""
 
     request: Request
-    module: type[object]
+    module: ModuleKey
     controller_type: type[object]
     controller: object
     route: ControllerRouteDefinition
-    container: ContainerAdapter
+    container: Container
 
 
 @dataclass(frozen=True, slots=True)

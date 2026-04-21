@@ -10,7 +10,7 @@ Stable modules:
 
 ## `bustan`
 
-Supported public API for the bustan package.
+Bustan – A dependency injection framework for building modular Starlette applications.
 
 ### Import
 
@@ -26,6 +26,133 @@ from bustan import ExceptionFilter, Guard, Interceptor, Pipe
 Installed distribution version string for the bustan package.
 
 Runtime behavior: resolved from the installed distribution metadata, or from local project metadata when running from a source checkout.
+
+#### `Application`
+
+```python
+class Application(ApplicationContext)
+```
+
+Defined in `bustan.app.application`.
+
+A high-level application wrapper for HTTP services.
+
+This class extends the ApplicationContext with an HTTP server instance managed
+via an AbstractHttpAdapter.
+
+##### Methods
+
+- `get_http_adapter(self) -> AbstractHttpAdapter`
+  Accessor for the underlying HTTP framework adapter.
+- `get_http_server(self) -> Any`
+  Accessor for the underlying framework instance (e.g., Starlette App).
+- `listen(self, port: int, host: str = '127.0.0.1', reload: bool = False, **kwargs: Any) -> None`
+  Start the ASGI server asynchronously via the adapter.
+- `(property) routes`
+  Accessor for the registered routes (by path).
+
+#### `ApplicationContext`
+
+```python
+class ApplicationContext
+```
+
+Defined in `bustan.app.application`.
+
+A standalone application context for dependency injection.
+
+This provides a clean interface for resolving services from the Bustan
+IoC container, without an associated HTTP server instance.
+
+##### Methods
+
+- `(property) container`
+  Accessor for the underlying dependency injection container.
+- `(property) module_graph`
+  Accessor for the discovered module graph.
+- `(property) root_module`
+  Accessor for the application's root module (as a ModuleKey).
+- `get(self, token: object) -> Any`
+  Resolve a provider from the root module context.
+
+This is a non-request-scoped resolution. For request-scoped
+providers, use the dependency injection system directly via
+decorators (@Param, @Body, etc.) or app.resolve().
+- `resolve(self, token: object) -> Any`
+  Alias for app.get().
+- `close(self) -> None`
+  Trigger the application shutdown sequence.
+
+Mainly used for graceful teardown in tests.
+
+#### `Body`
+
+Defined in `bustan.common.decorators.parameter`.
+
+Makes a marker usable both bare (``Annotated[str, Body]``)
+and as a call (``Annotated[str, Body("field")]``).
+
+Current value: `Body`
+
+#### `create_app`
+
+```python
+def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | None = None) -> Application
+```
+
+Defined in `bustan.app.bootstrap`.
+
+Create a fully assembled Bustan application from the root module.
+
+#### `create_app_context`
+
+```python
+def create_app_context(root_module: type[object] | DynamicModule) -> ApplicationContext
+```
+
+Defined in `bustan.app.bootstrap`.
+
+Create a standalone application context for dependency injection.
+
+#### `BustanError`
+
+```python
+class BustanError(Exception)
+```
+
+Defined in `bustan.core.errors`.
+
+Base exception for the framework.
+
+#### `Controller`
+
+```python
+def Controller(prefix: str = '') -> Callable[[ClassT], ClassT]
+```
+
+Defined in `bustan.common.decorators.controller`.
+
+Attach controller metadata to a class.
+
+#### `Delete`
+
+```python
+def Delete(path: str = '/') -> Callable[[FunctionT], FunctionT]
+```
+
+Defined in `bustan.common.decorators.route`.
+
+Return a decorator that registers a DELETE route.
+
+#### `DynamicModule`
+
+```python
+class DynamicModule
+```
+
+Defined in `bustan.core.module.dynamic`.
+
+Metadata overlay that compiles into a unique module instance.
 
 #### `ExceptionFilter`
 
@@ -51,6 +178,26 @@ handle.
 - `catch(self, exc: Exception, context: RequestContext) -> object`
   Convert an exception into a handler result or response payload.
 
+#### `ExportViolationError`
+
+```python
+class ExportViolationError(InvalidModuleError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when a module exports a provider it does not declare.
+
+#### `Get`
+
+```python
+def Get(path: str = '/') -> Callable[[FunctionT], FunctionT]
+```
+
+Defined in `bustan.common.decorators.route`.
+
+Return a decorator that registers a GET route.
+
 #### `Guard`
 
 ```python
@@ -65,6 +212,45 @@ Base class for authorization and policy gates.
 
 - `can_activate(self, context: RequestContext) -> bool`
   Return True to allow request execution to continue.
+
+#### `GuardRejectedError`
+
+```python
+class GuardRejectedError(BustanError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when a guard blocks request execution.
+
+#### `Header`
+
+Defined in `bustan.common.decorators.parameter`.
+
+Makes a marker usable both bare (``Annotated[str, Body]``)
+and as a call (``Annotated[str, Body("field")]``).
+
+Current value: `Header`
+
+#### `Injectable`
+
+```python
+def Injectable(target: ClassT | None = None, *, scope: ProviderScope | str = ProviderScope.SINGLETON) -> ClassT | Callable[[ClassT], ClassT]
+```
+
+Defined in `bustan.common.decorators.injectable`.
+
+Mark a class as a DI-managed provider with the selected scope.
+
+#### `InjectionToken`
+
+```python
+class InjectionToken(Generic)
+```
+
+Defined in `bustan.core.ioc.tokens`.
+
+A typed token representing a dependency for injection.
 
 #### `Interceptor`
 
@@ -81,6 +267,105 @@ Base class for around-handler behaviors.
 - `intercept(self, context: HandlerContext, call_next: CallNext) -> object`
   Wrap handler execution and optionally transform the result.
 
+#### `InvalidControllerError`
+
+```python
+class InvalidControllerError(BustanError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when a controller declaration is invalid.
+
+#### `InvalidModuleError`
+
+```python
+class InvalidModuleError(BustanError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when module declarations or imports are invalid.
+
+#### `InvalidPipelineError`
+
+```python
+class InvalidPipelineError(BustanError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when pipeline decorators or components are invalid.
+
+#### `InvalidProviderError`
+
+```python
+class InvalidProviderError(BustanError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when a provider declaration is invalid.
+
+#### `LifecycleError`
+
+```python
+class LifecycleError(BustanError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when application lifecycle hooks fail.
+
+#### `Module`
+
+```python
+def Module(*, imports: Iterable[type[object] | DynamicModule] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[object | dict[str, Any]] | None = None, exports: Iterable[object] | None = None) -> Callable[[ClassT], ClassT]
+```
+
+Defined in `bustan.core.module.decorators`.
+
+Attach module metadata to a class without performing registration.
+
+#### `ModuleCycleError`
+
+```python
+class ModuleCycleError(InvalidModuleError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when a module import cycle is detected.
+
+#### `Param`
+
+Defined in `bustan.common.decorators.parameter`.
+
+Makes a marker usable both bare (``Annotated[str, Body]``)
+and as a call (``Annotated[str, Body("field")]``).
+
+Current value: `Param`
+
+#### `ParameterBindingError`
+
+```python
+class ParameterBindingError(BustanError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when request parameters cannot be bound.
+
+#### `Patch`
+
+```python
+def Patch(path: str = '/') -> Callable[[FunctionT], FunctionT]
+```
+
+Defined in `bustan.common.decorators.route`.
+
+Return a decorator that registers a PATCH route.
+
 #### `Pipe`
 
 ```python
@@ -96,95 +381,25 @@ Base class for parameter transformation and validation.
 - `transform(self, value: object, context: ParameterContext) -> object`
   Return the transformed parameter value passed to the handler.
 
-#### `bootstrap`
-
-```python
-def bootstrap(root_module: type) -> Starlette
-```
-
-Defined in `bustan.application`.
-
-Compatibility alias for create_app().
-
-#### `Controller`
-
-```python
-def Controller(prefix: str = '') -> Callable[[ClassT], ClassT]
-```
-
-Defined in `bustan.decorators`.
-
-Attach controller metadata to a class.
-
-#### `create_app`
-
-```python
-def create_app(root_module: type) -> Starlette
-```
-
-Defined in `bustan.application`.
-
-Build a Starlette application from a decorated root module.
-
-#### `Delete`
-
-```python
-def Delete(path: str = '/') -> Callable[[FunctionT], FunctionT]
-```
-
-Defined in `bustan.decorators`.
-
-Return a decorator that registers a DELETE route.
-
-#### `Get`
-
-```python
-def Get(path: str = '/') -> Callable[[FunctionT], FunctionT]
-```
-
-Defined in `bustan.decorators`.
-
-Return a decorator that registers a GET route.
-
-#### `Injectable`
-
-```python
-def Injectable(target: ClassT | None = None, *, scope: ProviderScope | str = ProviderScope.SINGLETON) -> ClassT | Callable[[ClassT], ClassT]
-```
-
-Defined in `bustan.decorators`.
-
-Mark a class as a DI-managed provider with the selected scope.
-
-#### `Module`
-
-```python
-def Module(*, imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object]] | None = None, exports: Iterable[type[object]] | None = None) -> Callable[[ClassT], ClassT]
-```
-
-Defined in `bustan.decorators`.
-
-Attach module metadata to a class without performing registration.
-
-#### `Patch`
-
-```python
-def Patch(path: str = '/') -> Callable[[FunctionT], FunctionT]
-```
-
-Defined in `bustan.decorators`.
-
-Return a decorator that registers a PATCH route.
-
 #### `Post`
 
 ```python
 def Post(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
-Defined in `bustan.decorators`.
+Defined in `bustan.common.decorators.route`.
 
 Return a decorator that registers a POST route.
+
+#### `ProviderResolutionError`
+
+```python
+class ProviderResolutionError(BustanError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when dependency resolution fails.
 
 #### `Put`
 
@@ -192,9 +407,28 @@ Return a decorator that registers a POST route.
 def Put(path: str = '/') -> Callable[[FunctionT], FunctionT]
 ```
 
-Defined in `bustan.decorators`.
+Defined in `bustan.common.decorators.route`.
 
 Return a decorator that registers a PUT route.
+
+#### `Query`
+
+Defined in `bustan.common.decorators.parameter`.
+
+Makes a marker usable both bare (``Annotated[str, Body]``)
+and as a call (``Annotated[str, Body("field")]``).
+
+Current value: `Query`
+
+#### `RouteDefinitionError`
+
+```python
+class RouteDefinitionError(BustanError)
+```
+
+Defined in `bustan.core.errors`.
+
+Raised when route metadata is malformed or duplicated.
 
 #### `UseFilters`
 
@@ -202,7 +436,7 @@ Return a decorator that registers a PUT route.
 def UseFilters(*filters: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
-Defined in `bustan.decorators`.
+Defined in `bustan.pipeline.decorators`.
 
 Attach one or more exception filters to a controller or handler.
 
@@ -212,7 +446,7 @@ Attach one or more exception filters to a controller or handler.
 def UseGuards(*guards: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
-Defined in `bustan.decorators`.
+Defined in `bustan.pipeline.decorators`.
 
 Attach one or more guards to a controller or handler.
 
@@ -222,7 +456,7 @@ Attach one or more guards to a controller or handler.
 def UseInterceptors(*interceptors: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
-Defined in `bustan.decorators`.
+Defined in `bustan.pipeline.decorators`.
 
 Attach one or more interceptors to a controller or handler.
 
@@ -232,7 +466,7 @@ Attach one or more interceptors to a controller or handler.
 def UsePipes(*pipes: object) -> Callable[[DecoratedT], DecoratedT]
 ```
 
-Defined in `bustan.decorators`.
+Defined in `bustan.pipeline.decorators`.
 
 Attach one or more pipes to a controller or handler.
 
@@ -251,7 +485,7 @@ from bustan.testing import create_test_app, create_test_module, override_provide
 #### `create_test_app`
 
 ```python
-def create_test_app(root_module: type[object], *, provider_overrides: Mapping[type[object], object] | None = None) -> Starlette
+def create_test_app(root_module: type[object], *, provider_overrides: Mapping[object, object] | None = None) -> Application
 ```
 
 Defined in `bustan.testing.builder`.
@@ -261,7 +495,7 @@ Create an application and apply any requested provider overrides.
 #### `create_test_module`
 
 ```python
-def create_test_module(*, name: str = 'TestModule', imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object]] | None = None, exports: Iterable[type[object]] | None = None) -> type[object]
+def create_test_module(*, name: str = 'TestModule', imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object] | dict[str, object]] | None = None, exports: Iterable[object] | None = None) -> type[object]
 ```
 
 Defined in `bustan.testing.builder`.
@@ -271,7 +505,7 @@ Create a throwaway decorated module for isolated tests.
 #### `override_provider`
 
 ```python
-def override_provider(target: Starlette | ContainerAdapter, provider_cls: type[ResolvedT], replacement: ResolvedT, *, module_cls: type[object] | None = None) -> Iterator[None]
+def override_provider(target: Starlette | Application | Container, token: object, replacement: object, *, module_cls: type[object] | None = None) -> Iterator[None]
 ```
 
 Defined in `bustan.testing.overrides`.
@@ -280,7 +514,7 @@ Temporarily replace a provider for the duration of a context block.
 
 ## `bustan.errors`
 
-Public exception types for the bustan package.
+Re-export of bustan errors for backward compatibility.
 
 ### Import
 
@@ -296,7 +530,7 @@ from bustan.errors import ProviderResolutionError, RouteDefinitionError, BustanE
 class ExportViolationError(InvalidModuleError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when a module exports a provider it does not declare.
 
@@ -306,7 +540,7 @@ Raised when a module exports a provider it does not declare.
 class GuardRejectedError(BustanError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when a guard blocks request execution.
 
@@ -316,7 +550,7 @@ Raised when a guard blocks request execution.
 class InvalidControllerError(BustanError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when a controller declaration is invalid.
 
@@ -326,7 +560,7 @@ Raised when a controller declaration is invalid.
 class InvalidModuleError(BustanError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when module declarations or imports are invalid.
 
@@ -336,7 +570,7 @@ Raised when module declarations or imports are invalid.
 class InvalidPipelineError(BustanError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when pipeline decorators or components are invalid.
 
@@ -346,7 +580,7 @@ Raised when pipeline decorators or components are invalid.
 class InvalidProviderError(BustanError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when a provider declaration is invalid.
 
@@ -356,7 +590,7 @@ Raised when a provider declaration is invalid.
 class LifecycleError(BustanError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when application lifecycle hooks fail.
 
@@ -366,7 +600,7 @@ Raised when application lifecycle hooks fail.
 class ModuleCycleError(InvalidModuleError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when a module import cycle is detected.
 
@@ -376,7 +610,7 @@ Raised when a module import cycle is detected.
 class ParameterBindingError(BustanError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when request parameters cannot be bound.
 
@@ -386,7 +620,7 @@ Raised when request parameters cannot be bound.
 class ProviderResolutionError(BustanError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when dependency resolution fails.
 
@@ -396,7 +630,7 @@ Raised when dependency resolution fails.
 class RouteDefinitionError(BustanError)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Raised when route metadata is malformed or duplicated.
 
@@ -406,6 +640,6 @@ Raised when route metadata is malformed or duplicated.
 class BustanError(Exception)
 ```
 
-Defined in `bustan.errors`.
+Defined in `bustan.core.errors`.
 
 Base exception for the framework.

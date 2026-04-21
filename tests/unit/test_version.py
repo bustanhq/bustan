@@ -16,7 +16,7 @@ def test_get_installed_version_prefers_installed_distribution(monkeypatch) -> No
 
 def test_get_installed_version_falls_back_to_local_pyproject(monkeypatch, tmp_path: Path) -> None:
     pyproject_path = tmp_path / "pyproject.toml"
-    pyproject_path.write_text("[project]\nversion = \"0.2.0\"\n", encoding="utf-8")
+    pyproject_path.write_text('[project]\nversion = "0.2.0"\n', encoding="utf-8")
 
     monkeypatch.setattr(version_module, "version", _raise_package_not_found)
     monkeypatch.setattr(version_module, "PYPROJECT_PATH", pyproject_path)
@@ -38,14 +38,16 @@ def test_get_installed_version_uses_default_when_local_version_is_unavailable(
 
 def test_read_local_version_returns_none_for_invalid_toml(monkeypatch, tmp_path: Path) -> None:
     pyproject_path = tmp_path / "pyproject.toml"
-    pyproject_path.write_text("[project\nversion = \"0.2.0\"\n", encoding="utf-8")
+    pyproject_path.write_text('[project\nversion = "0.2.0"\n', encoding="utf-8")
 
     monkeypatch.setattr(version_module, "PYPROJECT_PATH", pyproject_path)
 
     assert version_module._read_local_version() is None
 
 
-def test_read_local_version_returns_none_for_non_string_versions(monkeypatch, tmp_path: Path) -> None:
+def test_read_local_version_returns_none_for_non_string_versions(
+    monkeypatch, tmp_path: Path
+) -> None:
     pyproject_path = tmp_path / "pyproject.toml"
     pyproject_path.write_text("[project]\nversion = 1\n", encoding="utf-8")
 

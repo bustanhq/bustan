@@ -1,31 +1,31 @@
 # Routing And Parameter Binding
 
-`bustan` compiles controller handlers into Starlette routes. Route decorators stay close to the handler, while the controller prefix supplies the shared path segment.
+`Bustan` compiles controller handlers into ASGI-compliant endpoints. Route decorators stay close to the handler, while the controller prefix supplies the shared path segment.
 
 ## Route Declaration
 
 ```python
-from bustan import controller, get, post
+from bustan import Controller, Get, Post
 
 
-@controller("/users")
+@Controller("/users")
 class UsersController:
-    @get("/")
+    @Get("/")
     def list_users(self) -> list[dict[str, str]]:
         return [{"name": "Ada"}]
 
-    @get("/{user_id}")
+    @Get("/{user_id}")
     def read_user(self, user_id: int) -> dict[str, int]:
         return {"user_id": user_id}
 
-    @post("/")
+    @Post("/")
     def create_user(self, payload: dict) -> dict:
         return payload
 ```
 
 ## Binding Rules
 
-- `Request` parameters are injected directly from Starlette.
+- `Request` parameters are injected from the underlying platform (Starlette by default).
 - Path parameters bind by name from the route path.
 - Query parameters bind by name for inferred scalar and list parameters.
 - JSON request bodies bind to a single inferred parameter, or by field name when multiple inferred parameters are present.
@@ -45,9 +45,9 @@ class CreateUserPayload:
     admin: bool
 
 
-@controller("/users")
+@Controller("/users")
 class UsersController:
-    @get("/{user_id}")
+    @Get("/{user_id}")
     def read_user(
         self,
         request: Request,
@@ -62,14 +62,14 @@ class UsersController:
             "page": page,
         }
 
-    @post("/")
+    @Post("/")
     def create_user(self, payload: CreateUserPayload) -> dict[str, object]:
         return {"name": payload.name, "admin": payload.admin}
 ```
 
 ## Response Behavior
 
-- Returning a Starlette `Response` sends it through untouched.
+- Returning a platform-specific `Response` (e.g., Starlette `Response`) sends it through untouched.
 - Returning `dict`, `list`, or dataclass values produces JSON responses.
 - Returning `None` produces an empty `204 No Content` response.
 
