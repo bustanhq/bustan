@@ -929,7 +929,7 @@ Build runtime-generated module classes with for_root-style helpers.
 
 - `set_class_name(self, name: str) -> ConfigurableModuleBuilder[OptionsT]`
 - `set_extras(self, *, providers: tuple[object | dict[str, object], ...] = ()) -> ConfigurableModuleBuilder[OptionsT]`
-- `build(self) -> tuple[type[object], InjectionToken[OptionsT]]`
+- `build(self) -> tuple[type[ConfigurableModuleDefinition[OptionsT]], InjectionToken[OptionsT]]`
   Return a generated module class and its stable options token.
 
 #### `ConfigModule`
@@ -1113,8 +1113,8 @@ Compiled application and container wrapper for tests.
 
 ##### Methods
 
-- `get(self, token: object) -> object`
-- `resolve(self, token: object) -> object`
+- `get(self, token: object) -> Any`
+- `resolve(self, token: object) -> Any`
 - `close(self) -> None`
 
 #### `PipelineOverrideRegistry`
