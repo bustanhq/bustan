@@ -26,3 +26,4 @@ class DynamicModule:
     imports: tuple[type[object] | DynamicModule, ...] = ()
     controllers: tuple[type[object], ...] = ()
     exports: tuple[object, ...] = ()
+    is_global: bool = False

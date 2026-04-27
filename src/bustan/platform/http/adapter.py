@@ -25,6 +25,11 @@ class AbstractHttpAdapter(ABC):
         pass
 
     @abstractmethod
+    def add_middleware(self, middleware_class: type, **options: Any) -> None:
+        """Register a framework middleware around the underlying engine."""
+        pass
+
+    @abstractmethod
     async def listen(
         self, 
         port: int, 

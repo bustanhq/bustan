@@ -14,7 +14,12 @@ from ..types import RouteMetadata
 FunctionT = TypeVar("FunctionT", bound=FunctionType)
 
 
-def Route(method: str, path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Route(
+    method: str,
+    path: str = "/",
+    *,
+    version: str | list[str] | None = None,
+) -> Callable[[FunctionT], FunctionT]:
     """Attach HTTP route metadata to a handler function."""
 
     normalized_method = _normalize_method(method)
@@ -40,6 +45,7 @@ def Route(method: str, path: str = "/") -> Callable[[FunctionT], FunctionT]:
                 method=normalized_method,
                 path=normalized_path,
                 name=handler_function.__name__,
+                version=version,
             ),
         )
         return handler
@@ -47,29 +53,49 @@ def Route(method: str, path: str = "/") -> Callable[[FunctionT], FunctionT]:
     return decorate
 
 
-def Get(path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Get(
+    path: str = "/",
+    *,
+    version: str | list[str] | None = None,
+) -> Callable[[FunctionT], FunctionT]:
     """Return a decorator that registers a GET route."""
-    return Route("GET", path)
+    return Route("GET", path, version=version)
 
 
-def Post(path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Post(
+    path: str = "/",
+    *,
+    version: str | list[str] | None = None,
+) -> Callable[[FunctionT], FunctionT]:
     """Return a decorator that registers a POST route."""
-    return Route("POST", path)
+    return Route("POST", path, version=version)
 
 
-def Put(path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Put(
+    path: str = "/",
+    *,
+    version: str | list[str] | None = None,
+) -> Callable[[FunctionT], FunctionT]:
     """Return a decorator that registers a PUT route."""
-    return Route("PUT", path)
+    return Route("PUT", path, version=version)
 
 
-def Patch(path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Patch(
+    path: str = "/",
+    *,
+    version: str | list[str] | None = None,
+) -> Callable[[FunctionT], FunctionT]:
     """Return a decorator that registers a PATCH route."""
-    return Route("PATCH", path)
+    return Route("PATCH", path, version=version)
 
 
-def Delete(path: str = "/") -> Callable[[FunctionT], FunctionT]:
+def Delete(
+    path: str = "/",
+    *,
+    version: str | list[str] | None = None,
+) -> Callable[[FunctionT], FunctionT]:
     """Return a decorator that registers a DELETE route."""
-    return Route("DELETE", path)
+    return Route("DELETE", path, version=version)
 
 
 def _normalize_method(method: str) -> str:

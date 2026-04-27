@@ -1,14 +1,16 @@
-"""Scoped provider override helpers for tests."""
+"""Scoped provider and pipeline override helpers for tests."""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import cast
 
 from starlette.applications import Starlette
 from ..app.application import Application
 from ..core.ioc.container import Container
+from ..pipeline.metadata import PipelineMetadata
 
 
 @contextmanager
@@ -44,3 +46,31 @@ def _resolve_container(target: Starlette | Application | Container) -> Container
         return target._container
 
     return cast(Container, getattr(target.state, "bustan_container"))
+
+
+@dataclass(slots=True)
+class PipelineOverrideRegistry:
+    """Stores replacements for pipeline classes in test contexts."""
+
+    guards: dict[object, object]
+    pipes: dict[object, object]
+    interceptors: dict[object, object]
+    filters: dict[object, object]
+
+    def __init__(self) -> None:
+        self.guards = {}
+        self.pipes = {}
+        self.interceptors = {}
+        self.filters = {}
+
+    def apply_to_metadata(self, metadata: PipelineMetadata) -> PipelineMetadata:
+        """Return metadata with known pipeline components replaced."""
+        return PipelineMetadata(
+            guards=tuple(self.guards.get(component, component) for component in metadata.guards),
+            pipes=tuple(self.pipes.get(component, component) for component in metadata.pipes),
+            interceptors=tuple(
+                self.interceptors.get(component, component)
+                for component in metadata.interceptors
+            ),
+            filters=tuple(self.filters.get(component, component) for component in metadata.filters),
+        )

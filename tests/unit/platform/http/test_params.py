@@ -11,7 +11,7 @@ import anyio
 import pytest
 from starlette.requests import Request
 
-from bustan import Body, Controller, Get, Header, Param, Post, Query
+from bustan import Body, Controller, Cookies, Get, Header, HostParam, Ip, Param, Post, Query
 from bustan.core.errors import ParameterBindingError
 from bustan.platform.http.metadata import iter_controller_routes
 from bustan.platform.http.params import (
@@ -316,6 +316,35 @@ def test_bind_handler_arguments_supports_header_underscore_to_hyphen_conversion(
     assert args == ("id-123",)
 
 
+def test_bind_handler_arguments_supports_cookie_ip_and_host_markers() -> None:
+    @Controller("/")
+    class TestController:
+        @Get("/")
+        def index(
+            self,
+            session_id: Annotated[str | None, Cookies("session")],
+            host: Annotated[str | None, HostParam],
+            ip_address: Annotated[str | None, Ip],
+        ) -> None:
+            return None
+
+    route_definition = iter_controller_routes(TestController)[0]
+    binding_plan = compile_parameter_bindings(TestController, route_definition)
+    request = _build_request(
+        method="GET",
+        path="/",
+        headers=[
+            (b"cookie", b"session=abc123"),
+            (b"host", b"api.example.test"),
+        ],
+    )
+
+    args, kwargs = anyio.run(bind_handler_arguments, request, binding_plan)
+
+    assert kwargs == {}
+    assert args == ("abc123", "api.example.test", "testclient")
+
+
 def _build_request(
     *,
     method: str,
@@ -329,9 +358,9 @@ def _build_request(
     """Construct a Request object with optional path, query, and JSON body data."""
 
     body_bytes = b""
-    request_headers = [(b"host", b"testserver")]
-    if headers:
-        request_headers.extend(headers)
+    request_headers = list(headers or [])
+    if not any(name.lower() == b"host" for name, _value in request_headers):
+        request_headers.insert(0, (b"host", b"testserver"))
 
     if json_body is not None:
         body_bytes = json.dumps(json_body).encode("utf-8")

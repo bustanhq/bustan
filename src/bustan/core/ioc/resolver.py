@@ -84,6 +84,14 @@ class Resolver:
                 if binding_key in request_cache:
                     return request_cache[binding_key]
 
+            elif binding.scope is ProviderScope.DURABLE:
+                active_req = self.scope_manager.active_request.get()
+                durable_key = self._get_durable_context_key(binding, active_req)
+                durable_cache_key = (declaring_module, token, durable_key)
+                instance = self.scope_manager.get_durable(durable_cache_key)
+                if instance is not None:
+                    return instance
+
             elif binding.scope is ProviderScope.SINGLETON:
                 instance = self.scope_manager.get_singleton(binding_key)
                 if instance is not None:
@@ -110,6 +118,17 @@ class Resolver:
                 assert active_req is not None
                 request_cache = self.scope_manager.get_request_cache(active_req)
                 request_cache[binding_key] = instance
+            elif binding.scope is ProviderScope.DURABLE:
+                active_req = self.scope_manager.active_request.get()
+                durable_key = self._get_durable_context_key(binding, active_req)
+                durable_cache_key = (declaring_module, token, durable_key)
+                lock = self.scope_manager.get_durable_lock(durable_cache_key)
+                with lock:
+                    existing = self.scope_manager.get_durable(durable_cache_key)
+                    if existing is None:
+                        self.scope_manager.set_durable(durable_cache_key, instance)
+                    else:
+                        instance = existing
             elif binding.scope is ProviderScope.SINGLETON:
                 lock = self.scope_manager.get_singleton_lock(binding_key)
                 with lock:
@@ -201,11 +220,14 @@ class Resolver:
 
         owner_is_controller = class_cls in self.registry.controller_modules
         is_request_scoped = False
+        is_durable_scoped = False
 
         for binding in self.registry.bindings.values():
             if binding.resolver_kind == "class" and binding.target is class_cls:
                 if binding.scope is ProviderScope.REQUEST:
                     is_request_scoped = True
+                elif binding.scope is ProviderScope.DURABLE:
+                    is_durable_scoped = True
                 break
 
         constructor = class_cls.__init__
@@ -259,7 +281,7 @@ class Resolver:
             if annotation in FRAMEWORK_OWNED_TYPES:
                 if (
                     annotation is Request
-                    and (is_request_scoped or owner_is_controller)
+                    and (is_request_scoped or is_durable_scoped or owner_is_controller)
                     and active_request is not None
                 ):
                     if parameter.kind in (
@@ -330,3 +352,18 @@ class Resolver:
                 namespace.setdefault(token.__name__, token)
 
         return namespace
+
+    def _get_durable_context_key(
+        self,
+        binding: Binding,
+        request: Request | None,
+    ) -> object:
+        target = binding.target
+        if isinstance(target, type) and hasattr(target, "get_durable_context_key"):
+            return cast(
+                object,
+                getattr(target, "get_durable_context_key")(request),
+            )
+        if request is not None:
+            return id(request)
+        return "__default_durable_context__"

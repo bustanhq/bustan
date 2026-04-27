@@ -6,7 +6,7 @@ This project was scaffolded with `bustan`.
 
 ```bash
 uv sync --group dev
-uv run uvicorn $package_name.app:app --reload
+uv run uvicorn $package_name:app --reload
 ```
 
 ## Quality checks

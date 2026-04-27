@@ -9,7 +9,7 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.testclient import TestClient
 
-from bustan import Controller, create_app, Get, Injectable, Module, Post
+from bustan import Controller, create_app, Get, Injectable, Module, Post, Scope
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +77,7 @@ def test_create_app_registers_http_routes_and_coerces_common_return_types() -> N
     assert none_response.text == ""
 
 
-def test_create_app_resolves_a_fresh_controller_instance_per_request() -> None:
+def test_create_app_reuses_a_singleton_controller_instance_per_request() -> None:
     @Injectable
     class CounterService:
         pass
@@ -111,7 +111,7 @@ def test_create_app_resolves_a_fresh_controller_instance_per_request() -> None:
 
     assert first_response.status_code == 200
     assert second_response.status_code == 200
-    assert first_payload["controller_id"] != second_payload["controller_id"]
+    assert first_payload["controller_id"] == second_payload["controller_id"]
     assert first_payload["service_id"] == second_payload["service_id"]
 
 
@@ -214,7 +214,7 @@ def test_create_app_resolves_request_scoped_providers_per_request() -> None:
         def __init__(self, request_state: RequestState) -> None:
             self.request_state = request_state
 
-    @Controller("/requests")
+    @Controller("/requests", scope=Scope.REQUEST)
     class RequestController:
         def __init__(self, request_state: RequestState, request_audit: RequestAudit) -> None:
             self.request_state = request_state

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from bustan import Body, Header, Param, Query
+from bustan import Body, Cookies, Header, HostParam, Ip, Param, Query, UploadedFile, UploadedFiles
 from bustan.common.decorators.parameter import (
     _BodyMarker,
+    _CookiesMarker,
     _HeaderMarker,
+    _HostParamMarker,
     _MarkerCallable,
     _ParamMarker,
     _QueryMarker,
+    _UploadedFileMarker,
+    _UploadedFilesMarker,
 )
 
 
@@ -70,6 +74,20 @@ def test_header_decorator_can_be_used_bare_or_called() -> None:
     assert isinstance(called, _HeaderMarker)
     assert called.alias == "X-Custom-Header"
     assert repr(called) == "Header('X-Custom-Header')"
+
+
+def test_extended_parameter_markers_can_be_used_bare_or_called() -> None:
+    assert isinstance(Cookies, _MarkerCallable)
+    assert isinstance(Ip, _MarkerCallable)
+    assert isinstance(HostParam, _MarkerCallable)
+    assert isinstance(UploadedFile, _MarkerCallable)
+    assert isinstance(UploadedFiles, _MarkerCallable)
+
+    assert isinstance(Cookies("session"), _CookiesMarker)
+    assert isinstance(Ip, _MarkerCallable)
+    assert isinstance(HostParam("host"), _HostParamMarker)
+    assert isinstance(UploadedFile("avatar"), _UploadedFileMarker)
+    assert isinstance(UploadedFiles("attachments"), _UploadedFilesMarker)
 
 
 def test_marker_callable_equality_and_hashing() -> None:

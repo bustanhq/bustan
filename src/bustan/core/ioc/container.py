@@ -12,6 +12,7 @@ from .registry import Registry
 from .scopes import ScopeManager
 from .resolver import Resolver
 from .overrides import OverrideManager
+from .tokens import InjectionToken
 
 
 class Container:
@@ -33,6 +34,13 @@ class Container:
 
     def _build_bindings(self) -> None:
         """Populate the registry and visibility rules from the module graph."""
+        global_provider_modules: dict[object, ModuleKey] = {}
+        for node in self.module_graph.nodes:
+            if not node.metadata.is_global:
+                continue
+            for exported_token in node.exports:
+                global_provider_modules.setdefault(exported_token, node.key)
+
         for node in self.module_graph.nodes:
             # Register bindings
             for binding in node.bindings:
@@ -49,6 +57,10 @@ class Container:
                     # for tokens not already defined locally.
                     if exported_token not in accessible_provider_modules:
                         accessible_provider_modules[exported_token] = imported_key
+
+            for exported_token, declaring_module in global_provider_modules.items():
+                if exported_token not in accessible_provider_modules:
+                    accessible_provider_modules[exported_token] = declaring_module
 
             self.registry.set_visibility(node.key, accessible_provider_modules)
 
@@ -96,16 +108,27 @@ class Container:
     def override(self, token: object, value: object, *, module: ModuleKey | None = None) -> None:
         """Register a replacement object for a provider."""
         self.override_manager.override(token, value, module=module)
+        self.scope_manager.clear_controller_singletons()
 
     def clear_override(self, token: object, *, module: ModuleKey | None = None) -> None:
         """Remove any override registered for a provider."""
         self.override_manager.clear_override(token, module=module)
+        self.scope_manager.clear_controller_singletons()
 
     def has_override(self, token: object, *, module: ModuleKey | None = None) -> bool:
         return self.override_manager.has_override(token, module=module)
 
     def get_override(self, token: object, *, module: ModuleKey | None = None) -> object | None:
         return self.override_manager.get_override(token, module=module)
+
+    def get_global_pipeline_providers(self, token: InjectionToken[object]) -> tuple[object, ...]:
+        """Resolve APP_* providers in module registration order."""
+        resolved: list[object] = []
+        for node in self.module_graph.nodes:
+            if (node.key, token) not in self.registry.bindings:
+                continue
+            resolved.append(self.resolve(token, module=node.key))
+        return tuple(resolved)
 
 
 def build_container(module_graph: ModuleGraph) -> Container:

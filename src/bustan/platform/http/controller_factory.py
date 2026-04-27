@@ -3,11 +3,12 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
-from typing import TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from ...core.ioc.container import Container
 from ...core.errors import InvalidPipelineError
 from ...core.module.dynamic import ModuleKey
+from ...common.types import ProviderScope
 from ...core.utils import _qualname
 from ...common.constants import BUSTAN_PROVIDER_ATTR
 from ...pipeline.metadata import PipelineMetadata
@@ -16,6 +17,10 @@ from ...pipeline.pipes import Pipe
 from ...pipeline.interceptors import Interceptor
 from ...pipeline.filters import ExceptionFilter
 from starlette.requests import Request
+from .metadata import get_controller_metadata
+
+if TYPE_CHECKING:
+    from ...testing.overrides import PipelineOverrideRegistry
 
 ComponentT = TypeVar("ComponentT")
 
@@ -23,8 +28,14 @@ ComponentT = TypeVar("ComponentT")
 class ControllerFactory:
     """Manages the creation and DI-resolution of controllers and their pipelines."""
 
-    def __init__(self, container: Container) -> None:
+    def __init__(
+        self,
+        container: Container,
+        *,
+        pipeline_override_registry: PipelineOverrideRegistry | None = None,
+    ) -> None:
         self.container = container
+        self.pipeline_override_registry = pipeline_override_registry
 
     def instantiate(
         self,
@@ -33,8 +44,38 @@ class ControllerFactory:
         module: ModuleKey,
         request: Request,
     ) -> object:
-        """Create a fresh instance of a controller using the container."""
-        return self.container.instantiate_class(controller_cls, module=module, request=request)
+        """Instantiate a controller according to its declared scope."""
+        metadata = get_controller_metadata(controller_cls)
+        scope = metadata.scope if metadata is not None else ProviderScope.SINGLETON
+        controller_key = (module, controller_cls)
+
+        if scope is ProviderScope.TRANSIENT:
+            return self.container.instantiate_class(controller_cls, module=module, request=request)
+
+        if scope is ProviderScope.REQUEST:
+            request_cache = self.container.scope_manager.get_request_controller_cache(request)
+            instance = request_cache.get(controller_key)
+            if instance is None:
+                instance = self.container.instantiate_class(
+                    controller_cls, module=module, request=request
+                )
+                request_cache[controller_key] = instance
+            return instance
+
+        instance = self.container.scope_manager.get_controller_singleton(controller_key)
+        if instance is not None:
+            return instance
+
+        lock = self.container.scope_manager.get_controller_singleton_lock(controller_key)
+        with lock:
+            instance = self.container.scope_manager.get_controller_singleton(controller_key)
+            if instance is None:
+                instance = self.container.instantiate_class(
+                    controller_cls, module=module, request=request
+                )
+                self.container.scope_manager.set_controller_singleton(controller_key, instance)
+        assert instance is not None
+        return instance
 
     def resolve_pipeline(
         self,
@@ -44,6 +85,8 @@ class ControllerFactory:
         request: Request,
     ) -> ResolvedPipeline:
         """Resolve all classes in a pipeline metadata into injectable instances."""
+        if self.pipeline_override_registry is not None:
+            metadata = self.pipeline_override_registry.apply_to_metadata(metadata)
         return ResolvedPipeline(
             guards=self.resolve_components(
                 metadata.guards, Guard, module=module, request=request, kind="guard"

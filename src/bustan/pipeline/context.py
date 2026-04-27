@@ -37,6 +37,11 @@ class ParameterContext:
     annotation: object
     value: object
 
+    @property
+    def metatype(self) -> type[object] | None:
+        """Return the resolved type annotation when it is a concrete type."""
+        return self.annotation if isinstance(self.annotation, type) else None
+
 
 @dataclass(frozen=True, slots=True)
 class HandlerContext:

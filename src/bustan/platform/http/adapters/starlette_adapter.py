@@ -40,6 +40,10 @@ class StarletteAdapter(AbstractHttpAdapter):
         """Register routes into the Starlette application."""
         self._app.routes.extend(routes)
 
+    def add_middleware(self, middleware_class: type, **options: Any) -> None:
+        """Register middleware on the underlying Starlette application."""
+        self._app.add_middleware(middleware_class, **options)
+
     async def listen(
         self, 
         port: int, 

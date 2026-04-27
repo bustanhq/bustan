@@ -1,6 +1,6 @@
 from starlette.testclient import TestClient
 
-from $package_name.app import app
+from $package_name import app
 
 
 def test_read_root() -> None:

@@ -17,6 +17,9 @@ dev = [
     "ty",
 ]
 
+[project.scripts]
+$package_name = "$package_name.main:main"
+
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
