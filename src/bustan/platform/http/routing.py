@@ -149,8 +149,8 @@ def compile_routes(
 
                 existing = versioned_dispatchers[route_key]
                 for existing_versions, _existing_endpoint, existing_owner in existing:
-                    is_new_neutral = not effective_versions or VERSION_NEUTRAL in effective_versions
-                    is_existing_neutral = not existing_versions or VERSION_NEUTRAL in existing_versions
+                    is_new_neutral = _is_neutral_version(effective_versions)
+                    is_existing_neutral = _is_neutral_version(existing_versions)
                     if is_new_neutral and is_existing_neutral:
                         raise RouteDefinitionError(
                             f"Duplicate version-neutral route {route_definition.route.method} {route_path} "
@@ -191,6 +191,11 @@ def compile_routes(
             )
 
     return tuple(compiled_routes)
+
+
+def _is_neutral_version(versions: tuple[str, ...]) -> bool:
+    """Return True when *versions* represents a version-neutral handler."""
+    return not versions or VERSION_NEUTRAL in versions
 
 
 def _build_uri_paths(
