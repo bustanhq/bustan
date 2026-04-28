@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections.abc
 import inspect
 import sys
 from dataclasses import dataclass, is_dataclass
@@ -243,9 +244,12 @@ async def _bind_parameter(
 
     if binding.source is ParameterSource.COOKIE:
         lookup_name = binding.alias or binding.name
-        cookie_value = request.cookies.get(lookup_name) if binding.alias else request.cookies.get(binding.name)
-        if binding.alias is None and binding.annotation is dict:
-            return dict(request.cookies), request_body
+        if binding.alias is None:
+            _origin = get_origin(binding.annotation)
+            _actual = _origin if _origin is not None else binding.annotation
+            if isinstance(_actual, type) and issubclass(_actual, collections.abc.Mapping):
+                return dict(request.cookies), request_body
+        cookie_value = request.cookies.get(lookup_name)
         if cookie_value is not None:
             return (
                 _coerce_value(
@@ -269,7 +273,7 @@ async def _bind_parameter(
         return None, request_body
 
     if binding.source is ParameterSource.HOST:
-        host_header = request.headers.get("host")
+        host_header = request.headers.get(binding.alias or "host")
         if host_header is not None:
             return host_header, request_body
         if binding.has_default:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Mapping
 from urllib.parse import urlencode
 
 import anyio
@@ -343,6 +343,53 @@ def test_bind_handler_arguments_supports_cookie_ip_and_host_markers() -> None:
 
     assert kwargs == {}
     assert args == ("abc123", "api.example.test", "testclient")
+
+
+def test_bind_handler_arguments_host_param_honors_alias_header() -> None:
+    @Controller("/")
+    class TestController:
+        @Get("/")
+        def index(
+            self,
+            forwarded_host: Annotated[str | None, HostParam("x-forwarded-host")],
+        ) -> None:
+            return None
+
+    route_definition = iter_controller_routes(TestController)[0]
+    binding_plan = compile_parameter_bindings(TestController, route_definition)
+    request = _build_request(
+        method="GET",
+        path="/",
+        headers=[(b"x-forwarded-host", b"real.example.com")],
+    )
+
+    args, kwargs = anyio.run(bind_handler_arguments, request, binding_plan)
+
+    assert args == ("real.example.com",)
+
+
+def test_bind_handler_arguments_cookie_mapping_annotation_returns_all_cookies() -> None:
+    @Controller("/")
+    class TestController:
+        @Get("/")
+        def index(
+            self,
+            all_cookies: Annotated[dict[str, str], Cookies],
+            all_cookies_mapping: Annotated[Mapping[str, str], Cookies],
+        ) -> None:
+            return None
+
+    route_definition = iter_controller_routes(TestController)[0]
+    binding_plan = compile_parameter_bindings(TestController, route_definition)
+    request = _build_request(
+        method="GET",
+        path="/",
+        headers=[(b"cookie", b"a=1; b=2")],
+    )
+
+    args, kwargs = anyio.run(bind_handler_arguments, request, binding_plan)
+
+    assert args == ({"a": "1", "b": "2"}, {"a": "1", "b": "2"})
 
 
 def _build_request(

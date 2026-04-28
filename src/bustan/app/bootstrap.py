@@ -30,6 +30,7 @@ def create_app(
     pipeline_override_registry: PipelineOverrideRegistry | None = None,
     versioning: VersioningOptions | None = None,
     swagger: SwaggerOptions | None = None,
+    _no_lifespan: bool = False,
 ) -> Application:
     """Create a fully assembled Bustan application from the root module."""
     # 1. Build application graph and DI container
@@ -37,7 +38,7 @@ def create_app(
     container = build_container(module_graph)
 
     # 2. Build lifecyle and routing configuration
-    lifespan = build_lifespan(module_graph, container)
+    lifespan = None if _no_lifespan else build_lifespan(module_graph, container)
     router = build_router(
         module_graph,
         container,

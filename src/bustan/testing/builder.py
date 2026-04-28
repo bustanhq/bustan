@@ -10,7 +10,7 @@ from typing import Any, cast
 
 from ..app.application import Application
 from ..app.bootstrap import create_app
-from ..core.lifecycle.runner import run_destroy_hooks, run_init_hooks
+from ..core.lifecycle.runner import run_bootstrap_hooks, run_destroy_hooks, run_init_hooks, run_shutdown_hooks
 from ..core.module.decorators import Module
 from ..core.module.dynamic import ModuleKey
 from .overrides import PipelineOverrideRegistry
@@ -80,6 +80,11 @@ class CompiledTestingModule:
         return self.get(token)
 
     async def close(self) -> None:
+        await run_shutdown_hooks(
+            self.application.module_graph,
+            self.application.container,
+            self._module_instances,
+        )
         await run_destroy_hooks(
             self.application.module_graph,
             self.application.container,
@@ -116,6 +121,7 @@ class TestingModuleBuilder:
         application = create_app(
             self._root_module,
             pipeline_override_registry=self._pipeline_overrides,
+            _no_lifespan=True,
         )
         container = application.container
         root_key = application.root_key
@@ -137,6 +143,7 @@ class TestingModuleBuilder:
             container.override(token, replacement)
 
         module_instances = await run_init_hooks(application.module_graph, container)
+        await run_bootstrap_hooks(application.module_graph, container, module_instances)
         return CompiledTestingModule(
             application,
             MappingProxyType(dict(module_instances.items())),

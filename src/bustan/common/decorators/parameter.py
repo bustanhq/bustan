@@ -72,9 +72,11 @@ class _CookiesMarker:
 
 @dataclass(frozen=True, slots=True)
 class _IpMarker:
-    """Marker: bind the client IP address."""
+    """Marker: bind the client IP address.
 
-    alias: str | None = None
+    The IP is always sourced from the connection (``request.client.host``);
+    no alias is supported.
+    """
 
     def __repr__(self) -> str:
         return "Ip"
@@ -82,12 +84,16 @@ class _IpMarker:
 
 @dataclass(frozen=True, slots=True)
 class _HostParamMarker:
-    """Marker: bind the request Host header."""
+    """Marker: bind a request header that carries the host name.
+
+    By default the standard ``Host`` header is used.  Pass an alias to read a
+    different header instead, e.g. ``HostParam("x-forwarded-host")``.
+    """
 
     alias: str | None = None
 
     def __repr__(self) -> str:
-        return "HostParam"
+        return "HostParam" if self.alias is None else f"HostParam({self.alias!r})"
 
 
 @dataclass(frozen=True, slots=True)

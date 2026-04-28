@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from bustan import Body, Cookies, Header, HostParam, Ip, Param, Query, UploadedFile, UploadedFiles
 from bustan.common.decorators.parameter import (
     _BodyMarker,
     _CookiesMarker,
     _HeaderMarker,
     _HostParamMarker,
+    _IpMarker,
     _MarkerCallable,
     _ParamMarker,
     _QueryMarker,
@@ -88,6 +91,21 @@ def test_extended_parameter_markers_can_be_used_bare_or_called() -> None:
     assert isinstance(HostParam("host"), _HostParamMarker)
     assert isinstance(UploadedFile("avatar"), _UploadedFileMarker)
     assert isinstance(UploadedFiles("attachments"), _UploadedFilesMarker)
+
+
+def test_ip_marker_does_not_support_alias() -> None:
+    assert repr(Ip) == "Ip"
+    assert not hasattr(_IpMarker(), "alias")
+    with pytest.raises(TypeError):
+        Ip("something")
+
+
+def test_host_param_marker_repr_includes_alias_when_provided() -> None:
+    assert repr(HostParam) == "HostParam"
+    assert repr(HostParam("x-forwarded-host")) == "HostParam('x-forwarded-host')"
+    called = HostParam("x-forwarded-host")
+    assert isinstance(called, _HostParamMarker)
+    assert called.alias == "x-forwarded-host"
 
 
 def test_marker_callable_equality_and_hashing() -> None:
