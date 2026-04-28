@@ -147,7 +147,25 @@ def compile_routes(
                         )
                     continue
 
-                versioned_dispatchers[route_key].append(
+                existing = versioned_dispatchers[route_key]
+                for existing_versions, _existing_endpoint, existing_owner in existing:
+                    is_new_neutral = not effective_versions or VERSION_NEUTRAL in effective_versions
+                    is_existing_neutral = not existing_versions or VERSION_NEUTRAL in existing_versions
+                    if is_new_neutral and is_existing_neutral:
+                        raise RouteDefinitionError(
+                            f"Duplicate version-neutral route {route_definition.route.method} {route_path} "
+                            f"declared by {existing_owner} and {route_owner}"
+                        )
+                    if is_new_neutral or is_existing_neutral:
+                        continue
+                    overlap = set(effective_versions) & set(existing_versions)
+                    if overlap:
+                        raise RouteDefinitionError(
+                            f"Overlapping versions {sorted(overlap)} for route "
+                            f"{route_definition.route.method} {route_path} "
+                            f"declared by {existing_owner} and {route_owner}"
+                        )
+                existing.append(
                     (
                         effective_versions,
                         endpoint,
