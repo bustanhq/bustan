@@ -8,35 +8,33 @@ from contextlib import asynccontextmanager
 from starlette.applications import Starlette
 from starlette.types import StatelessLifespan
 
+from ..core.ioc.container import Container
 from ..core.module.graph import ModuleGraph
-from ..core.lifecycle.runner import run_lifecycle_stage, instantiate_lifecycle_modules
+from ..core.lifecycle.runner import (
+    run_bootstrap_hooks,
+    run_destroy_hooks,
+    run_init_hooks,
+    run_shutdown_hooks,
+)
 
 
 def build_lifespan(
     module_graph: ModuleGraph,
+    container: Container,
 ) -> StatelessLifespan[Starlette]:
     """Build the Starlette lifespan handler for the module graph."""
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
-        module_instances = instantiate_lifecycle_modules(module_graph.nodes)
+        module_instances = await run_init_hooks(module_graph, container)
         app.state.bustan_module_instances = module_instances
 
-        await run_lifecycle_stage(module_graph.nodes, module_instances, "on_module_init")
-        await run_lifecycle_stage(module_graph.nodes, module_instances, "on_app_startup")
+        await run_bootstrap_hooks(module_graph, container, module_instances)
 
         try:
             yield
         finally:
-            await run_lifecycle_stage(
-                tuple(reversed(module_graph.nodes)),
-                module_instances,
-                "on_app_shutdown",
-            )
-            await run_lifecycle_stage(
-                tuple(reversed(module_graph.nodes)),
-                module_instances,
-                "on_module_destroy",
-            )
+            await run_shutdown_hooks(module_graph, container, module_instances)
+            await run_destroy_hooks(module_graph, container, module_instances)
 
     return lifespan

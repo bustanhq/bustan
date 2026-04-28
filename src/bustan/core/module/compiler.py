@@ -42,6 +42,7 @@ def expand_module_input(
             exports=tuple(
                 dict.fromkeys(tuple(base_metadata.exports) + tuple(module_input.exports))
             ),
+            is_global=base_metadata.is_global or module_input.is_global,
         )
         return CompiledModuleDef(
             key=ModuleInstanceKey(module_input.module, instance_id),

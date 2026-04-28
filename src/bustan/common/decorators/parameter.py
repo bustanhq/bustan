@@ -60,6 +60,62 @@ class _HeaderMarker:
         return "Header" if self.alias is None else f"Header({self.alias!r})"
 
 
+@dataclass(frozen=True, slots=True)
+class _CookiesMarker:
+    """Marker: bind this parameter from request cookies."""
+
+    alias: str | None = None
+
+    def __repr__(self) -> str:
+        return "Cookies" if self.alias is None else f"Cookies({self.alias!r})"
+
+
+@dataclass(frozen=True, slots=True)
+class _IpMarker:
+    """Marker: bind the client IP address.
+
+    The IP is always sourced from the connection (``request.client.host``);
+    no alias is supported.
+    """
+
+    def __repr__(self) -> str:
+        return "Ip"
+
+
+@dataclass(frozen=True, slots=True)
+class _HostParamMarker:
+    """Marker: bind a request header that carries the host name.
+
+    By default the standard ``Host`` header is used.  Pass an alias to read a
+    different header instead, e.g. ``HostParam("x-forwarded-host")``.
+    """
+
+    alias: str | None = None
+
+    def __repr__(self) -> str:
+        return "HostParam" if self.alias is None else f"HostParam({self.alias!r})"
+
+
+@dataclass(frozen=True, slots=True)
+class _UploadedFileMarker:
+    """Marker: bind a single uploaded file from multipart form data."""
+
+    alias: str | None = None
+
+    def __repr__(self) -> str:
+        return "UploadedFile" if self.alias is None else f"UploadedFile({self.alias!r})"
+
+
+@dataclass(frozen=True, slots=True)
+class _UploadedFilesMarker:
+    """Marker: bind multiple uploaded files from multipart form data."""
+
+    alias: str | None = None
+
+    def __repr__(self) -> str:
+        return "UploadedFiles" if self.alias is None else f"UploadedFiles({self.alias!r})"
+
+
 class _MarkerCallable:
     """Makes a marker usable both bare (``Annotated[str, Body]``)
     and as a call (``Annotated[str, Body("field")]``)."""
@@ -92,3 +148,8 @@ Body: _MarkerCallable = _MarkerCallable(_BodyMarker)
 Query: _MarkerCallable = _MarkerCallable(_QueryMarker)
 Param: _MarkerCallable = _MarkerCallable(_ParamMarker)
 Header: _MarkerCallable = _MarkerCallable(_HeaderMarker)
+Cookies: _MarkerCallable = _MarkerCallable(_CookiesMarker)
+Ip: _MarkerCallable = _MarkerCallable(_IpMarker)
+HostParam: _MarkerCallable = _MarkerCallable(_HostParamMarker)
+UploadedFile: _MarkerCallable = _MarkerCallable(_UploadedFileMarker)
+UploadedFiles: _MarkerCallable = _MarkerCallable(_UploadedFilesMarker)

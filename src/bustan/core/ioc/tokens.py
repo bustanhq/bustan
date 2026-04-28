@@ -15,3 +15,9 @@ class InjectionToken(Generic[T]):
 
     def __repr__(self) -> str:
         return f"InjectionToken({self.name!r})"
+
+
+APP_GUARD = InjectionToken("APP_GUARD")
+APP_PIPE = InjectionToken("APP_PIPE")
+APP_INTERCEPTOR = InjectionToken("APP_INTERCEPTOR")
+APP_FILTER = InjectionToken("APP_FILTER")

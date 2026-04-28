@@ -73,7 +73,7 @@ class RequestEnvelopeInterceptor(Interceptor):
 
 @UseGuards(AuthenticatedGuard)
 @UseInterceptors(RequestEnvelopeInterceptor)
-@Controller("/account")
+@Controller("/account", scope="request")
 class AccountController:
     def __init__(
         self,

@@ -1,6 +1,7 @@
 """Re-export of bustan errors for backward compatibility."""
 
 from .core.errors import (
+    BadRequestException,
     BustanError,
     ExportViolationError,
     GuardRejectedError,
@@ -24,6 +25,7 @@ __all__ = (
     "InvalidProviderError",
     "LifecycleError",
     "ModuleCycleError",
+    "BadRequestException",
     "ParameterBindingError",
     "ProviderResolutionError",
     "RouteDefinitionError",

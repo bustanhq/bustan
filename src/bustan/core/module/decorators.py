@@ -18,6 +18,7 @@ def Module(
     controllers: Iterable[type[object]] | None = None,
     providers: Iterable[object | dict[str, Any]] | None = None,
     exports: Iterable[object] | None = None,
+    is_global: bool = False,
 ) -> Callable[[ClassT], ClassT]:
     """Attach module metadata to a class without performing registration."""
 
@@ -30,6 +31,7 @@ def Module(
         ),
         providers=_coerce_tuple(providers, field_name="providers"),
         exports=_coerce_tuple(exports, field_name="exports"),
+        is_global=is_global,
     )
 
     def decorate(module_cls: ClassT) -> ClassT:

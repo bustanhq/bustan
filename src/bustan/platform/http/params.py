@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections.abc
 import inspect
 import sys
 from dataclasses import dataclass, is_dataclass
@@ -16,10 +17,15 @@ from ...core.utils import _qualname
 
 from ...common.decorators.parameter import (
     _BodyMarker,
-    _QueryMarker,
-    _ParamMarker,
+    _CookiesMarker,
     _HeaderMarker,
+    _HostParamMarker,
+    _IpMarker,
     _MarkerCallable,
+    _ParamMarker,
+    _QueryMarker,
+    _UploadedFileMarker,
+    _UploadedFilesMarker,
 )
 
 from .metadata import ControllerRouteDefinition
@@ -37,6 +43,11 @@ class ParameterSource(StrEnum):
     QUERY = "query"
     BODY = "body"
     HEADER = "header"
+    COOKIE = "cookie"
+    IP = "ip"
+    HOST = "host"
+    FILE = "file"
+    FILES = "files"
     INFERRED = "inferred"
 
 
@@ -111,6 +122,16 @@ def compile_parameter_bindings(
                 source = ParameterSource.PATH
             elif marker_cls_name == "_HeaderMarker":
                 source = ParameterSource.HEADER
+            elif marker_cls_name == "_CookiesMarker":
+                source = ParameterSource.COOKIE
+            elif marker_cls_name == "_IpMarker":
+                source = ParameterSource.IP
+            elif marker_cls_name == "_HostParamMarker":
+                source = ParameterSource.HOST
+            elif marker_cls_name == "_UploadedFileMarker":
+                source = ParameterSource.FILE
+            elif marker_cls_name == "_UploadedFilesMarker":
+                source = ParameterSource.FILES
             else:
                 source = ParameterSource.INFERRED
                 inferred_parameter_names.append(parameter.name)
@@ -220,6 +241,62 @@ async def _bind_parameter(
             ),
             request_body,
         )
+
+    if binding.source is ParameterSource.COOKIE:
+        lookup_name = binding.alias or binding.name
+        if binding.alias is None:
+            _origin = get_origin(binding.annotation)
+            _actual = _origin if _origin is not None else binding.annotation
+            if isinstance(_actual, type) and issubclass(_actual, collections.abc.Mapping):
+                return dict(request.cookies), request_body
+        cookie_value = request.cookies.get(lookup_name)
+        if cookie_value is not None:
+            return (
+                _coerce_value(
+                    cookie_value,
+                    annotation=binding.annotation,
+                    parameter_name=binding.name,
+                    source_description="cookie",
+                ),
+                request_body,
+            )
+        if binding.has_default:
+            return binding.default, request_body
+        return None, request_body
+
+    if binding.source is ParameterSource.IP:
+        host = request.client.host if request.client is not None else None
+        if host is not None:
+            return host, request_body
+        if binding.has_default:
+            return binding.default, request_body
+        return None, request_body
+
+    if binding.source is ParameterSource.HOST:
+        host_header = request.headers.get(binding.alias or "host")
+        if host_header is not None:
+            return host_header, request_body
+        if binding.has_default:
+            return binding.default, request_body
+        return None, request_body
+
+    if binding.source in (ParameterSource.FILE, ParameterSource.FILES):
+        form = await request.form()
+        lookup_name = binding.alias or binding.name
+        if binding.source is ParameterSource.FILE:
+            file_value = form.get(lookup_name)
+            if file_value is not None:
+                return file_value, request_body
+            if binding.has_default:
+                return binding.default, request_body
+            return None, request_body
+
+        files_value = form.getlist(lookup_name)
+        if files_value:
+            return files_value, request_body
+        if binding.has_default:
+            return binding.default, request_body
+        return [], request_body
 
     # Query values take precedence for inferred parameters so callers can
     # override scalars without reshaping the JSON body.
@@ -404,7 +481,18 @@ def _extract_marker(annotation: object) -> tuple[object, object]:
         for meta in args[1:]:
             if isinstance(
                 meta,
-                (_BodyMarker, _QueryMarker, _ParamMarker, _HeaderMarker, _MarkerCallable),
+                (
+                    _BodyMarker,
+                    _CookiesMarker,
+                    _HeaderMarker,
+                    _HostParamMarker,
+                    _IpMarker,
+                    _ParamMarker,
+                    _QueryMarker,
+                    _UploadedFileMarker,
+                    _UploadedFilesMarker,
+                    _MarkerCallable,
+                ),
             ) or (hasattr(meta, "_cls") and meta.__class__.__name__ == "_MarkerCallable"):
                 return inner, meta
         return inner, None

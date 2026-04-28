@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import asdict, is_dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -12,7 +12,7 @@ from starlette.responses import JSONResponse, Response
 
 from ....core.module.dynamic import ModuleKey
 from ....core.ioc.container import Container
-from ....core.errors import GuardRejectedError, ParameterBindingError
+from ....core.errors import BadRequestException, GuardRejectedError, ParameterBindingError
 from ..params import (
     BoundParameter,
     HandlerBindingPlan,
@@ -28,6 +28,9 @@ from ....pipeline.metadata import PipelineMetadata
 from ....pipeline.pipes import run_pipes
 from ..metadata import ControllerRouteDefinition
 from ..controller_factory import ControllerFactory
+
+if TYPE_CHECKING:
+    from ....testing.overrides import PipelineOverrideRegistry
 
 
 def coerce_response(value: object) -> Response:
@@ -55,10 +58,14 @@ def create_starlette_endpoint(
     route_definition: ControllerRouteDefinition,
     binding_plan: HandlerBindingPlan,
     pipeline_metadata: PipelineMetadata,
+    pipeline_override_registry: PipelineOverrideRegistry | None = None,
 ) -> Any:
     """Create the Starlette endpoint callable for one controller handler."""
 
-    factory = ControllerFactory(container)
+    factory = ControllerFactory(
+        container,
+        pipeline_override_registry=pipeline_override_registry,
+    )
     is_async_handler = inspect.iscoroutinefunction(route_definition.handler)
 
     async def endpoint(request: Request) -> Response:
@@ -114,19 +121,44 @@ def create_starlette_endpoint(
                 request_context, exc, resolved_pipeline.filters
             )
             if filtered_result is not None:
-                return coerce_response(filtered_result)
+                response = coerce_response(filtered_result)
+                _apply_rate_limit_headers(request, response)
+                return response
 
             # Fallback to standard error responses for common exceptions if not handled by filters
+            if isinstance(exc, BadRequestException):
+                payload = {"detail": str(exc)}
+                if exc.field is not None:
+                    payload["field"] = exc.field
+                response = JSONResponse(payload, status_code=400)
+                _apply_rate_limit_headers(request, response)
+                return response
             if isinstance(exc, ParameterBindingError):
-                return JSONResponse({"detail": str(exc)}, status_code=400)
+                response = JSONResponse({"detail": str(exc)}, status_code=400)
+                _apply_rate_limit_headers(request, response)
+                return response
             if isinstance(exc, GuardRejectedError):
-                return JSONResponse({"detail": str(exc)}, status_code=403)
+                status_code = 429 if getattr(request.state, "rate_limit_exceeded", False) else 403
+                detail = "Too Many Requests" if status_code == 429 else str(exc)
+                response = JSONResponse({"detail": detail}, status_code=status_code)
+                _apply_rate_limit_headers(request, response)
+                return response
             raise
 
-        return coerce_response(result)
+        response = coerce_response(result)
+        _apply_rate_limit_headers(request, response)
+        return response
 
     endpoint.__name__ = route_definition.route.name
     return endpoint
+
+
+def _apply_rate_limit_headers(request: Request, response: Response) -> None:
+    if not hasattr(request.state, "rate_limit_limit"):
+        return
+    response.headers["X-RateLimit-Limit"] = str(request.state.rate_limit_limit)
+    response.headers["X-RateLimit-Remaining"] = str(request.state.rate_limit_remaining)
+    response.headers["X-RateLimit-Reset"] = str(request.state.rate_limit_reset)
 
 
 async def _apply_pipes(

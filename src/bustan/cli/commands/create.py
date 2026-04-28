@@ -42,5 +42,5 @@ def run_create_command(arguments: argparse.Namespace) -> int:
     print("Next steps:")
     print(f"  cd {target_directory}")
     print("  uv sync --group dev")
-    print(f"  uv run uvicorn {package_name}.app:app --reload")
+    print(f"  uv run uvicorn {package_name}:app --reload")
     return 0

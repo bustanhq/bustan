@@ -38,6 +38,9 @@ def scaffold_project(
         target_directory / "pyproject.toml": "pyproject.toml",
         package_directory / "__init__.py": "__init__.py",
         package_directory / "app.py": "app.py",
+        package_directory / "app.module.py": "app.module.py",
+        package_directory / "app.controller.py": "app.controller.py",
+        package_directory / "app.service.py": "app.service.py",
         tests_directory / "test_app.py": "test_app.py",
     }
 

@@ -45,6 +45,14 @@ class ParameterBindingError(BustanError):
     """Raised when request parameters cannot be bound."""
 
 
+class BadRequestException(BustanError):
+    """Raised when a request fails explicit validation."""
+
+    def __init__(self, message: str, *, field: str | None = None):
+        super().__init__(message)
+        self.field = field
+
+
 class GuardRejectedError(BustanError):
     """Raised when a guard blocks request execution."""
 
@@ -58,6 +66,7 @@ __all__ = (
     "InvalidProviderError",
     "LifecycleError",
     "ModuleCycleError",
+    "BadRequestException",
     "ParameterBindingError",
     "ProviderResolutionError",
     "RouteDefinitionError",

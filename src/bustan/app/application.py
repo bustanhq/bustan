@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable
 if TYPE_CHECKING:
     from ..core.ioc.container import Container
     from ..platform.http.adapter import AbstractHttpAdapter
+    from ..security.cors import CorsOptions
 
 
 class ApplicationContext:
@@ -83,6 +84,43 @@ class Application(ApplicationContext):
     def get_http_server(self) -> Any:
         """Accessor for the underlying framework instance (e.g., Starlette App)."""
         return self._adapter.get_instance()
+
+    def enable_cors(self, options: CorsOptions | None = None) -> None:
+        """Register Starlette's CORS middleware on the application."""
+        from starlette.middleware.cors import CORSMiddleware
+
+        from ..security.cors import CorsOptions
+
+        resolved = options or CorsOptions()
+        allow_origins = (
+            [resolved.origins] if isinstance(resolved.origins, str) else resolved.origins
+        )
+        self._adapter.add_middleware(
+            CORSMiddleware,
+            allow_origins=allow_origins,
+            allow_methods=resolved.methods,
+            allow_headers=resolved.allowed_headers,
+            expose_headers=resolved.exposed_headers,
+            allow_credentials=resolved.credentials,
+            max_age=resolved.max_age,
+        )
+
+    def enable_swagger(
+        self,
+        path: str,
+        document: dict[str, object],
+        *,
+        swagger_ui_path: str | None = None,
+    ) -> None:
+        """Register OpenAPI JSON and Swagger UI routes."""
+        from ..openapi.swagger_ui import SwaggerModule
+
+        SwaggerModule.setup(
+            self,
+            path,
+            document,
+            swagger_ui_path=swagger_ui_path,
+        )
 
     async def listen(
         self, port: int, host: str = "127.0.0.1", reload: bool = False, **kwargs: Any

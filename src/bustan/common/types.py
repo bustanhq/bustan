@@ -17,6 +17,7 @@ class ProviderScope(StrEnum):
     SINGLETON = "singleton"
     TRANSIENT = "transient"
     REQUEST = "request"
+    DURABLE = "durable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +25,8 @@ class ControllerMetadata:
     """Static metadata captured from a @Controller declaration."""
 
     prefix: str = ""
+    scope: ProviderScope = ProviderScope.SINGLETON
+    version: str | list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,3 +36,4 @@ class RouteMetadata:
     method: str
     path: str
     name: str
+    version: str | list[str] | None = None
