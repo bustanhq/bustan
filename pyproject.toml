@@ -41,7 +41,7 @@ Support = "https://github.com/bustanhq/bustan/issues"
 dev = [
     "httpx>=0.28.1,<1.0.0",
     "lefthook>=2.1.4",
-    "pytest>=9.0.2,<10.0.0",
+    "pytest>=9.0.3,<10.0.0",
     "pytest-cov>=7.1.0,<8.0.0",
     "ruff>=0.15.9,<0.16.0",
     "ty",
