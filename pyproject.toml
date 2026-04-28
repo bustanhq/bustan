@@ -39,7 +39,7 @@ Support = "https://github.com/bustanhq/bustan/issues"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.0,<1.0.0",
+    "httpx>=0.28.1,<1.0.0",
     "lefthook>=2.1.4",
     "pytest>=9.0.2,<10.0.0",
     "pytest-cov>=7.1.0,<8.0.0",
