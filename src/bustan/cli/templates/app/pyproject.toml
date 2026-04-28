@@ -18,7 +18,7 @@ dev = [
 ]
 
 [project.scripts]
-$package_name = "$package_name.main:main"
+$package_name = "$package_name.app:main"
 
 [tool.pytest.ini_options]
 addopts = "-ra"
