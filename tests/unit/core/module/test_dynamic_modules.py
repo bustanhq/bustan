@@ -5,7 +5,7 @@ from bustan.core.errors import (
     ModuleCycleError,
 )
 from bustan.core.module.dynamic import ModuleInstanceKey, DynamicModule
-from bustan.core.module.graph import ModuleGraph, build_module_graph
+from bustan.core.module.graph import build_module_graph
 
 
 def test_dynamic_module_merges_metadata() -> None:
@@ -168,7 +168,7 @@ def test_dynamic_module_controller_addition() -> None:
     app = create_app(dynamic)
 
     # Verify both controllers work via internal module graph access
-    graph = cast(ModuleGraph, app._container.module_graph)
+    graph = app._container.module_graph
     assert len(graph.get_node(graph.root_key).controllers) == 2
 
     # Verify routes via public accessor

@@ -60,13 +60,10 @@ def test_schema_generation_uses_decorator_metadata() -> None:
     class AppModule:
         pass
 
-    schema = cast(
-        dict[str, Any],
-        generate_schema(
+    schema = generate_schema(
             build_module_graph(AppModule),
             DocumentBuilder().set_title("Cats").set_version("1.0").build(),
-        ),
-    )
+        )
 
     get_operation = schema["paths"]["/cats/{id}"]["get"]
     assert get_operation["tags"] == ["cats"]
@@ -103,9 +100,9 @@ def test_schema_generation_infers_pydantic_request_bodies() -> None:
     class AppModule:
         pass
 
-    schema = cast(
-        dict[str, Any],
-        generate_schema(build_module_graph(AppModule), DocumentBuilder().build()),
+    schema = generate_schema(
+        build_module_graph(AppModule), 
+        DocumentBuilder().build(),
     )
 
     request_body = schema["paths"]["/cats"]["post"]["requestBody"]
@@ -123,9 +120,9 @@ def test_schema_generation_infers_path_parameters_from_routes() -> None:
     class AppModule:
         pass
 
-    schema = cast(
-        dict[str, Any],
-        generate_schema(build_module_graph(AppModule), DocumentBuilder().build()),
+    schema = generate_schema(
+        build_module_graph(AppModule), 
+        DocumentBuilder().build(),
     )
 
     parameters = schema["paths"]["/items/{item_id}"]["get"]["parameters"]
