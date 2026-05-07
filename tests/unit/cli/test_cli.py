@@ -1,85 +1,92 @@
-"""Unit tests for the project scaffolding CLI."""
+"""Unit tests for the Bustan CLI init command."""
 
-import importlib
-import sys
+import os
 from pathlib import Path
-
-from starlette.testclient import TestClient
 
 from bustan.cli.main import main
 
+_PYPROJECT_TOML = """\
+[project]
+name = "{name}"
+version = "0.1.0"
+description = "Test project"
+requires-python = ">=3.13"
+dependencies = []
 
-def test_cli_new_scaffolds_a_project_with_expected_files(tmp_path: Path, capsys) -> None:
-    exit_code = main(["create", "hello-bustan", "--directory", str(tmp_path)])
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12.0"]
+build-backend = "uv_build"
+"""
 
-    assert exit_code == 0
-    project_directory = tmp_path / "hello-bustan"
-    assert project_directory.exists()
-    assert (project_directory / "pyproject.toml").exists()
-    assert (project_directory / "README.md").exists()
-    assert (project_directory / ".gitignore").exists()
-    assert (project_directory / "src" / "hello_bustan" / "__init__.py").exists()
-    assert (project_directory / "src" / "hello_bustan" / "app.py").exists()
-    assert (project_directory / "src" / "hello_bustan" / "app.module.py").exists()
-    assert (project_directory / "src" / "hello_bustan" / "app.controller.py").exists()
-    assert (project_directory / "src" / "hello_bustan" / "app.service.py").exists()
-    assert not (project_directory / "src" / "hello_bustan" / "main.py").exists()
-    assert (project_directory / "tests" / "test_app.py").exists()
 
-    pyproject_content = (project_directory / "pyproject.toml").read_text(encoding="utf-8")
-    init_content = (project_directory / "src" / "hello_bustan" / "__init__.py").read_text(
-        encoding="utf-8"
+def _write_pyproject(directory: Path, name: str) -> None:
+    (directory / "pyproject.toml").write_text(
+        _PYPROJECT_TOML.format(name=name), encoding="utf-8"
     )
-    app_content = (project_directory / "src" / "hello_bustan" / "app.py").read_text(
-        encoding="utf-8"
-    )
-    stdout = capsys.readouterr().out
-
-    assert "bustan.cli:main" not in pyproject_content
-    assert '"uvicorn>=0.30.0,<1.0.0"' in pyproject_content
-    assert '"hello_bustan.app:main"' in pyproject_content
-    assert 'uvicorn.run("hello_bustan:app", reload=True)' in app_content
-    assert "app = _create_bustan_app(AppModule)" in init_content
-    assert "Created Bustan application" in stdout
 
 
-def test_cli_create_alias_scaffolds_a_project(tmp_path: Path) -> None:
-    exit_code = main(["create", "demo-app", "--directory", str(tmp_path)])
-
-    assert exit_code == 0
-    assert (tmp_path / "demo-app" / "src" / "demo_app" / "__init__.py").exists()
-
-
-def test_cli_scaffolded_package_is_importable_and_serves_the_root_route(tmp_path: Path) -> None:
-    exit_code = main(["create", "demo-import", "--directory", str(tmp_path)])
-
-    assert exit_code == 0
-    project_directory = tmp_path / "demo-import"
-    sys.path.insert(0, str(project_directory / "src"))
+def test_init_creates_expected_files(tmp_path: Path, capsys) -> None:
+    _write_pyproject(tmp_path, "hello-bustan")
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
     try:
-        module = importlib.import_module("demo_import")
-        with TestClient(module.app) as client:
-            response = client.get("/")
-        assert response.status_code == 200
-        assert response.json() == {"message": "Hello from demo-import"}
+        exit_code = main(["init"])
     finally:
-        sys.path.pop(0)
-        for module_name in [
-            "demo_import",
-            "demo_import._app_service",
-            "demo_import._app_controller",
-            "demo_import._app_module",
-        ]:
-            sys.modules.pop(module_name, None)
+        os.chdir(old_cwd)
+
+    assert exit_code == 0
+    assert (tmp_path / "README.md").exists()
+    pkg = tmp_path / "src" / "hello_bustan"
+    assert (pkg / "__init__.py").exists()
+    assert (pkg / "app_module.py").exists()
+    assert (pkg / "app_controller.py").exists()
+    assert (pkg / "app_service.py").exists()
+    tests = tmp_path / "tests" / "hello_bustan"
+    assert (tests / "test_app_controller.py").exists()
+    assert (tests / "test_app_service.py").exists()
+    assert (tests / "test_app_module.py").exists()
+    stdout = capsys.readouterr().out
+    assert "hello_bustan" in stdout
 
 
-def test_cli_rejects_non_empty_target_directory(tmp_path: Path, capsys) -> None:
-    target_directory = tmp_path / "existing-app"
-    target_directory.mkdir()
-    (target_directory / "README.md").write_text("occupied", encoding="utf-8")
+def test_init_adds_scripts_to_pyproject(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "my-app")
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        main(["init"])
+    finally:
+        os.chdir(old_cwd)
 
-    exit_code = main(["create", "existing-app", "--directory", str(tmp_path)])
+    content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    assert '[project.scripts]' in content
+    assert 'start = "my_app:main"' in content
+    assert 'dev = "my_app:dev"' in content
+
+
+def test_init_fails_without_pyproject(tmp_path: Path, capsys) -> None:
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        exit_code = main(["init"])
+    finally:
+        os.chdir(old_cwd)
 
     assert exit_code == 1
-    stderr = capsys.readouterr().err
-    assert "already exists and is not empty" in stderr
+    assert "pyproject.toml" in capsys.readouterr().err
+
+
+def test_init_init_py_contains_bootstrap_and_scripts(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "demo-app")
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        main(["init"])
+    finally:
+        os.chdir(old_cwd)
+
+    content = (tmp_path / "src" / "demo_app" / "__init__.py").read_text(encoding="utf-8")
+    assert "def bootstrap" in content
+    assert "def main" in content
+    assert "def dev" in content
+

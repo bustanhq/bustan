@@ -49,6 +49,6 @@ Use this checklist for every tagged release until the release workflow is fully 
 2. If manual verification is needed, install the package in a clean environment.
 3. Verify `import bustan` succeeds.
 4. Verify `bustan --help` succeeds.
-5. Verify `uvx --from "bustan==<version>" bustan new my-app` scaffolds an application from the published artifact.
+5. Verify that `uv init --package my-app && cd my-app && uv add bustan && uv run bustan init` scaffolds an application from the published artifact.
 6. Publish or verify the GitHub release notes.
 7. Announce the release if it is externally relevant.

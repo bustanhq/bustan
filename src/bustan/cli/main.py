@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from .commands.create import run_create_command
+from .commands.init import run_init_command
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -18,8 +18,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
-    if command == "create":
-        return run_create_command(arguments)
+    if command == "init":
+        return run_init_command(arguments)
 
     parser.error(f"Unsupported command: {command}")
     return 2
@@ -34,20 +34,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    new_parser = subparsers.add_parser(
-        "create",
-        help="Create a new Bustan application.",
+    subparsers.add_parser(
+        "init",
+        help="Initialise a Bustan app in the current uv project.",
     )
-    new_parser.add_argument("name", help="Project directory name.")
-    new_parser.add_argument(
-        "--directory",
-        default=".",
-        help="Parent directory where the project will be created.",
-    )
-    new_parser.add_argument(
-        "--package-name",
-        help="Python package name to use inside src/. Defaults to a sanitized project name.",
-    )
+
+    return parser
 
     return parser
 

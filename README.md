@@ -41,13 +41,11 @@ That installs the framework, test dependencies, linting, typing, and the local C
 ### Use the CLI from a source checkout
 
 ```bash
-uv run bustan new my-app
-```
-
-`create` is available as an alias:
-
-```bash
-uv run bustan create my-app
+uv init --package my-app
+cd my-app
+uv add bustan
+uv add --dev ty ruff
+uv run bustan init
 ```
 
 ### Use as a published package
@@ -58,12 +56,6 @@ Once the PyPI distribution name is confirmed and published, the intended install
 uv add bustan
 # or
 pip install bustan
-```
-
-Once published, the CLI entry point will also be usable through `uvx`:
-
-```bash
-uvx bustan create my-app
 ```
 
 The distribution name `bustan` still needs to be confirmed at publish time. The current repository is prepared for that name, but the final PyPI availability check should happen immediately before the first release.
@@ -107,13 +99,13 @@ app = create_app(AppModule)
 Run it locally:
 
 ```bash
-uv run uvicorn app:app --reload
+uv run dev
 ```
 
 Call the route:
 
 ```bash
-curl http://127.0.0.1:8000/hello
+curl http://127.0.0.1:3000/hello
 ```
 
 Expected response:
@@ -136,7 +128,7 @@ The current implementation already includes:
 - guards, pipes, interceptors, and exception filters
 - module and application lifecycle hooks wired through Starlette lifespan
 - test helpers for temporary modules, test apps, and provider overrides
-- an initial CLI scaffold for new applications
+- a CLI (`bustan init`) for scaffolding new applications into existing `uv` projects
 
 ## Supported Public API
 
