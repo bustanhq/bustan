@@ -25,7 +25,7 @@ wheels = [
 
 [[package]]
 name = "bustan"
-version = "1.0.1"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
@@ -46,8 +46,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anyio", specifier = ">=4.9.0,<5.0.0" },
-    { name = "pydantic", specifier = ">=2,<3" },
+    { name = "anyio", specifier = ">=4.13.0,<5.0.0" },
+    { name = "pydantic", specifier = ">=2.13.3,<3" },
     { name = "starlette", specifier = ">=1.0.0,<2.0.0" },
     { name = "uvicorn", specifier = ">=0.34.0,<1.0.0" },
 ]
