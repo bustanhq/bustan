@@ -17,7 +17,7 @@ class CacheModule:
                 {"provide": CACHE_PREFIX, "use_value": prefix},
                 {
                     "provide": CacheService,
-                    "use_factory": lambda resolved_prefix: CacheService(resolved_prefix),
+                    "use_factory": CacheService,
                     "inject": [CACHE_PREFIX],
                 },
             ),
