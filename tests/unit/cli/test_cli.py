@@ -1,6 +1,8 @@
 """Unit tests for the Bustan CLI init command."""
 
 import argparse
+import builtins
+import importlib
 import json
 import os
 import sys
@@ -105,6 +107,32 @@ def test_init_init_py_contains_bootstrap_and_scripts(tmp_path: Path) -> None:
 
 def test_main_prints_help_when_no_command_is_supplied(capsys) -> None:
     assert main([]) == 1
+    assert "usage:" in capsys.readouterr().out
+
+
+def test_cli_import_does_not_require_optional_httpx(monkeypatch, capsys) -> None:
+    real_import = builtins.__import__
+
+    def fail_testclient_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "starlette.testclient":
+            raise RuntimeError(
+                "The starlette.testclient module requires the httpx package to be installed."
+            )
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fail_testclient_import)
+
+    original_main = sys.modules["bustan.cli.main"]
+    original_governance = sys.modules["bustan.cli.commands.governance"]
+    sys.modules.pop("bustan.cli.main", None)
+    sys.modules.pop("bustan.cli.commands.governance", None)
+    try:
+        reloaded_main = importlib.import_module("bustan.cli.main")
+        assert reloaded_main.main([]) == 1
+    finally:
+        sys.modules["bustan.cli.main"] = original_main
+        sys.modules["bustan.cli.commands.governance"] = original_governance
+
     assert "usage:" in capsys.readouterr().out
 
 

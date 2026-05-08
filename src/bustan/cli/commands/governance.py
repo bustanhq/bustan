@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, cast
 
 from ...app.bootstrap import create_app
-from ...platform.http.conformance import evaluate_adapter_conformance, load_adapter
 from ...platform.http.registry import diff_route_snapshots
 from .routes import _load_root_module, _load_snapshot
 
@@ -145,6 +144,8 @@ def _build_diff_report(target: str, snapshot_path: str) -> dict[str, object]:
 
 
 def _build_conformance_report(adapter_name: str) -> dict[str, object]:
+    from ...platform.http.conformance import evaluate_adapter_conformance, load_adapter
+
     return evaluate_adapter_conformance(load_adapter(adapter_name)).to_dict()
 
 

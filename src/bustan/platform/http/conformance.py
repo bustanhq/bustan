@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, cast
 
-from starlette.testclient import TestClient
-
 from ...app.bootstrap import create_app
 from ...common.decorators.controller import Controller
 from ...common.decorators.route import Get, Post
@@ -52,6 +50,27 @@ def load_adapter(name: str) -> AbstractHttpAdapter:
     raise ValueError(f"Unsupported adapter {name!r}")
 
 
+def _load_test_client() -> Any:
+    try:
+        from starlette.testclient import TestClient
+    except ModuleNotFoundError as exc:
+        if exc.name != "httpx":
+            raise
+        raise ImportError(
+            "Adapter conformance requires the optional 'httpx' dependency. "
+            "Install httpx to run governance conformance checks."
+        ) from exc
+    except RuntimeError as exc:
+        if "httpx" not in str(exc):
+            raise
+        raise ImportError(
+            "Adapter conformance requires the optional 'httpx' dependency. "
+            "Install httpx to run governance conformance checks."
+        ) from exc
+
+    return TestClient
+
+
 def evaluate_adapter_conformance(adapter: AbstractHttpAdapter) -> AdapterConformanceResult:
     @Controller("/health")
     class HealthController:
@@ -70,7 +89,8 @@ def evaluate_adapter_conformance(adapter: AbstractHttpAdapter) -> AdapterConform
         pass
 
     application = create_app(AppModule, adapter=adapter)
-    with TestClient(cast(Any, application)) as client:
+    test_client_cls = _load_test_client()
+    with test_client_cls(cast(Any, application)) as client:
         health_response = client.get("/health")
         payload_response = client.post("/payloads", json={"name": "Ada"})
 
