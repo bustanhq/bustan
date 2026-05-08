@@ -7,6 +7,7 @@ from bustan import (
     APP_PIPE,
     Controller,
     Get,
+    HttpResponse,
     Module,
     UseFilters,
     UseGuards,
@@ -15,7 +16,7 @@ from bustan import (
 )
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
-from bustan.platform.http.compiler import RouteCompiler, compile_route_contracts
+from bustan.platform.http.compiler import ResponseStrategy, RouteCompiler, compile_route_contracts
 
 
 def test_route_contracts_include_route_identity_and_ownership() -> None:
@@ -126,3 +127,22 @@ def test_route_contracts_allow_route_hosts_to_override_controller_hosts() -> Non
     [contract] = compile_route_contracts(graph, container)
 
     assert contract.hosts == ("edge.example.test", "api.example.test")
+
+
+def test_route_contracts_resolve_stringified_return_annotations_for_response_strategies() -> None:
+    @Controller("/users")
+    class UsersController:
+        @Get("/")
+        def index(self) -> HttpResponse:
+            return HttpResponse.json({"status": "ok"})
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+
+    [contract] = compile_route_contracts(graph, container)
+
+    assert contract.response_plan.strategy is ResponseStrategy.RAW

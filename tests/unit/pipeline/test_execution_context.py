@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
 from starlette.requests import Request
 
 from bustan.common.types import RouteMetadata
@@ -195,6 +196,43 @@ def test_execution_context_parameter_accessors_cover_default_and_compatibility_p
     assert parameter_context.parameter_value == 1
     assert updated_context.value == 2
     assert updated_context.parameter_value == 2
+
+
+def test_request_context_raises_runtime_errors_when_required_http_state_is_missing() -> None:
+    class UsersController:
+        def list_users(self) -> None:
+            return None
+
+    route = ControllerRouteDefinition(
+        handler_name="list_users",
+        handler=UsersController.list_users,
+        route=RouteMetadata(method="GET", path="/", name="list_users"),
+    )
+
+    missing_request_context = RequestContext(
+        request=None,
+        module=ModuleInstanceKey(module=UsersController, instance_id="test"),
+        controller_type=UsersController,
+        controller=UsersController(),
+        route=route,
+        container=cast(Any, object()),
+    )
+
+    missing_route_context = RequestContext(
+        request=_build_request("/"),
+        module=ModuleInstanceKey(module=UsersController, instance_id="test"),
+        controller_type=UsersController,
+        controller=UsersController(),
+        route=route,
+        container=cast(Any, object()),
+    )
+    missing_route_context._route = None
+
+    with pytest.raises(RuntimeError, match="active HTTP request"):
+        _ = missing_request_context.request
+
+    with pytest.raises(RuntimeError, match="active route definition"):
+        _ = missing_route_context.route
 
 
 def _build_request(path: str) -> Request:

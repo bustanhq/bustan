@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from bustan import Controller, Get, Module, create_app
 
 
@@ -79,3 +81,42 @@ def test_application_route_diff_reports_additions_removals_and_changed_dimension
     assert diff[1]["before"] is None
     assert diff[1]["after"] is not None
     assert diff[2]["fields"] == ["module", "path"]
+
+
+def test_application_route_diff_keeps_same_controller_names_from_distinct_modules_separate() -> None:
+    @Controller("/public")
+    class UsersController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"route": "public"}
+
+    @Module(controllers=[UsersController])
+    class PublicModule:
+        pass
+
+    @Controller("/admin")
+    class UsersController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"route": "admin"}
+
+    @Module(controllers=[UsersController])
+    class AdminModule:
+        pass
+
+    @Module(imports=[PublicModule, AdminModule])
+    class PreviousModule:
+        pass
+
+    @Module(imports=[PublicModule])
+    class CurrentModule:
+        pass
+
+    diff = create_app(CurrentModule).diff_routes(create_app(PreviousModule).snapshot_routes())
+
+    assert [(entry["change"], entry["route"]) for entry in diff] == [
+        ("removed", "UsersController.index"),
+    ]
+    before = cast(dict[str, object], diff[0]["before"])
+    assert before["module"] == "AdminModule"
+    assert diff[0]["after"] is None

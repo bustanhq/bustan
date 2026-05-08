@@ -295,7 +295,7 @@ Current value: `Cookies`
 #### `create_app`
 
 ```python
-def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None, _no_lifespan: bool = False) -> Application
+def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None) -> Application
 ```
 
 Defined in `bustan.app.bootstrap`.
@@ -1456,7 +1456,7 @@ Factory for throttling support.
 
 ##### Methods
 
-- `for_root(*, ttl: int, limit: int) -> DynamicModule`
+- `for_root(*, ttl: int, limit: int, key_resolver: ThrottlerKeyResolver | None = None) -> DynamicModule`
 
 #### `ThrottlerStorage`
 

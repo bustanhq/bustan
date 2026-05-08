@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from functools import partial
+from inspect import iscoroutinefunction
 from typing import cast
 
 from anyio import to_thread
@@ -33,6 +35,8 @@ from .responses import ResponseHandler
 
 RuntimeResponse = HttpResponse | HttpStreamResponse | HttpFileResponse | Response
 _EXCEPTION_RESPONSE_PLAN = ResponsePlan(declared_type=None, default_status_code=200)
+_LOGGER = logging.getLogger(__name__)
+_INTERNAL_SERVER_ERROR_DETAIL = "Internal server error"
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +87,7 @@ def compile_execution_plan(route_contract: RouteContract) -> ExecutionPlan:
         pipeline_plan=route_contract.pipeline_plan,
         response_plan=route_contract.response_plan,
         policy_plan=route_contract.policy_plan,
-        is_async_handler=route_contract.route_definition.handler.__code__.co_flags & 0x80 != 0,
+        is_async_handler=iscoroutinefunction(route_contract.route_definition.handler),
     )
 
 
@@ -104,7 +108,10 @@ async def execute_http_route(
 ) -> HttpExecutionResult:
     """Execute one compiled HTTP route through the shared runtime pipeline."""
 
+    native_http_request = cast(Request, native_request)
     application_token = container.scope_manager.push_application(application_runtime)
+    response_context = Response()
+    response_token = container.scope_manager.push_response(response_context)
     response_handler = ResponseHandler()
     observability = ObservabilityHooks.current()
     context: ExecutionContext | None = None
@@ -112,7 +119,6 @@ async def execute_http_route(
     observation = None
 
     try:
-        native_http_request = cast(Request, native_request)
         controller_instance = factory.instantiate(
             execution_plan.controller_cls,
             module=execution_plan.module_key,
@@ -121,7 +127,7 @@ async def execute_http_route(
         handler = getattr(controller_instance, execution_plan.handler_name)
         context = ExecutionContext.create_http(
             request=request,
-            response=None,
+            response=response_context,
             handler=execution_plan.route_definition.handler,
             controller_cls=execution_plan.controller_cls,
             module=execution_plan.module_key,
@@ -163,6 +169,11 @@ async def execute_http_route(
             final_handler,
         )
         response = response_handler.write(result=result, response_plan=execution_plan.response_plan)
+        response = _merge_response_context(
+            response_context,
+            response,
+            default_status_code=execution_plan.response_plan.default_status_code,
+        )
         _apply_rate_limit_headers(request, response)
 
         if observation is not None:
@@ -179,7 +190,14 @@ async def execute_http_route(
                 response_plan=_EXCEPTION_RESPONSE_PLAN,
             )
         else:
-            response = HttpResponse.json({"detail": str(exc)}, status_code=500)
+            _LOGGER.exception("Unhandled exception during request setup", exc_info=exc)
+            response = HttpResponse.json({"detail": _INTERNAL_SERVER_ERROR_DETAIL}, status_code=500)
+
+        response = _merge_response_context(
+            response_context,
+            response,
+            default_status_code=_EXCEPTION_RESPONSE_PLAN.default_status_code,
+        )
 
         _apply_rate_limit_headers(request, response)
         if observation is not None:
@@ -190,6 +208,8 @@ async def execute_http_route(
             )
         return HttpExecutionResult(response=response, context=context, error=exc)
     finally:
+        container.scope_manager.pop_response(response_token)
+        container.scope_manager.clear_request_state(native_http_request)
         container.scope_manager.pop_application(application_token)
 
 
@@ -205,14 +225,16 @@ async def execute_http_exception(
 ) -> HttpExecutionResult:
     """Render an exception through the route's compiled filter chain."""
 
+    native_http_request = cast(Request, native_request)
     application_token = container.scope_manager.push_application(application_runtime)
+    response_context = Response()
+    response_token = container.scope_manager.push_response(response_context)
     response_handler = ResponseHandler()
     observability = ObservabilityHooks.current()
     observation = None
     context: ExecutionContext | None = None
 
     try:
-        native_http_request = cast(Request, native_request)
         controller_instance = factory.instantiate(
             execution_plan.controller_cls,
             module=execution_plan.module_key,
@@ -220,7 +242,7 @@ async def execute_http_exception(
         )
         context = ExecutionContext.create_http(
             request=request,
-            response=None,
+            response=response_context,
             handler=execution_plan.route_definition.handler,
             controller_cls=execution_plan.controller_cls,
             module=execution_plan.module_key,
@@ -241,6 +263,11 @@ async def execute_http_exception(
             result=filtered_result,
             response_plan=_EXCEPTION_RESPONSE_PLAN,
         )
+        response = _merge_response_context(
+            response_context,
+            response,
+            default_status_code=_EXCEPTION_RESPONSE_PLAN.default_status_code,
+        )
         _apply_rate_limit_headers(request, response)
         observability.finish_request(
             observation,
@@ -249,6 +276,8 @@ async def execute_http_exception(
         )
         return HttpExecutionResult(response=response, context=context, error=error)
     finally:
+        container.scope_manager.pop_response(response_token)
+        container.scope_manager.clear_request_state(native_http_request)
         container.scope_manager.pop_application(application_token)
 
 
@@ -297,6 +326,25 @@ def _apply_rate_limit_headers(request: HttpRequest, response: RuntimeResponse) -
 
 def _response_status_code(response: RuntimeResponse) -> int:
     return int(getattr(response, "status_code", 200))
+
+
+def _merge_response_context(
+    response_context: Response,
+    response: RuntimeResponse,
+    *,
+    default_status_code: int,
+) -> RuntimeResponse:
+    if hasattr(response, "headers"):
+        for header_name, header_value in response_context.headers.items():
+            response.headers[header_name] = header_value
+
+    if (
+        response_context.status_code != 200
+        and getattr(response, "status_code", 200) in {200, default_status_code}
+    ):
+        response.status_code = response_context.status_code
+
+    return response
 
 
 __all__ = [

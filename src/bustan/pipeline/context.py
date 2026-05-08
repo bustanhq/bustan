@@ -323,13 +323,15 @@ class RequestContext(ExecutionContext):
     @property
     def request(self) -> HttpRequest:
         request = super().request
-        assert request is not None
+        if request is None:
+            raise RuntimeError("RequestContext requires an active HTTP request")
         return request
 
     @property
     def route(self) -> ControllerRouteDefinition:
         route = super().route
-        assert route is not None
+        if route is None:
+            raise RuntimeError("RequestContext requires an active route definition")
         return route
 
 

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import NoneType
-from typing import get_origin
+from typing import get_origin, get_type_hints
 
 from ...common.types import ControllerMetadata
 from ...core.errors import RouteDefinitionError
@@ -250,9 +251,33 @@ def _resolve_declared_return_type(route_definition: ControllerRouteDefinition) -
 
     handler_globals = getattr(route_definition.handler, "__globals__", {})
     try:
-        return eval(declared_type, handler_globals, {})
+        return _resolve_annotation_string(
+            declared_type,
+            globalns=handler_globals,
+            localns=handler_globals,
+        )
     except (NameError, TypeError):
         return declared_type
+
+    return declared_type
+
+
+def _resolve_annotation_string(
+    annotation: str,
+    *,
+    globalns: Mapping[str, object],
+    localns: Mapping[str, object],
+) -> object:
+    def _annotation_holder() -> None:
+        return None
+
+    _annotation_holder.__annotations__ = {"value": annotation}
+    return get_type_hints(
+        _annotation_holder,
+        globalns=dict(globalns),
+        localns=dict(localns),
+        include_extras=True,
+    )["value"]
 
 
 def _has_policy(policy_plan: PolicyPlan) -> bool:

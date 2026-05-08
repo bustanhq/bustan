@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Protocol, TYPE_CHECKING
 
@@ -48,6 +48,10 @@ class ObservabilityHooks:
         "bustan_observability_hooks_override",
         default=None,
     )
+    _override_tokens: ContextVar[tuple[Token[ObservabilityHooks | None], ...]] = ContextVar(
+        "bustan_observability_hooks_override_tokens",
+        default=(),
+    )
 
     def __init__(
         self,
@@ -64,7 +68,8 @@ class ObservabilityHooks:
 
     @classmethod
     def override_global(cls, hooks: "ObservabilityHooks") -> None:
-        cls._override.set(hooks)
+        token = cls._override.set(hooks)
+        cls._override_tokens.set(cls._override_tokens.get() + (token,))
 
     @classmethod
     @contextmanager
@@ -77,7 +82,13 @@ class ObservabilityHooks:
 
     @classmethod
     def reset_global(cls) -> None:
-        cls._override.set(None)
+        tokens = cls._override_tokens.get()
+        if not tokens:
+            cls._override.set(None)
+            return
+
+        cls._override.reset(tokens[-1])
+        cls._override_tokens.set(tokens[:-1])
 
     def start_request(self, context: ExecutionContext) -> ActiveObservation:
         labels = build_route_labels(context.get_route_contract())

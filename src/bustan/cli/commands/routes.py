@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from ...app.bootstrap import create_app
+from ...app.bootstrap import _create_app
 from ...platform.http.registry import diff_route_snapshots
 
 
@@ -52,7 +52,7 @@ def run_routes_command(arguments: argparse.Namespace) -> int:
 def run_snapshot_command(arguments: argparse.Namespace) -> int:
     try:
         root_module = _load_root_module(arguments.target)
-        snapshot = create_app(root_module, _no_lifespan=True).snapshot_routes()
+        snapshot = _create_app(root_module, no_lifespan=True).snapshot_routes()
         rendered = json.dumps(snapshot, indent=2, sort_keys=True)
         output = getattr(arguments, "output", None)
         if output:

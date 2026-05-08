@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
 from bustan import Controller, create_app, Get, Injectable, Module, Post, Scope
@@ -123,6 +123,30 @@ def test_create_app_reuses_a_singleton_controller_instance_per_request() -> None
     assert second_response.status_code == 200
     assert first_payload["controller_id"] == second_payload["controller_id"]
     assert first_payload["service_id"] == second_payload["service_id"]
+
+
+def test_create_app_exposes_response_token_during_controller_resolution() -> None:
+    @Controller("/responses")
+    class ResponseController:
+        def __init__(self, response: Response) -> None:
+            self._response = response
+
+        @Get("/")
+        def read_response(self) -> dict[str, str]:
+            self._response.status_code = 201
+            self._response.headers["x-response-token"] = "yes"
+            return {"status": "ok"}
+
+    @Module(controllers=[ResponseController])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/responses")
+
+    assert response.status_code == 201
+    assert response.headers["x-response-token"] == "yes"
+    assert response.json() == {"status": "ok"}
 
 
 def test_create_app_binds_request_path_query_and_json_body_values() -> None:

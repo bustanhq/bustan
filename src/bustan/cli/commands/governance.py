@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, cast
 
-from ...app.bootstrap import create_app
+from ...app.bootstrap import _create_app
 from ...platform.http.registry import diff_route_snapshots
 from .routes import _load_root_module, _load_snapshot
 
@@ -188,7 +188,7 @@ def _build_release_gate_report(
 
 
 def _create_compiled_app(target: str) -> Application:
-    return create_app(_load_root_module(target), _no_lifespan=True)
+    return _create_app(_load_root_module(target), no_lifespan=True)
 
 
 def _sorted_route_contracts(

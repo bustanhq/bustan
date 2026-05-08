@@ -133,6 +133,18 @@ class ScopeManager:
             setattr(request.state, REQUEST_SCOPE_CONTROLLER_CACHE_ATTR, request_scope_cache)
         return cast(dict[tuple[ModuleKey, type[object]], object], request_scope_cache)
 
+    def clear_request_state(self, request: Request | None) -> None:
+        if request is None:
+            return
+
+        state = getattr(request, "state", None)
+        if state is None:
+            return
+
+        for attribute in (REQUEST_SCOPE_CACHE_ATTR, REQUEST_SCOPE_CONTROLLER_CACHE_ATTR):
+            if hasattr(state, attribute):
+                delattr(state, attribute)
+
     def clear_controller_singletons(self) -> None:
         """Drop cached singleton controller instances."""
         self.controller_singletons.clear()

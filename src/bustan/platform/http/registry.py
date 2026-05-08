@@ -81,18 +81,26 @@ def diff_route_snapshots(
     previous: Sequence[Mapping[str, object]],
     current: Sequence[Mapping[str, object]],
 ) -> RouteSnapshotDiff:
+    previous_entries = tuple(_normalize_snapshot_entry(entry) for entry in previous)
+    current_entries = tuple(_normalize_snapshot_entry(entry) for entry in current)
+    duplicate_identities = _duplicate_snapshot_identities(previous_entries) | _duplicate_snapshot_identities(
+        current_entries
+    )
+
     previous_by_identity = {
-        _snapshot_identity(entry): _normalize_snapshot_entry(entry) for entry in previous
+        _snapshot_identity(entry, include_module=_base_snapshot_identity(entry) in duplicate_identities): entry
+        for entry in previous_entries
     }
     current_by_identity = {
-        _snapshot_identity(entry): _normalize_snapshot_entry(entry) for entry in current
+        _snapshot_identity(entry, include_module=_base_snapshot_identity(entry) in duplicate_identities): entry
+        for entry in current_entries
     }
 
     diff: list[dict[str, object]] = []
     for identity in sorted(set(previous_by_identity) | set(current_by_identity)):
         before = previous_by_identity.get(identity)
         after = current_by_identity.get(identity)
-        route = f"{identity[0]}.{identity[1]}"
+        route = f"{identity[-2]}.{identity[-1]}"
         if before is None:
             diff.append(
                 {
@@ -175,11 +183,30 @@ def _canonical_path_pattern(path: str) -> str:
     return "/" + "/".join(normalized_segments)
 
 
-def _snapshot_identity(entry: Mapping[str, object]) -> tuple[str, str]:
-    return (
-        str(entry["controller"]),
-        str(entry["handler"]),
-    )
+def _snapshot_identity(
+    entry: Mapping[str, object],
+    *,
+    include_module: bool,
+) -> tuple[str, ...]:
+    base_identity = _base_snapshot_identity(entry)
+    if include_module:
+        return (str(entry["module"]), *base_identity)
+    return base_identity
+
+
+def _base_snapshot_identity(entry: Mapping[str, object]) -> tuple[str, str]:
+    return (str(entry["controller"]), str(entry["handler"]))
+
+
+def _duplicate_snapshot_identities(
+    entries: Sequence[Mapping[str, object]],
+) -> frozenset[tuple[str, str]]:
+    counts: dict[tuple[str, str], int] = {}
+    for entry in entries:
+        identity = _base_snapshot_identity(entry)
+        counts[identity] = counts.get(identity, 0) + 1
+
+    return frozenset(identity for identity, count in counts.items() if count > 1)
 
 
 def _normalize_snapshot_entry(entry: Mapping[str, object]) -> dict[str, object]:

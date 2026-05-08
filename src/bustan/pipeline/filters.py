@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from collections.abc import Awaitable
 from dataclasses import asdict, dataclass
 from typing import cast
@@ -10,6 +11,9 @@ from typing import cast
 from ..core.errors import BadRequestException, GuardRejectedError, ParameterBindingError
 from ..platform.http.abstractions import HttpResponse
 from .context import ExecutionContext
+
+_LOGGER = logging.getLogger(__name__)
+_INTERNAL_SERVER_ERROR_DETAIL = "Internal server error"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +53,8 @@ class ProblemDetailsExceptionFilter(ExceptionFilter):
 
     async def catch(self, exc: Exception, context: ExecutionContext) -> HttpResponse:
         problem = _build_problem_details(exc, context)
+        if cast(int, problem["status"]) >= 500:
+            _LOGGER.exception("Unhandled exception during request processing", exc_info=exc)
         response = HttpResponse.json(problem, status_code=cast(int, problem["status"]))
         response.media_type = "application/problem+json"
         return response
@@ -132,12 +138,15 @@ def _exception_distance(exception_type: type[BaseException], declared_type: type
 def _build_problem_details(exc: Exception, context: ExecutionContext) -> dict[str, object]:
     status_code, title = _problem_status(exc, context)
     request = context.request
+    detail = str(exc) or title
+    if status_code >= 500:
+        detail = _INTERNAL_SERVER_ERROR_DETAIL
     payload = asdict(
         ProblemDetails(
             type="about:blank",
             title=title,
             status=status_code,
-            detail=str(exc) or title,
+            detail=detail,
             instance=request.path if request is not None else None,
             errors=_problem_errors(exc),
         )

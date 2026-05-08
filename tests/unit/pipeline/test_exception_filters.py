@@ -59,7 +59,7 @@ async def test_global_fallback_runs_when_no_custom_filter_matches() -> None:
         "type": "about:blank",
         "title": "Internal Server Error",
         "status": 500,
-        "detail": "boom",
+        "detail": "Internal server error",
         "instance": "/fails",
     }
 
@@ -128,7 +128,7 @@ async def test_handle_exception_falls_back_after_reentered_filter_failures() -> 
     assert isinstance(result, HttpResponse)
     payload = json.loads(result.body)
     assert result.status_code == 500
-    assert payload["detail"] == "filter boom"
+    assert payload["detail"] == "Internal server error"
 
 
 def test_filter_matching_and_problem_helpers_cover_remaining_branches() -> None:

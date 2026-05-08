@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
@@ -17,7 +18,10 @@ from ..pipeline.metadata import RateLimitPolicy, extend_handler_policy_metadata
 THROTTLER_TTL = InjectionToken[int]("THROTTLER_TTL")
 THROTTLER_LIMIT = InjectionToken[int]("THROTTLER_LIMIT")
 THROTTLER_STORAGE = InjectionToken["ThrottlerStorage"]("THROTTLER_STORAGE")
+THROTTLER_KEY_RESOLVER = InjectionToken["ThrottlerKeyResolver"]("THROTTLER_KEY_RESOLVER")
 SKIP_THROTTLE_ATTR = "__bustan_skip_throttle__"
+
+ThrottlerKeyResolver = Callable[[ExecutionContext], str]
 
 
 @runtime_checkable
@@ -62,25 +66,34 @@ def SkipThrottle(handler):
 class ThrottlerGuard(Guard):
     """Guard that rejects requests after the configured limit is exceeded."""
 
-    def __init__(self, storage: ThrottlerStorage, ttl: int, limit: int) -> None:
+    def __init__(
+        self,
+        storage: ThrottlerStorage,
+        ttl: int,
+        limit: int,
+        key_resolver: ThrottlerKeyResolver,
+    ) -> None:
         self.storage = storage
         self.ttl = ttl
         self.limit = limit
+        self.key_resolver = key_resolver
 
     async def can_activate(self, context: ExecutionContext) -> bool:
-        route = context.route
         request = context.request
-        assert route is not None
-        assert request is not None
+        if request is None:
+            raise RuntimeError("ThrottlerGuard requires an active HTTP request")
 
         policy_plan = context.get_policy_plan()
         if getattr(getattr(policy_plan, "rate_limit", None), "skip", False):
             return True
-        if getattr(route.handler, SKIP_THROTTLE_ATTR, False):
+
+        handler = getattr(context.route, "handler", None)
+        if handler is None:
+            handler = getattr(context.get_handler(), "__func__", context.get_handler())
+        if getattr(handler, SKIP_THROTTLE_ATTR, False):
             return True
 
-        client = request.client
-        key = f"throttle:{client.host if client is not None else 'unknown'}"
+        key = self.key_resolver(context)
         count = self.storage.increment(key, self.ttl)
         request.state.rate_limit_limit = self.limit
         request.state.rate_limit_remaining = max(0, self.limit - count)
@@ -98,7 +111,12 @@ class ThrottlerModule:
     """Factory for throttling support."""
 
     @staticmethod
-    def for_root(*, ttl: int, limit: int) -> DynamicModule:
+    def for_root(
+        *,
+        ttl: int,
+        limit: int,
+        key_resolver: ThrottlerKeyResolver | None = None,
+    ) -> DynamicModule:
         return DynamicModule(
             module=_ThrottlerModuleBase,
             providers=(
@@ -106,13 +124,35 @@ class ThrottlerModule:
                 {"provide": THROTTLER_LIMIT, "use_value": limit},
                 {"provide": THROTTLER_STORAGE, "use_class": InMemoryThrottlerStorage},
                 {
+                    "provide": THROTTLER_KEY_RESOLVER,
+                    "use_value": key_resolver or _default_throttle_key,
+                },
+                {
                     "provide": ThrottlerGuard,
-                    "use_factory": lambda storage, configured_ttl, configured_limit: ThrottlerGuard(
-                        storage, configured_ttl, configured_limit
+                    "use_factory": lambda storage, configured_ttl, configured_limit, configured_key_resolver: ThrottlerGuard(
+                        storage,
+                        configured_ttl,
+                        configured_limit,
+                        configured_key_resolver,
                     ),
-                    "inject": (THROTTLER_STORAGE, THROTTLER_TTL, THROTTLER_LIMIT),
+                    "inject": (
+                        THROTTLER_STORAGE,
+                        THROTTLER_TTL,
+                        THROTTLER_LIMIT,
+                        THROTTLER_KEY_RESOLVER,
+                    ),
                 },
                 {"provide": APP_GUARD, "use_existing": ThrottlerGuard},
             ),
             exports=(ThrottlerGuard, THROTTLER_STORAGE),
         )
+
+
+def _default_throttle_key(context: ExecutionContext) -> str:
+    request = context.request
+    if request is None:
+        return "throttle:unknown"
+
+    client = request.client
+    host = client.host if client is not None else "unknown"
+    return f"throttle:{host}"

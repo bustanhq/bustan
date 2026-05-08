@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import cast
 
 from starlette.applications import Starlette
 from ..app.application import Application
@@ -45,7 +44,10 @@ def _resolve_container(target: Starlette | Application | Container) -> Container
     if isinstance(target, Application):
         return target._container
 
-    return cast(Container, getattr(target.state, "bustan_container"))
+    container = getattr(target.state, "bustan_container", None)
+    if isinstance(container, Container):
+        return container
+    raise TypeError("override_provider target does not expose a Bustan container")
 
 
 @dataclass(slots=True)

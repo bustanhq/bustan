@@ -216,6 +216,23 @@ def test_override_provider_restores_previous_override_and_supports_application_t
     assert application.container.get_override(GreetingService) is original
 
 
+def test_override_provider_rejects_starlette_targets_without_a_bustan_container() -> None:
+    starlette = Starlette()
+
+    with pytest.raises(TypeError, match="does not expose a Bustan container"):
+        with override_provider(starlette, object(), object()):
+            pass
+
+
+def test_override_provider_rejects_invalid_starlette_container_state() -> None:
+    starlette = Starlette()
+    starlette.state.bustan_container = object()
+
+    with pytest.raises(TypeError, match="does not expose a Bustan container"):
+        with override_provider(starlette, object(), object()):
+            pass
+
+
 @pytest.mark.anyio
 async def test_testing_module_builder_exposes_client_and_pipeline_override_builders() -> None:
     class DefaultGuard(Guard):

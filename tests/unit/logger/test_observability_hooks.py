@@ -131,6 +131,24 @@ def test_scoped_override_restores_previous_hooks() -> None:
     assert ObservabilityHooks.current() is not inner
 
 
+def test_global_override_reset_restores_previous_hooks_in_stack_order() -> None:
+    outer = ObservabilityHooks()
+    inner = ObservabilityHooks()
+
+    ObservabilityHooks.reset_global()
+    ObservabilityHooks.override_global(outer)
+    ObservabilityHooks.override_global(inner)
+    try:
+        assert ObservabilityHooks.current() is inner
+        ObservabilityHooks.reset_global()
+        assert ObservabilityHooks.current() is outer
+    finally:
+        ObservabilityHooks.reset_global()
+
+    assert ObservabilityHooks.current() is not outer
+    assert ObservabilityHooks.current() is not inner
+
+
 def _execution_context() -> ExecutionContext:
     request = _build_request("/users")
 

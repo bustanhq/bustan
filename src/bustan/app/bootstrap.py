@@ -30,16 +30,37 @@ def create_app(
     pipeline_override_registry: PipelineOverrideRegistry | None = None,
     versioning: VersioningOptions | None = None,
     swagger: SwaggerOptions | None = None,
-    _no_lifespan: bool = False,
 ) -> Application:
     """Create a fully assembled Bustan application from the root module."""
+    return _create_app(
+        root_module,
+        debug=debug,
+        adapter=adapter,
+        pipeline_override_registry=pipeline_override_registry,
+        versioning=versioning,
+        swagger=swagger,
+        no_lifespan=False,
+    )
+
+
+def _create_app(
+    root_module: type[object] | DynamicModule,
+    *,
+    debug: bool = False,
+    adapter: AbstractHttpAdapter | None = None,
+    pipeline_override_registry: PipelineOverrideRegistry | None = None,
+    versioning: VersioningOptions | None = None,
+    swagger: SwaggerOptions | None = None,
+    no_lifespan: bool = False,
+) -> Application:
+    """Internal application factory used for alternate lifecycle wiring."""
     # 1. Build application graph and DI container
     module_graph = build_module_graph(root_module)
     container = build_container(module_graph)
     lifecycle_manager = LifecycleManager(module_graph, container)
 
     # 2. Build lifecyle and routing configuration
-    lifespan = None if _no_lifespan else build_lifespan(lifecycle_manager)
+    lifespan = None if no_lifespan else build_lifespan(lifecycle_manager)
     route_contracts = compile_route_contracts(module_graph, container)
     execution_plans = compile_execution_plans(route_contracts)
     middleware_registry = compile_middleware_registry(module_graph)

@@ -84,6 +84,6 @@ def _resolve_module_node(
     module: ModuleKey | type[object],
 ):
     for node in nodes:
-        if getattr(node, "key") == module or getattr(node, "module") is module:
+        if getattr(node, "key", None) == module or getattr(node, "module", None) is module:
             return node
     raise KeyError(f"Unknown module {module!r}")

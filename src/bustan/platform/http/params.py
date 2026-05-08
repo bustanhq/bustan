@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass, is_dataclass
 from enum import StrEnum
 from types import NoneType, UnionType
-from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin, get_type_hints
 
 from starlette.requests import Request
 
@@ -1020,35 +1020,51 @@ def _resolve_handler_parameter_annotations(
         HttpRequest.__name__: HttpRequest,
     }
 
-    resolved_annotations: dict[str, object] = {}
     try:
-        # Only parameter annotations matter for runtime binding. Return
-        # annotations are ignored because they can legally reference local types
-        # that do not need to be resolved during request handling.
         raw_annotations = inspect.get_annotations(route_definition.handler, eval_str=False)
     except (NameError, TypeError) as exc:
         raise ParameterBindingError(
             f"Could not resolve type hints for {_qualname(controller_cls)}.{route_definition.handler_name}: {exc}"
         ) from exc
 
+    resolved_annotations: dict[str, object] = {}
     for parameter_name, annotation in raw_annotations.items():
         if parameter_name == "return":
             continue
-        if isinstance(annotation, str):
-            try:
-                resolved_annotations[parameter_name] = eval(
-                    annotation,
-                    module_globals,
-                    local_namespace,
-                )
-            except (NameError, TypeError) as exc:
-                raise ParameterBindingError(
-                    f"Could not resolve type hints for {_qualname(controller_cls)}.{route_definition.handler_name}: {exc}"
-                ) from exc
-        else:
+        if not isinstance(annotation, str):
             resolved_annotations[parameter_name] = annotation
+            continue
+
+        try:
+            resolved_annotations[parameter_name] = _resolve_annotation_string(
+                annotation,
+                globalns=module_globals,
+                localns=local_namespace,
+            )
+        except (NameError, TypeError) as exc:
+            raise ParameterBindingError(
+                f"Could not resolve type hints for {_qualname(controller_cls)}.{route_definition.handler_name}: {exc}"
+            ) from exc
 
     return resolved_annotations
+
+
+def _resolve_annotation_string(
+    annotation: str,
+    *,
+    globalns: collections.abc.Mapping[str, object],
+    localns: collections.abc.Mapping[str, object],
+) -> object:
+    def _annotation_holder() -> None:
+        return None
+
+    _annotation_holder.__annotations__ = {"value": annotation}
+    return get_type_hints(
+        _annotation_holder,
+        globalns=dict(globalns),
+        localns=dict(localns),
+        include_extras=True,
+    )["value"]
 
 
 def _extract_path_parameter_names(path: str) -> frozenset[str]:

@@ -6,7 +6,17 @@ from typing import Any, cast
 
 from starlette.testclient import TestClient
 
-from bustan import Controller, ExceptionFilter, ExecutionContext, Get, Module, UseFilters, create_app
+from bustan import (
+    Controller,
+    ExceptionFilter,
+    ExecutionContext,
+    Get,
+    Injectable,
+    Module,
+    Scope,
+    UseFilters,
+    create_app,
+)
 
 
 def test_create_app_prefers_specific_filters_over_catch_all_filters() -> None:
@@ -62,6 +72,32 @@ def test_create_app_returns_problem_details_for_unhandled_exceptions() -> None:
         "type": "about:blank",
         "title": "Internal Server Error",
         "status": 500,
-        "detail": "boom",
+        "detail": "Internal server error",
         "instance": "/fails",
     }
+
+
+def test_create_app_hides_setup_errors_before_exception_context_is_built() -> None:
+    @Injectable(scope=Scope.REQUEST)
+    class FailingService:
+        def __init__(self) -> None:
+            raise RuntimeError("boom")
+
+    @Controller("/fails")
+    class FailingController:
+        def __init__(self, failing_service: FailingService) -> None:
+            self._failing_service = failing_service
+
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[FailingController], providers=[FailingService])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/fails")
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error"}
