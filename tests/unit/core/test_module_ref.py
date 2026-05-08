@@ -49,6 +49,8 @@ def test_module_ref_resolves_providers_through_public_application_semantics() ->
     module_ref = application.get(ModuleRef)
     feature_ref = module_ref.for_module(FeatureModule)
 
+    assert module_ref.module_key is AppModule
+    assert feature_ref.module_key is FeatureModule
     assert module_ref.get(GreetingService, strict=False) is application.get(GreetingService)
     assert feature_ref.get(GreetingService) is application.container.resolve(
         GreetingService,

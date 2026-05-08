@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any, cast
 
 import pytest
 
@@ -42,6 +43,18 @@ class SuperDelegatingAdapter(AbstractHttpAdapter):
 
     def register_routes(self, routes):
         return super().register_routes(routes)
+
+    def compile_routes(
+        self,
+        route_contracts,
+        container,
+        *,
+        execution_plans=None,
+        pipeline_override_registry=None,
+        versioning=None,
+        middleware_registry=None,
+    ):
+        return ()
 
     def add_middleware(self, middleware_class: type, **options):
         return super().add_middleware(middleware_class, **options)
@@ -147,6 +160,45 @@ async def test_abstract_http_adapter_base_methods_can_be_delegated_to_super() ->
     assert await adapter({}, lambda: None, lambda message=None: None) is None
 
 
-def test_compile_adapter_routes_rejects_unsupported_adapter_types() -> None:
-    with pytest.raises(TypeError, match="Unsupported HTTP adapter"):
-        compile_adapter_routes(SuperDelegatingAdapter(), (), container=None)
+def test_compile_adapter_routes_delegates_to_adapter_compile_hook() -> None:
+    sentinel = object()
+    calls: dict[str, object] = {}
+
+    class RecordingAdapter(SuperDelegatingAdapter):
+        def compile_routes(
+            self,
+            route_contracts,
+            container,
+            *,
+            execution_plans=None,
+            pipeline_override_registry=None,
+            versioning=None,
+            middleware_registry=None,
+        ):
+            calls["route_contracts"] = route_contracts
+            calls["container"] = container
+            calls["execution_plans"] = execution_plans
+            calls["pipeline_override_registry"] = pipeline_override_registry
+            calls["versioning"] = versioning
+            calls["middleware_registry"] = middleware_registry
+            return ()
+
+    route_contracts: tuple[object, ...] = ()
+
+    assert compile_adapter_routes(
+        RecordingAdapter(),
+        route_contracts,
+        container=sentinel,
+        execution_plans=(),
+        pipeline_override_registry=sentinel,
+        versioning=sentinel,
+        middleware_registry=cast(Any, sentinel),
+    ) == ()
+    assert calls == {
+        "route_contracts": route_contracts,
+        "container": sentinel,
+        "execution_plans": (),
+        "pipeline_override_registry": sentinel,
+        "versioning": sentinel,
+        "middleware_registry": sentinel,
+    }

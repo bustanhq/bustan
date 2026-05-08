@@ -587,6 +587,35 @@ HTTP-specific view over a generic arguments host.
 - `get_response(self) -> object | None`
 - `get_next(self) -> object | None`
 
+#### `HttpFormData`
+
+```python
+class HttpFormData(Protocol)
+```
+
+Defined in `bustan.platform.http.abstractions`.
+
+Minimal form-data surface used by parameter binding.
+
+##### Methods
+
+- `get(self, key: str, default: object | None = None) -> object | None`
+- `getlist(self, key: str) -> list[object]`
+
+#### `HttpQueryParams`
+
+```python
+class HttpQueryParams(Protocol)
+```
+
+Defined in `bustan.platform.http.abstractions`.
+
+Minimal multi-value query parameter surface used by parameter binding.
+
+##### Methods
+
+- `getlist(self, key: str) -> list[str]`
+
 #### `HttpRequest`
 
 ```python
@@ -612,7 +641,7 @@ Adapter-neutral request surface used by framework runtime code.
 - `(property) app`
 - `body(self) -> bytes`
 - `json(self) -> object`
-- `form(self) -> FormData`
+- `form(self) -> HttpFormData`
 
 #### `HttpResponse`
 
@@ -630,6 +659,20 @@ Adapter-neutral mutable HTTP response container.
 - `send(self, body: bytes | str) -> None`
 - `empty(cls, *, status_code: int = 204) -> HttpResponse`
 - `json(cls, payload: object, *, status_code: int = 200, headers: Mapping[str, str] | None = None) -> HttpResponse`
+
+#### `HttpUrl`
+
+```python
+class HttpUrl(Protocol)
+```
+
+Defined in `bustan.platform.http.abstractions`.
+
+Minimal URL surface required by the framework runtime.
+
+##### Methods
+
+- `(property) path`
 
 #### `Inject`
 
@@ -878,15 +921,15 @@ Defined in `bustan.core.errors`.
 
 Raised when a module import cycle is detected.
 
-#### `Optional`
+#### `OptionalDep`
 
 ```python
-def Optional() -> OptionalDependencyMarker
+def OptionalDep() -> OptionalDependencyMarker
 ```
 
 Defined in `bustan.common.decorators.injectable`.
 
-Mark an ``Annotated`` dependency as optional during provider resolution.
+Mark an ``Annotated`` dependency as optional without shadowing ``typing.Optional``.
 
 #### `OnApplicationBootstrap`
 

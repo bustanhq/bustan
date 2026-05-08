@@ -22,6 +22,18 @@ def test_labels_include_controller_operation_version_and_status() -> None:
     }
 
 
+def test_labels_fall_back_for_unexpected_route_contract_objects() -> None:
+    labels = build_route_labels(object(), status_code=503)
+
+    assert labels == {
+        "controller": "unknown",
+        "route": "unknown",
+        "operation": "unknown",
+        "version": "neutral",
+        "status": "503",
+    }
+
+
 def test_traces_begin_and_end_around_one_canonical_request_execution_path() -> None:
     events: list[tuple[object, ...]] = []
 
@@ -103,6 +115,20 @@ def test_failed_requests_still_emit_terminal_metrics_and_trace_state() -> None:
         ),
         ("finish", 500, "RuntimeError"),
     ]
+
+
+def test_scoped_override_restores_previous_hooks() -> None:
+    outer = ObservabilityHooks()
+    inner = ObservabilityHooks()
+
+    with ObservabilityHooks.scoped_override(outer):
+        assert ObservabilityHooks.current() is outer
+        with ObservabilityHooks.scoped_override(inner):
+            assert ObservabilityHooks.current() is inner
+        assert ObservabilityHooks.current() is outer
+
+    assert ObservabilityHooks.current() is not outer
+    assert ObservabilityHooks.current() is not inner
 
 
 def _execution_context() -> ExecutionContext:

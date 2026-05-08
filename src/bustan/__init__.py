@@ -8,7 +8,7 @@ import importlib.metadata
 __version__ = importlib.metadata.version("bustan")
 
 # Common Decorators
-from .common.decorators.injectable import Inject, Injectable, Optional
+from .common.decorators.injectable import Inject, Injectable, OptionalDep
 from .common.decorators.metadata import Reflector
 from .common.decorators.controller import Controller
 from .common.decorators.route import Get, Post, Put, Patch, Delete
@@ -80,7 +80,7 @@ from .addons import (
     durable_context_id,
     request_context_id,
 )
-from .platform.http.abstractions import HttpRequest, HttpResponse
+from .platform.http.abstractions import HttpFormData, HttpQueryParams, HttpRequest, HttpResponse, HttpUrl
 from .platform.http.versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType
 from .config import ConfigModule, ConfigService
 from .logger import LogLevel, Logger, LoggerService
@@ -168,8 +168,11 @@ __all__ = (
     "Header",
     "HostParam",
     "HttpArgumentsHost",
+    "HttpFormData",
+    "HttpQueryParams",
     "HttpRequest",
     "HttpResponse",
+    "HttpUrl",
     "Inject",
     "Injectable",
     "INQUIRER",
@@ -190,7 +193,7 @@ __all__ = (
     "ModuleGraph",
     "ModuleNode",
     "ModuleCycleError",
-    "Optional",
+    "OptionalDep",
     "OnApplicationBootstrap",
     "OnApplicationShutdown",
     "OnModuleDestroy",

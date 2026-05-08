@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Protocol, TYPE_CHECKING
 
@@ -42,7 +44,10 @@ class ActiveObservation:
 class ObservabilityHooks:
     """Route-aware metrics and tracing hooks around request execution."""
 
-    _override: "ObservabilityHooks | None" = None
+    _override: ContextVar[ObservabilityHooks | None] = ContextVar(
+        "bustan_observability_hooks_override",
+        default=None,
+    )
 
     def __init__(
         self,
@@ -55,15 +60,24 @@ class ObservabilityHooks:
 
     @classmethod
     def current(cls) -> "ObservabilityHooks":
-        return cls._override or cls()
+        return cls._override.get() or cls()
 
     @classmethod
     def override_global(cls, hooks: "ObservabilityHooks") -> None:
-        cls._override = hooks
+        cls._override.set(hooks)
+
+    @classmethod
+    @contextmanager
+    def scoped_override(cls, hooks: "ObservabilityHooks") -> Iterator["ObservabilityHooks"]:
+        token = cls._override.set(hooks)
+        try:
+            yield hooks
+        finally:
+            cls._override.reset(token)
 
     @classmethod
     def reset_global(cls) -> None:
-        cls._override = None
+        cls._override.set(None)
 
     def start_request(self, context: ExecutionContext) -> ActiveObservation:
         labels = build_route_labels(context.get_route_contract())
@@ -99,11 +113,19 @@ def build_route_labels(
             "version": "neutral",
         }
     else:
-        controller_cls = getattr(route_contract, "controller_cls")
+        controller_cls = getattr(route_contract, "controller_cls", None)
+        controller_name = getattr(controller_cls, "__name__", "unknown")
+        method = getattr(route_contract, "method", None)
+        path = getattr(route_contract, "path", None)
+        handler_name = getattr(route_contract, "handler_name", None)
         labels = {
-            "controller": controller_cls.__name__,
-            "route": f"{getattr(route_contract, 'method')} {getattr(route_contract, 'path')}",
-            "operation": f"{controller_cls.__name__}.{getattr(route_contract, 'handler_name')}",
+            "controller": controller_name,
+            "route": "unknown" if method is None or path is None else f"{method} {path}",
+            "operation": (
+                "unknown"
+                if controller_name == "unknown" or handler_name is None
+                else f"{controller_name}.{handler_name}"
+            ),
             "version": _route_version_label(route_contract),
         }
 

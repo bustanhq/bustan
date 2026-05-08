@@ -36,12 +36,9 @@ def test_create_app_emits_route_aware_observability_labels() -> None:
     class AppModule:
         pass
 
-    ObservabilityHooks.override_global(ObservabilityHooks(metrics=Metrics(), tracer=Tracer()))
-    try:
+    with ObservabilityHooks.scoped_override(ObservabilityHooks(metrics=Metrics(), tracer=Tracer())):
         with TestClient(cast(Any, create_app(AppModule))) as client:
             response = client.get("/users")
-    finally:
-        ObservabilityHooks.reset_global()
 
     assert response.status_code == 200
     assert events == [
@@ -95,12 +92,9 @@ def test_create_app_emits_terminal_observability_for_failed_requests() -> None:
     class AppModule:
         pass
 
-    ObservabilityHooks.override_global(ObservabilityHooks(metrics=Metrics(), tracer=Tracer()))
-    try:
+    with ObservabilityHooks.scoped_override(ObservabilityHooks(metrics=Metrics(), tracer=Tracer())):
         with TestClient(cast(Any, create_app(AppModule))) as client:
             response = client.get("/fails")
-    finally:
-        ObservabilityHooks.reset_global()
 
     assert response.status_code == 500
     assert events == [

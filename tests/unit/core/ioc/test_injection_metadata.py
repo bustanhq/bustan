@@ -1,4 +1,4 @@
-"""Unit tests for Inject, Optional, and special DI tokens."""
+"""Unit tests for Inject, OptionalDep, and special DI tokens."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from bustan import (
     Injectable,
     InjectionToken,
     Module,
-    Optional,
+    OptionalDep,
     create_app_context,
 )
 from bustan.core.errors import ProviderResolutionError
@@ -49,7 +49,7 @@ def test_optional_dependency_returns_none_only_when_marked_optional() -> None:
     class OptionalConsumer:
         def __init__(
             self,
-            maybe: Annotated[object | None, Inject(MISSING_TOKEN), Optional()],
+            maybe: Annotated[object | None, Inject(MISSING_TOKEN), OptionalDep()],
         ) -> None:
             self.maybe = maybe
 

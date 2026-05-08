@@ -56,6 +56,20 @@ class AbstractHttpAdapter(ABC):
         pass
 
     @abstractmethod
+    def compile_routes(
+        self,
+        route_contracts: tuple[RouteContract, ...],
+        container: Any,
+        *,
+        execution_plans: tuple[ExecutionPlan, ...] | None = None,
+        pipeline_override_registry: Any | None = None,
+        versioning: Any | None = None,
+        middleware_registry: MiddlewareRegistry | None = None,
+    ) -> tuple[CompiledAdapterRoute, ...]:
+        """Compile route contracts into adapter-specific registrations."""
+        pass
+
+    @abstractmethod
     def add_middleware(self, middleware_class: type, **options: Any) -> None:
         """Register a framework middleware around the underlying engine."""
         pass
@@ -95,19 +109,14 @@ def compile_adapter_routes(
     """Compile route contracts into adapter registrations."""
 
     _validate_adapter_capabilities(adapter, route_contracts)
-
-    from .adapters.starlette_adapter import StarletteAdapter
-    from .adapters.starlette_compiler import StarletteAdapterCompiler
-
-    if isinstance(adapter, StarletteAdapter):
-        return StarletteAdapterCompiler(
-            container,
-            pipeline_override_registry=pipeline_override_registry,
-            versioning=versioning,
-            middleware_registry=middleware_registry,
-        ).compile(route_contracts, execution_plans)
-
-    raise TypeError(f"Unsupported HTTP adapter: {type(adapter).__name__}")
+    return adapter.compile_routes(
+        route_contracts,
+        container,
+        execution_plans=execution_plans,
+        pipeline_override_registry=pipeline_override_registry,
+        versioning=versioning,
+        middleware_registry=middleware_registry,
+    )
 
 
 def _validate_adapter_capabilities(
@@ -138,7 +147,7 @@ def _validate_adapter_capabilities(
 def _requires_raw_body(route_contract: RouteContract) -> bool:
     from .params import ParameterSource
 
-    binding_plan = getattr(route_contract, "binding_plan")
+    binding_plan = route_contract.binding_plan
     for binding in binding_plan.parameters:
         if binding.source in {
             ParameterSource.BODY,

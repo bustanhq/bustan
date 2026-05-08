@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, cast
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 import uvicorn
 from starlette.applications import Starlette
 from starlette.routing import BaseRoute
 
 from ..adapter import AbstractHttpAdapter, AdapterCapabilities, CompiledAdapterRoute
+
+if TYPE_CHECKING:
+    from ..compiler import RouteContract
+    from ..execution import ExecutionPlan
+    from ....pipeline.middleware import MiddlewareRegistry
 
 
 class StarletteAdapter(AbstractHttpAdapter):
@@ -50,6 +55,26 @@ class StarletteAdapter(AbstractHttpAdapter):
             cast(BaseRoute, route.registration) for route in routes
         ]
         self._app.routes.extend(registrations)
+
+    def compile_routes(
+        self,
+        route_contracts: tuple[RouteContract, ...],
+        container: Any,
+        *,
+        execution_plans: tuple[ExecutionPlan, ...] | None = None,
+        pipeline_override_registry: Any | None = None,
+        versioning: Any | None = None,
+        middleware_registry: MiddlewareRegistry | None = None,
+    ) -> tuple[CompiledAdapterRoute, ...]:
+        """Compile route contracts into Starlette route registrations."""
+        from .starlette_compiler import StarletteAdapterCompiler
+
+        return StarletteAdapterCompiler(
+            container,
+            pipeline_override_registry=pipeline_override_registry,
+            versioning=versioning,
+            middleware_registry=middleware_registry,
+        ).compile(route_contracts, execution_plans)
 
     def add_middleware(self, middleware_class: type, **options: Any) -> None:
         """Register middleware on the underlying Starlette application."""

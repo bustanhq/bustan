@@ -40,7 +40,7 @@ from bustan.common.decorators.route import (
 from bustan.common.decorators.injectable import (
     Inject as InternalInject,
     Injectable as InternalInjectable,
-    Optional as InternalOptional,
+    OptionalDep as InternalOptionalDep,
 )
 from bustan.common.decorators.metadata import Reflector as InternalReflector
 from bustan.core.module.decorators import Global as InternalGlobal
@@ -96,8 +96,11 @@ from bustan.pipeline import ExceptionFilter as InternalExceptionFilter
 from bustan.pipeline import Guard as InternalGuard
 from bustan.pipeline import HttpArgumentsHost as InternalHttpArgumentsHost
 from bustan.pipeline import Interceptor as InternalInterceptor
+from bustan.platform.http.abstractions import HttpFormData as InternalHttpFormData
+from bustan.platform.http.abstractions import HttpQueryParams as InternalHttpQueryParams
 from bustan.platform.http.abstractions import HttpRequest as InternalHttpRequest
 from bustan.platform.http.abstractions import HttpResponse as InternalHttpResponse
+from bustan.platform.http.abstractions import HttpUrl as InternalHttpUrl
 from bustan.pipeline import DefaultValuePipe as InternalDefaultValuePipe
 from bustan.pipeline import ParseArrayPipe as InternalParseArrayPipe
 from bustan.pipeline import ParseBoolPipe as InternalParseBoolPipe
@@ -190,8 +193,11 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "Header",
         "HostParam",
         "HttpArgumentsHost",
+        "HttpFormData",
+        "HttpQueryParams",
         "HttpRequest",
         "HttpResponse",
+        "HttpUrl",
         "Inject",
         "Injectable",
         "INQUIRER",
@@ -212,7 +218,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "ModuleGraph",
         "ModuleNode",
         "ModuleCycleError",
-        "Optional",
+        "OptionalDep",
         "OnApplicationBootstrap",
         "OnApplicationShutdown",
         "OnModuleDestroy",
@@ -289,8 +295,11 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.Global is InternalGlobal
     assert bustan.HostParam is InternalHostParam
     assert bustan.HttpArgumentsHost is InternalHttpArgumentsHost
+    assert bustan.HttpFormData is InternalHttpFormData
+    assert bustan.HttpQueryParams is InternalHttpQueryParams
     assert bustan.HttpRequest is InternalHttpRequest
     assert bustan.HttpResponse is InternalHttpResponse
+    assert bustan.HttpUrl is InternalHttpUrl
     assert bustan.Inject is InternalInject
     assert bustan.Ip is InternalIp
     assert bustan.INQUIRER is InternalInquirerToken
@@ -329,7 +338,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.Module is InternalModule
     assert bustan.ModuleGraph is InternalModuleGraph
     assert bustan.ModuleNode is InternalModuleNode
-    assert bustan.Optional is InternalOptional
+    assert bustan.OptionalDep is InternalOptionalDep
     assert bustan.OnApplicationBootstrap is InternalOnApplicationBootstrap
     assert bustan.OnApplicationShutdown is InternalOnApplicationShutdown
     assert bustan.OnModuleDestroy is InternalOnModuleDestroy

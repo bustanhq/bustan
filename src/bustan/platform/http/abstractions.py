@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from os import PathLike
 from typing import Any, Protocol, cast, runtime_checkable
 
-from starlette.datastructures import FormData, QueryParams, URL
 from starlette.requests import Request
 from starlette.responses import FileResponse, Response, StreamingResponse
 
@@ -19,6 +18,40 @@ class HttpClientInfo:
 
     host: str | None = None
     port: int | None = None
+
+
+@runtime_checkable
+class HttpUrl(Protocol):
+    """Minimal URL surface required by the framework runtime."""
+
+    @property
+    def path(self) -> str:
+        raise NotImplementedError
+
+
+@runtime_checkable
+class HttpQueryParams(Protocol):
+    """Minimal multi-value query parameter surface used by parameter binding."""
+
+    def getlist(self, key: str) -> list[str]:
+        raise NotImplementedError
+
+    def __contains__(self, key: object) -> bool:
+        raise NotImplementedError
+
+    def __getitem__(self, key: str) -> str:
+        raise NotImplementedError
+
+
+@runtime_checkable
+class HttpFormData(Protocol):
+    """Minimal form-data surface used by parameter binding."""
+
+    def get(self, key: str, default: object | None = None) -> object | None:
+        raise NotImplementedError
+
+    def getlist(self, key: str) -> list[object]:
+        raise NotImplementedError
 
 
 @runtime_checkable
@@ -38,7 +71,7 @@ class HttpRequest(Protocol):
         raise NotImplementedError
 
     @property
-    def url(self) -> URL:
+    def url(self) -> HttpUrl:
         raise NotImplementedError
 
     @property
@@ -46,7 +79,7 @@ class HttpRequest(Protocol):
         raise NotImplementedError
 
     @property
-    def query_params(self) -> QueryParams:
+    def query_params(self) -> HttpQueryParams:
         raise NotImplementedError
 
     @property
@@ -75,7 +108,7 @@ class HttpRequest(Protocol):
     async def json(self) -> object:
         raise NotImplementedError
 
-    async def form(self) -> FormData:
+    async def form(self) -> HttpFormData:
         raise NotImplementedError
 
 
@@ -98,7 +131,7 @@ class StarletteHttpRequest:
         return self._request.url.path
 
     @property
-    def url(self) -> URL:
+    def url(self) -> HttpUrl:
         return self._request.url
 
     @property
@@ -106,7 +139,7 @@ class StarletteHttpRequest:
         return self._request.headers
 
     @property
-    def query_params(self) -> QueryParams:
+    def query_params(self) -> HttpQueryParams:
         return self._request.query_params
 
     @property
@@ -138,8 +171,8 @@ class StarletteHttpRequest:
     async def json(self) -> object:
         return await self._request.json()
 
-    async def form(self) -> FormData:
-        return await self._request.form()
+    async def form(self) -> HttpFormData:
+        return cast(HttpFormData, await self._request.form())
 
 
 def as_http_request(request: HttpRequest | Request | object) -> HttpRequest:
@@ -243,10 +276,13 @@ def to_starlette_response(
 
 __all__ = (
     "HttpClientInfo",
+    "HttpFormData",
+    "HttpQueryParams",
     "HttpRequest",
     "HttpFileResponse",
     "HttpResponse",
     "HttpStreamResponse",
+    "HttpUrl",
     "StarletteHttpRequest",
     "as_http_request",
     "to_starlette_response",

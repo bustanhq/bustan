@@ -21,14 +21,27 @@ class ModuleRef:
         self._application = _resolve_application(application)
         self._module_key = self._application.root_key
 
+    @classmethod
+    def _from_application(
+        cls,
+        application: Application,
+        *,
+        module_key: ModuleKey | None = None,
+    ) -> ModuleRef:
+        scoped = cls.__new__(cls)
+        scoped._application = application
+        scoped._module_key = application.root_key if module_key is None else module_key
+        return scoped
+
     @property
     def module_key(self) -> ModuleKey:
         return self._module_key
 
     def for_module(self, module: ModuleKey | type[object]) -> ModuleRef:
-        scoped = ModuleRef(self._application)
-        scoped._module_key = _resolve_module_key(self._application, module)
-        return scoped
+        return self._from_application(
+            self._application,
+            module_key=_resolve_module_key(self._application, module),
+        )
 
     def get(self, token: object, *, strict: bool = True) -> object:
         module_key = self._module_key if strict else self._application.root_key

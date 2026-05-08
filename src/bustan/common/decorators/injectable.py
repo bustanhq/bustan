@@ -77,7 +77,7 @@ def Inject(token: object) -> InjectMarker:
     return InjectMarker(token=token)
 
 
-def Optional() -> OptionalDependencyMarker:
-    """Mark an ``Annotated`` dependency as optional during provider resolution."""
+def OptionalDep() -> OptionalDependencyMarker:
+    """Mark an ``Annotated`` dependency as optional without shadowing ``typing.Optional``."""
 
     return OptionalDependencyMarker()

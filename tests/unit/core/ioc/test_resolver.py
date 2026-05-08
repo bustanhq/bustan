@@ -9,7 +9,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import Response
 
-from bustan.common.decorators.injectable import Inject, Optional
+from bustan.common.decorators.injectable import Inject, OptionalDep
 from bustan.common.types import ProviderScope
 from bustan.core.errors import ProviderResolutionError
 from bustan.core.ioc.overrides import OverrideManager
@@ -349,7 +349,7 @@ def test_resolver_constructor_dependencies_cover_optional_inject_keywords_and_er
     class Consumer:
         def __init__(
             self,
-            maybe: Annotated[MissingDependency, Optional()],
+            maybe: Annotated[MissingDependency, OptionalDep()],
             value: Annotated[object, Inject("provided")],
             *,
             named: Annotated[object, Inject("provided")],
