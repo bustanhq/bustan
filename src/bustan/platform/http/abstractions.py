@@ -26,43 +26,57 @@ class HttpRequest(Protocol):
     """Adapter-neutral request surface used by framework runtime code."""
 
     @property
-    def native_request(self) -> object: ...
+    def native_request(self) -> object:
+        raise NotImplementedError
 
     @property
-    def method(self) -> str: ...
+    def method(self) -> str:
+        raise NotImplementedError
 
     @property
-    def path(self) -> str: ...
+    def path(self) -> str:
+        raise NotImplementedError
 
     @property
-    def url(self) -> URL: ...
+    def url(self) -> URL:
+        raise NotImplementedError
 
     @property
-    def headers(self) -> Mapping[str, str]: ...
+    def headers(self) -> Mapping[str, str]:
+        raise NotImplementedError
 
     @property
-    def query_params(self) -> QueryParams: ...
+    def query_params(self) -> QueryParams:
+        raise NotImplementedError
 
     @property
-    def path_params(self) -> Mapping[str, str]: ...
+    def path_params(self) -> Mapping[str, str]:
+        raise NotImplementedError
 
     @property
-    def cookies(self) -> Mapping[str, str]: ...
+    def cookies(self) -> Mapping[str, str]:
+        raise NotImplementedError
 
     @property
-    def state(self) -> Any: ...
+    def state(self) -> Any:
+        raise NotImplementedError
 
     @property
-    def client(self) -> HttpClientInfo | None: ...
+    def client(self) -> HttpClientInfo | None:
+        raise NotImplementedError
 
     @property
-    def app(self) -> Any: ...
+    def app(self) -> Any:
+        raise NotImplementedError
 
-    async def body(self) -> bytes: ...
+    async def body(self) -> bytes:
+        raise NotImplementedError
 
-    async def json(self) -> object: ...
+    async def json(self) -> object:
+        raise NotImplementedError
 
-    async def form(self) -> FormData: ...
+    async def form(self) -> FormData:
+        raise NotImplementedError
 
 
 class StarletteHttpRequest:
