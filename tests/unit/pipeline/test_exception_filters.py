@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from typing import Any, cast
 
 import pytest
 from starlette.requests import Request
@@ -22,9 +22,6 @@ from bustan.pipeline.filters import (
 from bustan.pipeline.context import ExecutionContext, RequestContext
 from bustan.platform.http.abstractions import HttpResponse
 from bustan.platform.http.metadata import ControllerRouteDefinition
-
-if TYPE_CHECKING:
-    from bustan.core.ioc.container import Container
 
 
 @pytest.mark.anyio
@@ -195,7 +192,7 @@ def _request_context(path: str) -> RequestContext:
             handler=_handler,
             route=RouteMetadata(method="GET", path=path, name="test"),
         ),
-        container=cast("Container", object()),
+        container=cast(Any, object()),
     )
 
 

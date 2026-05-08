@@ -17,7 +17,8 @@ from .compiler import ResponsePlan, ResponseStrategy
 class ResponseSerializer(Protocol):
 	"""Serializer contract used by the response handler."""
 
-	def serialize(self, value: object) -> HttpResponse | Response: ...
+	def serialize(self, value: object) -> HttpResponse | Response:
+		pass
 
 
 class DefaultResponseSerializer:

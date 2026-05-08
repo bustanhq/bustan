@@ -16,7 +16,6 @@ import bustan.cli.main as cli_main_module
 from bustan.cli.commands import governance as governance_commands
 from bustan.cli.commands import routes as routes_commands
 from bustan.cli.services import scaffold as scaffold_service
-from bustan.cli.main import main
 from bustan.core.module.dynamic import ModuleInstanceKey
 
 _PYPROJECT_TOML = """\
@@ -44,7 +43,7 @@ def test_init_creates_expected_files(tmp_path: Path, capsys) -> None:
     old_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
-        exit_code = main(["init"])
+        exit_code = cli_main_module.main(["init"])
     finally:
         os.chdir(old_cwd)
 
@@ -71,7 +70,7 @@ def test_init_adds_scripts_to_pyproject(tmp_path: Path) -> None:
     old_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
-        main(["init"])
+        cli_main_module.main(["init"])
     finally:
         os.chdir(old_cwd)
 
@@ -130,7 +129,7 @@ def test_init_fails_without_pyproject(tmp_path: Path, capsys) -> None:
     old_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
-        exit_code = main(["init"])
+        exit_code = cli_main_module.main(["init"])
     finally:
         os.chdir(old_cwd)
 
@@ -143,7 +142,7 @@ def test_init_init_py_contains_bootstrap_and_scripts(tmp_path: Path) -> None:
     old_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
-        main(["init"])
+        cli_main_module.main(["init"])
     finally:
         os.chdir(old_cwd)
 
@@ -154,7 +153,7 @@ def test_init_init_py_contains_bootstrap_and_scripts(tmp_path: Path) -> None:
 
 
 def test_main_prints_help_when_no_command_is_supplied(capsys) -> None:
-    assert main([]) == 1
+    assert cli_main_module.main([]) == 1
     assert "usage:" in capsys.readouterr().out
 
 
@@ -239,7 +238,9 @@ class AppModule:
     sys.path.insert(0, str(tmp_path))
     os.chdir(tmp_path)
     try:
-        exit_code = main(["routes", "snapshot", "sample_app:AppModule", "--output", str(output)])
+        exit_code = cli_main_module.main(
+            ["routes", "snapshot", "sample_app:AppModule", "--output", str(output)]
+        )
     finally:
         os.chdir(old_cwd)
         sys.path[:] = old_sys_path
@@ -307,7 +308,7 @@ def test_routes_diff_reports_added_removed_and_changed_routes(tmp_path: Path, ca
         encoding="utf-8",
     )
 
-    exit_code = main(["routes", "diff", str(previous), str(current)])
+    exit_code = cli_main_module.main(["routes", "diff", str(previous), str(current)])
 
     assert exit_code == 0
     diff = json.loads(capsys.readouterr().out)
@@ -344,7 +345,7 @@ class AppModule:
     sys.path.insert(0, str(tmp_path))
     os.chdir(tmp_path)
     try:
-        exit_code = main(["governance", "ownership", "governance_app:AppModule"])
+        exit_code = cli_main_module.main(["governance", "ownership", "governance_app:AppModule"])
     finally:
         os.chdir(old_cwd)
         sys.path[:] = old_sys_path
@@ -403,7 +404,7 @@ class AppModule:
     sys.path.insert(0, str(tmp_path))
     os.chdir(tmp_path)
     try:
-        exit_code = main(
+        exit_code = cli_main_module.main(
             [
                 "governance",
                 "diff",
@@ -423,7 +424,7 @@ class AppModule:
 
 
 def test_governance_conformance_reports_adapter_capabilities(capsys) -> None:
-    exit_code = main(["governance", "conformance", "starlette"])
+    exit_code = cli_main_module.main(["governance", "conformance", "starlette"])
 
     assert exit_code == 0
     report = json.loads(capsys.readouterr().out)
@@ -521,7 +522,7 @@ class AppModule:
     sys.path.insert(0, str(tmp_path))
     os.chdir(tmp_path)
     try:
-        exit_code = main(
+        exit_code = cli_main_module.main(
             [
                 "governance",
                 "release-gate",
@@ -664,7 +665,7 @@ class AppModule:
     sys.path.insert(0, str(tmp_path))
     os.chdir(tmp_path)
     try:
-        exit_code = main(
+        exit_code = cli_main_module.main(
             [
                 "governance",
                 "release-gate",

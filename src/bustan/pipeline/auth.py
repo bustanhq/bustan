@@ -18,7 +18,7 @@ class Principal(Protocol):
 @runtime_checkable
 class Authenticator(Protocol):
     async def authenticate(self, context: ExecutionContext) -> Principal | None:
-        ...
+        pass
 
 
 AUTHENTICATOR_REGISTRY = InjectionToken[dict[str, Authenticator]]("AUTHENTICATOR_REGISTRY")

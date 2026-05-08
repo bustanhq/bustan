@@ -13,19 +13,22 @@ if TYPE_CHECKING:
 class MetricsSink(Protocol):
     """Metric sink used by the observability hooks."""
 
-    def record_request(self, *, labels: Mapping[str, str]) -> None: ...
+    def record_request(self, *, labels: Mapping[str, str]) -> None:
+        pass
 
 
 class TraceSpan(Protocol):
     """Minimal tracing span contract used by the runtime."""
 
-    def finish(self, *, status_code: int, error: Exception | None = None) -> None: ...
+    def finish(self, *, status_code: int, error: Exception | None = None) -> None:
+        pass
 
 
 class RequestTracer(Protocol):
     """Minimal tracer contract used by the runtime."""
 
-    def start_span(self, name: str, *, labels: Mapping[str, str]) -> TraceSpan: ...
+    def start_span(self, name: str, *, labels: Mapping[str, str]) -> TraceSpan:
+        pass
 
 
 @dataclass(frozen=True, slots=True)
