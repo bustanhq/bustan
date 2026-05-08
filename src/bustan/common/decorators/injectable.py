@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import overload
 
 from ...core.errors import InvalidProviderError
@@ -56,3 +57,27 @@ def Injectable(
         return decorate
 
     return decorate(target)
+
+
+@dataclass(frozen=True, slots=True)
+class InjectMarker:
+    """Annotated metadata that overrides a dependency token."""
+
+    token: object
+
+
+@dataclass(frozen=True, slots=True)
+class OptionalDependencyMarker:
+    """Annotated metadata that allows missing provider dependencies."""
+
+
+def Inject(token: object) -> InjectMarker:
+    """Mark an ``Annotated`` dependency to resolve from an explicit token."""
+
+    return InjectMarker(token=token)
+
+
+def Optional() -> OptionalDependencyMarker:
+    """Mark an ``Annotated`` dependency as optional during provider resolution."""
+
+    return OptionalDependencyMarker()

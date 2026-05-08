@@ -1,0 +1,24 @@
+[project]
+name = "testing_overrides"
+version = "0.1.0"
+description = "Bustan example: provider overrides in tests"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = ["bustan", "httpx>=0.28.1,<1.0.0"]
+
+[project.scripts]
+start = "testing_overrides:main"
+dev = "testing_overrides:dev"
+
+[dependency-groups]
+dev = ["pytest>=9.0.3,<10.0.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+bustan = { path = "../..", editable = true }

@@ -10,8 +10,9 @@ from ..common.decorators.injectable import Injectable
 from ..core.ioc.tokens import APP_GUARD, InjectionToken
 from ..core.module.decorators import Module
 from ..core.module.dynamic import DynamicModule
-from ..pipeline.context import RequestContext
+from ..pipeline.context import ExecutionContext
 from ..pipeline.guards import Guard
+from ..pipeline.metadata import RateLimitPolicy, extend_handler_policy_metadata
 
 THROTTLER_TTL = InjectionToken[int]("THROTTLER_TTL")
 THROTTLER_LIMIT = InjectionToken[int]("THROTTLER_LIMIT")
@@ -53,6 +54,7 @@ class InMemoryThrottlerStorage:
 def SkipThrottle(handler):
     """Mark a route handler as exempt from throttling."""
     setattr(handler, SKIP_THROTTLE_ATTR, True)
+    extend_handler_policy_metadata(handler, rate_limit=RateLimitPolicy(skip=True))
     return handler
 
 
@@ -65,17 +67,25 @@ class ThrottlerGuard(Guard):
         self.ttl = ttl
         self.limit = limit
 
-    async def can_activate(self, context: RequestContext) -> bool:
-        if getattr(context.route.handler, SKIP_THROTTLE_ATTR, False):
+    async def can_activate(self, context: ExecutionContext) -> bool:
+        route = context.route
+        request = context.request
+        assert route is not None
+        assert request is not None
+
+        policy_plan = context.get_policy_plan()
+        if getattr(getattr(policy_plan, "rate_limit", None), "skip", False):
+            return True
+        if getattr(route.handler, SKIP_THROTTLE_ATTR, False):
             return True
 
-        client = context.request.client
+        client = request.client
         key = f"throttle:{client.host if client is not None else 'unknown'}"
         count = self.storage.increment(key, self.ttl)
-        context.request.state.rate_limit_limit = self.limit
-        context.request.state.rate_limit_remaining = max(0, self.limit - count)
-        context.request.state.rate_limit_reset = self.storage.get_ttl(key)
-        context.request.state.rate_limit_exceeded = count > self.limit
+        request.state.rate_limit_limit = self.limit
+        request.state.rate_limit_remaining = max(0, self.limit - count)
+        request.state.rate_limit_reset = self.storage.get_ttl(key)
+        request.state.rate_limit_exceeded = count > self.limit
         return count <= self.limit
 
 

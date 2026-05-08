@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from starlette.requests import Request
+from .abstractions import HttpRequest, as_http_request
 
 
 class VersioningType(StrEnum):
@@ -34,13 +34,14 @@ def normalize_versions(version: str | list[str] | None) -> tuple[str, ...]:
     return (version,)
 
 
-def extract_request_version(request: Request, options: VersioningOptions) -> str | None:
+def extract_request_version(request: HttpRequest | object, options: VersioningOptions) -> str | None:
     """Extract a request version according to the configured strategy."""
+    http_request = as_http_request(request)
     if options.type is VersioningType.HEADER:
-        return request.headers.get(options.header) or options.default_version
+        return http_request.headers.get(options.header) or options.default_version
 
     if options.type is VersioningType.MEDIA_TYPE:
-        accept = request.headers.get("accept", "")
+        accept = http_request.headers.get("accept", "")
         for part in accept.split(";"):
             part = part.strip()
             if part.startswith("version="):

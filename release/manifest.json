@@ -1,3 +1,13 @@
 {
-  ".": "1.1.0"
+  ".": "1.1.0",
+  "bustan-governance": {
+    "adapter-conformance": {
+      "starlette": {
+        "supports_host_routing": false,
+        "supports_raw_body": true,
+        "supports_streaming_responses": true,
+        "supports_websocket_upgrade": false
+      }
+    }
+  }
 }

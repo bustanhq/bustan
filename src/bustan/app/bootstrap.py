@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ..core.ioc.container import build_container
-from ..core.module.dynamic import DynamicModule, ModuleKey
-from ..core.module.graph import ModuleGraph
+from ..core.lifecycle.manager import LifecycleManager
+from ..core.module.dynamic import DynamicModule
 from ..core.module.graph import build_module_graph
-from ..platform.http.adapter import AbstractHttpAdapter
+from ..platform.http.adapter import AbstractHttpAdapter, compile_adapter_routes
 from ..platform.http.adapters.starlette_adapter import StarletteAdapter
-from ..platform.http.routing import build_router
-from ..pipeline.middleware import ConditionalMiddleware, MiddlewareBinding, MiddlewareConsumer
+from ..platform.http.compiler import compile_route_contracts
+from ..platform.http.execution import compile_execution_plans
+from ..pipeline.middleware import compile_middleware_registry
 from .application import Application, ApplicationContext
 from .lifespan import build_lifespan
 
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
     from ..openapi import SwaggerOptions
     from ..platform.http.versioning import VersioningOptions
     from ..testing.overrides import PipelineOverrideRegistry
-    from ..core.ioc.container import Container
 
 
 def create_app(
@@ -36,35 +36,45 @@ def create_app(
     # 1. Build application graph and DI container
     module_graph = build_module_graph(root_module)
     container = build_container(module_graph)
+    lifecycle_manager = LifecycleManager(module_graph, container)
 
     # 2. Build lifecyle and routing configuration
-    lifespan = None if _no_lifespan else build_lifespan(module_graph, container)
-    router = build_router(
-        module_graph,
-        container,
-        pipeline_override_registry=pipeline_override_registry,
-        versioning=versioning,
-    )
+    lifespan = None if _no_lifespan else build_lifespan(lifecycle_manager)
+    route_contracts = compile_route_contracts(module_graph, container)
+    execution_plans = compile_execution_plans(route_contracts)
+    middleware_registry = compile_middleware_registry(module_graph)
 
     # 3. Instantiate the HTTP adapter with full configuration
     # (Starlette requires debug/lifespan at constructor time)
     http_adapter = adapter or StarletteAdapter(debug=debug, lifespan=lifespan)
 
+    compiled_adapter_routes = compile_adapter_routes(
+        http_adapter,
+        route_contracts,
+        container,
+        execution_plans=execution_plans,
+        pipeline_override_registry=pipeline_override_registry,
+        versioning=versioning,
+        middleware_registry=middleware_registry,
+    )
+
     # 4. Register compiled routes through the adapter
-    http_adapter.register_routes(list(router.routes))
+    http_adapter.register_routes(list(compiled_adapter_routes))
 
-    # 5. Register module middleware after routes have been compiled.
-    for module_key, middleware_binding in _collect_module_middleware(module_graph):
-        for middleware in reversed(middleware_binding.middlewares):
-            handler = _resolve_middleware(container, module_key, middleware)
-            http_adapter.add_middleware(
-                ConditionalMiddleware,
-                handler=handler,
-                include=tuple(middleware_binding.routes),
-                exclude=tuple(middleware_binding.excluded),
-            )
-
-    application = Application(http_adapter, container)
+    application = Application(
+        http_adapter,
+        container,
+        lifecycle_manager,
+        route_contracts=route_contracts,
+        execution_plans=execution_plans,
+    )
+    _attach_runtime_artifacts(
+        application,
+        module_graph,
+        container,
+        route_contracts,
+        execution_plans,
+    )
     if swagger is not None:
         application.enable_swagger(
             swagger.path,
@@ -78,24 +88,24 @@ def create_app_context(root_module: type[object] | DynamicModule) -> Application
     """Create a standalone application context for dependency injection."""
     module_graph = build_module_graph(root_module)
     container = build_container(module_graph)
-    return ApplicationContext(container)
+    lifecycle_manager = LifecycleManager(module_graph, container)
+    return ApplicationContext(container, lifecycle_manager)
 
 
-def _collect_module_middleware(
-    module_graph: ModuleGraph,
-) -> list[tuple[ModuleKey, MiddlewareBinding]]:
-    collected: list[tuple[ModuleKey, MiddlewareBinding]] = []
-    for node in module_graph.nodes:
-        configure = getattr(node.module(), "configure", None)
-        if not callable(configure):
-            continue
-        consumer = MiddlewareConsumer()
-        configure(consumer)
-        collected.extend((node.key, binding) for binding in consumer.bindings)
-    return collected
+def _attach_runtime_artifacts(
+    application: Application,
+    module_graph,
+    container,
+    route_contracts,
+    execution_plans,
+) -> None:
+    server = application.get_http_server()
+    state = getattr(server, "state", None)
+    if state is None:
+        return
 
-
-def _resolve_middleware(container: Container, module_key: ModuleKey, middleware: object) -> Any:
-    if isinstance(middleware, type):
-        return container.instantiate_class(middleware, module=module_key)
-    return middleware
+    state.bustan_application = application
+    state.bustan_container = container
+    state.bustan_module_graph = module_graph
+    state.bustan_route_contracts = route_contracts
+    state.bustan_execution_plans = execution_plans

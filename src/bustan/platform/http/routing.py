@@ -6,30 +6,22 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from starlette.responses import JSONResponse
 from starlette.routing import Router, Route
 
 from ...core.ioc.container import Container
 from ...core.errors import RouteDefinitionError
 from ...core.module.graph import ModuleGraph
-from ...core.ioc.tokens import APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE
 from ...core.utils import _join_paths, _qualname
-from .metadata import (
-    get_controller_metadata,
-    iter_controller_routes,
-)
-from ...pipeline.metadata import (
-    PipelineMetadata,
-    get_controller_pipeline_metadata,
-    get_handler_pipeline_metadata,
-    merge_pipeline_metadata,
-)
-from .params import compile_parameter_bindings
+from .abstractions import HttpResponse, to_starlette_response
+from .compiler import RouteContract, compile_route_contracts
+from .execution import ExecutionPlan, compile_execution_plans
 from .adapters.starlette import create_starlette_endpoint
-from .versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType, extract_request_version, normalize_versions
+from .registry import RouteRegistry
+from .versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType, extract_request_version
 
 if TYPE_CHECKING:
     from ...testing.overrides import PipelineOverrideRegistry
+    from ...pipeline.middleware import MiddlewareRegistry
 
 EndpointHandler = Callable[[object], Awaitable[object]]
 
@@ -57,140 +49,172 @@ def compile_routes(
     *,
     pipeline_override_registry: PipelineOverrideRegistry | None = None,
     versioning: VersioningOptions | None = None,
+    middleware_registry: MiddlewareRegistry | None = None,
 ) -> tuple[Route, ...]:
     """Compile controller metadata into Starlette Route objects."""
+
+    route_contracts = compile_route_contracts(module_graph, container)
+    return compile_routes_from_contracts(
+        route_contracts,
+        container,
+        pipeline_override_registry=pipeline_override_registry,
+        versioning=versioning,
+        middleware_registry=middleware_registry,
+    )
+
+
+def compile_routes_from_contracts(
+    route_contracts: tuple[RouteContract, ...],
+    container: Container,
+    *,
+    execution_plans: tuple[ExecutionPlan, ...] | None = None,
+    pipeline_override_registry: PipelineOverrideRegistry | None = None,
+    versioning: VersioningOptions | None = None,
+    middleware_registry: MiddlewareRegistry | None = None,
+) -> tuple[Route, ...]:
+    """Compile route contracts into Starlette Route objects."""
 
     seen_routes: dict[tuple[str, str], str] = {}
     compiled_routes: list[Route] = []
     versioned_dispatchers: dict[
-        tuple[str, str], list[tuple[tuple[str, ...], EndpointHandler, str]]
+        tuple[str, str], list[tuple[tuple[str, ...], EndpointHandler, str, RouteContract, ExecutionPlan]]
     ] = defaultdict(list)
-    global_pipeline = PipelineMetadata(
-        guards=container.get_global_pipeline_providers(APP_GUARD),
-        pipes=container.get_global_pipeline_providers(APP_PIPE),
-        interceptors=container.get_global_pipeline_providers(APP_INTERCEPTOR),
-        filters=container.get_global_pipeline_providers(APP_FILTER),
-    )
+    if versioning is None:
+        RouteRegistry(route_contracts).validate()
+    _validate_starlette_route_support(route_contracts)
 
-    for node in module_graph.nodes:
-        for controller_cls in node.controllers:
-            controller_metadata = get_controller_metadata(controller_cls)
-            assert controller_metadata is not None
-            controller_pipeline = get_controller_pipeline_metadata(controller_cls, inherit=True)
-            controller_versions = normalize_versions(controller_metadata.version)
+    if execution_plans is None:
+        execution_plans = compile_execution_plans(route_contracts)
 
-            for route_definition in iter_controller_routes(controller_cls):
-                binding_plan = compile_parameter_bindings(controller_cls, route_definition)
-                pipeline_metadata = merge_pipeline_metadata(
-                    global_pipeline,
-                    controller_pipeline or PipelineMetadata(),
-                    get_handler_pipeline_metadata(route_definition.handler) or PipelineMetadata(),
-                )
+    for route_contract, execution_plan in zip(route_contracts, execution_plans, strict=True):
+        controller_cls = route_contract.controller_cls
+        route_definition = route_contract.route_definition
+        route_path = route_contract.path
+        route_key = (route_contract.method, route_path)
+        route_owner = f"{_qualname(controller_cls)}.{route_contract.handler_name}"
+        effective_versions = route_contract.versions
 
-                route_path = _join_paths(controller_metadata.prefix, route_definition.route.path)
-                route_key = (route_definition.route.method, route_path)
-                route_owner = f"{_qualname(controller_cls)}.{route_definition.handler_name}"
-                route_versions = normalize_versions(route_definition.route.version)
-                effective_versions = route_versions or controller_versions
+        if versioning is None and route_key in seen_routes:
+            raise RouteDefinitionError(
+                f"Duplicate application route {route_contract.method} {route_path} "
+                f"declared by {seen_routes[route_key]} and {route_owner}"
+            )
 
-                if versioning is None and route_key in seen_routes:
+        if versioning is None:
+            seen_routes[route_key] = route_owner
+
+        endpoint = create_starlette_endpoint(
+            container,
+            execution_plan,
+            middleware_registry.resolve_for(route_contract) if middleware_registry is not None else (),
+            pipeline_override_registry,
+        )
+
+        if versioning is None:
+            route = Route(
+                path=route_path,
+                endpoint=endpoint,
+                methods=[route_definition.route.method],
+                name=route_owner,
+            )
+            _attach_route_artifacts(route, endpoint, (route_contract,), (execution_plan,))
+            compiled_routes.append(route)
+            continue
+
+        if versioning.type is VersioningType.URI:
+            versioned_paths = _build_uri_paths(
+                route_path,
+                effective_versions,
+                versioning,
+            )
+            for versioned_path in versioned_paths:
+                versioned_key = (route_contract.method, versioned_path)
+                if versioned_key in seen_routes:
                     raise RouteDefinitionError(
-                        f"Duplicate application route {route_definition.route.method} {route_path} "
-                        f"declared by {seen_routes[route_key]} and {route_owner}"
+                        f"Duplicate application route {route_contract.method} {versioned_path} "
+                        f"declared by {seen_routes[versioned_key]} and {route_owner}"
                     )
-
-                if versioning is None:
-                    seen_routes[route_key] = route_owner
-
-                endpoint = create_starlette_endpoint(
-                    container,
-                    node.key,
-                    controller_cls,
-                    route_definition,
-                    binding_plan,
-                    pipeline_metadata,
-                    pipeline_override_registry,
+                seen_routes[versioned_key] = route_owner
+                route = Route(
+                    path=versioned_path,
+                    endpoint=endpoint,
+                    methods=[route_definition.route.method],
+                    name=route_owner,
                 )
+                _attach_route_artifacts(route, endpoint, (route_contract,), (execution_plan,))
+                compiled_routes.append(route)
+            continue
 
-                if versioning is None:
-                    compiled_routes.append(
-                        Route(
-                            path=route_path,
-                            endpoint=endpoint,
-                            methods=[route_definition.route.method],
-                            name=route_owner,
-                        )
-                    )
-                    continue
-
-                if versioning.type is VersioningType.URI:
-                    versioned_paths = _build_uri_paths(
-                        route_path,
-                        effective_versions,
-                        versioning,
-                    )
-                    for versioned_path in versioned_paths:
-                        versioned_key = (route_definition.route.method, versioned_path)
-                        if versioned_key in seen_routes:
-                            raise RouteDefinitionError(
-                                f"Duplicate application route {route_definition.route.method} {versioned_path} "
-                                f"declared by {seen_routes[versioned_key]} and {route_owner}"
-                            )
-                        seen_routes[versioned_key] = route_owner
-                        compiled_routes.append(
-                            Route(
-                                path=versioned_path,
-                                endpoint=endpoint,
-                                methods=[route_definition.route.method],
-                                name=route_owner,
-                            )
-                        )
-                    continue
-
-                existing = versioned_dispatchers[route_key]
-                for existing_versions, _existing_endpoint, existing_owner in existing:
-                    is_new_neutral = _is_neutral_version(effective_versions)
-                    is_existing_neutral = _is_neutral_version(existing_versions)
-                    if is_new_neutral and is_existing_neutral:
-                        raise RouteDefinitionError(
-                            f"Duplicate version-neutral route {route_definition.route.method} {route_path} "
-                            f"declared by {existing_owner} and {route_owner}"
-                        )
-                    if is_new_neutral or is_existing_neutral:
-                        continue
-                    overlap = set(effective_versions) & set(existing_versions)
-                    if overlap:
-                        raise RouteDefinitionError(
-                            f"Overlapping versions {sorted(overlap)} for route "
-                            f"{route_definition.route.method} {route_path} "
-                            f"declared by {existing_owner} and {route_owner}"
-                        )
-                existing.append(
-                    (
-                        effective_versions,
-                        endpoint,
-                        route_owner,
-                    )
+        existing = versioned_dispatchers[route_key]
+        for existing_versions, _existing_endpoint, existing_owner, _existing_contract, _existing_plan in existing:
+            is_new_neutral = _is_neutral_version(effective_versions)
+            is_existing_neutral = _is_neutral_version(existing_versions)
+            if is_new_neutral and is_existing_neutral:
+                raise RouteDefinitionError(
+                    f"Duplicate version-neutral route {route_contract.method} {route_path} "
+                    f"declared by {existing_owner} and {route_owner}"
                 )
+            if is_new_neutral or is_existing_neutral:
+                continue
+            overlap = set(effective_versions) & set(existing_versions)
+            if overlap:
+                raise RouteDefinitionError(
+                    f"Overlapping versions {sorted(overlap)} for route "
+                    f"{route_contract.method} {route_path} "
+                    f"declared by {existing_owner} and {route_owner}"
+                )
+        existing.append(
+            (
+                effective_versions,
+                endpoint,
+                route_owner,
+                route_contract,
+                execution_plan,
+            )
+        )
 
     if versioning is not None and versioning.type in {
         VersioningType.HEADER,
         VersioningType.MEDIA_TYPE,
     }:
         for (method, path), handlers in versioned_dispatchers.items():
-            compiled_routes.append(
-                Route(
-                    path=path,
-                    endpoint=_build_version_dispatcher(
-                        handlers,
-                        versioning,
-                    ),
-                    methods=[method],
-                    name=handlers[0][2],
-                )
+            endpoint = _build_version_dispatcher(
+                handlers,
+                versioning,
             )
+            route = Route(
+                path=path,
+                endpoint=endpoint,
+                methods=[method],
+                name=handlers[0][2],
+            )
+            _attach_route_artifacts(
+                route,
+                endpoint,
+                tuple(contract for _versions, _endpoint, _owner, contract, _plan in handlers),
+                tuple(plan for _versions, _endpoint, _owner, _contract, plan in handlers),
+            )
+            compiled_routes.append(route)
 
     return tuple(compiled_routes)
+
+
+def _attach_route_artifacts(
+    route: Route,
+    endpoint: EndpointHandler,
+    contracts: tuple[RouteContract, ...],
+    execution_plans: tuple[ExecutionPlan, ...],
+) -> None:
+    setattr(endpoint, "bustan_route_contracts", contracts)
+    setattr(route, "bustan_route_contracts", contracts)
+    setattr(endpoint, "bustan_execution_plans", execution_plans)
+    setattr(route, "bustan_execution_plans", execution_plans)
+    if len(contracts) == 1:
+        setattr(endpoint, "bustan_route_contract", contracts[0])
+        setattr(route, "bustan_route_contract", contracts[0])
+    if len(execution_plans) == 1:
+        setattr(endpoint, "bustan_execution_plan", execution_plans[0])
+        setattr(route, "bustan_execution_plan", execution_plans[0])
 
 
 def _is_neutral_version(versions: tuple[str, ...]) -> bool:
@@ -215,16 +239,24 @@ def _build_uri_paths(
 
 
 def _build_version_dispatcher(
-    handlers: list[tuple[tuple[str, ...], EndpointHandler, str]],
+    handlers: list[tuple[tuple[str, ...], EndpointHandler, str, RouteContract, ExecutionPlan]],
     options: VersioningOptions,
 ):
     async def endpoint(request):
         requested_version = extract_request_version(request, options)
-        for versions, handler, _owner in handlers:
+        for versions, handler, _owner, _contract, _plan in handlers:
             if not versions or VERSION_NEUTRAL in versions:
                 return await handler(request)
             if requested_version in versions:
                 return await handler(request)
-        return JSONResponse({"detail": "Not Found"}, status_code=404)
+        return to_starlette_response(HttpResponse.json({"detail": "Not Found"}, status_code=404))
 
     return endpoint
+
+
+def _validate_starlette_route_support(route_contracts: tuple[RouteContract, ...]) -> None:
+    for route_contract in route_contracts:
+        if route_contract.hosts:
+            raise RouteDefinitionError(
+                f"Direct Starlette route compilation does not support host routing for {route_contract.method} {route_contract.path}"
+            )

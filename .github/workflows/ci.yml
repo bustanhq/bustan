@@ -37,7 +37,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Ty
-        run: uv run ty check src tests examples scripts
+        run: uv run ty check src tests scripts
 
       - name: Pytest with coverage
         run: uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
@@ -96,11 +96,12 @@ jobs:
 
       - name: Run checked-in examples
         run: |
-          uv run python examples/blog_api/app.py
-          uv run python examples/multi_module_app/app.py
-          uv run python examples/graph_inspection/app.py
-          uv run python examples/request_scope_pipeline_app/app.py
-          uv run python examples/testing_overrides/app.py
+          cd examples/blog_api && uv run python -m blog_api.app
+          cd ../../examples/multi_module_app && uv run python -m multi_module_app.app
+          cd ../../examples/graph_inspection && uv run python -m graph_inspection.app
+          cd ../../examples/request_scope_pipeline_app && uv run python -m request_scope_pipeline_app.app
+          cd ../../examples/testing_overrides && uv run python -m testing_overrides.app
+          cd ../../examples/dynamic_module_usage && uv run python -m dynamic_module_usage.app
 
   package:
     name: Package Verification

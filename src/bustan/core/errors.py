@@ -44,13 +44,55 @@ class RouteDefinitionError(BustanError):
 class ParameterBindingError(BustanError):
     """Raised when request parameters cannot be bound."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        field: str | None = None,
+        source: str | None = None,
+        reason: str | None = None,
+    ):
+        super().__init__(message)
+        self.field = field
+        self.source = source
+        self.reason = reason
+
+    def to_payload(self) -> dict[str, str]:
+        payload = {"detail": str(self)}
+        if self.field is not None:
+            payload["field"] = self.field
+        if self.source is not None:
+            payload["source"] = self.source
+        if self.reason is not None:
+            payload["reason"] = self.reason
+        return payload
+
 
 class BadRequestException(BustanError):
     """Raised when a request fails explicit validation."""
 
-    def __init__(self, message: str, *, field: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        field: str | None = None,
+        source: str | None = None,
+        reason: str | None = None,
+    ):
         super().__init__(message)
         self.field = field
+        self.source = source
+        self.reason = reason
+
+    def to_payload(self) -> dict[str, str]:
+        payload = {"detail": str(self)}
+        if self.field is not None:
+            payload["field"] = self.field
+        if self.source is not None:
+            payload["source"] = self.source
+        if self.reason is not None:
+            payload["reason"] = self.reason
+        return payload
 
 
 class GuardRejectedError(BustanError):

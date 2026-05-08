@@ -1,15 +1,18 @@
 """Integration tests for route registration and request binding."""
 
 from __future__ import annotations
+from collections.abc import Iterator
 from typing import Any, cast
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.testclient import TestClient
 
 from bustan import Controller, create_app, Get, Injectable, Module, Post, Scope
+from bustan.platform.http.abstractions import HttpRequest, HttpResponse
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +51,10 @@ def test_create_app_registers_http_routes_and_coerces_common_return_types() -> N
         def read_response(self) -> PlainTextResponse:
             return PlainTextResponse("plain", status_code=202)
 
+        @Get("/http-response")
+        def read_http_response(self) -> HttpResponse:
+            return HttpResponse.json({"message": "wrapped"}, status_code=203)
+
         @Get("/none")
         def read_none(self) -> None:
             return None
@@ -63,6 +70,7 @@ def test_create_app_registers_http_routes_and_coerces_common_return_types() -> N
         list_response = client.get("/greetings/list")
         dataclass_response = client.get("/greetings/dataclass")
         response_response = client.get("/greetings/response")
+        http_response = client.get("/greetings/http-response")
         none_response = client.get("/greetings/none")
 
     assert dict_response.status_code == 200
@@ -73,6 +81,8 @@ def test_create_app_registers_http_routes_and_coerces_common_return_types() -> N
     assert dataclass_response.json() == {"status": "ok"}
     assert response_response.status_code == 202
     assert response_response.text == "plain"
+    assert http_response.status_code == 203
+    assert http_response.json() == {"message": "wrapped"}
     assert none_response.status_code == 204
     assert none_response.text == ""
 
@@ -176,6 +186,28 @@ def test_create_app_binds_request_path_query_and_json_body_values() -> None:
     assert field_response.json() == {"name": "Moses", "admin": False}
 
 
+def test_create_app_allows_handlers_to_use_adapter_neutral_http_request_annotations() -> None:
+    @Controller("/requests")
+    class RequestController:
+        @Get("/")
+        def read_request(self, request: HttpRequest) -> dict[str, object]:
+            return {
+                "method": request.method,
+                "path": request.path,
+                "host": request.headers["host"],
+            }
+
+    @Module(controllers=[RequestController])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/requests")
+
+    assert response.status_code == 200
+    assert response.json() == {"method": "GET", "path": "/requests", "host": "testserver"}
+
+
 def test_create_app_returns_a_400_response_for_invalid_bound_inputs() -> None:
     @Injectable
     class UsersService:
@@ -201,6 +233,38 @@ def test_create_app_returns_a_400_response_for_invalid_bound_inputs() -> None:
     assert response.json()["detail"] == (
         "Could not bind path parameter 'user_id' to int: invalid literal for int() with base 10: 'not-a-number'"
     )
+
+
+def test_create_app_handles_stream_and_file_responses_through_the_response_handler(
+    tmp_path: Path,
+) -> None:
+    file_path = tmp_path / "greeting.txt"
+    file_path.write_text("hello file", encoding="utf-8")
+
+    @Controller("/responses")
+    class ResponseController:
+        @Get("/stream")
+        def read_stream(self) -> Iterator[bytes]:
+            yield b"hello"
+            yield b" "
+            yield b"stream"
+
+        @Get("/file")
+        def read_file(self) -> Path:
+            return file_path
+
+    @Module(controllers=[ResponseController])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        stream_response = client.get("/responses/stream")
+        file_response = client.get("/responses/file")
+
+    assert stream_response.status_code == 200
+    assert stream_response.text == "hello stream"
+    assert file_response.status_code == 200
+    assert file_response.text == "hello file"
 
 
 def test_create_app_resolves_request_scoped_providers_per_request() -> None:

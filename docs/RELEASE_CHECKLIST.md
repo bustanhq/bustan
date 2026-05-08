@@ -14,7 +14,7 @@ Use this checklist for every tagged release until the release workflow is fully 
 1. Run `uv run python scripts/generate_api_reference.py --check`.
 2. Run `uv run python scripts/check_markdown_links.py`.
 3. Run `uv run ruff check .`.
-4. Run `uv run ty check src tests examples scripts`.
+4. Run `uv run ty check src tests scripts`.
 5. Run `uv run pytest`.
 6. Run `uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml`.
 7. Run `uv build`.
@@ -27,6 +27,7 @@ Use this checklist for every tagged release until the release workflow is fully 
 3. Enable Allow GitHub Actions to create and approve pull requests if release-please should use the default token.
 4. If that setting is blocked by organization policy, create a `RELEASE_PLEASE_TOKEN` secret and use a fine-grained PAT or GitHub App token with write access to Contents, Pull requests, and Issues.
 5. Re-run [release-please.yml](../.github/workflows/release-please.yml) after changing the setting or adding the secret.
+6. Confirm [release/config.json](../release/config.json) and [release/manifest.json](../release/manifest.json) still describe the current release strategy.
 
 ## Publish Preparation
 
@@ -41,7 +42,7 @@ Use this checklist for every tagged release until the release workflow is fully 
 
 1. Create or merge the release PR.
 2. Create the release tag.
-3. Publish through the trusted publishing workflow.
+3. Let [release-please.yml](../.github/workflows/release-please.yml) run the final validation and trusted publishing path.
 
 ## Post Publish
 
@@ -49,6 +50,7 @@ Use this checklist for every tagged release until the release workflow is fully 
 2. If manual verification is needed, install the package in a clean environment.
 3. Verify `import bustan` succeeds.
 4. Verify `bustan --help` succeeds.
-5. Verify that `uv init --package my-app && cd my-app && uv add bustan && uv run bustan init` scaffolds an application from the published artifact.
-6. Publish or verify the GitHub release notes.
-7. Announce the release if it is externally relevant.
+5. Verify that `uv init --package my-app`, `uv add "bustan==<version>"`, and `uv run bustan init` scaffold the expected package layout from the published artifact.
+6. Confirm the scaffolded project contains `src/my_app/__init__.py`, `app_module.py`, `app_controller.py`, `app_service.py`, and the matching `tests/my_app/` files.
+7. Publish or verify the GitHub release notes.
+8. Announce the release if it is externally relevant.

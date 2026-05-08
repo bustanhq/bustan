@@ -17,14 +17,21 @@ class OnModuleInit(Protocol):
 class OnApplicationBootstrap(Protocol):
     """Protocol for components that run when the application starts."""
 
-    def on_app_startup(self) -> None | Awaitable[None]: ...
+    def on_application_bootstrap(self) -> None | Awaitable[None]: ...
+
+
+@runtime_checkable
+class BeforeApplicationShutdown(Protocol):
+    """Protocol for components that run before application shutdown begins."""
+
+    def before_application_shutdown(self, signal: str | None) -> None | Awaitable[None]: ...
 
 
 @runtime_checkable
 class OnApplicationShutdown(Protocol):
     """Protocol for components that run during application shutdown."""
 
-    def on_app_shutdown(self) -> None | Awaitable[None]: ...
+    def on_application_shutdown(self, signal: str | None) -> None | Awaitable[None]: ...
 
 
 @runtime_checkable
@@ -35,7 +42,8 @@ class OnModuleDestroy(Protocol):
 
 LifecycleHookName: tuple[str, ...] = (
     "on_module_init",
-    "on_app_startup",
-    "on_app_shutdown",
+    "on_application_bootstrap",
+    "before_application_shutdown",
+    "on_application_shutdown",
     "on_module_destroy",
 )

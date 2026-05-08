@@ -8,6 +8,9 @@ Stable modules:
 - `bustan.testing`
 - `bustan.errors`
 
+The `Defined in ...` lines identify implementation origins for browsing only.
+Import supported symbols from the stable modules above, not from those internal paths.
+
 ## `bustan`
 
 Bustan – A dependency injection framework for building modular Starlette applications.
@@ -46,6 +49,14 @@ via an AbstractHttpAdapter.
   Accessor for the underlying HTTP framework adapter.
 - `get_http_server(self) -> Any`
   Accessor for the underlying framework instance (e.g., Starlette App).
+- `(property) route_contracts`
+  Accessor for the compiled route contracts registered on the app.
+- `(property) execution_plans`
+  Accessor for the compiled route execution plans registered on the app.
+- `snapshot_routes(self) -> tuple[dict[str, object], ...]`
+  Return a deterministic snapshot of the compiled application routes.
+- `diff_routes(self, previous_snapshot: Sequence[Mapping[str, object]]) -> tuple[dict[str, object], ...]`
+  Compare a previous route snapshot against the current application routes.
 - `enable_cors(self, options: CorsOptions | None = None) -> None`
   Register Starlette's CORS middleware on the application.
 - `enable_swagger(self, path: str, document: dict[str, object], *, swagger_ui_path: str | None = None) -> None`
@@ -86,10 +97,20 @@ providers, use the dependency injection system directly via
 decorators (@Param, @Body, etc.) or app.resolve().
 - `resolve(self, token: object) -> Any`
   Alias for app.get().
+- `init(self) -> ApplicationContext`
+  Initialize asynchronous providers and lifecycle hooks.
 - `close(self) -> None`
   Trigger the application shutdown sequence.
 
 Mainly used for graceful teardown in tests.
+
+#### `APPLICATION`
+
+Defined in `bustan.core.ioc.tokens`.
+
+A typed token representing a dependency for injection.
+
+Current value: `InjectionToken('APPLICATION')`
 
 #### `APP_FILTER`
 
@@ -122,6 +143,38 @@ Defined in `bustan.core.ioc.tokens`.
 A typed token representing a dependency for injection.
 
 Current value: `InjectionToken('APP_PIPE')`
+
+#### `ArgumentsHost`
+
+```python
+class ArgumentsHost
+```
+
+Defined in `bustan.pipeline.context`.
+
+Public wrapper around transport arguments passed through the pipeline.
+
+##### Methods
+
+- `get_args(self) -> tuple[object, ...]`
+- `get_arg_by_index(self, index: int) -> object | None`
+- `get_type(self) -> Literal['http']`
+- `switch_to_http(self) -> HttpArgumentsHost`
+
+#### `CallHandler`
+
+```python
+class CallHandler(Protocol)
+```
+
+Defined in `bustan.pipeline.interceptors`.
+
+Public continuation contract for interceptor chaining.
+
+##### Methods
+
+- `handle(self) -> object`
+  Resume the next link in the interceptor chain.
 
 #### `ApiBearerAuth`
 
@@ -203,6 +256,10 @@ Defined in `bustan.core.errors`.
 
 Raised when a request fails explicit validation.
 
+##### Methods
+
+- `to_payload(self) -> dict`
+
 #### `Body`
 
 Defined in `bustan.common.decorators.parameter`.
@@ -211,6 +268,20 @@ Makes a marker usable both bare (``Annotated[str, Body]``)
 and as a call (``Annotated[str, Body("field")]``).
 
 Current value: `Body`
+
+#### `BeforeApplicationShutdown`
+
+```python
+class BeforeApplicationShutdown(Protocol)
+```
+
+Defined in `bustan.core.lifecycle.hooks`.
+
+Protocol for components that run before application shutdown begins.
+
+##### Methods
+
+- `before_application_shutdown(self, signal: str | None) -> None | Awaitable[None]`
 
 #### `Cookies`
 
@@ -241,6 +312,16 @@ Defined in `bustan.app.bootstrap`.
 
 Create a standalone application context for dependency injection.
 
+#### `create_param_decorator`
+
+```python
+def create_param_decorator(factory: Callable[[object | None, object], object | Awaitable[object]], *, name: str | None = None) -> _CustomParameterDecorator
+```
+
+Defined in `bustan.common.decorators.parameter`.
+
+Create an ``ExecutionContext``-backed custom parameter decorator.
+
 #### `BustanError`
 
 ```python
@@ -251,10 +332,20 @@ Defined in `bustan.core.errors`.
 
 Base exception for the framework.
 
+#### `ContextId`
+
+```python
+class ContextId
+```
+
+Defined in `bustan.addons.context`.
+
+Stable scope-qualified context identifier.
+
 #### `Controller`
 
 ```python
-def Controller(prefix: str = '', *, scope: ProviderScope | str = ProviderScope.SINGLETON, version: str | list[str] | None = None) -> Callable[[ClassT], ClassT]
+def Controller(prefix: str = '', *, scope: ProviderScope | str = ProviderScope.SINGLETON, version: str | list[str] | None = None, host: HostInput | None = None, hosts: HostInput | None = None, binding_mode: str = 'infer', validation_mode: str = 'auto', validate_custom_decorators: bool = False) -> Callable[[ClassT], ClassT]
 ```
 
 Defined in `bustan.common.decorators.controller`.
@@ -264,12 +355,39 @@ Attach controller metadata to a class.
 #### `Delete`
 
 ```python
-def Delete(path: str = '/', *, version: str | list[str] | None = None) -> Callable[[FunctionT], FunctionT]
+def Delete(path: str = '/', *, version: str | list[str] | None = None, host: HostInput | None = None, hosts: HostInput | None = None) -> Callable[[FunctionT], FunctionT]
 ```
 
 Defined in `bustan.common.decorators.route`.
 
 Return a decorator that registers a DELETE route.
+
+#### `DiscoveryModule`
+
+```python
+class DiscoveryModule
+```
+
+Defined in `bustan.addons.discovery`.
+
+Addon module that exposes the read-only DiscoveryService.
+
+#### `DiscoveryService`
+
+```python
+class DiscoveryService
+```
+
+Defined in `bustan.addons.discovery`.
+
+Read-only inspection surface for compiled modules, providers, and routes.
+
+##### Methods
+
+- `modules(self) -> tuple[dict[str, object], ...]`
+- `providers(self) -> tuple[dict[str, object], ...]`
+- `providers_for_module(self, module: ModuleKey | type[object]) -> tuple[dict[str, object], ...]`
+- `routes(self) -> tuple[dict[str, object], ...]`
 
 #### `DurableProvider`
 
@@ -313,6 +431,49 @@ Fluent builder for the base OpenAPI document.
 - `add_bearer_auth(self, name: str = 'bearer') -> 'DocumentBuilder'`
 - `build(self) -> dict[str, object]`
 
+#### `ExecutionContext`
+
+```python
+class ExecutionContext(ArgumentsHost)
+```
+
+Defined in `bustan.pipeline.context`.
+
+Public request execution context shared across guards and filters.
+
+##### Methods
+
+- `create_http(cls, *, request: HttpRequest | object, response: object | None, handler: object, controller_cls: type[object], module: ModuleKey, controller: object, container: Container, route: ControllerRouteDefinition | None = None, route_contract: object | None = None, policy_plan: object | None = None) -> ExecutionContext`
+- `get_handler(self) -> object`
+- `get_class(self) -> type[object]`
+- `get_module(self) -> ModuleKey`
+- `get_route_contract(self) -> object | None`
+- `get_policy_plan(self) -> object | None`
+- `get_principal(self) -> object | None`
+- `with_parameter(self, *, name: str, source: str, annotation: object, value: object, validation_mode: str = 'auto', validate_custom_decorators: bool = False) -> ExecutionContext`
+- `with_parameter_value(self, value: object) -> ExecutionContext`
+- `(property) request`
+- `(property) response`
+- `(property) module`
+- `(property) controller_type`
+- `(property) controller`
+- `(property) container`
+- `(property) route`
+- `(property) route_contract`
+- `(property) policy_plan`
+- `(property) parameter_name`
+- `(property) parameter_source`
+- `(property) parameter_annotation`
+- `(property) parameter_value`
+- `(property) name`
+- `(property) source`
+- `(property) annotation`
+- `(property) value`
+- `(property) validation_mode`
+- `(property) validate_custom_decorators`
+- `(property) metatype`
+- `(property) execution_context`
+
 #### `ExceptionFilter`
 
 ```python
@@ -334,7 +495,7 @@ handle.
 
 ##### Methods
 
-- `catch(self, exc: Exception, context: RequestContext) -> object`
+- `catch(self, exc: Exception, context: ExecutionContext) -> object`
   Convert an exception into a handler result or response payload.
 
 #### `ExportViolationError`
@@ -350,12 +511,22 @@ Raised when a module exports a provider it does not declare.
 #### `Get`
 
 ```python
-def Get(path: str = '/', *, version: str | list[str] | None = None) -> Callable[[FunctionT], FunctionT]
+def Get(path: str = '/', *, version: str | list[str] | None = None, host: HostInput | None = None, hosts: HostInput | None = None) -> Callable[[FunctionT], FunctionT]
 ```
 
 Defined in `bustan.common.decorators.route`.
 
 Return a decorator that registers a GET route.
+
+#### `Global`
+
+```python
+def Global() -> Callable[[ClassT], ClassT]
+```
+
+Defined in `bustan.core.module.decorators`.
+
+Promote an existing module declaration to a global module.
 
 #### `Guard`
 
@@ -369,7 +540,7 @@ Base class for authorization and policy gates.
 
 ##### Methods
 
-- `can_activate(self, context: RequestContext) -> bool`
+- `can_activate(self, context: ExecutionContext) -> bool`
   Return True to allow request execution to continue.
 
 #### `GuardRejectedError`
@@ -400,6 +571,76 @@ and as a call (``Annotated[str, Body("field")]``).
 
 Current value: `HostParam`
 
+#### `HttpArgumentsHost`
+
+```python
+class HttpArgumentsHost
+```
+
+Defined in `bustan.pipeline.context`.
+
+HTTP-specific view over a generic arguments host.
+
+##### Methods
+
+- `get_request(self) -> object | None`
+- `get_response(self) -> object | None`
+- `get_next(self) -> object | None`
+
+#### `HttpRequest`
+
+```python
+class HttpRequest(Protocol)
+```
+
+Defined in `bustan.platform.http.abstractions`.
+
+Adapter-neutral request surface used by framework runtime code.
+
+##### Methods
+
+- `(property) native_request`
+- `(property) method`
+- `(property) path`
+- `(property) url`
+- `(property) headers`
+- `(property) query_params`
+- `(property) path_params`
+- `(property) cookies`
+- `(property) state`
+- `(property) client`
+- `(property) app`
+- `body(self) -> bytes`
+- `json(self) -> object`
+- `form(self) -> FormData`
+
+#### `HttpResponse`
+
+```python
+class HttpResponse
+```
+
+Defined in `bustan.platform.http.abstractions`.
+
+Adapter-neutral mutable HTTP response container.
+
+##### Methods
+
+- `set_body(self, body: bytes | str) -> None`
+- `send(self, body: bytes | str) -> None`
+- `empty(cls, *, status_code: int = 204) -> HttpResponse`
+- `json(cls, payload: object, *, status_code: int = 200, headers: Mapping[str, str] | None = None) -> HttpResponse`
+
+#### `Inject`
+
+```python
+def Inject(token: object) -> InjectMarker
+```
+
+Defined in `bustan.common.decorators.injectable`.
+
+Mark an ``Annotated`` dependency to resolve from an explicit token.
+
 #### `Injectable`
 
 ```python
@@ -409,6 +650,14 @@ def Injectable(target: ClassT | None = None, *, scope: ProviderScope | str = Pro
 Defined in `bustan.common.decorators.injectable`.
 
 Mark a class as a DI-managed provider with the selected scope.
+
+#### `INQUIRER`
+
+Defined in `bustan.core.ioc.tokens`.
+
+A typed token representing a dependency for injection.
+
+Current value: `InjectionToken('INQUIRER')`
 
 #### `InjectionToken`
 
@@ -432,7 +681,7 @@ Base class for around-handler behaviors.
 
 ##### Methods
 
-- `intercept(self, context: HandlerContext, call_next: CallNext) -> object`
+- `intercept(self, context: ExecutionContext, next: CallHandler) -> object`
   Wrap handler execution and optionally transform the result.
 
 #### `InvalidControllerError`
@@ -554,6 +803,24 @@ Collect middleware bindings from module configuration callbacks.
 
 - `apply(self, *middlewares: object) -> MiddlewareRegistration`
 
+#### `ModuleRef`
+
+```python
+class ModuleRef
+```
+
+Defined in `bustan.addons.module_ref`.
+
+Resolve providers through the finalized public application semantics.
+
+##### Methods
+
+- `(property) module_key`
+- `for_module(self, module: ModuleKey | type[object]) -> ModuleRef`
+- `get(self, token: object, *, strict: bool = True) -> object`
+- `resolve(self, token: object, *, strict: bool = True) -> object`
+- `create(self, cls: type[object]) -> object`
+
 #### `Module`
 
 ```python
@@ -564,6 +831,43 @@ Defined in `bustan.core.module.decorators`.
 
 Attach module metadata to a class without performing registration.
 
+#### `ModuleGraph`
+
+```python
+class ModuleGraph
+```
+
+Defined in `bustan.core.module.graph`.
+
+Validated view of the full module import graph.
+
+##### Methods
+
+- `get_node(self, key: ModuleKey) -> ModuleNode`
+- `exports_for(self, key: ModuleKey) -> frozenset[object]`
+- `controllers_for(self, key: ModuleKey) -> tuple[type[object], ...]`
+- `available_providers_for(self, key: ModuleKey) -> frozenset[object]`
+- `(property) root_module`
+  Return the root module class.
+
+#### `ModuleNode`
+
+```python
+class ModuleNode
+```
+
+Defined in `bustan.core.module.graph`.
+
+Validated graph node for one decorated module instance.
+
+##### Methods
+
+- `(property) imports`
+- `(property) controllers`
+- `(property) providers`
+  Return the token for each provider registered in this module.
+- `(property) exports`
+
 #### `ModuleCycleError`
 
 ```python
@@ -573,6 +877,16 @@ class ModuleCycleError(InvalidModuleError)
 Defined in `bustan.core.errors`.
 
 Raised when a module import cycle is detected.
+
+#### `Optional`
+
+```python
+def Optional() -> OptionalDependencyMarker
+```
+
+Defined in `bustan.common.decorators.injectable`.
+
+Mark an ``Annotated`` dependency as optional during provider resolution.
 
 #### `OnApplicationBootstrap`
 
@@ -586,7 +900,7 @@ Protocol for components that run when the application starts.
 
 ##### Methods
 
-- `on_app_startup(self) -> None | Awaitable[None]`
+- `on_application_bootstrap(self) -> None | Awaitable[None]`
 
 #### `OnApplicationShutdown`
 
@@ -600,7 +914,7 @@ Protocol for components that run during application shutdown.
 
 ##### Methods
 
-- `on_app_shutdown(self) -> None | Awaitable[None]`
+- `on_application_shutdown(self, signal: str | None) -> None | Awaitable[None]`
 
 #### `OnModuleDestroy`
 
@@ -649,6 +963,10 @@ Defined in `bustan.core.errors`.
 
 Raised when request parameters cannot be bound.
 
+##### Methods
+
+- `to_payload(self) -> dict`
+
 #### `ParseArrayPipe`
 
 ```python
@@ -661,7 +979,7 @@ Convert delimited strings into a list of strings.
 
 ##### Methods
 
-- `transform(self, value: object, context: ParameterContext) -> list[str]`
+- `transform(self, value: object, context: ExecutionContext) -> list[str]`
   Return the transformed parameter value passed to the handler.
 
 #### `ParseBoolPipe`
@@ -676,7 +994,7 @@ Convert a parameter value into a boolean.
 
 ##### Methods
 
-- `transform(self, value: object, context: ParameterContext) -> bool`
+- `transform(self, value: object, context: ExecutionContext) -> bool`
   Return the transformed parameter value passed to the handler.
 
 #### `ParseEnumPipe`
@@ -691,7 +1009,7 @@ Resolve a raw value to an Enum member.
 
 ##### Methods
 
-- `transform(self, value: object, context: ParameterContext) -> Enum`
+- `transform(self, value: object, context: ExecutionContext) -> Enum`
   Return the transformed parameter value passed to the handler.
 
 #### `ParseFloatPipe`
@@ -706,7 +1024,7 @@ Convert a parameter value into a float.
 
 ##### Methods
 
-- `transform(self, value: object, context: ParameterContext) -> float`
+- `transform(self, value: object, context: ExecutionContext) -> float`
   Return the transformed parameter value passed to the handler.
 
 #### `ParseIntPipe`
@@ -721,7 +1039,7 @@ Convert a parameter value into an integer.
 
 ##### Methods
 
-- `transform(self, value: object, context: ParameterContext) -> int`
+- `transform(self, value: object, context: ExecutionContext) -> int`
   Return the transformed parameter value passed to the handler.
 
 #### `ParseUUIDPipe`
@@ -736,13 +1054,13 @@ Convert a parameter value into a UUID instance.
 
 ##### Methods
 
-- `transform(self, value: object, context: ParameterContext) -> UUID`
+- `transform(self, value: object, context: ExecutionContext) -> UUID`
   Return the transformed parameter value passed to the handler.
 
 #### `Patch`
 
 ```python
-def Patch(path: str = '/', *, version: str | list[str] | None = None) -> Callable[[FunctionT], FunctionT]
+def Patch(path: str = '/', *, version: str | list[str] | None = None, host: HostInput | None = None, hosts: HostInput | None = None) -> Callable[[FunctionT], FunctionT]
 ```
 
 Defined in `bustan.common.decorators.route`.
@@ -761,13 +1079,13 @@ Base class for parameter transformation and validation.
 
 ##### Methods
 
-- `transform(self, value: object, context: ParameterContext) -> object`
+- `transform(self, value: object, context: ExecutionContext) -> object`
   Return the transformed parameter value passed to the handler.
 
 #### `Post`
 
 ```python
-def Post(path: str = '/', *, version: str | list[str] | None = None) -> Callable[[FunctionT], FunctionT]
+def Post(path: str = '/', *, version: str | list[str] | None = None, host: HostInput | None = None, hosts: HostInput | None = None) -> Callable[[FunctionT], FunctionT]
 ```
 
 Defined in `bustan.common.decorators.route`.
@@ -787,7 +1105,7 @@ Raised when dependency resolution fails.
 #### `Put`
 
 ```python
-def Put(path: str = '/', *, version: str | list[str] | None = None) -> Callable[[FunctionT], FunctionT]
+def Put(path: str = '/', *, version: str | list[str] | None = None, host: HostInput | None = None, hosts: HostInput | None = None) -> Callable[[FunctionT], FunctionT]
 ```
 
 Defined in `bustan.common.decorators.route`.
@@ -802,6 +1120,39 @@ Makes a marker usable both bare (``Annotated[str, Body]``)
 and as a call (``Annotated[str, Body("field")]``).
 
 Current value: `Query`
+
+#### `Reflector`
+
+```python
+class Reflector
+```
+
+Defined in `bustan.common.decorators.metadata`.
+
+Read framework metadata with deterministic precedence rules.
+
+##### Methods
+
+- `create_decorator(name: str) -> MetadataDecorator[MetadataT]`
+- `get(self, metadata: MetadataKey[MetadataT] | MetadataDecorator[MetadataT], target: object, *, inherit: bool = False) -> MetadataT | None`
+- `get_all_and_override(self, metadata: MetadataKey[MetadataT] | MetadataDecorator[MetadataT], targets: Sequence[object], *, inherit: bool = False) -> MetadataT | None`
+- `get_all_and_merge(self, metadata: MetadataKey[MetadataT] | MetadataDecorator[MetadataT], targets: Sequence[object], *, inherit: bool = False) -> tuple[MetadataT, ...]`
+
+#### `REQUEST`
+
+Defined in `bustan.core.ioc.tokens`.
+
+A typed token representing a dependency for injection.
+
+Current value: `InjectionToken('REQUEST')`
+
+#### `RESPONSE`
+
+Defined in `bustan.core.ioc.tokens`.
+
+A typed token representing a dependency for injection.
+
+Current value: `InjectionToken('RESPONSE')`
 
 #### `RouteDefinitionError`
 
@@ -835,7 +1186,7 @@ Apply a default when the bound value is missing.
 
 ##### Methods
 
-- `transform(self, value: object, context: ParameterContext) -> object`
+- `transform(self, value: object, context: ExecutionContext) -> object`
   Return the transformed parameter value passed to the handler.
 
 #### `UploadedFile`
@@ -868,8 +1219,28 @@ Validate body payloads with Pydantic models when available.
 
 ##### Methods
 
-- `transform(self, value: object, context: ParameterContext) -> object`
+- `transform(self, value: object, context: ExecutionContext) -> object`
   Return the transformed parameter value passed to the handler.
+
+#### `application_context_id`
+
+```python
+def application_context_id(module: ModuleKey | type[object]) -> ContextId
+```
+
+Defined in `bustan.addons.context`.
+
+No user-facing documentation provided.
+
+#### `durable_context_id`
+
+```python
+def durable_context_id(provider: type[DurableProvider], request: Request | None) -> ContextId
+```
+
+Defined in `bustan.addons.context`.
+
+No user-facing documentation provided.
 
 #### `Ip`
 
@@ -879,6 +1250,16 @@ Makes a marker usable both bare (``Annotated[str, Body]``)
 and as a call (``Annotated[str, Body("field")]``).
 
 Current value: `Ip`
+
+#### `request_context_id`
+
+```python
+def request_context_id(request: Request | None) -> ContextId
+```
+
+Defined in `bustan.addons.context`.
+
+No user-facing documentation provided.
 
 #### `VERSION_NEUTRAL`
 
@@ -1017,7 +1398,7 @@ Guard that rejects requests after the configured limit is exceeded.
 
 ##### Methods
 
-- `can_activate(self, context: RequestContext) -> bool`
+- `can_activate(self, context: ExecutionContext) -> bool`
   Return True to allow request execution to continue.
 
 #### `ThrottlerModule`
@@ -1115,6 +1496,9 @@ Compiled application and container wrapper for tests.
 
 - `get(self, token: object) -> Any`
 - `resolve(self, token: object) -> Any`
+- `snapshot_routes(self) -> tuple[dict[str, object], ...]`
+- `diff_routes(self, previous_snapshot: Iterable[Mapping[str, object]]) -> tuple[dict[str, object], ...]`
+- `create_client(self)`
 - `close(self) -> None`
 
 #### `PipelineOverrideRegistry`
@@ -1293,6 +1677,10 @@ Defined in `bustan.core.errors`.
 
 Raised when a request fails explicit validation.
 
+##### Methods
+
+- `to_payload(self) -> dict`
+
 #### `ParameterBindingError`
 
 ```python
@@ -1302,6 +1690,10 @@ class ParameterBindingError(BustanError)
 Defined in `bustan.core.errors`.
 
 Raised when request parameters cannot be bound.
+
+##### Methods
+
+- `to_payload(self) -> dict`
 
 #### `ProviderResolutionError`
 

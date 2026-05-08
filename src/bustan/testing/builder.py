@@ -79,6 +79,20 @@ class CompiledTestingModule:
     def resolve(self, token: object) -> Any:
         return self.get(token)
 
+    def snapshot_routes(self) -> tuple[dict[str, object], ...]:
+        return self.application.snapshot_routes()
+
+    def diff_routes(
+        self,
+        previous_snapshot: Iterable[Mapping[str, object]],
+    ) -> tuple[dict[str, object], ...]:
+        return self.application.diff_routes(tuple(previous_snapshot))
+
+    def create_client(self):
+        from starlette.testclient import TestClient
+
+        return TestClient(cast(Any, self.application))
+
     async def close(self) -> None:
         await run_shutdown_hooks(
             self.application.module_graph,

@@ -1,13 +1,19 @@
 """Publicly exposed decorators for the common namespace."""
 
 from .parameter import Cookies, Header, HostParam, Ip, Param, Query, UploadedFile, UploadedFiles
-from .injectable import Injectable
+from .injectable import Inject, Injectable, Optional
 from .controller import Controller
 from .route import Delete, Get, Patch, Post, Put, Route
+from .metadata import Reflector, merge_metadata, override_metadata
 
 __all__ = (
     "Cookies",
+    "Inject",
     "Injectable",
+    "merge_metadata",
+    "Optional",
+    "override_metadata",
+    "Reflector",
     "Controller",
     "Delete",
     "Get",

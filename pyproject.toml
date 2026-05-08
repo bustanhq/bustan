@@ -74,7 +74,7 @@ branch = true
 source = ["bustan"]
 
 [tool.coverage.report]
-fail_under = 84
+fail_under = 95
 show_missing = true
 skip_covered = false
 
@@ -90,4 +90,9 @@ build-backend = "uv_build"
 [tool.ty]
 
 [tool.ty.src]
-exclude = ["src/bustan/cli/templates/**"]
+exclude = ["src/bustan/cli/templates/**", "examples/**"]
+
+[tool.uv.workspace]
+members = [
+    "mini",
+]
