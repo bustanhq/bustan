@@ -3,7 +3,7 @@
 import pytest
 from typing import cast
 
-from bustan import Controller, Get, Injectable, Module
+from bustan import Controller, Get, Global, Injectable, Module
 from bustan.core.errors import (
     ExportViolationError,
     InvalidControllerError,
@@ -60,6 +60,7 @@ def test_build_module_graph_preserves_import_order_and_visibility() -> None:
     assert app_node.imported_exports[UsersModule] == frozenset({UserService})
     assert app_node.imported_exports[AuthModule] == frozenset({AuthService})
     assert app_node.available_providers == frozenset({UserService, AuthService})
+    assert graph.controllers_for(UsersModule) == (UserController,)
 
 
 def test_build_module_graph_rejects_invalid_imports() -> None:
@@ -133,3 +134,14 @@ def test_build_module_graph_rejects_duplicate_controller_routes() -> None:
 
     with pytest.raises(RouteDefinitionError, match="duplicate route GET /users/profile"):
         build_module_graph(AppModule)
+
+
+def test_global_decorator_marks_existing_module_metadata() -> None:
+    @Global()
+    @Module()
+    class SharedModule:
+        pass
+
+    graph = build_module_graph(SharedModule)
+
+    assert graph.get_node(SharedModule).metadata.is_global is True

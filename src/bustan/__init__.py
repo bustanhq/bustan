@@ -8,12 +8,14 @@ import importlib.metadata
 __version__ = importlib.metadata.version("bustan")
 
 # Common Decorators
-from .common.decorators.injectable import Injectable
+from .common.decorators.injectable import Inject, Injectable, OptionalDep
+from .common.decorators.metadata import Reflector
 from .common.decorators.controller import Controller
 from .common.decorators.route import Get, Post, Put, Patch, Delete
 from .common.decorators.parameter import (
     Body,
     Cookies,
+    create_param_decorator,
     Header,
     HostParam,
     Ip,
@@ -25,25 +27,34 @@ from .common.decorators.parameter import (
 from .common.types import ProviderScope as Scope
 
 # Core Module System
-from .core.module.decorators import Module
+from .core.module.decorators import Global, Module
 from .core.module.dynamic import DynamicModule
 from .core.module.builder import ConfigurableModuleBuilder
+from .core.module.graph import ModuleGraph, ModuleNode
 
 # Core IoC System
 from .core.ioc.tokens import (
+    APPLICATION,
     APP_FILTER,
     APP_GUARD,
     APP_INTERCEPTOR,
     APP_PIPE,
+    INQUIRER,
     InjectionToken,
+    REQUEST,
+    RESPONSE,
 )
 from .core.ioc.scopes import DurableProvider
 
 # Pipeline Components
 from .pipeline import (
+    ArgumentsHost,
+    CallHandler,
     DefaultValuePipe,
+    ExecutionContext,
     ExceptionFilter,
     Guard,
+    HttpArgumentsHost,
     Interceptor,
     ParseArrayPipe,
     ParseBoolPipe,
@@ -60,6 +71,16 @@ from .pipeline.middleware import Middleware, MiddlewareConsumer
 # Application Wrapper
 from .app.application import Application, ApplicationContext
 from .app.bootstrap import create_app, create_app_context
+from .addons import (
+    ContextId,
+    DiscoveryModule,
+    DiscoveryService,
+    ModuleRef,
+    application_context_id,
+    durable_context_id,
+    request_context_id,
+)
+from .platform.http.abstractions import HttpFormData, HttpQueryParams, HttpRequest, HttpResponse, HttpUrl
 from .platform.http.versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType
 from .config import ConfigModule, ConfigService
 from .logger import LogLevel, Logger, LoggerService
@@ -79,6 +100,7 @@ from .security import CorsOptions, SkipThrottle, ThrottlerGuard, ThrottlerModule
 
 # Lifecycle Protocols
 from .core.lifecycle.hooks import (
+    BeforeApplicationShutdown,
     OnApplicationBootstrap,
     OnApplicationShutdown,
     OnModuleDestroy,
@@ -106,10 +128,13 @@ __all__ = (
     "__version__",
     "Application",
     "ApplicationContext",
+    "APPLICATION",
     "APP_FILTER",
     "APP_GUARD",
     "APP_INTERCEPTOR",
     "APP_PIPE",
+    "ArgumentsHost",
+    "CallHandler",
     "ApiBearerAuth",
     "ApiBody",
     "ApiOperation",
@@ -119,23 +144,38 @@ __all__ = (
     "ApiTags",
     "BadRequestException",
     "Body",
+    "BeforeApplicationShutdown",
     "Cookies",
     "create_app",
     "create_app_context",
+    "create_param_decorator",
     "BustanError",
+    "ContextId",
     "Controller",
     "Delete",
+    "DiscoveryModule",
+    "DiscoveryService",
     "DurableProvider",
     "DynamicModule",
     "DocumentBuilder",
+    "ExecutionContext",
     "ExceptionFilter",
     "ExportViolationError",
     "Get",
+    "Global",
     "Guard",
     "GuardRejectedError",
     "Header",
     "HostParam",
+    "HttpArgumentsHost",
+    "HttpFormData",
+    "HttpQueryParams",
+    "HttpRequest",
+    "HttpResponse",
+    "HttpUrl",
+    "Inject",
     "Injectable",
+    "INQUIRER",
     "InjectionToken",
     "Interceptor",
     "InvalidControllerError",
@@ -148,8 +188,12 @@ __all__ = (
     "LoggerService",
     "Middleware",
     "MiddlewareConsumer",
+    "ModuleRef",
     "Module",
+    "ModuleGraph",
+    "ModuleNode",
     "ModuleCycleError",
+    "OptionalDep",
     "OnApplicationBootstrap",
     "OnApplicationShutdown",
     "OnModuleDestroy",
@@ -168,13 +212,19 @@ __all__ = (
     "ProviderResolutionError",
     "Put",
     "Query",
+    "Reflector",
+    "REQUEST",
+    "RESPONSE",
     "RouteDefinitionError",
     "Scope",
     "DefaultValuePipe",
     "UploadedFile",
     "UploadedFiles",
     "ValidationPipe",
+    "application_context_id",
+    "durable_context_id",
     "Ip",
+    "request_context_id",
     "VERSION_NEUTRAL",
     "VersioningOptions",
     "VersioningType",

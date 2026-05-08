@@ -68,6 +68,9 @@ class ModuleGraph:
     def exports_for(self, key: ModuleKey) -> frozenset[object]:
         return self.get_node(key).exported_providers
 
+    def controllers_for(self, key: ModuleKey) -> tuple[type[object], ...]:
+        return self.get_node(key).controllers
+
     def available_providers_for(self, key: ModuleKey) -> frozenset[object]:
         return self.get_node(key).available_providers
 
@@ -135,7 +138,7 @@ def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph
                 input_to_key[input_id] = key
                 return key
 
-            # 6. Pre-order: visit node then its imports (legacy behavior)
+            # Preserve pre-order node discovery because import-order semantics and tests depend on it.
             compiled_by_key[key] = compiled
             bindings_by_key[key] = validate_module_compiled(compiled)
             

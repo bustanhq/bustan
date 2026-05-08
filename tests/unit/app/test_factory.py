@@ -39,3 +39,6 @@ def test_create_app_with_controllers() -> None:
     app = create_app(AppModule)
     # Check routes directly instead of controllers property
     assert "/test" in app.routes
+    assert len(app.execution_plans) == 1
+    assert app.execution_plans[0].route_contract is app.route_contracts[0]
+    assert app.get_http_server().state.bustan_execution_plans == app.execution_plans

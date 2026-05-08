@@ -3,61 +3,26 @@
 from __future__ import annotations
 
 import inspect
-from dataclasses import asdict, is_dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from starlette.concurrency import run_in_threadpool
+from starlette.middleware.base import RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
 
-from ....core.module.dynamic import ModuleKey
 from ....core.ioc.container import Container
-from ....core.errors import BadRequestException, GuardRejectedError, ParameterBindingError
-from ..params import (
-    BoundParameter,
-    HandlerBindingPlan,
-    ParameterSource,
-    bind_handler_parameters,
-    separate_bound_parameters,
-)
-from ....pipeline.context import HandlerContext, ParameterContext, RequestContext
-from ....pipeline.filters import handle_exception
-from ....pipeline.guards import run_guards
-from ....pipeline.interceptors import call_with_interceptors
-from ....pipeline.metadata import PipelineMetadata
-from ....pipeline.pipes import run_pipes
-from ..metadata import ControllerRouteDefinition
+from ....pipeline.middleware import Middleware, ResolvedRouteMiddleware
+from ..abstractions import StarletteHttpRequest, to_starlette_response
 from ..controller_factory import ControllerFactory
+from ..execution import ExecutionPlan, execute_http_exception, execute_http_route
 
 if TYPE_CHECKING:
     from ....testing.overrides import PipelineOverrideRegistry
 
 
-def coerce_response(value: object) -> Response:
-    """Convert a handler return value into a concrete Response instance."""
-
-    if isinstance(value, Response):
-        return value
-
-    if value is None:
-        return Response(status_code=204)
-
-    if is_dataclass(value) and not isinstance(value, type):
-        return JSONResponse(asdict(value))
-
-    if isinstance(value, (dict, list)):
-        return JSONResponse(value)
-
-    raise TypeError(f"Unsupported handler return type: {type(value).__name__}")
-
-
 def create_starlette_endpoint(
     container: Container,
-    module_key: ModuleKey,
-    controller_cls: type[object],
-    route_definition: ControllerRouteDefinition,
-    binding_plan: HandlerBindingPlan,
-    pipeline_metadata: PipelineMetadata,
+    execution_plan: ExecutionPlan,
+    middleware_chain: tuple[ResolvedRouteMiddleware, ...],
     pipeline_override_registry: PipelineOverrideRegistry | None = None,
 ) -> Any:
     """Create the Starlette endpoint callable for one controller handler."""
@@ -66,128 +31,87 @@ def create_starlette_endpoint(
         container,
         pipeline_override_registry=pipeline_override_registry,
     )
-    is_async_handler = inspect.iscoroutinefunction(route_definition.handler)
 
     async def endpoint(request: Request) -> Response:
-        controller_instance = factory.instantiate(
-            controller_cls, module=module_key, request=request
+        async def handle_route_exception(current_request: Request, error: Exception) -> Response:
+            execution_result = await execute_http_exception(
+                application_runtime=getattr(
+                    current_request.app.state,
+                    "bustan_application",
+                    current_request.app,
+                ),
+                container=container,
+                factory=factory,
+                execution_plan=execution_plan,
+                request=StarletteHttpRequest(current_request),
+                native_request=current_request,
+                error=error,
+            )
+            return to_starlette_response(execution_result.response)
+
+        async def execute_handler(current_request: Request) -> Response:
+            execution_result = await execute_http_route(
+                application_runtime=getattr(
+                    current_request.app.state,
+                    "bustan_application",
+                    current_request.app,
+                ),
+                container=container,
+                factory=factory,
+                execution_plan=execution_plan,
+                request=StarletteHttpRequest(current_request),
+                native_request=current_request,
+            )
+            return to_starlette_response(execution_result.response)
+
+        return await _run_route_middleware(
+            request,
+            middleware_chain,
+            factory,
+            execute_handler,
+            exception_handler=handle_route_exception,
         )
-        handler = getattr(controller_instance, route_definition.handler_name)
 
-        request_context = RequestContext(
-            request=request,
-            module=module_key,
-            controller_type=controller_cls,
-            controller=controller_instance,
-            route=route_definition,
-            container=container,
-        )
-
-        # Resolve the pipeline for this specific request
-        resolved_pipeline = factory.resolve_pipeline(
-            pipeline_metadata, module=module_key, request=request
-        )
-
-        try:
-            await run_guards(request_context, resolved_pipeline.guards)
-            bound_parameters = await bind_handler_parameters(request, binding_plan)
-
-            # Apply pipes
-            piped_parameters = await _apply_pipes(
-                bound_parameters, request_context, resolved_pipeline.pipes
-            )
-            positional_arguments, keyword_arguments = separate_bound_parameters(piped_parameters)
-
-            handler_context = HandlerContext(
-                request_context=request_context,
-                arguments=positional_arguments,
-                keyword_arguments=keyword_arguments,
-            )
-
-            async def final_handler() -> object:
-                if is_async_handler:
-                    return await handler(*positional_arguments, **keyword_arguments)
-                return await run_in_threadpool(
-                    handler,
-                    *positional_arguments,
-                    **keyword_arguments,
-                )
-
-            result = await call_with_interceptors(
-                handler_context, resolved_pipeline.interceptors, final_handler
-            )
-        except Exception as exc:
-            filtered_result = await handle_exception(
-                request_context, exc, resolved_pipeline.filters
-            )
-            if filtered_result is not None:
-                response = coerce_response(filtered_result)
-                _apply_rate_limit_headers(request, response)
-                return response
-
-            # Fallback to standard error responses for common exceptions if not handled by filters
-            if isinstance(exc, BadRequestException):
-                payload = {"detail": str(exc)}
-                if exc.field is not None:
-                    payload["field"] = exc.field
-                response = JSONResponse(payload, status_code=400)
-                _apply_rate_limit_headers(request, response)
-                return response
-            if isinstance(exc, ParameterBindingError):
-                response = JSONResponse({"detail": str(exc)}, status_code=400)
-                _apply_rate_limit_headers(request, response)
-                return response
-            if isinstance(exc, GuardRejectedError):
-                status_code = 429 if getattr(request.state, "rate_limit_exceeded", False) else 403
-                detail = "Too Many Requests" if status_code == 429 else str(exc)
-                response = JSONResponse({"detail": detail}, status_code=status_code)
-                _apply_rate_limit_headers(request, response)
-                return response
-            raise
-
-        response = coerce_response(result)
-        _apply_rate_limit_headers(request, response)
-        return response
-
-    endpoint.__name__ = route_definition.route.name
+    endpoint.__name__ = execution_plan.route_definition.route.name
     return endpoint
 
 
-def _apply_rate_limit_headers(request: Request, response: Response) -> None:
-    if not hasattr(request.state, "rate_limit_limit"):
-        return
-    response.headers["X-RateLimit-Limit"] = str(request.state.rate_limit_limit)
-    response.headers["X-RateLimit-Remaining"] = str(request.state.rate_limit_remaining)
-    response.headers["X-RateLimit-Reset"] = str(request.state.rate_limit_reset)
+async def _run_route_middleware(
+    request: Request,
+    middleware_chain: tuple[ResolvedRouteMiddleware, ...],
+    factory: ControllerFactory,
+    terminal_handler: RequestResponseEndpoint,
+    *,
+    exception_handler=None,
+) -> Response:
+    async def invoke(index: int, current_request: Request) -> Response:
+        try:
+            if index >= len(middleware_chain):
+                return await terminal_handler(current_request)
 
+            entry = middleware_chain[index]
 
-async def _apply_pipes(
-    bound_parameters: tuple[Any, ...],
-    request_context: RequestContext,
-    pipes: tuple[Any, ...],
-) -> tuple[Any, ...]:
-    if not pipes:
-        return bound_parameters
+            async def call_next(next_request: Request) -> Response:
+                return await invoke(index + 1, next_request)
 
-    transformed_parameters: list[Any] = []
-    for bound_parameter in bound_parameters:
-        if bound_parameter.binding.source is ParameterSource.REQUEST:
-            transformed_parameters.append(bound_parameter)
-            continue
+            middleware_ref = entry.middleware
+            if isinstance(middleware_ref, type) or isinstance(middleware_ref, Middleware):
+                middleware = factory.resolve_components(
+                    (middleware_ref,),
+                    Middleware,
+                    module=entry.declaring_module,
+                    request=current_request,
+                    kind="middleware",
+                )[0]
+                return await middleware.use(current_request, call_next)
 
-        transformed_value = await run_pipes(
-            bound_parameter.value,
-            ParameterContext(
-                request_context=request_context,
-                name=bound_parameter.binding.name,
-                source=bound_parameter.binding.source.value,
-                annotation=bound_parameter.binding.annotation,
-                value=bound_parameter.value,
-            ),
-            pipes,
-        )
-        transformed_parameters.append(
-            BoundParameter(binding=bound_parameter.binding, value=transformed_value)
-        )
+            result = cast(Any, middleware_ref)(current_request, call_next)
+            if inspect.isawaitable(result):
+                return await cast(Any, result)
+            return cast(Response, result)
+        except Exception as exc:
+            if exception_handler is None:
+                raise
+            return await exception_handler(current_request, exc)
 
-    return tuple(transformed_parameters)
+    return await invoke(0, request)

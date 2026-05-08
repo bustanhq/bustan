@@ -117,6 +117,9 @@ def render_api_reference() -> str:
         "- `bustan.testing`",
         "- `bustan.errors`",
         "",
+        "The `Defined in ...` lines identify implementation origins for browsing only.",
+        "Import supported symbols from the stable modules above, not from those internal paths.",
+        "",
     ]
 
     for module_name in STABLE_MODULES:

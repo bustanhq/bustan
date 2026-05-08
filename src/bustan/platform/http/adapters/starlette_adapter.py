@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 import uvicorn
 from starlette.applications import Starlette
 from starlette.routing import BaseRoute
 
-from ..adapter import AbstractHttpAdapter
+from ..adapter import AbstractHttpAdapter, AdapterCapabilities, CompiledAdapterRoute
+
+if TYPE_CHECKING:
+    from ..compiler import RouteContract
+    from ..execution import ExecutionPlan
+    from ....pipeline.middleware import MiddlewareRegistry
 
 
 class StarletteAdapter(AbstractHttpAdapter):
@@ -17,6 +22,14 @@ class StarletteAdapter(AbstractHttpAdapter):
     This adapter manages a Starlette application instance and handles
     asynchronous server initialization via Uvicorn.
     """
+
+    name = "starlette"
+    capabilities = AdapterCapabilities(
+        supports_host_routing=False,
+        supports_raw_body=True,
+        supports_streaming_responses=True,
+        supports_websocket_upgrade=False,
+    )
 
     def __init__(
         self, 
@@ -36,9 +49,32 @@ class StarletteAdapter(AbstractHttpAdapter):
         """Return the underlying Starlette instance."""
         return self._app
 
-    def register_routes(self, routes: list[BaseRoute]) -> None:
+    def register_routes(self, routes: list[CompiledAdapterRoute]) -> None:
         """Register routes into the Starlette application."""
-        self._app.routes.extend(routes)
+        registrations: list[BaseRoute] = [
+            cast(BaseRoute, route.registration) for route in routes
+        ]
+        self._app.routes.extend(registrations)
+
+    def compile_routes(
+        self,
+        route_contracts: tuple[RouteContract, ...],
+        container: Any,
+        *,
+        execution_plans: tuple[ExecutionPlan, ...] | None = None,
+        pipeline_override_registry: Any | None = None,
+        versioning: Any | None = None,
+        middleware_registry: MiddlewareRegistry | None = None,
+    ) -> tuple[CompiledAdapterRoute, ...]:
+        """Compile route contracts into Starlette route registrations."""
+        from .starlette_compiler import StarletteAdapterCompiler
+
+        return StarletteAdapterCompiler(
+            container,
+            pipeline_override_registry=pipeline_override_registry,
+            versioning=versioning,
+            middleware_registry=middleware_registry,
+        ).compile(route_contracts, execution_plans)
 
     def add_middleware(self, middleware_class: type, **options: Any) -> None:
         """Register middleware on the underlying Starlette application."""

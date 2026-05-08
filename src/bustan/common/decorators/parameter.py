@@ -17,6 +17,7 @@ Use these with ``typing.Annotated`` to override the default source inference::
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 
@@ -116,6 +117,56 @@ class _UploadedFilesMarker:
         return "UploadedFiles" if self.alias is None else f"UploadedFiles({self.alias!r})"
 
 
+@dataclass(frozen=True, slots=True)
+class _CustomParameterMarker:
+    """Resolved custom parameter decorator metadata for one handler parameter."""
+
+    factory: Callable[[object | None, object], object | Awaitable[object]]
+    data: object = None
+    name: str = "ParamDecorator"
+
+    def __repr__(self) -> str:
+        return self.name if self.data is None else f"{self.name}({self.data!r})"
+
+
+class _CustomParameterDecorator:
+    """Factory object used inside ``Annotated`` for custom parameter binding."""
+
+    def __init__(
+        self,
+        factory: Callable[[object | None, object], object | Awaitable[object]],
+        *,
+        name: str | None = None,
+    ) -> None:
+        if not callable(factory):
+            raise TypeError("Custom parameter decorator factory must be callable")
+        self._factory = factory
+        inferred_name = name or getattr(factory, "__name__", "ParamDecorator")
+        self._name = "ParamDecorator" if inferred_name == "<lambda>" else inferred_name
+
+    def __call__(self, data: object = None) -> _CustomParameterMarker:
+        return _CustomParameterMarker(factory=self._factory, data=data, name=self._name)
+
+    @property
+    def data(self) -> None:
+        return None
+
+    @property
+    def factory(self) -> Callable[[object | None, object], object | Awaitable[object]]:
+        return self._factory
+
+    def __repr__(self) -> str:
+        return self._name
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _CustomParameterDecorator):
+            return self._factory is other._factory
+        return isinstance(other, _CustomParameterMarker) and other.factory is self._factory and other.data is None
+
+    def __hash__(self) -> int:
+        return hash(self._factory)
+
+
 class _MarkerCallable:
     """Makes a marker usable both bare (``Annotated[str, Body]``)
     and as a call (``Annotated[str, Body("field")]``)."""
@@ -153,3 +204,13 @@ Ip: _MarkerCallable = _MarkerCallable(_IpMarker)
 HostParam: _MarkerCallable = _MarkerCallable(_HostParamMarker)
 UploadedFile: _MarkerCallable = _MarkerCallable(_UploadedFileMarker)
 UploadedFiles: _MarkerCallable = _MarkerCallable(_UploadedFilesMarker)
+
+
+def create_param_decorator(
+    factory: Callable[[object | None, object], object | Awaitable[object]],
+    *,
+    name: str | None = None,
+) -> _CustomParameterDecorator:
+    """Create an ``ExecutionContext``-backed custom parameter decorator."""
+
+    return _CustomParameterDecorator(factory, name=name)

@@ -16,10 +16,10 @@ def test_create_app_runs_lifecycle_hooks_in_startup_and_shutdown_order() -> None
         def on_module_init(self) -> None:
             events.append("feature:module_init")
 
-        async def on_app_startup(self) -> None:
+        async def on_application_bootstrap(self) -> None:
             events.append("feature:app_startup")
 
-        async def on_app_shutdown(self) -> None:
+        async def on_application_shutdown(self, signal: str | None) -> None:
             events.append("feature:app_shutdown")
 
         def on_module_destroy(self) -> None:
@@ -30,10 +30,10 @@ def test_create_app_runs_lifecycle_hooks_in_startup_and_shutdown_order() -> None
         def on_module_init(self) -> None:
             events.append("app:module_init")
 
-        def on_app_startup(self) -> None:
+        def on_application_bootstrap(self) -> None:
             events.append("app:app_startup")
 
-        def on_app_shutdown(self) -> None:
+        def on_application_shutdown(self, signal: str | None) -> None:
             events.append("app:app_shutdown")
 
         async def on_module_destroy(self) -> None:

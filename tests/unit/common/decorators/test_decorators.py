@@ -1,7 +1,8 @@
 """Unit tests for public decorators and pipeline metadata attachment."""
 
+from typing import Any, cast
+
 import pytest
-from typing import cast
 
 from bustan import (
     ExceptionFilter,
@@ -151,3 +152,31 @@ def test_pipeline_decorators_attach_controller_and_handler_metadata() -> None:
 def test_pipeline_decorators_require_at_least_one_component() -> None:
     with pytest.raises(InvalidPipelineError, match="requires at least one component"):
         UseGuards()
+
+
+def test_controller_and_route_decorators_validate_invalid_inputs() -> None:
+    with pytest.raises(InvalidControllerError, match="Unsupported controller scope"):
+        Controller("/users", scope="request-ish")
+
+    with pytest.raises(InvalidControllerError, match="only decorate classes"):
+        Controller("/users")(cast(Any, lambda: None))
+
+    with pytest.raises(RouteDefinitionError, match="Route method must be a string"):
+        from bustan.common.decorators.route import Route
+
+        Route(cast(str, None))
+
+    with pytest.raises(RouteDefinitionError, match="cannot be empty"):
+        from bustan.common.decorators.route import Route
+
+        Route("   ")
+
+    with pytest.raises(RouteDefinitionError, match="invalid characters"):
+        from bustan.common.decorators.route import Route
+
+        Route("GE T")
+
+    with pytest.raises(RouteDefinitionError, match="decorate callables"):
+        from bustan.common.decorators.route import Get
+
+        Get("/users")(cast(Any, 1))

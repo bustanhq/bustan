@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import pytest
+from starlette.requests import Request
 
 from bustan import Controller, Get, Module, VERSION_NEUTRAL, VersioningOptions, VersioningType
 from bustan.core.errors import RouteDefinitionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
 from bustan.platform.http.routing import compile_routes
+from bustan.platform.http.versioning import extract_request_version, normalize_versions
 
 
 def test_compile_routes_applies_uri_versioning() -> None:
@@ -144,3 +146,52 @@ def test_compile_routes_allows_disjoint_concrete_versions_for_header_versioning(
 
     routes = _compile_header(AppModule)
     assert len(routes) == 1
+
+
+def test_versioning_helpers_extract_versions_from_header_and_media_type_requests() -> None:
+    header_request = _build_request(headers=[(b"x-api-version", b"2")])
+    media_type_request = _build_request(headers=[(b"accept", b"application/json; version=3")])
+    default_request = _build_request()
+
+    assert normalize_versions(None) == ()
+    assert normalize_versions("1") == ("1",)
+    assert normalize_versions(["1", "2"]) == ("1", "2")
+    assert extract_request_version(
+        header_request,
+        VersioningOptions(type=VersioningType.HEADER, default_version="1"),
+    ) == "2"
+    assert extract_request_version(
+        media_type_request,
+        VersioningOptions(type=VersioningType.MEDIA_TYPE, default_version="1"),
+    ) == "3"
+    assert extract_request_version(
+        default_request,
+        VersioningOptions(type=VersioningType.MEDIA_TYPE, default_version="1"),
+    ) == "1"
+    assert extract_request_version(
+        default_request,
+        VersioningOptions(type=VersioningType.URI, default_version="1"),
+    ) == "1"
+
+
+def _build_request(headers: list[tuple[bytes, bytes]] | None = None) -> Request:
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    return Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/",
+            "raw_path": b"/",
+            "query_string": b"",
+            "headers": headers or [(b"host", b"testserver")],
+            "client": ("testclient", 50000),
+            "server": ("testserver", 80),
+            "path_params": {},
+        },
+        receive,
+    )

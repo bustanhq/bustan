@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from typing import Any, TypeVar, cast
 
 from ...core.errors import InvalidModuleError
 from .dynamic import DynamicModule
-from .metadata import ModuleMetadata, set_module_metadata
+from .metadata import ModuleMetadata, get_module_metadata, set_module_metadata
 
 ClassT = TypeVar("ClassT", bound=type[object])
 
@@ -38,6 +39,23 @@ def Module(
         if not isinstance(module_cls, type):
             raise InvalidModuleError("@Module can only decorate classes")
         return set_module_metadata(module_cls, module_metadata)
+
+    return decorate
+
+
+def Global() -> Callable[[ClassT], ClassT]:
+    """Promote an existing module declaration to a global module."""
+
+    def decorate(module_cls: ClassT) -> ClassT:
+        if not isinstance(module_cls, type):
+            raise InvalidModuleError("@Global can only decorate classes")
+
+        metadata = get_module_metadata(module_cls)
+        if metadata is None:
+            raise InvalidModuleError("@Global can only decorate classes already decorated with @Module")
+
+        # Replace immutable metadata so other decorators never observe partially mutated state.
+        return set_module_metadata(module_cls, replace(metadata, is_global=True))
 
     return decorate
 

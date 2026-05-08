@@ -56,5 +56,17 @@ def test_read_local_version_returns_none_for_non_string_versions(
     assert version_module._read_local_version() is None
 
 
+def test_read_local_version_returns_none_when_project_table_is_missing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    pyproject_path = tmp_path / "pyproject.toml"
+    pyproject_path.write_text("[tool.example]\nvalue = 1\n", encoding="utf-8")
+
+    monkeypatch.setattr(version_module, "PYPROJECT_PATH", pyproject_path)
+
+    assert version_module._read_local_version() is None
+
+
 def _raise_package_not_found(package_name: str) -> str:
     raise PackageNotFoundError(package_name)

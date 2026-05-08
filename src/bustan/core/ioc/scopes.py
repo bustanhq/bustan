@@ -38,6 +38,12 @@ class ScopeManager:
         self.active_request: ContextVar[Request | None] = ContextVar(
             "bustan_active_request", default=None
         )
+        self.active_response: ContextVar[object | None] = ContextVar(
+            "bustan_active_response", default=None
+        )
+        self.active_application: ContextVar[object | None] = ContextVar(
+            "bustan_active_application", default=None
+        )
 
     def get_singleton(self, key: tuple[ModuleKey, object]) -> object | None:
         return self.singletons.get(key)
@@ -91,6 +97,24 @@ class ScopeManager:
         if token is not None:
             self.active_request.reset(token)
 
+    def push_response(self, response: object | None) -> Token[object | None] | None:
+        if response is None:
+            return None
+        return self.active_response.set(response)
+
+    def pop_response(self, token: Token[object | None] | None) -> None:
+        if token is not None:
+            self.active_response.reset(token)
+
+    def push_application(self, application: object | None) -> Token[object | None] | None:
+        if application is None:
+            return None
+        return self.active_application.set(application)
+
+    def pop_application(self, token: Token[object | None] | None) -> None:
+        if token is not None:
+            self.active_application.reset(token)
+
     def get_request_cache(self, request: Request) -> dict[tuple[ModuleKey, object], object]:
         """Return the instance cache associated with the current request."""
         request_scope_cache = getattr(request.state, REQUEST_SCOPE_CACHE_ATTR, None)
@@ -108,6 +132,18 @@ class ScopeManager:
             request_scope_cache = {}
             setattr(request.state, REQUEST_SCOPE_CONTROLLER_CACHE_ATTR, request_scope_cache)
         return cast(dict[tuple[ModuleKey, type[object]], object], request_scope_cache)
+
+    def clear_request_state(self, request: Request | None) -> None:
+        if request is None:
+            return
+
+        state = getattr(request, "state", None)
+        if state is None:
+            return
+
+        for attribute in (REQUEST_SCOPE_CACHE_ATTR, REQUEST_SCOPE_CONTROLLER_CACHE_ATTR):
+            if hasattr(state, attribute):
+                delattr(state, attribute)
 
     def clear_controller_singletons(self) -> None:
         """Drop cached singleton controller instances."""

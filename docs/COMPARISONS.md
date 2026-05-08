@@ -1,26 +1,33 @@
 # Comparisons
 
-`Bustan` is most effective when evaluated alongside the frameworks it integrates with or is inspired by.
+`Bustan` is easiest to evaluate when you frame it as an architecture layer rather than as a "more convenient Starlette" or a direct FastAPI clone.
 
 ## `Bustan` Vs Starlette
 
-- Choose Starlette when you want a minimal ASGI toolkit and prefer assembling architecture yourself.
-- Choose `Bustan` when you want a structured application engine (modules, DI, lifecycle hooks) that uses Starlette as its high-performance execution driver.
+- Choose Starlette when you want a minimal ASGI toolkit and you prefer to assemble architecture yourself.
+- Choose `Bustan` when the main problem is keeping a growing app organized with explicit modules, DI-managed services, lifecycle stages, and a predictable request pipeline.
+
+Starlette remains the default execution engine under the hood. Bustan adds structure, not a competing transport stack.
 
 ## `Bustan` Vs FastAPI
 
-- Choose FastAPI when schema-first API tooling, automatic OpenAPI generation, and request/response model ergonomics are the primary goals.
-- Choose `Bustan` when the primary challenge is managing complex application structure, explicit module boundaries, and decoupled service layers.
+- Choose FastAPI when schema-first API ergonomics, automatic docs, and request/response model convenience are the primary goals.
+- Choose `Bustan` when the main problem is application composition, module boundaries, provider visibility, and scaling service wiring over time.
 
-## `Bustan` Vs Litestar
+FastAPI optimizes around endpoint ergonomics. Bustan optimizes around architecture and runtime composition.
 
-- Choose Litestar when you want a feature-rich, high-performance ASGI framework with extensive built-in plugins.
-- Choose `Bustan` when you want a rigorous architectural pattern (inspired by NestJS) and cross-platform flexibility; while currently defaulting to Starlette, a Litestar adapter is a future planned integration point.
+## `Bustan` Vs NestJS
 
-## What `Bustan` Is Optimizing For
+- Choose NestJS when you want the same architectural ideas in the TypeScript ecosystem.
+- Choose `Bustan` when you want that module-and-provider style in Python while keeping direct access to an ASGI platform.
 
-- **Explicit Module Boundaries**: Encapsulate related functionality and explicitly declare imports and exports.
-- **Constructor Injection**: Use class-based provider and controller injection for better testability and type safety.
-- **Request-Local State**: Manage dependencies that exist only for the life of an incoming request without global state.
-- **Predictable Request Pipeline**: Apply guards, pipes, interceptors, and filters in a fixed, documented execution order.
-- **Platform Integration**: Maintain direct access to the underlying engine's features (e.g., Starlette middleware or mounts) through standardized accessors.
+Bustan borrows the module, provider, lifecycle, and pipeline ideas, but it stays Python-native in typing, runtime, and framework integration.
+
+## What Bustan Is Optimizing For
+
+- explicit module boundaries through `imports`, `providers`, `controllers`, and `exports`
+- constructor injection for controllers and providers
+- request-local state without global mutable context
+- predictable request-time execution through guards, pipes, interceptors, and filters
+- runtime inspection through route snapshots and discovery helpers
+- direct platform access instead of hiding Starlette behind an opaque abstraction

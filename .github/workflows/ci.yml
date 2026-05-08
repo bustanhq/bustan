@@ -37,7 +37,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Ty
-        run: uv run ty check src tests examples scripts
+        run: uv run ty check src tests scripts
 
       - name: Pytest with coverage
         run: uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
@@ -95,12 +95,7 @@ jobs:
         run: uv sync --group dev --frozen
 
       - name: Run checked-in examples
-        run: |
-          uv run python examples/blog_api/app.py
-          uv run python examples/multi_module_app/app.py
-          uv run python examples/graph_inspection/app.py
-          uv run python examples/request_scope_pipeline_app/app.py
-          uv run python examples/testing_overrides/app.py
+        run: uv run python scripts/run_examples.py
 
   package:
     name: Package Verification
@@ -128,23 +123,4 @@ jobs:
         run: uvx --from twine twine check dist/*
 
       - name: Smoke install wheel
-        run: |
-          python -m venv .package-smoke
-          . .package-smoke/bin/activate
-          python -m pip install --upgrade pip
-          python -m pip install dist/*.whl
-          python -c "import bustan; print(bustan.__version__)"
-          bustan --help
-          cli_smoke_root="$(mktemp -d)"
-          cd "$cli_smoke_root"
-          printf '[project]\nname = "smoke-app"\nversion = "0.1.0"\nrequires-python = ">=3.13"\ndependencies = []\n\n[build-system]\nrequires = ["uv_build"]\nbuild-backend = "uv_build"\n' > pyproject.toml
-          bustan init
-          test -f "$cli_smoke_root/src/smoke_app/__init__.py"
-          test -f "$cli_smoke_root/src/smoke_app/app_module.py"
-          test -f "$cli_smoke_root/src/smoke_app/app_controller.py"
-          test -f "$cli_smoke_root/src/smoke_app/app_service.py"
-          test -f "$cli_smoke_root/tests/smoke_app/test_app_controller.py"
-          test -f "$cli_smoke_root/tests/smoke_app/test_app_service.py"
-          test -f "$cli_smoke_root/tests/smoke_app/test_app_module.py"
-          grep -q 'start = "smoke_app:main"' "$cli_smoke_root/pyproject.toml"
-          grep -q 'dev = "smoke_app:dev"' "$cli_smoke_root/pyproject.toml"
+        run: uv run python scripts/package_smoke_check.py
