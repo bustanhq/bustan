@@ -495,7 +495,7 @@ handle.
 
 ##### Methods
 
-- `catch(self, exc: Exception, context: ExecutionContext) -> object`
+- `catch(self, exc: Exception, context: ExecutionContext) -> object | Awaitable[object]`
   Convert an exception into a handler result or response payload.
 
 #### `ExportViolationError`
@@ -540,7 +540,7 @@ Base class for authorization and policy gates.
 
 ##### Methods
 
-- `can_activate(self, context: ExecutionContext) -> bool`
+- `can_activate(self, context: ExecutionContext) -> bool | Awaitable[bool]`
   Return True to allow request execution to continue.
 
 #### `GuardRejectedError`
@@ -1079,7 +1079,7 @@ Base class for parameter transformation and validation.
 
 ##### Methods
 
-- `transform(self, value: object, context: ExecutionContext) -> object`
+- `transform(self, value: object, context: ExecutionContext) -> object | Awaitable[object]`
   Return the transformed parameter value passed to the handler.
 
 #### `Post`
