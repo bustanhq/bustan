@@ -8,13 +8,16 @@ import os
 import sys
 from types import SimpleNamespace
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 import bustan.cli.main as cli_main_module
 from bustan.cli.commands import governance as governance_commands
 from bustan.cli.commands import routes as routes_commands
+from bustan.cli.services import scaffold as scaffold_service
 from bustan.cli.main import main
+from bustan.core.module.dynamic import ModuleInstanceKey
 
 _PYPROJECT_TOML = """\
 [project]
@@ -76,6 +79,51 @@ def test_init_adds_scripts_to_pyproject(tmp_path: Path) -> None:
     assert '[project.scripts]' in content
     assert 'start = "my_app:main"' in content
     assert 'dev = "my_app:dev"' in content
+
+
+def test_package_name_from_pyproject_returns_none_for_blank_project_name(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = \"   \"\n", encoding="utf-8")
+
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        assert scaffold_service.package_name_from_pyproject() is None
+    finally:
+        os.chdir(old_cwd)
+
+
+def test_init_project_preserves_existing_readme_and_scripts_section(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = \"demo-app\"\n\n[project.scripts]\ncustom = \"demo_app:main\"\n",
+        encoding="utf-8",
+    )
+    readme_path = tmp_path / "README.md"
+    readme_path.write_text("keep me\n", encoding="utf-8")
+
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        scaffold_service.init_project(package_name="demo_app")
+    finally:
+        os.chdir(old_cwd)
+
+    assert readme_path.read_text(encoding="utf-8") == "keep me\n"
+    pyproject_content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    assert pyproject_content.count("[project.scripts]") == 1
+    assert 'custom = "demo_app:main"' in pyproject_content
+
+
+def test_scaffold_helpers_cover_missing_pyproject_and_name_sanitization(tmp_path: Path) -> None:
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        scaffold_service._add_scripts_to_pyproject("demo_app")
+    finally:
+        os.chdir(old_cwd)
+
+    assert not (tmp_path / "pyproject.toml").exists()
+    assert scaffold_service._to_package_name("!!!") == "bustan_app"
+    assert scaffold_service._to_package_name("123 app") == "app_123_app"
 
 
 def test_init_fails_without_pyproject(tmp_path: Path, capsys) -> None:
@@ -643,4 +691,84 @@ def test_display_route_module_falls_back_to_repr_for_unknown_module_shape() -> N
     contract = SimpleNamespace(module_key=SimpleNamespace(module="custom"))
 
     assert governance_commands._display_route_module(contract).startswith("namespace(")
+
+
+def test_display_route_module_uses_nested_module_type_name() -> None:
+    class UsersModule:
+        pass
+
+    contract = SimpleNamespace(module_key=ModuleInstanceKey(module=UsersModule, instance_id="test"))
+
+    assert governance_commands._display_route_module(contract) == "UsersModule"
+
+
+def test_release_gate_reports_failed_adapter_conformance_and_capability_drift(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.json"
+    manifest_path = tmp_path / "manifest.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "bustan-governance": {
+                    "release-gate": {
+                        "max_removed_routes": 0,
+                        "max_changed_routes": 0,
+                        "require_adapter_conformance": True,
+                        "adapters": ["starlette"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "bustan-governance": {
+                    "adapter-conformance": {
+                        "starlette": {"supports_raw_body": True}
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        governance_commands,
+        "_build_diff_report",
+        lambda target, snapshot_path: {
+            "summary": {"added": 0, "removed": 0, "changed": 0},
+            "diff": [],
+        },
+    )
+    monkeypatch.setattr(
+        governance_commands,
+        "_build_conformance_report",
+        lambda adapter_name: {
+            "passed": False,
+            "capabilities": {"supports_raw_body": False},
+        },
+    )
+
+    report = governance_commands._build_release_gate_report(
+        "sample:AppModule",
+        "snapshot.json",
+        str(config_path),
+        str(manifest_path),
+    )
+
+    assert report["passed"] is False
+    assert report["conformance"] == {
+        "starlette": {
+            "passed": False,
+            "capabilities": {"supports_raw_body": False},
+        }
+    }
+    errors = cast(list[str], report["errors"])
+
+    assert "adapter starlette failed conformance" in errors
+    assert "adapter starlette capabilities drifted from the release manifest" in errors
 

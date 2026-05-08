@@ -149,6 +149,54 @@ def test_execution_context_properties_handle_missing_request_values() -> None:
     assert context.controller is controller
 
 
+def test_execution_context_parameter_accessors_cover_default_and_compatibility_paths() -> None:
+    request = _build_request("/")
+
+    class UsersController:
+        def list_users(self) -> None:
+            return None
+
+    controller = UsersController()
+    context = ExecutionContext.create_http(
+        request=request,
+        response=None,
+        handler=controller.list_users,
+        controller_cls=UsersController,
+        module=UsersController,
+        controller=controller,
+        container=cast(Any, object()),
+    )
+
+    assert context.with_parameter_value("ignored") is context
+    assert context.parameter_name is None
+    assert context.parameter_source is None
+    assert context.parameter_annotation is None
+    assert context.parameter_value is None
+    assert context.source is None
+    assert context.annotation is None
+    assert context.value is None
+    assert context.validation_mode == "auto"
+    assert context.validate_custom_decorators is False
+    assert context.execution_context is context
+
+    parameter_context = ParameterContext(
+        request_context=context,
+        name="payload",
+        source="body",
+        annotation=int,
+        value=1,
+    )
+
+    updated_context = parameter_context.with_parameter_value(2)
+
+    assert parameter_context.parameter_name == "payload"
+    assert parameter_context.parameter_source == "body"
+    assert parameter_context.parameter_annotation is int
+    assert parameter_context.parameter_value == 1
+    assert updated_context.value == 2
+    assert updated_context.parameter_value == 2
+
+
 def _build_request(path: str) -> Request:
     scope = {
         "type": "http",

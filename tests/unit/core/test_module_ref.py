@@ -93,6 +93,7 @@ def test_context_ids_are_deterministic_and_scope_safe() -> None:
     assert application_id.scope == "application"
     assert request_id.scope == "request"
     assert durable_id.scope == "durable"
+    assert request_context_id(None) == ContextId(scope="request", value="none")
     assert len({application_id, request_id, durable_id}) == 3
 
 
