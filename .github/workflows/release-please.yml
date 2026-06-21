@@ -27,7 +27,7 @@ jobs:
 
       - name: Check out repository
         if: ${{ steps.release.outputs.releases_created }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.release.outputs.sha }}
 
