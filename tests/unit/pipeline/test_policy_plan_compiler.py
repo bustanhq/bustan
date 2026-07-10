@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from bustan import Controller, Get, Module, SkipThrottle
+from bustan.core.errors import RouteDefinitionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
 from bustan.platform.http.compiler import compile_route_contracts
@@ -81,6 +84,95 @@ def test_route_and_controller_policies_merge_deterministically() -> None:
     assert contract.policy_plan.roles == ("admin", "manager")
     assert contract.policy_plan.permissions == ("users:read", "users:write")
     assert contract.policy_plan.owner == "accounts-platform"
+
+
+def test_public_controller_does_not_disable_handler_access_requirements() -> None:
+    @Public()
+    @Controller("/mixed")
+    class MixedController:
+        @Get("/open")
+        def read_open(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+        @Auth("jwt")
+        @Roles("admin")
+        @Get("/locked")
+        def read_locked(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[MixedController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+
+    contracts = compile_route_contracts(graph, container)
+    plans_by_handler = {contract.handler_name: contract.policy_plan for contract in contracts}
+
+    assert plans_by_handler["read_open"].public is True
+    assert plans_by_handler["read_locked"].public is False
+    assert plans_by_handler["read_locked"].auth is not None
+    assert plans_by_handler["read_locked"].roles == ("admin",)
+
+
+def test_handler_public_still_overrides_controller_access_requirements() -> None:
+    @Auth("jwt")
+    @Controller("/accounts")
+    class AccountsController:
+        @Public()
+        @Get("/login")
+        def login(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[AccountsController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+
+    [contract] = compile_route_contracts(graph, container)
+
+    assert contract.policy_plan.public is True
+
+
+def test_contradictory_public_and_requirements_at_one_level_are_rejected() -> None:
+    @Controller("/handler-conflict")
+    class HandlerConflictController:
+        @Public()
+        @Auth("jwt")
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[HandlerConflictController])
+    class HandlerConflictModule:
+        pass
+
+    graph = build_module_graph(HandlerConflictModule)
+    container = build_container(graph)
+
+    with pytest.raises(RouteDefinitionError, match="handler level"):
+        compile_route_contracts(graph, container)
+
+    @Public()
+    @Roles("admin")
+    @Controller("/controller-conflict")
+    class ControllerConflictController:
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[ControllerConflictController])
+    class ControllerConflictModule:
+        pass
+
+    graph = build_module_graph(ControllerConflictModule)
+    container = build_container(graph)
+
+    with pytest.raises(RouteDefinitionError, match="controller level"):
+        compile_route_contracts(graph, container)
 
 
 def test_empty_routes_still_expose_an_explicit_empty_policy_plan() -> None:

@@ -7,7 +7,7 @@ from typing import Any, cast
 
 from bustan import Controller, Get, Module, SkipThrottle, create_app
 from bustan.platform.http.abstractions import HttpRequest
-from bustan.security import AUTHENTICATOR_REGISTRY, Auth, RateLimit, Roles
+from bustan.security import AUTHENTICATOR_REGISTRY, Auth, Public, RateLimit, Roles
 from starlette.testclient import TestClient
 
 
@@ -90,6 +90,42 @@ def test_create_app_binds_authenticated_principals_for_policy_guard_protected_ro
 
     assert response.status_code == 200
     assert response.json() == {"principal_id": "user-1"}
+
+
+def test_public_controller_does_not_bypass_handler_level_auth() -> None:
+    @Public()
+    @Controller("/mixed")
+    class MixedController:
+        @Get("/open")
+        def read_open(self) -> dict[str, str]:
+            return {"status": "open"}
+
+        @Auth("jwt")
+        @Roles("admin")
+        @Get("/locked")
+        def read_locked(self) -> dict[str, str]:
+            return {"status": "locked"}
+
+    @Module(
+        controllers=[MixedController],
+        providers=[
+            {
+                "provide": AUTHENTICATOR_REGISTRY,
+                "use_value": {"jwt": AuthenticatorStub(None)},
+            }
+        ],
+    )
+    class AppModule:
+        pass
+
+    application = create_app(AppModule)
+    with TestClient(cast(Any, application)) as client:
+        open_response = client.get("/mixed/open")
+        locked_response = client.get("/mixed/locked")
+
+    assert open_response.status_code == 200
+    assert open_response.json() == {"status": "open"}
+    assert locked_response.status_code == 403
 
 
 def test_create_app_returns_deterministic_policy_denial_responses() -> None:

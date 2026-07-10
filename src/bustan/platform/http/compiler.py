@@ -148,10 +148,16 @@ class RouteCompiler:
             controller_pipeline,
             handler_pipeline,
         )
-        merged_policy = merge_policy_metadata(
+        controller_policy = (
             get_controller_policy_metadata(scanned_handler.controller_cls, inherit=True)
-            or PolicyMetadata(),
-            get_handler_policy_metadata(scanned_handler.handler) or PolicyMetadata(),
+            or PolicyMetadata()
+        )
+        handler_policy = get_handler_policy_metadata(scanned_handler.handler) or PolicyMetadata()
+        merged_policy = merge_policy_metadata(controller_policy, handler_policy)
+        resolved_public = _resolve_public_policy(
+            controller_policy,
+            handler_policy,
+            scanned_handler,
         )
         route_versions = normalize_versions(scanned_handler.route.version)
         controller_versions = normalize_versions(scanned_handler.controller_metadata.version)
@@ -159,7 +165,7 @@ class RouteCompiler:
         controller_hosts = scanned_handler.controller_metadata.hosts
         policy_plan = PolicyPlan(
             auth=merged_policy.auth,
-            public=merged_policy.public,
+            public=resolved_public,
             roles=merged_policy.roles,
             permissions=merged_policy.permissions,
             rate_limit=merged_policy.rate_limit,
@@ -278,6 +284,40 @@ def _resolve_annotation_string(
         localns=dict(localns),
         include_extras=True,
     )["value"]
+
+
+def _declares_access_requirements(policy: PolicyMetadata) -> bool:
+    return policy.auth is not None or bool(policy.roles) or bool(policy.permissions)
+
+
+def _resolve_public_policy(
+    controller_policy: PolicyMetadata,
+    handler_policy: PolicyMetadata,
+    scanned_handler: ScannedHandler,
+) -> bool:
+    """Resolve the effective `public` flag across declaration levels.
+
+    `@Public()` combined with `@Auth`/`@Roles`/`@Permissions` at the same
+    level is contradictory and rejected. Across levels, the handler's own
+    access requirements always win over a controller-level `@Public()`.
+    """
+
+    route_label = (
+        f"{scanned_handler.controller_cls.__name__}."
+        f"{scanned_handler.route_definition.handler_name}"
+    )
+    for level, policy in (("controller", controller_policy), ("handler", handler_policy)):
+        if policy.public and _declares_access_requirements(policy):
+            raise RouteDefinitionError(
+                f"{route_label} declares @Public together with auth/roles/permissions "
+                f"at the {level} level; remove one of the contradictory declarations"
+            )
+
+    if _declares_access_requirements(handler_policy):
+        return handler_policy.public
+    if handler_policy.public:
+        return True
+    return controller_policy.public
 
 
 def _has_policy(policy_plan: PolicyPlan) -> bool:
