@@ -581,6 +581,64 @@ def test_bind_handler_arguments_reports_missing_required_headers() -> None:
     assert exc_info.value.source == "header"
 
 
+def test_bind_handler_arguments_never_binds_header_parameters_from_query_or_body() -> None:
+    @Controller("/")
+    class TestController:
+        @Get("/")
+        def index(self, token: Annotated[str, Header("X-Token")]) -> None:
+            return None
+
+    route_definition = iter_controller_routes(TestController)[0]
+    binding_plan = compile_parameter_bindings(TestController, route_definition)
+
+    spoofed_request = _build_request(
+        method="GET",
+        path="/",
+        query_params={"token": "SPOOFED"},
+        headers=[(b"x-token", b"REAL")],
+    )
+    args, kwargs = anyio.run(bind_handler_arguments, spoofed_request, binding_plan)
+    bound = {**dict(enumerate(args)), **kwargs}
+    assert "SPOOFED" not in bound.values()
+    assert "REAL" in bound.values()
+
+    missing_header_request = _build_request(
+        method="GET",
+        path="/",
+        query_params={"token": "SPOOFED"},
+    )
+    with pytest.raises(ParameterBindingError, match="Missing required header"):
+        anyio.run(bind_handler_arguments, missing_header_request, binding_plan)
+
+
+def test_bind_handler_arguments_binds_headers_alongside_inferred_body_parameters() -> None:
+    @Controller("/")
+    class TestController:
+        @Post("/")
+        def create(
+            self,
+            name: str,
+            api_key: Annotated[str, Header("X-API-Key")],
+        ) -> None:
+            return None
+
+    route_definition = iter_controller_routes(TestController)[0]
+    binding_plan = compile_parameter_bindings(TestController, route_definition)
+    request = _build_request(
+        method="POST",
+        path="/",
+        headers=[(b"x-api-key", b"secret")],
+        json_body={"name": "ada"},
+    )
+
+    args, kwargs = anyio.run(bind_handler_arguments, request, binding_plan)
+    bound = {**dict(enumerate(args)), **kwargs}
+
+    assert "secret" in bound.values()
+    assert "ada" in bound.values()
+    assert not any(isinstance(value, dict) for value in bound.values())
+
+
 def test_bind_handler_arguments_supports_uploaded_file_and_files_markers() -> None:
     @Controller("/uploads")
     class UploadsController:

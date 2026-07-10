@@ -488,6 +488,31 @@ async def _bind_parameter(
             request_body,
         )
 
+    # Header-bound parameters must never fall through to the query string or
+    # request body: those are client-controlled alternates that would allow
+    # spoofing header-sourced values such as auth or trust headers.
+    if binding.source is ParameterSource.HEADER:
+        lookup_name = binding.alias or binding.name.replace("_", "-")
+        header_value = request.headers.get(lookup_name)
+        if header_value is None:
+            if binding.has_default:
+                return binding.default, request_body
+            raise _parameter_error(
+                f"Missing required header {lookup_name!r}",
+                field=binding.name,
+                source="header",
+                reason="missing",
+            )
+        return (
+            _coerce_value(
+                header_value,
+                annotation=binding.annotation,
+                parameter_name=binding.name,
+                source_description="header",
+            ),
+            request_body,
+        )
+
     # Query values take precedence for inferred parameters so callers can
     # override scalars without reshaping the JSON body.
     query_value = _query_value(request, binding)
@@ -511,28 +536,6 @@ async def _bind_parameter(
                 annotation=binding.annotation,
                 parameter_name=binding.name,
                 source_description="request body",
-            ),
-            request_body,
-        )
-
-    if binding.source is ParameterSource.HEADER:
-        lookup_name = binding.alias or binding.name.replace("_", "-")
-        header_value = request.headers.get(lookup_name)
-        if header_value is None:
-            if binding.has_default:
-                return binding.default, request_body
-            raise _parameter_error(
-                f"Missing required header {lookup_name!r}",
-                field=binding.name,
-                source="header",
-                reason="missing",
-            )
-        return (
-            _coerce_value(
-                header_value,
-                annotation=binding.annotation,
-                parameter_name=binding.name,
-                source_description="header",
             ),
             request_body,
         )
