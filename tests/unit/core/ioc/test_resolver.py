@@ -170,7 +170,15 @@ def test_resolver_cache_helpers_cover_request_durable_singleton_and_transient_pa
     resolver, _registry = _resolver()
     request = _build_request("/cache")
     request_binding = _binding("request-token", ProviderScope.REQUEST)
-    durable_binding = _binding("durable-token", ProviderScope.DURABLE)
+
+    class _DurableTarget:
+        @classmethod
+        def get_durable_context_key(cls, request: Request | None) -> str:
+            return "shared-context"
+
+    durable_binding = Binding(
+        "durable-token", AppModule, "class", _DurableTarget, ProviderScope.DURABLE
+    )
     singleton_binding = _binding("singleton-token", ProviderScope.SINGLETON)
     transient_binding = _binding("transient-token", ProviderScope.TRANSIENT)
 

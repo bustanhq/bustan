@@ -547,6 +547,7 @@ class Resolver:
 		self,
 		binding: Binding,
 		request: Request | None,
+		token: object,
 	) -> object:
 		target = binding.target
 		if isinstance(target, type) and hasattr(target, "get_durable_context_key"):
@@ -554,9 +555,14 @@ class Resolver:
 				object,
 				getattr(target, "get_durable_context_key")(request),
 			)
-		if request is not None:
-			return id(request)
-		return "__default_durable_context__"
+		# A durable instance cache must never be keyed on id(request):
+		# CPython reuses object ids, which hands one request's instance to a
+		# later, unrelated request. Partitioning requires an explicit key.
+		raise ProviderResolutionError(
+			f"Durable provider {_qualname(token)} must implement the DurableProvider "
+			"protocol with a 'get_durable_context_key' classmethod so durable "
+			"instances can be partitioned across requests"
+		)
 
 	def _get_cached_instance(
 		self,
@@ -576,7 +582,7 @@ class Resolver:
 
 		if binding.scope is ProviderScope.DURABLE:
 			active_req = self.scope_manager.active_request.get()
-			durable_key = self._get_durable_context_key(binding, active_req)
+			durable_key = self._get_durable_context_key(binding, active_req, token)
 			durable_cache_key = (declaring_module, token, durable_key)
 			return self.scope_manager.get_durable(durable_cache_key)
 
@@ -602,7 +608,7 @@ class Resolver:
 
 		if binding.scope is ProviderScope.DURABLE:
 			active_req = self.scope_manager.active_request.get()
-			durable_key = self._get_durable_context_key(binding, active_req)
+			durable_key = self._get_durable_context_key(binding, active_req, token)
 			durable_cache_key = (declaring_module, token, durable_key)
 			lock = self.scope_manager.get_durable_lock(durable_cache_key)
 			with lock:
