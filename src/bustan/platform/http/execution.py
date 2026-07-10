@@ -336,6 +336,10 @@ def _merge_response_context(
 ) -> RuntimeResponse:
     if hasattr(response, "headers"):
         for header_name, header_value in response_context.headers.items():
+            # content-length is derived from the final response body; the
+            # placeholder context response reports 0 for its own empty body.
+            if header_name.lower() == "content-length":
+                continue
             response.headers[header_name] = header_value
 
     if (

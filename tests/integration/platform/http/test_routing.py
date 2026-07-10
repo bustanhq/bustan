@@ -149,6 +149,42 @@ def test_create_app_exposes_response_token_during_controller_resolution() -> Non
     assert response.json() == {"status": "ok"}
 
 
+def test_create_app_reports_content_length_matching_the_response_body() -> None:
+    @Controller("/lengths")
+    class LengthController:
+        @Get("/dict")
+        def read_dict(self) -> dict[str, str]:
+            return {"message": "hello"}
+
+        @Get("/passthrough")
+        def read_passthrough(self) -> PlainTextResponse:
+            return PlainTextResponse("plain body", status_code=200)
+
+    @Controller("/mutations")
+    class MutationController:
+        def __init__(self, response: Response) -> None:
+            self._response = response
+
+        @Get("/")
+        def read_mutated(self) -> dict[str, str]:
+            self._response.headers["x-custom"] = "yes"
+            return {"message": "mutated"}
+
+    @Module(controllers=[LengthController, MutationController])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        dict_response = client.get("/lengths/dict")
+        mutated_response = client.get("/mutations/")
+        passthrough_response = client.get("/lengths/passthrough")
+
+    for response in (dict_response, mutated_response, passthrough_response):
+        assert response.headers["content-length"] == str(len(response.content))
+        assert len(response.content) > 0
+    assert mutated_response.headers["x-custom"] == "yes"
+
+
 def test_create_app_binds_request_path_query_and_json_body_values() -> None:
     @Injectable
     class UsersService:
