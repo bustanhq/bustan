@@ -14,7 +14,7 @@ from bustan.common.types import ProviderScope
 from bustan.core.errors import ProviderResolutionError
 from bustan.core.ioc.overrides import OverrideManager
 from bustan.core.ioc.registry import Binding, Registry
-from bustan.core.ioc.resolver import ParsedDependency, ResolutionFrame, Resolver
+from bustan.core.ioc.resolver import ParsedDependency, Resolver
 from bustan.core.ioc.scopes import ScopeManager
 from bustan.core.ioc.tokens import APPLICATION, INQUIRER, REQUEST, RESPONSE
 
@@ -148,7 +148,7 @@ def test_resolver_special_tokens_cover_runtime_success_and_error_paths() -> None
             is_durable_scoped=False,
         )
 
-    stack_token = resolver.resolution_stack.set((ResolutionFrame("ParentService", AppModule),))
+    construction_token = resolver.construction_stack.set((Starlette, Service))
     try:
         assert (
             resolver._resolve_special_token(
@@ -160,10 +160,10 @@ def test_resolver_special_tokens_cover_runtime_success_and_error_paths() -> None
                 is_request_scoped=False,
                 is_durable_scoped=False,
             )
-            == "ParentService"
+            is Starlette
         )
     finally:
-        resolver.resolution_stack.reset(stack_token)
+        resolver.construction_stack.reset(construction_token)
 
 
 def test_resolver_cache_helpers_cover_request_durable_singleton_and_transient_paths() -> None:
