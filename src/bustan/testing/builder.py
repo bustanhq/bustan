@@ -94,16 +94,20 @@ class CompiledTestingModule:
         return TestClient(cast(Any, self.application))
 
     async def close(self) -> None:
-        await run_shutdown_hooks(
-            self.application.module_graph,
-            self.application.container,
-            self._module_instances,
-        )
-        await run_destroy_hooks(
-            self.application.module_graph,
-            self.application.container,
-            self._module_instances,
-        )
+        errors = [
+            *await run_shutdown_hooks(
+                self.application.module_graph,
+                self.application.container,
+                self._module_instances,
+            ),
+            *await run_destroy_hooks(
+                self.application.module_graph,
+                self.application.container,
+                self._module_instances,
+            ),
+        ]
+        if errors:
+            raise errors[0]
 
 
 class TestingModuleBuilder:

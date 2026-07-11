@@ -59,7 +59,7 @@ jobs:
           cli_smoke_root="$(mktemp -d)"
           mkdir "$cli_smoke_root/smoke-app"
           cd "$cli_smoke_root/smoke-app"
-          uv init --package smoke-app
+          uv init --package .
           uv add "bustan==${BUSTAN_VERSION}"
           uv run bustan init
           test -f "$cli_smoke_root/smoke-app/pyproject.toml"

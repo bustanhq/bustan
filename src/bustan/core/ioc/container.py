@@ -77,11 +77,9 @@ class Container:
     ) -> object:
         """Resolve a provider visible from the given module.
 
-        Checks for overrides first, then delegates to the recursive resolver.
+        The resolver honors overrides against the token's declaring module,
+        so overriding an exported provider also applies to importing modules.
         """
-        if self.override_manager.has_override(token, module=module):
-            return self.override_manager.get_override(token, module=module)
-
         return self.resolver.resolve(token, module=module, request=request)
 
     async def resolve_async(
@@ -92,9 +90,6 @@ class Container:
         request: Request | None = None,
     ) -> object:
         """Resolve a provider, awaiting async factories when required."""
-
-        if self.override_manager.has_override(token, module=module):
-            return self.override_manager.get_override(token, module=module)
 
         return await self.resolver.resolve_async(token, module=module, request=request)
 

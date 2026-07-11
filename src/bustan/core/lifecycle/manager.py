@@ -62,24 +62,42 @@ class LifecycleManager:
         if not self._state.initialized or self._state.closed:
             return
 
-        await run_before_shutdown_hooks(
-            self._module_graph,
-            self._container,
-            self._state.module_instances,
-            signal,
+        # Every teardown stage runs to completion even when hooks fail, so
+        # one buggy module cannot leak every other module's resources; the
+        # failures are re-raised together once teardown has finished.
+        errors: list[LifecycleError] = []
+        errors.extend(
+            await run_before_shutdown_hooks(
+                self._module_graph,
+                self._container,
+                self._state.module_instances,
+                signal,
+            )
         )
-        await run_shutdown_hooks(
-            self._module_graph,
-            self._container,
-            self._state.module_instances,
-            signal,
+        errors.extend(
+            await run_shutdown_hooks(
+                self._module_graph,
+                self._container,
+                self._state.module_instances,
+                signal,
+            )
         )
-        await run_destroy_hooks(
-            self._module_graph,
-            self._container,
-            self._state.module_instances,
+        errors.extend(
+            await run_destroy_hooks(
+                self._module_graph,
+                self._container,
+                self._state.module_instances,
+            )
         )
         self._state.closed = True
+
+        if errors:
+            if len(errors) == 1:
+                raise errors[0]
+            summary = "; ".join(str(error) for error in errors)
+            raise LifecycleError(
+                f"{len(errors)} lifecycle hooks failed during shutdown: {summary}"
+            )
 
     async def _warm_async_factories(self) -> None:
         for node in reversed(self._module_graph.nodes):

@@ -6,6 +6,8 @@ import threading
 from contextvars import ContextVar, Token
 from typing import Hashable, Protocol, cast, runtime_checkable
 
+import anyio
+
 from starlette.requests import Request
 
 from ..module.dynamic import ModuleKey
@@ -34,6 +36,7 @@ class ScopeManager:
         ] = {}
         self.durable_instances: dict[tuple[ModuleKey, object, Hashable], object] = {}
         self.durable_locks: dict[tuple[ModuleKey, object, Hashable], threading.Lock] = {}
+        self.async_construction_locks: dict[object, anyio.Lock] = {}
         self._singleton_locks_guard = threading.Lock()
         self.active_request: ContextVar[Request | None] = ContextVar(
             "bustan_active_request", default=None
@@ -87,6 +90,13 @@ class ScopeManager:
         except KeyError:
             with self._singleton_locks_guard:
                 return self.durable_locks.setdefault(key, threading.Lock())
+
+    def get_async_construction_lock(self, key: object) -> anyio.Lock:
+        try:
+            return self.async_construction_locks[key]
+        except KeyError:
+            with self._singleton_locks_guard:
+                return self.async_construction_locks.setdefault(key, anyio.Lock())
 
     def push_request(self, request: Request | None) -> Token[Request | None] | None:
         if request is None:

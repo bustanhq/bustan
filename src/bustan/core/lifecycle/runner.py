@@ -20,9 +20,16 @@ async def run_lifecycle_stage(
     module_instances: Mapping[ModuleKey, object],
     hook_name: str,
     *hook_arguments: object,
-) -> None:
-    """Execute one lifecycle stage for every module in the provided order."""
+    collect_errors: bool = False,
+) -> tuple[LifecycleError, ...]:
+    """Execute one lifecycle stage for every module in the provided order.
 
+    With ``collect_errors`` (the teardown mode), a failing hook does not
+    prevent the remaining hooks from running; the failures are returned so
+    the caller can aggregate them once teardown has completed.
+    """
+
+    errors: list[LifecycleError] = []
     for node in nodes:
         module_instance = module_instances.get(node.key)
         if module_instance is None:
@@ -37,9 +44,15 @@ async def run_lifecycle_stage(
             if inspect.isawaitable(result):
                 await result
         except Exception as exc:
-            raise LifecycleError(
+            error = LifecycleError(
                 f"Lifecycle hook {_display_name(node.key)}.{hook_name} failed: {exc}"
-            ) from exc
+            )
+            error.__cause__ = exc
+            if not collect_errors:
+                raise error from exc
+            errors.append(error)
+
+    return tuple(errors)
 
 
 def instantiate_lifecycle_modules(nodes: tuple[ModuleNode, ...]) -> Mapping[ModuleKey, object]:
@@ -78,9 +91,20 @@ async def run_provider_lifecycle_stage(
     container: Container,
     hook_name: str,
     *hook_arguments: object,
-) -> None:
-    """Execute one lifecycle stage for resolved singleton providers."""
-    for instance in container.scope_manager.singletons.values():
+    reverse: bool = False,
+    collect_errors: bool = False,
+) -> tuple[LifecycleError, ...]:
+    """Execute one lifecycle stage for resolved singleton providers.
+
+    Singletons are recorded in creation (dependency-first) order; teardown
+    stages pass ``reverse`` so dependents shut down before their dependencies.
+    """
+    instances = tuple(container.scope_manager.singletons.values())
+    if reverse:
+        instances = tuple(reversed(instances))
+
+    errors: list[LifecycleError] = []
+    for instance in instances:
         hook = getattr(instance, hook_name, None)
         if hook is None:
             continue
@@ -89,9 +113,15 @@ async def run_provider_lifecycle_stage(
             if inspect.isawaitable(result):
                 await result
         except Exception as exc:
-            raise LifecycleError(
+            error = LifecycleError(
                 f"Provider lifecycle hook {type(instance).__name__}.{hook_name} failed: {exc}"
-            ) from exc
+            )
+            error.__cause__ = exc
+            if not collect_errors:
+                raise error from exc
+            errors.append(error)
+
+    return tuple(errors)
 
 
 async def run_init_hooks(graph: ModuleGraph, container: Container) -> Mapping[ModuleKey, object]:
@@ -118,17 +148,24 @@ async def run_before_shutdown_hooks(
     container: Container,
     module_instances: Mapping[ModuleKey, object],
     signal: str | None = None,
-) -> None:
-    """Run pre-shutdown hooks in reverse order."""
+) -> tuple[LifecycleError, ...]:
+    """Run pre-shutdown hooks in reverse order, collecting failures."""
 
     reversed_nodes = tuple(reversed(graph.nodes))
-    await run_lifecycle_stage(
+    errors = await run_lifecycle_stage(
         reversed_nodes,
         module_instances,
         "before_application_shutdown",
         signal,
+        collect_errors=True,
     )
-    await run_provider_lifecycle_stage(container, "before_application_shutdown", signal)
+    return errors + await run_provider_lifecycle_stage(
+        container,
+        "before_application_shutdown",
+        signal,
+        reverse=True,
+        collect_errors=True,
+    )
 
 
 async def run_shutdown_hooks(
@@ -136,24 +173,41 @@ async def run_shutdown_hooks(
     container: Container,
     module_instances: Mapping[ModuleKey, object],
     signal: str | None = None,
-) -> None:
-    """Run application shutdown hooks in reverse order."""
+) -> tuple[LifecycleError, ...]:
+    """Run application shutdown hooks in reverse order, collecting failures."""
     reversed_nodes = tuple(reversed(graph.nodes))
-    await run_lifecycle_stage(
+    errors = await run_lifecycle_stage(
         reversed_nodes,
         module_instances,
         "on_application_shutdown",
         signal,
+        collect_errors=True,
     )
-    await run_provider_lifecycle_stage(container, "on_application_shutdown", signal)
+    return errors + await run_provider_lifecycle_stage(
+        container,
+        "on_application_shutdown",
+        signal,
+        reverse=True,
+        collect_errors=True,
+    )
 
 
 async def run_destroy_hooks(
     graph: ModuleGraph,
     container: Container,
     module_instances: Mapping[ModuleKey, object],
-) -> None:
-    """Run teardown hooks in reverse order."""
+) -> tuple[LifecycleError, ...]:
+    """Run teardown hooks in reverse order, collecting failures."""
     reversed_nodes = tuple(reversed(graph.nodes))
-    await run_lifecycle_stage(reversed_nodes, module_instances, "on_module_destroy")
-    await run_provider_lifecycle_stage(container, "on_module_destroy")
+    errors = await run_lifecycle_stage(
+        reversed_nodes,
+        module_instances,
+        "on_module_destroy",
+        collect_errors=True,
+    )
+    return errors + await run_provider_lifecycle_stage(
+        container,
+        "on_module_destroy",
+        reverse=True,
+        collect_errors=True,
+    )
