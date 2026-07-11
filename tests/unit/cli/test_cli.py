@@ -110,6 +110,29 @@ def test_init_project_preserves_existing_readme_and_scripts_section(tmp_path: Pa
     pyproject_content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
     assert pyproject_content.count("[project.scripts]") == 1
     assert 'custom = "demo_app:main"' in pyproject_content
+    # uv init --package pre-creates [project.scripts]; start/dev must be
+    # merged into it rather than skipped (the published-package smoke flow).
+    assert 'start = "demo_app:main"' in pyproject_content
+    assert 'dev = "demo_app:dev"' in pyproject_content
+
+
+def test_init_project_does_not_duplicate_existing_start_and_dev_scripts(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = \"demo-app\"\n\n[project.scripts]\n"
+        'start = "demo_app:main"\ndev = "demo_app:dev"\n',
+        encoding="utf-8",
+    )
+
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        scaffold_service.init_project(package_name="demo_app")
+    finally:
+        os.chdir(old_cwd)
+
+    pyproject_content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    assert pyproject_content.count('start = "demo_app:main"') == 1
+    assert pyproject_content.count('dev = "demo_app:dev"') == 1
 
 
 def test_scaffold_helpers_cover_missing_pyproject_and_name_sanitization(tmp_path: Path) -> None:

@@ -65,20 +65,36 @@ def init_project(*, package_name: str) -> None:
 
 
 def _add_scripts_to_pyproject(package_name: str) -> None:
-    """Append start/dev script entries to pyproject.toml if not already present."""
+    """Ensure start/dev script entries exist in pyproject.toml."""
     pyproject_path = Path.cwd() / "pyproject.toml"
     if not pyproject_path.exists():
         return
 
     content = pyproject_path.read_text(encoding="utf-8")
-    if "[project.scripts]" in content:
+    entries = {
+        "start": f'start = "{package_name}:main"',
+        "dev": f'dev = "{package_name}:dev"',
+    }
+    missing = [
+        line
+        for key, line in entries.items()
+        if re.search(rf"^{key}\s*=", content, flags=re.MULTILINE) is None
+    ]
+    if not missing:
         return
 
-    scripts_block = (
-        f"\n[project.scripts]\n"
-        f'start = "{package_name}:main"\n'
-        f'dev = "{package_name}:dev"\n'
-    )
+    # uv init --package already creates [project.scripts]; merge into it
+    # instead of appending a duplicate section header.
+    if "[project.scripts]" in content:
+        content = content.replace(
+            "[project.scripts]",
+            "[project.scripts]\n" + "\n".join(missing),
+            1,
+        )
+        pyproject_path.write_text(content, encoding="utf-8")
+        return
+
+    scripts_block = "\n[project.scripts]\n" + "\n".join(missing) + "\n"
     pyproject_path.write_text(content.rstrip() + "\n" + scripts_block, encoding="utf-8")
 
 
