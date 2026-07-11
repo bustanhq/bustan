@@ -21,7 +21,7 @@ Run the same checks locally that CI expects:
 uv run python scripts/generate_api_reference.py --check
 uv run python scripts/check_markdown_links.py
 uv run ruff check .
-uv run ty check src tests examples scripts
+uv run ty check src tests scripts
 uv run pytest
 uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
 ```
@@ -52,8 +52,10 @@ This project does not require a CLA or DCO sign-off today. That choice may be re
 - Keep changes focused. Avoid reformatting unrelated files.
 - Preserve the supported public API boundary unless the change is explicitly about that contract.
 - Treat `bustan`, `bustan.errors`, and `bustan.testing` as the compatibility surface. Internal modules are not yet stable.
+- If a symbol is meant to become public, export it from one of those stable modules, update its docstring, and regenerate `docs/API_REFERENCE.md`.
 - Add or update tests for behavior changes.
 - Update docs when user-visible behavior, policy, or examples change.
+- Keep examples aligned with the scaffolded multi-file app layout produced by `bustan init`.
 - Do not introduce benchmark claims unless the repository also gains a benchmark harness and methodology.
 
 ## Commit Style

@@ -21,7 +21,7 @@ from bustan import (
 from bustan.core.errors import BadRequestException
 from bustan.common.types import RouteMetadata
 from bustan.core.module.dynamic import ModuleInstanceKey
-from bustan.pipeline.context import ParameterContext, RequestContext
+from bustan.pipeline.context import ExecutionContext, RequestContext
 from bustan.platform.http.metadata import ControllerRouteDefinition
 from starlette.requests import Request
 
@@ -86,7 +86,7 @@ async def test_validation_pipe_raises_bad_request_on_invalid_models() -> None:
         await ValidationPipe().transform({"name": "Ada"}, context)
 
 
-def _parameter_context(annotation: object = str) -> ParameterContext:
+def _parameter_context(annotation: object = str) -> ExecutionContext:
     async def receive() -> dict[str, object]:
         return {"type": "http.request", "body": b"", "more_body": False}
 
@@ -119,8 +119,7 @@ def _parameter_context(annotation: object = str) -> ParameterContext:
         ),
         container=cast("Container", object()),
     )
-    return ParameterContext(
-        request_context=request_context,
+    return request_context.with_parameter(
         name="value",
         source="query",
         annotation=annotation,

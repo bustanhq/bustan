@@ -54,11 +54,22 @@ jobs:
           python -c "import bustan; print(bustan.__version__)"
           bustan --help
 
-      - name: Verify uvx scaffolding from published artifact
+      - name: Verify scaffolding from published artifact
         run: |
           cli_smoke_root="$(mktemp -d)"
-          uvx --from "bustan==${BUSTAN_VERSION}" bustan create smoke-app --directory "$cli_smoke_root"
+          mkdir "$cli_smoke_root/smoke-app"
+          cd "$cli_smoke_root/smoke-app"
+          uv init --package smoke-app
+          uv add "bustan==${BUSTAN_VERSION}"
+          uv run bustan init
           test -f "$cli_smoke_root/smoke-app/pyproject.toml"
           test -f "$cli_smoke_root/smoke-app/README.md"
-          test -f "$cli_smoke_root/smoke-app/src/smoke_app/app.py"
-          test -f "$cli_smoke_root/smoke-app/tests/test_app.py"
+          test -f "$cli_smoke_root/smoke-app/src/smoke_app/__init__.py"
+          test -f "$cli_smoke_root/smoke-app/src/smoke_app/app_module.py"
+          test -f "$cli_smoke_root/smoke-app/src/smoke_app/app_controller.py"
+          test -f "$cli_smoke_root/smoke-app/src/smoke_app/app_service.py"
+          test -f "$cli_smoke_root/smoke-app/tests/smoke_app/test_app_controller.py"
+          test -f "$cli_smoke_root/smoke-app/tests/smoke_app/test_app_service.py"
+          test -f "$cli_smoke_root/smoke-app/tests/smoke_app/test_app_module.py"
+          grep -q 'start = "smoke_app:main"' "$cli_smoke_root/smoke-app/pyproject.toml"
+          grep -q 'dev = "smoke_app:dev"' "$cli_smoke_root/smoke-app/pyproject.toml"

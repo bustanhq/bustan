@@ -20,7 +20,7 @@ class AppController:
         self.service = service
 
     @Get("/")
-    def get_hello(self):
+    def get_hello(self) -> dict[str, str]:
         return {"message": self.service.get_hello()}
 
 

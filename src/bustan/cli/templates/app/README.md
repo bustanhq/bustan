@@ -59,5 +59,5 @@ uv run pytest
 
 ```sh
 uv run ruff check .
-uv run ty check
+uv run ty check src tests
 ```

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, cast
+from unittest.mock import patch
 
 from starlette.testclient import TestClient
 
@@ -30,6 +31,38 @@ def test_openapi_json_endpoint_returns_registered_routes() -> None:
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
+    assert "/cats" in response.json()["paths"]
+
+
+def test_openapi_generation_uses_compiled_contracts_without_rescanning_routes() -> None:
+    @Controller("/cats")
+    class CatsController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[CatsController])
+    class AppModule:
+        pass
+
+    with patch(
+        "bustan.openapi.schema_builder.iter_controller_routes",
+        side_effect=AssertionError("route rescan should not happen"),
+        create=True,
+    ), patch(
+        "bustan.openapi.schema_builder.compile_parameter_bindings",
+        side_effect=AssertionError("binding recompilation should not happen"),
+        create=True,
+    ):
+        app = create_app(
+            AppModule,
+            swagger=SwaggerOptions(DocumentBuilder().set_title("Cats").set_version("1.0")),
+        )
+
+    with TestClient(cast(Any, app)) as client:
+        response = client.get("/api")
+
+    assert response.status_code == 200
     assert "/cats" in response.json()["paths"]
 
 

@@ -16,3 +16,4 @@ htmlcov/
 *.py[cod]
 .draft/
 .bustan/
+work/

@@ -5,6 +5,7 @@ from __future__ import annotations
 from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
 
+from ..platform.http.adapter import CompiledAdapterRoute
 from .schema_builder import generate_schema
 
 
@@ -19,7 +20,7 @@ class SwaggerModule:
         *,
         swagger_ui_path: str | None = None,
     ) -> None:
-        schema = generate_schema(app.module_graph, document)
+        schema = generate_schema(app.route_contracts, document)
         json_path = path
         ui_path = swagger_ui_path or f"{path}/docs"
 
@@ -31,8 +32,20 @@ class SwaggerModule:
 
         app.get_http_adapter().register_routes(
             [
-                Route(json_path, endpoint=openapi_json, methods=["GET"], name="openapi_json"),
-                Route(ui_path, endpoint=swagger_html, methods=["GET"], name="swagger_ui"),
+            CompiledAdapterRoute(
+              registration=Route(json_path, endpoint=openapi_json, methods=["GET"], name="openapi_json"),
+              contracts=(),
+              path=json_path,
+              methods=("GET",),
+              name="openapi_json",
+            ),
+            CompiledAdapterRoute(
+              registration=Route(ui_path, endpoint=swagger_html, methods=["GET"], name="swagger_ui"),
+              contracts=(),
+              path=ui_path,
+              methods=("GET",),
+              name="swagger_ui",
+            ),
             ]
         )
 

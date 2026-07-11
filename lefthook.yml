@@ -9,6 +9,12 @@ pre-commit:
       run: uv run python scripts/generate_api_reference.py
 
 pre-push:
-  commands:
-    pytest:
-      run: uv run python -m pytest
+  jobs:
+    - name: coverage
+      run: uv run --group dev python -m pytest --cov=bustan --cov-report=term-missing
+    - name: markdown-links
+      run: uv run python scripts/check_markdown_links.py
+    - name: examples
+      run: uv run python scripts/run_examples.py
+    - name: package-verification
+      run: uv run python scripts/package_smoke_check.py

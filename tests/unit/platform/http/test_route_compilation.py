@@ -49,3 +49,21 @@ def test_compile_routes_rejects_variadic_handler_parameters() -> None:
 
     with pytest.raises(ParameterBindingError, match="unsupported variadic parameter"):
         compile_routes(module_graph, container)
+
+
+def test_compile_routes_rejects_host_routing_for_direct_starlette_compilation() -> None:
+    @Controller("/users", host="api.example.test")
+    class UsersController:
+        @Get("/")
+        def list_users(self) -> list[dict[str, str]]:
+            return [{"name": "Ada"}]
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    module_graph = build_module_graph(AppModule)
+    container = build_container(module_graph)
+
+    with pytest.raises(RouteDefinitionError, match="host routing"):
+        compile_routes(module_graph, container)

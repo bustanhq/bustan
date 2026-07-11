@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 
+from .commands.governance import register_governance_commands, run_governance_command
 from .commands.init import run_init_command
+from .commands.routes import register_routes_commands, run_routes_command
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -20,6 +22,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if command == "init":
         return run_init_command(arguments)
+    if command == "governance":
+        return run_governance_command(arguments)
+    if command == "routes":
+        return run_routes_command(arguments)
 
     parser.error(f"Unsupported command: {command}")
     return 2
@@ -38,8 +44,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "init",
         help="Initialise a Bustan app in the current uv project.",
     )
-
-    return parser
+    register_governance_commands(subparsers)
+    register_routes_commands(subparsers)
 
     return parser
 

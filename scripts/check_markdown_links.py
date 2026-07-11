@@ -17,6 +17,7 @@ EXCLUDED_DIRECTORIES = {
     "__pycache__",
     "build",
     "dist",
+    "work",
 }
 FENCE_RE = re.compile(r"^(```|~~~)")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")

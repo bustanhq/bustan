@@ -7,5 +7,13 @@
       "changelog-path": "CHANGELOG.md",
       "include-component-in-tag": false
     }
+  },
+  "bustan-governance": {
+    "release-gate": {
+      "max_removed_routes": 0,
+      "max_changed_routes": 0,
+      "adapters": ["starlette"],
+      "require_adapter_conformance": true
+    }
   }
 }

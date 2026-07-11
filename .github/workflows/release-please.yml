@@ -51,7 +51,7 @@ jobs:
           uv run python scripts/generate_api_reference.py --check
           uv run python scripts/check_markdown_links.py
           uv run ruff check .
-          uv run ty check src tests examples scripts
+          uv run ty check src tests scripts
           uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
           uv build
           uvx --from twine twine check dist/*

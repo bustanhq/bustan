@@ -2,16 +2,33 @@
 name = "bustan"
 version = "1.1.0"
 description = "Enterprise API Framework for Python"
-keywords = ["asgi", "dependency injection", "starlette", "web framework"]
+keywords = [
+    "api",
+    "asgi",
+    "dependency injection",
+    "di",
+    "framework",
+    "openapi",
+    "pydantic",
+    "starlette",
+    "typed",
+    "web framework",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Framework :: AsyncIO",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
 ]
 readme = "README.md"
 license = "MIT"
@@ -31,10 +48,11 @@ dependencies = [
 bustan = "bustan.cli.main:main"
 
 [project.urls]
-Repository = "https://github.com/bustanhq/bustan"
-Issues = "https://github.com/bustanhq/bustan/issues"
+Homepage = "https://bustan.dev"
 Documentation = "https://bustan.dev"
+Repository = "https://github.com/bustanhq/bustan"
 Changelog = "https://github.com/bustanhq/bustan/blob/main/CHANGELOG.md"
+Issues = "https://github.com/bustanhq/bustan/issues"
 Support = "https://github.com/bustanhq/bustan/issues"
 
 [dependency-groups]
@@ -56,7 +74,7 @@ branch = true
 source = ["bustan"]
 
 [tool.coverage.report]
-fail_under = 84
+fail_under = 95
 show_missing = true
 skip_covered = false
 
@@ -72,4 +90,9 @@ build-backend = "uv_build"
 [tool.ty]
 
 [tool.ty.src]
-exclude = ["src/bustan/cli/templates/**"]
+exclude = ["src/bustan/cli/templates/**", "examples/**"]
+
+[tool.uv.workspace]
+members = [
+    "mini",
+]

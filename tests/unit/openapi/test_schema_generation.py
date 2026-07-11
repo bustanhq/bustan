@@ -7,6 +7,8 @@ from typing import Annotated, Any, cast
 from pydantic import BaseModel
 
 from bustan import Body, Controller, Get, Module, Param, Post, Query
+from bustan.core.ioc.container import build_container
+from bustan.core.module.graph import build_module_graph
 from bustan.openapi import (
     ApiBody,
     ApiOperation,
@@ -16,8 +18,8 @@ from bustan.openapi import (
     ApiTags,
     DocumentBuilder,
 )
+from bustan.platform.http.compiler import compile_route_contracts
 from bustan.openapi.schema_builder import generate_schema
-from bustan.core.module.graph import build_module_graph
 
 
 class CatDto(BaseModel):
@@ -27,12 +29,18 @@ class CatDto(BaseModel):
 def test_document_builder_produces_openapi_document() -> None:
     document = cast(
         dict[str, Any],
-        DocumentBuilder().set_title("Test").set_version("1.0").add_bearer_auth().build(),
+        DocumentBuilder()
+        .set_title("Test")
+        .set_version("1.0")
+        .set_description("Test description")
+        .add_bearer_auth("auth")
+        .build(),
     )
 
     assert document["openapi"] == "3.1.0"
     assert document["info"]["title"] == "Test"
-    assert "bearer" in document["components"]["securitySchemes"]
+    assert document["info"]["description"] == "Test description"
+    assert "auth" in document["components"]["securitySchemes"]
 
 
 def test_schema_generation_uses_decorator_metadata() -> None:
@@ -60,8 +68,9 @@ def test_schema_generation_uses_decorator_metadata() -> None:
     class AppModule:
         pass
 
+    graph = build_module_graph(AppModule)
     schema = generate_schema(
-            build_module_graph(AppModule),
+            compile_route_contracts(graph, build_container(graph)),
             DocumentBuilder().set_title("Cats").set_version("1.0").build(),
         )
 
@@ -100,8 +109,9 @@ def test_schema_generation_infers_pydantic_request_bodies() -> None:
     class AppModule:
         pass
 
+    graph = build_module_graph(AppModule)
     schema = generate_schema(
-        build_module_graph(AppModule), 
+        compile_route_contracts(graph, build_container(graph)),
         DocumentBuilder().build(),
     )
 
@@ -120,8 +130,9 @@ def test_schema_generation_infers_path_parameters_from_routes() -> None:
     class AppModule:
         pass
 
+    graph = build_module_graph(AppModule)
     schema = generate_schema(
-        build_module_graph(AppModule), 
+        compile_route_contracts(graph, build_container(graph)),
         DocumentBuilder().build(),
     )
 

@@ -84,6 +84,20 @@ class Container:
 
         return self.resolver.resolve(token, module=module, request=request)
 
+    async def resolve_async(
+        self,
+        token: object,
+        *,
+        module: ModuleKey,
+        request: Request | None = None,
+    ) -> object:
+        """Resolve a provider, awaiting async factories when required."""
+
+        if self.override_manager.has_override(token, module=module):
+            return self.override_manager.get_override(token, module=module)
+
+        return await self.resolver.resolve_async(token, module=module, request=request)
+
     def instantiate_class(
         self,
         cls: type[object],

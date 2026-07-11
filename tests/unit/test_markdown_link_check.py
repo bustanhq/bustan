@@ -45,6 +45,22 @@ def test_check_markdown_links_reports_missing_file_or_anchor(tmp_path: Path) -> 
     assert any("missing target anchor" in error for error in errors)
 
 
+def test_iter_markdown_files_excludes_work_backlog_files(tmp_path: Path) -> None:
+    checker = _load_checker_module()
+
+    docs_directory = tmp_path / "docs"
+    docs_directory.mkdir()
+    work_directory = tmp_path / "work"
+    work_directory.mkdir()
+
+    docs_file = docs_directory / "guide.md"
+    work_file = work_directory / "ticket-000.md"
+    docs_file.write_text("# Guide\n", encoding="utf-8")
+    work_file.write_text("# Ticket\n", encoding="utf-8")
+
+    assert checker.iter_markdown_files(tmp_path) == [docs_file]
+
+
 def _load_checker_module() -> ModuleType:
     script_path = Path(__file__).resolve().parents[2] / "scripts" / "check_markdown_links.py"
     module_spec = spec_from_file_location("check_markdown_links", script_path)

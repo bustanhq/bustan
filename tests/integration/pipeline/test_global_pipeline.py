@@ -6,12 +6,11 @@ from typing import Any, cast
 
 from starlette.testclient import TestClient
 
-from bustan import APP_GUARD, Controller, Get, Guard, Module, create_app
-from bustan.pipeline.context import RequestContext
+from bustan import APP_GUARD, Controller, ExecutionContext, Get, Guard, Module, create_app
 
 
 class RejectAllGuard(Guard):
-    async def can_activate(self, context: RequestContext) -> bool:
+    async def can_activate(self, context: ExecutionContext) -> bool:
         return False
 
 

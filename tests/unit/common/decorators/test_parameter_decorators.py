@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 
-from bustan import Body, Cookies, Header, HostParam, Ip, Param, Query, UploadedFile, UploadedFiles
+from bustan import (
+    Body,
+    Cookies,
+    Header,
+    HostParam,
+    Ip,
+    Param,
+    Query,
+    UploadedFile,
+    UploadedFiles,
+    create_param_decorator,
+)
 from bustan.common.decorators.parameter import (
     _BodyMarker,
     _CookiesMarker,
+    _CustomParameterDecorator,
+    _CustomParameterMarker,
     _HeaderMarker,
     _HostParamMarker,
     _IpMarker,
@@ -116,3 +131,21 @@ def test_marker_callable_equality_and_hashing() -> None:
     # Check that called markers with same alias are equal
     assert Body("a") == Body("a")
     assert Body("a") != Body("b")
+
+
+def test_custom_parameter_decorator_can_be_used_bare_or_called() -> None:
+    CurrentUser = create_param_decorator(lambda data, ctx: data, name="CurrentUser")
+
+    assert isinstance(CurrentUser, _CustomParameterDecorator)
+    assert CurrentUser.data is None
+    assert repr(CurrentUser) == "CurrentUser"
+
+    called = CurrentUser("email")
+    assert isinstance(called, _CustomParameterMarker)
+    assert called.data == "email"
+    assert repr(called) == "CurrentUser('email')"
+
+
+def test_custom_parameter_decorator_requires_a_callable_factory() -> None:
+    with pytest.raises(TypeError, match="callable"):
+        create_param_decorator(cast(Any, object()))

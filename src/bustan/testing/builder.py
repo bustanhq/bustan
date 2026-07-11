@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import Any, cast
 
 from ..app.application import Application
-from ..app.bootstrap import create_app
+from ..app.bootstrap import _create_app, create_app
 from ..core.lifecycle.runner import run_bootstrap_hooks, run_destroy_hooks, run_init_hooks, run_shutdown_hooks
 from ..core.module.decorators import Module
 from ..core.module.dynamic import ModuleKey
@@ -79,6 +79,20 @@ class CompiledTestingModule:
     def resolve(self, token: object) -> Any:
         return self.get(token)
 
+    def snapshot_routes(self) -> tuple[dict[str, object], ...]:
+        return self.application.snapshot_routes()
+
+    def diff_routes(
+        self,
+        previous_snapshot: Iterable[Mapping[str, object]],
+    ) -> tuple[dict[str, object], ...]:
+        return self.application.diff_routes(tuple(previous_snapshot))
+
+    def create_client(self):
+        from starlette.testclient import TestClient
+
+        return TestClient(cast(Any, self.application))
+
     async def close(self) -> None:
         await run_shutdown_hooks(
             self.application.module_graph,
@@ -118,10 +132,10 @@ class TestingModuleBuilder:
         return _PipelineOverrideChain(self._pipeline_overrides.filters, original)
 
     async def compile(self) -> CompiledTestingModule:
-        application = create_app(
+        application = _create_app(
             self._root_module,
             pipeline_override_registry=self._pipeline_overrides,
-            _no_lifespan=True,
+            no_lifespan=True,
         )
         container = application.container
         root_key = application.root_key

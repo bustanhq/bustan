@@ -1,23 +1,16 @@
-"""OpenAPI schema generation from the Bustan module graph."""
+"""OpenAPI schema generation from compiled route contracts."""
 
 from __future__ import annotations
 
 import copy
-from types import FunctionType
 from enum import Enum
+from types import FunctionType
 from types import NoneType, UnionType
 from typing import Any, Union, cast, get_args, get_origin
 from uuid import UUID
 
-from ..common.types import RouteMetadata
-from ..core.module.graph import ModuleGraph
-from ..core.utils import _join_paths
-from ..platform.http.metadata import (
-    ControllerRouteDefinition,
-    get_controller_metadata,
-    iter_controller_routes,
-)
-from ..platform.http.params import HandlerBindingPlan, ParameterSource, compile_parameter_bindings
+from ..platform.http.compiler import RouteContract
+from ..platform.http.params import HandlerBindingPlan, ParameterSource
 from .decorators import (
     OPENAPI_BODY_ATTR,
     OPENAPI_OPERATION_ATTR,
@@ -28,8 +21,8 @@ from .decorators import (
 )
 
 
-def generate_schema(module_graph: ModuleGraph, document: dict[str, Any]) -> dict[str, Any]:
-    """Generate an OpenAPI document from the application graph."""
+def generate_schema(route_contracts: tuple[RouteContract, ...], document: dict[str, Any]) -> dict[str, Any]:
+    """Generate an OpenAPI document from compiled route contracts."""
 
     schema = copy.deepcopy(document)
     components = cast(dict[str, Any], schema.setdefault("components", {}))
@@ -37,41 +30,23 @@ def generate_schema(module_graph: ModuleGraph, document: dict[str, Any]) -> dict
     components.setdefault("securitySchemes", {})
     paths = cast(dict[str, Any], schema.setdefault("paths", {}))
 
-    for node in module_graph.nodes:
-        for controller_cls in node.controllers:
-            controller_metadata = get_controller_metadata(controller_cls)
-            assert controller_metadata is not None
-            controller_tags = list(getattr(controller_cls, OPENAPI_TAGS_ATTR, ()))
-            controller_security = list(getattr(controller_cls, OPENAPI_SECURITY_ATTR, ()))
-
-            for route_definition in iter_controller_routes(controller_cls):
-                route_path = _join_paths(controller_metadata.prefix, route_definition.route.path)
-                path_item = cast(dict[str, Any], paths.setdefault(route_path, {}))
-                operation = _build_operation(
-                    controller_cls,
-                    route_definition.route,
-                    route_definition.handler,
-                    controller_tags=controller_tags,
-                    controller_security=controller_security,
-                    components=components,
-                )
-                path_item[route_definition.route.method.lower()] = operation
+    for route_contract in route_contracts:
+        path_item = cast(dict[str, Any], paths.setdefault(route_contract.path, {}))
+        path_item[route_contract.method.lower()] = _build_operation(route_contract, components)
 
     return schema
 
 
 def _build_operation(
-    controller_cls: type[object],
-    route: RouteMetadata,
-    handler: FunctionType,
-    *,
-    controller_tags: list[str],
-    controller_security: list[dict[str, list[object]]],
+    route_contract: RouteContract,
     components: dict[str, Any],
 ) -> dict[str, Any]:
+    handler = route_contract.handler
     operation: dict[str, Any] = {
-        "responses": {"200": {"description": "Successful Response"}},
+        "operationId": f"{route_contract.controller_cls.__name__}.{route_contract.handler_name}",
+        "responses": {},
     }
+    controller_tags = list(getattr(route_contract.controller_cls, OPENAPI_TAGS_ATTR, ()))
     if controller_tags:
         operation["tags"] = controller_tags
 
@@ -82,21 +57,21 @@ def _build_operation(
         if operation_metadata.get("description"):
             operation["description"] = operation_metadata["description"]
 
+    controller_security = list(getattr(route_contract.controller_cls, OPENAPI_SECURITY_ATTR, ()))
     security = list(controller_security)
     security.extend(getattr(handler, OPENAPI_SECURITY_ATTR, ()))
     if security:
         operation["security"] = security
 
-    binding_plan = compile_parameter_bindings(controller_cls, _route_definition(route, handler))
-    parameters = _build_parameters(binding_plan, route, handler)
+    parameters = _build_parameters(route_contract.binding_plan, route_contract.method, handler)
     if parameters:
         operation["parameters"] = parameters
 
-    request_body = _build_request_body(binding_plan, handler, components)
+    request_body = _build_request_body(route_contract.binding_plan, handler, components)
     if request_body is not None:
         operation["requestBody"] = request_body
 
-    responses = _build_responses(handler, components)
+    responses = _build_responses(route_contract, components)
     if responses:
         operation["responses"] = responses
 
@@ -105,7 +80,7 @@ def _build_operation(
 
 def _build_parameters(
     binding_plan: HandlerBindingPlan,
-    route: RouteMetadata,
+    method: str,
     handler: FunctionType,
 ) -> list[dict[str, Any]]:
     parameters: dict[tuple[str, str], dict[str, Any]] = {}
@@ -135,7 +110,7 @@ def _build_parameters(
                 "required": not binding.has_default,
                 "schema": _annotation_to_schema(binding.annotation),
             }
-        elif binding.source is ParameterSource.INFERRED and route.method in {"GET", "DELETE"}:
+        elif binding.source is ParameterSource.INFERRED and method in {"GET", "DELETE"}:
             if _is_pydantic_model(binding.annotation):
                 continue
             name = binding.alias or binding.name
@@ -176,6 +151,16 @@ def _build_request_body(
         if explicit_body.get("description"):
             request_body["description"] = explicit_body["description"]
         return request_body
+
+    if binding_plan.body_model is not None:
+        return {
+            "content": {
+                "application/json": {
+                    "schema": _schema_for_annotation(binding_plan.body_model, components)
+                }
+            },
+            "required": True,
+        }
 
     for binding in binding_plan.parameters:
         if binding.source is ParameterSource.BODY or (
@@ -227,21 +212,34 @@ def _build_request_body(
     return None
 
 
-def _build_responses(handler: FunctionType, components: dict[str, Any]) -> dict[str, Any]:
+def _build_responses(route_contract: RouteContract, components: dict[str, Any]) -> dict[str, Any]:
+    handler = route_contract.handler
     responses = getattr(handler, OPENAPI_RESPONSES_ATTR, ())
-    if not responses:
-        return {}
+    if responses:
+        rendered: dict[str, Any] = {}
+        for response in responses:
+            entry: dict[str, Any] = {"description": response["description"] or "Successful Response"}
+            if response.get("schema") is not None:
+                entry["content"] = {
+                    "application/json": {
+                        "schema": _schema_for_annotation(response["schema"], components)
+                    }
+                }
+            rendered[str(response["status"])] = entry
+        return rendered
 
     rendered: dict[str, Any] = {}
-    for response in responses:
-        entry: dict[str, Any] = {"description": response["description"] or "Successful Response"}
-        if response.get("schema") is not None:
+    for declared_response in route_contract.response_plan.declared_responses:
+        entry: dict[str, Any] = {
+            "description": declared_response.description or "Successful Response"
+        }
+        if declared_response.schema is not None:
             entry["content"] = {
                 "application/json": {
-                    "schema": _schema_for_annotation(response["schema"], components)
+                    "schema": _schema_for_annotation(declared_response.schema, components)
                 }
             }
-        rendered[str(response["status"])] = entry
+        rendered[str(declared_response.status)] = entry
     return rendered
 
 
@@ -307,11 +305,3 @@ def _annotation_to_schema(annotation: object) -> dict[str, Any]:
 
 def _is_pydantic_model(annotation: object) -> bool:
     return isinstance(annotation, type) and hasattr(annotation, "model_json_schema")
-
-
-def _route_definition(route: RouteMetadata, handler: FunctionType) -> ControllerRouteDefinition:
-    return ControllerRouteDefinition(
-        handler_name=route.name,
-        handler=handler,
-        route=route,
-    )

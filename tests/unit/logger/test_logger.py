@@ -43,3 +43,33 @@ def test_logger_override_redirects_output() -> None:
         Logger.reset_logger()
 
     assert recorder.messages == [("App", "hello")]
+
+
+def test_logger_covers_error_trace_debug_verbose_and_global_level_override() -> None:
+    class Recorder:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str]] = []
+
+        def log(self, message: str, context: str) -> None:
+            self.calls.append(("log", context, message))
+
+        def error(self, message: str, context: str) -> None:
+            self.calls.append(("error", context, message))
+
+    recorder = Recorder()
+    Logger.set_global_level(LogLevel.VERBOSE)
+    Logger.override_logger(recorder)
+    try:
+        logger = Logger("App")
+        logger.error("boom", trace="stack")
+        logger.debug("debug", context="Debug")
+        logger.verbose("verbose")
+    finally:
+        Logger.reset_logger()
+
+    assert recorder.calls == [
+        ("error", "App", "boom"),
+        ("error", "App", "stack"),
+        ("log", "Debug", "debug"),
+        ("log", "App", "verbose"),
+    ]
