@@ -129,12 +129,7 @@ class ThrottlerModule:
                 },
                 {
                     "provide": ThrottlerGuard,
-                    "use_factory": lambda storage, configured_ttl, configured_limit, configured_key_resolver: ThrottlerGuard(
-                        storage,
-                        configured_ttl,
-                        configured_limit,
-                        configured_key_resolver,
-                    ),
+                    "use_factory": ThrottlerGuard,
                     "inject": (
                         THROTTLER_STORAGE,
                         THROTTLER_TTL,

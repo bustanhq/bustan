@@ -265,8 +265,6 @@ def _resolve_declared_return_type(route_definition: ControllerRouteDefinition) -
     except (NameError, TypeError):
         return declared_type
 
-    return declared_type
-
 
 def _resolve_annotation_string(
     annotation: str,
