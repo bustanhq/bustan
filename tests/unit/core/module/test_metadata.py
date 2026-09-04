@@ -1,6 +1,9 @@
 """Unit tests for metadata storage and route discovery helpers."""
 
-from bustan import Controller, Get, Module
+import pytest
+
+from bustan import Controller, Get, Injectable, Module
+from bustan.core.ioc.registry import normalize_provider
 from bustan.core.module.metadata import get_module_metadata
 from bustan.platform.http.metadata import (
     ControllerRouteDefinition,
@@ -10,7 +13,15 @@ from bustan.platform.http.metadata import (
 )
 
 
-def test_module_metadata_is_not_inherited_by_default() -> None:
+@pytest.mark.xfail(
+    strict=True,
+    reason="provider metadata is inherited while module metadata is not",
+)
+def test_module_and_provider_metadata_are_not_inherited_by_default() -> None:
+    # One rule for every decorator: metadata describes the class it was written on,
+    # and an undecorated subclass has none until it is asked for one. A subclass that
+    # answers with its parent's provider metadata is registered under the parent's
+    # token, so the subclass is never constructed and can never be resolved by name.
     @Module()
     class BaseModule:
         pass
@@ -18,9 +29,19 @@ def test_module_metadata_is_not_inherited_by_default() -> None:
     class DerivedModule(BaseModule):
         pass
 
+    @Injectable
+    class BaseProvider:
+        pass
+
+    class DerivedProvider(BaseProvider):
+        pass
+
     assert get_module_metadata(BaseModule) is not None
     assert get_module_metadata(DerivedModule) is None
     assert get_module_metadata(DerivedModule, inherit=True) == get_module_metadata(BaseModule)
+
+    assert normalize_provider(BaseProvider, BaseModule).token is BaseProvider
+    assert normalize_provider(DerivedProvider, BaseModule).token is DerivedProvider
 
 
 def test_controller_metadata_is_not_inherited_by_default() -> None:

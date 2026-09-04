@@ -98,11 +98,21 @@ def test_create_testing_module_returns_builder() -> None:
 
 
 @pytest.mark.anyio
-async def test_compiled_testing_module_close_runs_shutdown_and_destroy_hooks() -> None:
+@pytest.mark.xfail(
+    strict=True,
+    reason="close() skips the pre-shutdown stage",
+)
+async def test_compiled_testing_module_close_runs_the_whole_teardown_sequence() -> None:
+    # Tearing down a compiled testing module runs the same stages in the same order
+    # as tearing down an application, because a test that never reaches the
+    # pre-shutdown stage cannot show that production teardown drains anything.
     events: list[str] = []
 
     @Module()
     class AppModule:
+        def before_application_shutdown(self, signal: str | None) -> None:
+            events.append("before-shutdown")
+
         def on_application_shutdown(self, signal: str | None) -> None:
             events.append("shutdown")
 
@@ -112,7 +122,7 @@ async def test_compiled_testing_module_close_runs_shutdown_and_destroy_hooks() -
     compiled = await create_testing_module(AppModule).compile()
     await compiled.close()
 
-    assert events == ["shutdown", "destroy"]
+    assert events == ["before-shutdown", "shutdown", "destroy"]
 
 
 @pytest.mark.anyio

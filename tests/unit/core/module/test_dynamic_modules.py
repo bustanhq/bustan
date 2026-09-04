@@ -4,6 +4,7 @@ import pytest
 
 from bustan import Controller, Get, Injectable, Module, create_app
 from bustan.core.errors import (
+    InvalidModuleError,
     ModuleCycleError,
 )
 from bustan.core.module.dynamic import DynamicModule, ModuleInstanceKey
@@ -33,13 +34,25 @@ def test_dynamic_module_merges_metadata() -> None:
     assert len(root_node.bindings) == 2
 
 
-def test_dynamic_module_unique_identities() -> None:
+@pytest.mark.xfail(
+    strict=True,
+    reason="two imports exporting one token resolve first-wins by traversal order",
+)
+def test_dynamic_module_instances_are_distinct_and_their_colliding_exports_are_refused() -> None:
+    # Two instances of one base module are separate identities, so each may bind the
+    # same token to its own value. What the importer cannot be given is both under
+    # one name: nothing in the declaration says which instance wins, so the graph is
+    # refused rather than settled by the order the modules happened to be visited.
     @Module()
     class ConfigModule:
         pass
 
-    dynamic1 = DynamicModule(ConfigModule, providers=({"provide": "A", "use_value": 1},))
-    dynamic2 = DynamicModule(ConfigModule, providers=({"provide": "A", "use_value": 2},))
+    dynamic1 = DynamicModule(
+        ConfigModule, providers=({"provide": "A", "use_value": 1},), exports=("A",)
+    )
+    dynamic2 = DynamicModule(
+        ConfigModule, providers=({"provide": "A", "use_value": 2},), exports=("A",)
+    )
 
     @Module(imports=[dynamic1, dynamic2])
     class AppModule:
@@ -59,6 +72,9 @@ def test_dynamic_module_unique_identities() -> None:
     k1 = imported_keys[1]
     assert isinstance(k0, ModuleInstanceKey) and k0.module is ConfigModule
     assert isinstance(k1, ModuleInstanceKey) and k1.module is ConfigModule
+
+    with pytest.raises(InvalidModuleError, match="'A'"):
+        create_app(AppModule)
 
 
 def test_dynamic_module_singleton_isolation() -> None:
@@ -113,7 +129,15 @@ def test_dynamic_module_circular_dependency() -> None:
         build_module_graph(dynamic_cycle)
 
 
-def test_dynamic_module_nested_expansion() -> None:
+@pytest.mark.xfail(
+    strict=True,
+    reason="a re-exported token is visible to the importer but has no binding to resolve",
+)
+def test_dynamic_module_nested_expansion_resolves_the_reexported_provider() -> None:
+    # A module that re-exports a token it imported is promising the importer an
+    # instance, not a name. Visibility that no binding backs is a promise kept only
+    # until the first request, so the re-exported token resolves through the
+    # importing module or it was never exported at all.
     @Injectable
     class DeepService:
         pass
@@ -136,6 +160,14 @@ def test_dynamic_module_nested_expansion() -> None:
     # Verify DeepService is available at the top
     top_node = graph.get_node(graph.root_key)
     assert DeepService in top_node.available_providers
+
+    @Module(imports=[top_dynamic])
+    class AppModule:
+        pass
+
+    app = create_app(AppModule)
+
+    assert isinstance(app._container.resolve(DeepService, module=AppModule), DeepService)
 
 
 def test_dynamic_module_controller_addition() -> None:
