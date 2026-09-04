@@ -133,3 +133,65 @@ def test_a_durable_binding_that_escaped_the_declaration_check_still_refuses_to_r
 
     with pytest.raises(ProviderResolutionError, match="get_durable_context_key"):
         container.resolve(KeylessDurableService, module=AppModule, request=request)
+
+
+def test_a_caller_varying_the_context_key_cannot_grow_the_durable_store(
+    build_request: RequestFactory,
+) -> None:
+    # The context key comes from a header, so whoever sends the request chooses how
+    # many partitions there are. The store is bounded for that reason: an
+    # unauthenticated caller rotating one header would otherwise retain an instance
+    # and a construction lock per distinct value until the process ran out of memory.
+    @Injectable(scope=Scope.DURABLE)
+    class DurableService:
+        @classmethod
+        def get_durable_context_key(cls, request: Request | None) -> str:
+            assert request is not None
+            return request.headers["x-tenant-id"]
+
+    @Module(providers=[DurableService], exports=[DurableService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    scope_manager = container.scope_manager
+    limit = scope_manager.durable_instances.limit
+
+    for index in range(limit * 3):
+        request = build_request(
+            path="/items", headers=[(b"x-tenant-id", f"tenant-{index}".encode())]
+        )
+        container.resolve(DurableService, module=AppModule, request=request)
+
+    assert len(scope_manager.durable_instances) == limit
+    # The lock table holds the constructions in flight, and none is.
+    assert len(scope_manager.construction_locks) == 0
+
+
+def test_a_tenant_evicted_from_the_durable_store_is_built_again_when_it_returns(
+    build_request: RequestFactory,
+) -> None:
+    @Injectable(scope=Scope.DURABLE)
+    class DurableService:
+        @classmethod
+        def get_durable_context_key(cls, request: Request | None) -> str:
+            assert request is not None
+            return request.headers["x-tenant-id"]
+
+    @Module(providers=[DurableService], exports=[DurableService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    def resolve(tenant: bytes) -> object:
+        request = build_request(path="/items", headers=[(b"x-tenant-id", tenant)])
+        return container.resolve(DurableService, module=AppModule, request=request)
+
+    first = resolve(b"tenant-a")
+    for index in range(container.scope_manager.durable_instances.limit):
+        resolve(f"tenant-{index}".encode())
+
+    # An evicted partition is a cache miss, not a wrong answer: the tenant that comes
+    # back is served a new instance rather than another tenant's.
+    assert resolve(b"tenant-a") is not first
