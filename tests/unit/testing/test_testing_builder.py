@@ -619,3 +619,78 @@ async def test_replacing_a_token_no_module_declares_is_refused_by_the_container(
 
     with pytest.raises(ProviderResolutionError, match="is not registered in the container"):
         await builder.compile()
+
+
+@pytest.mark.anyio
+async def test_a_non_class_token_finds_its_declaring_module() -> None:
+    # A string token built while the test runs is a different object from the one the
+    # module registered, so the declaring module has to be found by the token's
+    # identity rather than by object identity. Dep is deliberately not exported.
+    registered_token = "CONFIG"
+    lookup_token = "".join(("CON", "FIG"))
+    assert lookup_token == registered_token
+    assert lookup_token is not registered_token
+
+    @Injectable
+    class Dep:
+        def where(self) -> str:
+            return "declaring module"
+
+    @Injectable
+    class RealConfig:
+        def __init__(self, dep: Dep) -> None:
+            self.dep = dep
+
+    class FakeConfig:
+        def __init__(self, dep: Dep) -> None:
+            self.dep = dep
+
+    @Module(
+        providers=[Dep, {"provide": registered_token, "use_class": RealConfig}],
+        exports=[registered_token],
+    )
+    class ConfigModule:
+        pass
+
+    @Module(imports=[ConfigModule])
+    class AppModule:
+        pass
+
+    compiled = await (
+        create_testing_module(AppModule)
+        .override_provider(lookup_token)
+        .use_class(FakeConfig)
+        .compile()
+    )
+    try:
+        resolved = compiled.get(registered_token)
+        assert isinstance(resolved, FakeConfig)
+        assert resolved.dep.where() == "declaring module"
+    finally:
+        await compiled.close()
+
+
+@pytest.mark.anyio
+async def test_a_value_override_reaches_a_non_class_token_built_at_runtime() -> None:
+    registered_token = "GREETING"
+    lookup_token = "".join(("GREET", "ING"))
+    assert lookup_token is not registered_token
+
+    @Module(
+        providers=[{"provide": registered_token, "use_value": "production"}],
+        exports=[registered_token],
+    )
+    class GreetingModule:
+        pass
+
+    @Module(imports=[GreetingModule])
+    class AppModule:
+        pass
+
+    compiled = await (
+        create_testing_module(AppModule).override_provider(lookup_token).use_value("test").compile()
+    )
+    try:
+        assert compiled.get(registered_token) == "test"
+    finally:
+        await compiled.close()

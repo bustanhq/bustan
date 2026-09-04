@@ -11,6 +11,7 @@ from ..app.application import Application
 from ..app.bootstrap import _create_app, create_app
 from ..core.errors import LifecycleError
 from ..core.ioc.container import Container
+from ..core.ioc.registry import token_identity
 from ..core.lifecycle.manager import LifecycleManager
 from ..core.module.decorators import Module
 from ..core.module.dynamic import ModuleKey
@@ -184,7 +185,9 @@ class TestingModuleBuilder:
         """
         for token, override in self._provider_overrides.items():
             if isinstance(override, _ValueOverride):
-                container.override(token, override.value)
+                container.override(
+                    token, override.value, module=_declaring_module(container, token)
+                )
 
         for token, override in self._provider_overrides.items():
             if isinstance(override, _ValueOverride):
@@ -194,7 +197,8 @@ class TestingModuleBuilder:
             # token, never from the root. Building from the root would force a fake
             # to have every dependency exported to the root, and would blame the root
             # module for a dependency the declaring module can see perfectly well.
-            module = _declaring_module(container, token) or container.module_graph.root_key
+            declaring = _declaring_module(container, token)
+            module = declaring or container.module_graph.root_key
             if isinstance(override, _ClassOverride):
                 replacement = await container.instantiate_class_async(
                     override.replacement_cls,
@@ -206,7 +210,7 @@ class TestingModuleBuilder:
                     override.inject,
                     module=module,
                 )
-            container.override(token, replacement)
+            container.override(token, replacement, module=declaring)
 
 
 def _require_lifecycle_manager(application: Application) -> LifecycleManager:
@@ -228,14 +232,20 @@ def _require_lifecycle_manager(application: Application) -> LifecycleManager:
 def _declaring_module(container: Container, token: object) -> ModuleKey | None:
     """Return the single module that declares a token, or None when that is not one.
 
+    Tokens are compared by identity in the container's sense, which pairs a token
+    with its type: a string token built while the test runs is a different object
+    from the one the module registered but names the same provider, and a string
+    enum member that equals a bare string still names a different one.
+
     A token bound by no module, or by several, has no unambiguous declaring module.
     Both cases are left to the container's own override registration to refuse, so
     that one component decides what an ambiguous override means and says so once.
     """
+    identity = token_identity(token)
     declaring = [
         registered_module
         for registered_module, registered_token in container.registry.bindings
-        if registered_token is token
+        if token_identity(registered_token) == identity
     ]
     if len(declaring) != 1:
         return None
