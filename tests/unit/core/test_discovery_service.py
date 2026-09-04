@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from bustan import Controller, DiscoveryModule, DiscoveryService, Get, Injectable, Module, create_app
+from bustan import (
+    Controller,
+    DiscoveryModule,
+    DiscoveryService,
+    Get,
+    Injectable,
+    Module,
+    create_app,
+)
 
 
 def test_discovery_service_enumerates_modules_providers_and_routes() -> None:

@@ -12,10 +12,6 @@ from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin, get_ty
 
 from starlette.requests import Request
 
-from ...core.errors import ParameterBindingError
-from ...core.utils import _qualname
-from .abstractions import HttpRequest, as_http_request
-
 from ...common.decorators.parameter import (
     _BodyMarker,
     _CookiesMarker,
@@ -30,7 +26,9 @@ from ...common.decorators.parameter import (
     _UploadedFileMarker,
     _UploadedFilesMarker,
 )
-
+from ...core.errors import ParameterBindingError
+from ...core.utils import _qualname
+from .abstractions import HttpRequest, as_http_request
 from .metadata import ControllerRouteDefinition, get_controller_metadata
 
 if TYPE_CHECKING:
@@ -119,7 +117,9 @@ def compile_parameter_bindings(
     """Compile a handler signature into a reusable binding plan."""
 
     controller_metadata = get_controller_metadata(controller_cls, inherit=True)
-    binding_mode = _resolve_binding_mode(controller_metadata.binding_mode if controller_metadata else "infer")
+    binding_mode = _resolve_binding_mode(
+        controller_metadata.binding_mode if controller_metadata else "infer"
+    )
     validation_mode = _resolve_validation_mode(
         controller_metadata.validation_mode if controller_metadata else "auto"
     )
@@ -129,7 +129,9 @@ def compile_parameter_bindings(
     signature = inspect.signature(route_definition.handler)
     type_hints = _resolve_handler_parameter_annotations(controller_cls, route_definition)
     path_parameter_names = _extract_path_parameter_names(route_definition.route.path)
-    parameters = [parameter for parameter in signature.parameters.values() if parameter.name != "self"]
+    parameters = [
+        parameter for parameter in signature.parameters.values() if parameter.name != "self"
+    ]
     unresolved_parameter_count = sum(
         1
         for parameter in parameters
@@ -833,7 +835,8 @@ def _coerce_value(
             return raw_value
         if not isinstance(raw_value, dict):
             raise _parameter_error(
-                f"Could not bind {source_description} {parameter_name!r} to {_display_annotation(annotation)}",
+                f"Could not bind {source_description} {parameter_name!r} to "
+                f"{_display_annotation(annotation)}",
                 field=parameter_name,
                 source=source_description,
                 reason=f"expected {_display_annotation(annotation)}",
@@ -843,7 +846,8 @@ def _coerce_value(
             return annotation(**raw_value_mapping)
         except TypeError as exc:
             raise _parameter_error(
-                f"Could not bind {source_description} {parameter_name!r} to {_display_annotation(annotation)}: {exc}",
+                f"Could not bind {source_description} {parameter_name!r} to "
+                f"{_display_annotation(annotation)}: {exc}",
                 field=parameter_name,
                 source=source_description,
                 reason=str(exc),
@@ -893,7 +897,8 @@ def _coerce_value(
             return annotation(raw_value)
         except (TypeError, ValueError) as exc:
             raise _parameter_error(
-                f"Could not bind {source_description} {parameter_name!r} to {_display_annotation(annotation)}: {exc}",
+                f"Could not bind {source_description} {parameter_name!r} to "
+                f"{_display_annotation(annotation)}: {exc}",
                 field=parameter_name,
                 source=source_description,
                 reason=str(exc),
@@ -931,7 +936,8 @@ def _coerce_union_value(
         raise last_error
 
     raise ParameterBindingError(
-        f"Could not bind {source_description} {parameter_name!r} to {_display_annotation(annotation)}"
+        f"Could not bind {source_description} {parameter_name!r} to "
+        f"{_display_annotation(annotation)}"
     )
 
 
@@ -979,9 +985,7 @@ def _coerce_number(
 
     if isinstance(raw_value, (str, bytes, bytearray)):
         convertible_raw_value: str | bytes | bytearray | int | float = raw_value
-    elif isinstance(raw_value, int):
-        convertible_raw_value = raw_value
-    elif isinstance(raw_value, float):
+    elif isinstance(raw_value, int | float):
         convertible_raw_value = raw_value
     else:
         raise _parameter_error(
@@ -997,7 +1001,8 @@ def _coerce_number(
         return float(convertible_raw_value)
     except (TypeError, ValueError) as exc:
         raise _parameter_error(
-            f"Could not bind {source_description} {parameter_name!r} to {number_type.__name__}: {exc}",
+            f"Could not bind {source_description} {parameter_name!r} to {number_type.__name__}: "
+            f"{exc}",
             field=parameter_name,
             source=source_description,
             reason=str(exc),
@@ -1027,7 +1032,8 @@ def _resolve_handler_parameter_annotations(
         raw_annotations = inspect.get_annotations(route_definition.handler, eval_str=False)
     except (NameError, TypeError) as exc:
         raise ParameterBindingError(
-            f"Could not resolve type hints for {_qualname(controller_cls)}.{route_definition.handler_name}: {exc}"
+            "Could not resolve type hints for "
+            f"{_qualname(controller_cls)}.{route_definition.handler_name}: {exc}"
         ) from exc
 
     resolved_annotations: dict[str, object] = {}
@@ -1046,7 +1052,8 @@ def _resolve_handler_parameter_annotations(
             )
         except (NameError, TypeError) as exc:
             raise ParameterBindingError(
-                f"Could not resolve type hints for {_qualname(controller_cls)}.{route_definition.handler_name}: {exc}"
+                "Could not resolve type hints for "
+                f"{_qualname(controller_cls)}.{route_definition.handler_name}: {exc}"
             ) from exc
 
     return resolved_annotations

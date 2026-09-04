@@ -10,7 +10,7 @@ from ..errors import (
 )
 from ..ioc.registry import Binding, normalize_provider
 from ..utils import _display_name, _qualname
-from .dynamic import DynamicModule, ModuleKey, ModuleInstanceKey
+from .dynamic import DynamicModule, ModuleInstanceKey, ModuleKey
 from .metadata import ModuleMetadata, get_module_metadata
 
 
@@ -32,7 +32,8 @@ def expand_module_input(
         base_metadata = get_module_metadata(module_input.module)
         if base_metadata is None:
             raise InvalidModuleError(
-                f"{_qualname(module_input.module)} is not a valid base module for dynamic registration"
+                f"{_qualname(module_input.module)} is not a valid base module for dynamic "
+                "registration"
             )
 
         merged = ModuleMetadata(
@@ -52,9 +53,7 @@ def expand_module_input(
 
     base_metadata = get_module_metadata(module_input)
     if base_metadata is None:
-        raise InvalidModuleError(
-            f"{_qualname(module_input)} is not a decorated module"
-        )
+        raise InvalidModuleError(f"{_qualname(module_input)} is not a decorated module")
 
     return CompiledModuleDef(
         key=module_input,
@@ -74,9 +73,6 @@ def validate_module_compiled(
     _validate_unique_entries(owner, "imports", metadata.imports)
     _validate_unique_entries(owner, "controllers", metadata.controllers)
     _validate_unique_entries(owner, "exports", metadata.exports)
-
-    # Note: Structural validation (require_module, require_controller)
-    # continues to be part of the compilation phase to catch errors early.
 
     bindings: list[Binding] = []
     seen_tokens: set[object] = set()

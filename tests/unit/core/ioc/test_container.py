@@ -1,12 +1,13 @@
 """Unit tests for provider and controller resolution behavior."""
 
-import pytest
 from typing import Any, cast
+
+import pytest
 from starlette.requests import Request
 
 from bustan import Controller, Get, Injectable, Module
-from bustan.core.ioc.container import build_container
 from bustan.core.errors import ProviderResolutionError
+from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
 
 

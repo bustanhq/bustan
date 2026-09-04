@@ -6,7 +6,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
-from typing import Protocol, TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from ..pipeline.context import ExecutionContext
@@ -63,17 +63,17 @@ class ObservabilityHooks:
         self._tracer = tracer
 
     @classmethod
-    def current(cls) -> "ObservabilityHooks":
+    def current(cls) -> ObservabilityHooks:
         return cls._override.get() or cls()
 
     @classmethod
-    def override_global(cls, hooks: "ObservabilityHooks") -> None:
+    def override_global(cls, hooks: ObservabilityHooks) -> None:
         token = cls._override.set(hooks)
         cls._override_tokens.set(cls._override_tokens.get() + (token,))
 
     @classmethod
     @contextmanager
-    def scoped_override(cls, hooks: "ObservabilityHooks") -> Iterator["ObservabilityHooks"]:
+    def scoped_override(cls, hooks: ObservabilityHooks) -> Iterator[ObservabilityHooks]:
         token = cls._override.set(hooks)
         try:
             yield hooks
@@ -152,4 +152,11 @@ def _route_version_label(route_contract: object) -> str:
     return ",".join(versions)
 
 
-__all__ = ["ActiveObservation", "MetricsSink", "ObservabilityHooks", "RequestTracer", "TraceSpan", "build_route_labels"]
+__all__ = [
+    "ActiveObservation",
+    "MetricsSink",
+    "ObservabilityHooks",
+    "RequestTracer",
+    "TraceSpan",
+    "build_route_labels",
+]

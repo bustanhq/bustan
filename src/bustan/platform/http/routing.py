@@ -6,22 +6,22 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from starlette.routing import Router, Route
+from starlette.routing import Route, Router
 
-from ...core.ioc.container import Container
 from ...core.errors import RouteDefinitionError
+from ...core.ioc.container import Container
 from ...core.module.graph import ModuleGraph
 from ...core.utils import _join_paths, _qualname
 from .abstractions import HttpResponse, to_starlette_response
+from .adapters.starlette import create_starlette_endpoint
 from .compiler import RouteContract, compile_route_contracts
 from .execution import ExecutionPlan, compile_execution_plans
-from .adapters.starlette import create_starlette_endpoint
 from .registry import RouteRegistry
 from .versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType, extract_request_version
 
 if TYPE_CHECKING:
-    from ...testing.overrides import PipelineOverrideRegistry
     from ...pipeline.middleware import MiddlewareRegistry
+    from ...testing.overrides import PipelineOverrideRegistry
 
 EndpointHandler = Callable[[object], Awaitable[object]]
 
@@ -77,7 +77,8 @@ def compile_routes_from_contracts(
     seen_routes: dict[tuple[str, str], str] = {}
     compiled_routes: list[Route] = []
     versioned_dispatchers: dict[
-        tuple[str, str], list[tuple[tuple[str, ...], EndpointHandler, str, RouteContract, ExecutionPlan]]
+        tuple[str, str],
+        list[tuple[tuple[str, ...], EndpointHandler, str, RouteContract, ExecutionPlan]],
     ] = defaultdict(list)
     if versioning is None:
         RouteRegistry(route_contracts).validate()
@@ -106,7 +107,9 @@ def compile_routes_from_contracts(
         endpoint = create_starlette_endpoint(
             container,
             execution_plan,
-            middleware_registry.resolve_for(route_contract) if middleware_registry is not None else (),
+            middleware_registry.resolve_for(route_contract)
+            if middleware_registry is not None
+            else (),
             pipeline_override_registry,
         )
 
@@ -146,7 +149,13 @@ def compile_routes_from_contracts(
             continue
 
         existing = versioned_dispatchers[route_key]
-        for existing_versions, _existing_endpoint, existing_owner, _existing_contract, _existing_plan in existing:
+        for (
+            existing_versions,
+            _existing_endpoint,
+            existing_owner,
+            _existing_contract,
+            _existing_plan,
+        ) in existing:
             is_new_neutral = _is_neutral_version(effective_versions)
             is_existing_neutral = _is_neutral_version(existing_versions)
             if is_new_neutral and is_existing_neutral:
@@ -205,16 +214,18 @@ def _attach_route_artifacts(
     contracts: tuple[RouteContract, ...],
     execution_plans: tuple[ExecutionPlan, ...],
 ) -> None:
-    setattr(endpoint, "bustan_route_contracts", contracts)
-    setattr(route, "bustan_route_contracts", contracts)
-    setattr(endpoint, "bustan_execution_plans", execution_plans)
-    setattr(route, "bustan_execution_plans", execution_plans)
+    # Neither the endpoint callable nor Starlette's Route declares these attributes,
+    # so they are attached dynamically and read back the same way.
+    setattr(endpoint, "bustan_route_contracts", contracts)  # noqa: B010
+    setattr(route, "bustan_route_contracts", contracts)  # noqa: B010
+    setattr(endpoint, "bustan_execution_plans", execution_plans)  # noqa: B010
+    setattr(route, "bustan_execution_plans", execution_plans)  # noqa: B010
     if len(contracts) == 1:
-        setattr(endpoint, "bustan_route_contract", contracts[0])
-        setattr(route, "bustan_route_contract", contracts[0])
+        setattr(endpoint, "bustan_route_contract", contracts[0])  # noqa: B010
+        setattr(route, "bustan_route_contract", contracts[0])  # noqa: B010
     if len(execution_plans) == 1:
-        setattr(endpoint, "bustan_execution_plan", execution_plans[0])
-        setattr(route, "bustan_execution_plan", execution_plans[0])
+        setattr(endpoint, "bustan_execution_plan", execution_plans[0])  # noqa: B010
+        setattr(route, "bustan_execution_plan", execution_plans[0])  # noqa: B010
 
 
 def _is_neutral_version(versions: tuple[str, ...]) -> bool:
@@ -258,5 +269,6 @@ def _validate_starlette_route_support(route_contracts: tuple[RouteContract, ...]
     for route_contract in route_contracts:
         if route_contract.hosts:
             raise RouteDefinitionError(
-                f"Direct Starlette route compilation does not support host routing for {route_contract.method} {route_contract.path}"
+                "Direct Starlette route compilation does not support host routing for "
+                f"{route_contract.method} {route_contract.path}"
             )

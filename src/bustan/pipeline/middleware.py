@@ -206,17 +206,17 @@ def _route_matches_target(
             and route_contract.module_key in target.controller_module_keys
         )
 
-    if target.method is not None and target.method is not RequestMethod.ALL:
-        if route_contract.method != target.method.value:
-            return False
+    if (
+        target.method is not None
+        and target.method is not RequestMethod.ALL
+        and route_contract.method != target.method.value
+    ):
+        return False
 
     if target.path is not None and not fnmatch.fnmatch(route_contract.path, target.path):
         return False
 
-    if target.host is not None and not _route_host_matches(route_contract.hosts, target.host):
-        return False
-
-    return True
+    return target.host is None or _route_host_matches(route_contract.hosts, target.host)
 
 
 def _route_host_matches(hosts: tuple[str, ...], pattern: str) -> bool:

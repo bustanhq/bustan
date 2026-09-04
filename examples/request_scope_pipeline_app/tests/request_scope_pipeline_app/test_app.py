@@ -1,6 +1,5 @@
-from starlette.testclient import TestClient
-
 from request_scope_pipeline_app import build_application
+from starlette.testclient import TestClient
 
 
 def test_request_scope_pipeline_rejects_missing_identity() -> None:

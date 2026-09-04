@@ -51,9 +51,7 @@ def test_durable_scope_isolated_by_context_key() -> None:
     second_request = _build_request("/items", headers=[(b"x-tenant-id", b"tenant-b")])
 
     first = cast(Any, container.resolve(DurableService, module=AppModule, request=first_request))
-    second = cast(
-        Any, container.resolve(DurableService, module=AppModule, request=second_request)
-    )
+    second = cast(Any, container.resolve(DurableService, module=AppModule, request=second_request))
 
     assert first is not second
 
@@ -75,9 +73,7 @@ def test_durable_scope_shares_instances_across_distinct_requests_with_the_same_k
     second_request = _build_request("/items", headers=[(b"x-tenant-id", b"tenant-a")])
 
     first = cast(Any, container.resolve(DurableService, module=AppModule, request=first_request))
-    second = cast(
-        Any, container.resolve(DurableService, module=AppModule, request=second_request)
-    )
+    second = cast(Any, container.resolve(DurableService, module=AppModule, request=second_request))
 
     assert first is second
 

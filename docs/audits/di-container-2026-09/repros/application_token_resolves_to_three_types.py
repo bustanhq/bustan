@@ -52,7 +52,13 @@ def main() -> None:
     kinds["create_app"] = app.get(Probe).kind
     with TestClient(app) as client:
         kinds["http"] = client.get("/p/").json()["kind"]
-    scope = {"type": "http", "method": "GET", "path": "/", "headers": [], "app": app.get_http_server()}
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [],
+        "app": app.get_http_server(),
+    }
     kinds["container.resolve(request=...)"] = app.container.resolve(
         Probe, module=app.root_key, request=Request(scope)
     ).kind

@@ -1,10 +1,12 @@
-import pytest
 from typing import cast
+
+import pytest
+
 from bustan import Controller, Get, Injectable, Module, create_app
 from bustan.core.errors import (
     ModuleCycleError,
 )
-from bustan.core.module.dynamic import ModuleInstanceKey, DynamicModule
+from bustan.core.module.dynamic import DynamicModule, ModuleInstanceKey
 from bustan.core.module.graph import build_module_graph
 
 

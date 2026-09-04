@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from bustan import Module, Injectable, create_app_context, ApplicationContext
+
+from bustan import ApplicationContext, Injectable, Module, create_app_context
 from bustan.core.errors import ProviderResolutionError
 
 
@@ -21,7 +22,7 @@ class AppModule:
 def test_create_app_context_basic() -> None:
     context = create_app_context(AppModule)
     assert isinstance(context, ApplicationContext)
-    
+
     # Context should not have HTTP properties
     assert not hasattr(context, "listen")
     assert not hasattr(context, "starlette_app")

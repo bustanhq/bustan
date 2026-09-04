@@ -176,9 +176,7 @@ def test_schema_builder_helpers_cover_annotations_models_parameters_and_response
     assert _annotation_to_schema(tuple[int, str]) == {"type": "object"}
     assert _annotation_to_schema(set[str]) == {"type": "object"}
     assert _annotation_to_schema(int | None) == {"type": "integer", "nullable": True}
-    assert _annotation_to_schema(str | int) == {
-        "anyOf": [{"type": "string"}, {"type": "integer"}]
-    }
+    assert _annotation_to_schema(str | int) == {"anyOf": [{"type": "string"}, {"type": "integer"}]}
     assert _annotation_to_schema(type("CustomType", (), {})) == {"type": "object"}
 
     components: dict[str, object] = {"schemas": {}}
@@ -208,7 +206,8 @@ def test_schema_builder_helpers_cover_annotations_models_parameters_and_response
     )
 
     assert any(
-        parameter == {
+        parameter
+        == {
             "name": "id",
             "in": "path",
             "required": True,
@@ -229,8 +228,7 @@ def test_schema_builder_helpers_cover_annotations_models_parameters_and_response
         for parameter in parameters
     )
     assert any(
-        parameter["name"] == "slug"
-        and parameter["schema"] == {"type": "string"}
+        parameter["name"] == "slug" and parameter["schema"] == {"type": "string"}
         for parameter in parameters
     )
     assert all(parameter["name"] != "payload" for parameter in parameters)
@@ -241,11 +239,7 @@ def test_schema_builder_helpers_cover_annotations_models_parameters_and_response
         documented_handler,
         request_components,
     ) == {
-        "content": {
-            "application/json": {
-                "schema": {"$ref": "#/components/schemas/CatPayload"}
-            }
-        },
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CatPayload"}}},
         "required": True,
     }
     file_body = _build_request_body(
@@ -269,9 +263,7 @@ def test_schema_builder_helpers_cover_annotations_models_parameters_and_response
             "multipart/form-data": {
                 "schema": {
                     "type": "object",
-                    "properties": {
-                        "upload": {"type": "string", "format": "binary"}
-                    },
+                    "properties": {"upload": {"type": "string", "format": "binary"}},
                     "required": ["upload"],
                 }
             }
@@ -294,11 +286,7 @@ def test_schema_builder_helpers_cover_annotations_models_parameters_and_response
         }
     }
     assert inferred_body == {
-        "content": {
-            "application/json": {
-                "schema": {"$ref": "#/components/schemas/OuterPayload"}
-            }
-        },
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OuterPayload"}}},
         "required": False,
     }
 

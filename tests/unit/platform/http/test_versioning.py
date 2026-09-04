@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from starlette.requests import Request
 
-from bustan import Controller, Get, Module, VERSION_NEUTRAL, VersioningOptions, VersioningType
+from bustan import VERSION_NEUTRAL, Controller, Get, Module, VersioningOptions, VersioningType
 from bustan.core.errors import RouteDefinitionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
@@ -85,7 +85,9 @@ def test_compile_routes_raises_on_duplicate_unversioned_handlers_for_header_vers
         _compile_header(AppModule)
 
 
-def test_compile_routes_raises_on_duplicate_version_neutral_handlers_for_header_versioning() -> None:
+def test_compile_routes_raises_on_duplicate_version_neutral_handlers_for_header_versioning() -> (
+    None
+):
     @Controller("/items", version=VERSION_NEUTRAL)
     class ItemsControllerA:
         @Get("/")
@@ -156,22 +158,34 @@ def test_versioning_helpers_extract_versions_from_header_and_media_type_requests
     assert normalize_versions(None) == ()
     assert normalize_versions("1") == ("1",)
     assert normalize_versions(["1", "2"]) == ("1", "2")
-    assert extract_request_version(
-        header_request,
-        VersioningOptions(type=VersioningType.HEADER, default_version="1"),
-    ) == "2"
-    assert extract_request_version(
-        media_type_request,
-        VersioningOptions(type=VersioningType.MEDIA_TYPE, default_version="1"),
-    ) == "3"
-    assert extract_request_version(
-        default_request,
-        VersioningOptions(type=VersioningType.MEDIA_TYPE, default_version="1"),
-    ) == "1"
-    assert extract_request_version(
-        default_request,
-        VersioningOptions(type=VersioningType.URI, default_version="1"),
-    ) == "1"
+    assert (
+        extract_request_version(
+            header_request,
+            VersioningOptions(type=VersioningType.HEADER, default_version="1"),
+        )
+        == "2"
+    )
+    assert (
+        extract_request_version(
+            media_type_request,
+            VersioningOptions(type=VersioningType.MEDIA_TYPE, default_version="1"),
+        )
+        == "3"
+    )
+    assert (
+        extract_request_version(
+            default_request,
+            VersioningOptions(type=VersioningType.MEDIA_TYPE, default_version="1"),
+        )
+        == "1"
+    )
+    assert (
+        extract_request_version(
+            default_request,
+            VersioningOptions(type=VersioningType.URI, default_version="1"),
+        )
+        == "1"
+    )
 
 
 def _build_request(headers: list[tuple[bytes, bytes]] | None = None) -> Request:

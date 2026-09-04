@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar, cast
+from typing import cast
 
 from ..ioc.tokens import InjectionToken
 from .decorators import Module
 from .dynamic import DynamicModule
 
-OptionsT = TypeVar("OptionsT")
 
-
-class ConfigurableModuleDefinition(Generic[OptionsT]):
+class ConfigurableModuleDefinition[OptionsT]:
     """Typed interface for generated configurable module classes."""
 
     @staticmethod
@@ -45,7 +43,7 @@ class ConfigurableModuleDefinition(Generic[OptionsT]):
         raise NotImplementedError
 
 
-class ConfigurableModuleBuilder(Generic[OptionsT]):
+class ConfigurableModuleBuilder[OptionsT]:
     """Build runtime-generated module classes with for_root-style helpers."""
 
     def __init__(self) -> None:
@@ -65,7 +63,9 @@ class ConfigurableModuleBuilder(Generic[OptionsT]):
         self._extras_providers = providers
         return self
 
-    def build(self) -> tuple[type[ConfigurableModuleDefinition[OptionsT]], InjectionToken[OptionsT]]:
+    def build(
+        self,
+    ) -> tuple[type[ConfigurableModuleDefinition[OptionsT]], InjectionToken[OptionsT]]:
         """Return a generated module class and its stable options token."""
         if self._token is None:
             self._token = InjectionToken(f"{self._class_name}_OPTIONS")

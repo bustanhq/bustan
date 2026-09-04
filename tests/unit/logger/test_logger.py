@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bustan import LogLevel, Logger
+from bustan import Logger, LogLevel
 
 
 def test_logger_writes_messages_with_context(capsys) -> None:

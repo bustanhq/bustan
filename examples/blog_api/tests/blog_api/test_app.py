@@ -1,6 +1,5 @@
-from starlette.testclient import TestClient
-
 from blog_api import build_application
+from starlette.testclient import TestClient
 
 
 def test_blog_api_lists_seeded_posts() -> None:

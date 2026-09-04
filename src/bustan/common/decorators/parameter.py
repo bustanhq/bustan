@@ -161,7 +161,11 @@ class _CustomParameterDecorator:
     def __eq__(self, other: object) -> bool:
         if isinstance(other, _CustomParameterDecorator):
             return self._factory is other._factory
-        return isinstance(other, _CustomParameterMarker) and other.factory is self._factory and other.data is None
+        return (
+            isinstance(other, _CustomParameterMarker)
+            and other.factory is self._factory
+            and other.data is None
+        )
 
     def __hash__(self) -> int:
         return hash(self._factory)

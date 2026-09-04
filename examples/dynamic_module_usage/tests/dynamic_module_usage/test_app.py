@@ -1,6 +1,5 @@
-from starlette.testclient import TestClient
-
 from dynamic_module_usage import build_application
+from starlette.testclient import TestClient
 
 
 def test_dynamic_module_example_returns_cached_value() -> None:

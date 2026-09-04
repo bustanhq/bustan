@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TypeVar
-from types import FunctionType
 from collections.abc import Callable
+from types import FunctionType
+from typing import TypeVar
 
 from ...core.errors import RouteDefinitionError
 from ...core.utils import _normalize_path, _unwrap_handler

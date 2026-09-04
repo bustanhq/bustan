@@ -40,7 +40,11 @@ def test_binding_plans_preserve_parameter_order_and_source_location() -> None:
 
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
 
-    assert [binding.name for binding in binding_plan.parameters] == ["user_id", "version", "payload"]
+    assert [binding.name for binding in binding_plan.parameters] == [
+        "user_id",
+        "version",
+        "payload",
+    ]
     assert [binding.source for binding in binding_plan.parameters] == [
         ParameterSource.PATH,
         ParameterSource.QUERY,

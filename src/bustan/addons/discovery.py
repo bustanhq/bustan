@@ -25,14 +25,20 @@ class DiscoveryService:
 
     def modules(self) -> tuple[dict[str, object], ...]:
         entries: list[dict[str, object]] = []
-        for node in sorted(self._application.module_graph.nodes, key=lambda node: _display_name(node.key)):
+        for node in sorted(
+            self._application.module_graph.nodes, key=lambda node: _display_name(node.key)
+        ):
             entries.append(
                 {
                     "module": _display_name(node.key),
                     "global": node.metadata.is_global,
                     "imports": tuple(sorted(_display_name(module) for module in node.imports)),
-                    "controllers": tuple(sorted(controller.__name__ for controller in node.controllers)),
-                    "providers": tuple(sorted(_display_name(binding.token) for binding in node.bindings)),
+                    "controllers": tuple(
+                        sorted(controller.__name__ for controller in node.controllers)
+                    ),
+                    "providers": tuple(
+                        sorted(_display_name(binding.token) for binding in node.bindings)
+                    ),
                     "exports": tuple(sorted(_display_name(token) for token in node.exports)),
                 }
             )
@@ -40,11 +46,15 @@ class DiscoveryService:
 
     def providers(self) -> tuple[dict[str, object], ...]:
         entries: list[dict[str, object]] = []
-        for node in sorted(self._application.module_graph.nodes, key=lambda node: _display_name(node.key)):
+        for node in sorted(
+            self._application.module_graph.nodes, key=lambda node: _display_name(node.key)
+        ):
             entries.extend(self.providers_for_module(node.key))
         return tuple(entries)
 
-    def providers_for_module(self, module: ModuleKey | type[object]) -> tuple[dict[str, object], ...]:
+    def providers_for_module(
+        self, module: ModuleKey | type[object]
+    ) -> tuple[dict[str, object], ...]:
         node = _resolve_module_node(self._application.module_graph.nodes, module)
         bindings = sorted(node.bindings, key=lambda binding: _display_name(binding.token))
         return tuple(

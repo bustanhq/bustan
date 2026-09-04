@@ -31,7 +31,8 @@ def main() -> None:
     except ProviderResolutionError as exc:
         print(
             "RESULT: PN-01 REPRODUCED - providers=[EmailNotifier] bound token="
-            f"{binding.token.__name__} target={binding.target.__name__}; resolve(EmailNotifier): {exc}"
+            f"{binding.token.__name__} target={binding.target.__name__}; resolve(EmailNotifier): "
+            f"{exc}"
         )
 
 

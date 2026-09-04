@@ -9,7 +9,18 @@ from bustan.core.errors import RouteDefinitionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
 from bustan.platform.http.compiler import compile_route_contracts
-from bustan.security import Audit, Auth, Cache, DeprecatedRoute, Idempotent, Owner, Permissions, Public, RateLimit, Roles
+from bustan.security import (
+    Audit,
+    Auth,
+    Cache,
+    DeprecatedRoute,
+    Idempotent,
+    Owner,
+    Permissions,
+    Public,
+    RateLimit,
+    Roles,
+)
 
 
 def test_each_policy_decorator_family_contributes_to_one_compiled_plan() -> None:

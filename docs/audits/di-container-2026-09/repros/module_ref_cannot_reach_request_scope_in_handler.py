@@ -6,7 +6,16 @@ being instantiated. Inside a handler, ModuleRef.get() of a request-scoped provid
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
-from bustan import Controller, DiscoveryModule, Get, Injectable, Module, ModuleRef, Scope, create_app
+from bustan import (
+    Controller,
+    DiscoveryModule,
+    Get,
+    Injectable,
+    Module,
+    ModuleRef,
+    Scope,
+    create_app,
+)
 
 
 @Injectable(scope="request")

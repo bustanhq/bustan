@@ -6,8 +6,9 @@ import argparse
 import json
 import sys
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, cast
 
 from ...app.bootstrap import _create_app
 from ...platform.http.registry import diff_route_snapshots
@@ -28,14 +29,20 @@ def register_governance_commands(
         "ownership",
         help="Render route ownership and deprecation metadata from compiled artifacts.",
     )
-    ownership_parser.add_argument("target", help="Root module import path in the form package.module:RootModule")
+    ownership_parser.add_argument(
+        "target", help="Root module import path in the form package.module:RootModule"
+    )
 
     diff_parser = governance_subparsers.add_parser(
         "diff",
         help="Render a governance summary for a compiled route diff.",
     )
-    diff_parser.add_argument("target", help="Root module import path in the form package.module:RootModule")
-    diff_parser.add_argument("--snapshot", required=True, help="Path to the previous route snapshot JSON file.")
+    diff_parser.add_argument(
+        "target", help="Root module import path in the form package.module:RootModule"
+    )
+    diff_parser.add_argument(
+        "--snapshot", required=True, help="Path to the previous route snapshot JSON file."
+    )
 
     conformance_parser = governance_subparsers.add_parser(
         "conformance",
@@ -47,8 +54,12 @@ def register_governance_commands(
         "release-gate",
         help="Evaluate route diff and adapter conformance release gates.",
     )
-    gate_parser.add_argument("target", help="Root module import path in the form package.module:RootModule")
-    gate_parser.add_argument("--snapshot", required=True, help="Path to the previous route snapshot JSON file.")
+    gate_parser.add_argument(
+        "target", help="Root module import path in the form package.module:RootModule"
+    )
+    gate_parser.add_argument(
+        "--snapshot", required=True, help="Path to the previous route snapshot JSON file."
+    )
     gate_parser.add_argument(
         "--config",
         default="release/config.json",
@@ -176,8 +187,13 @@ def _build_release_gate_report(
             if not report["passed"]:
                 errors.append(f"adapter {adapter_name} failed conformance")
             expected_capabilities = expected_conformance.get(adapter_name)
-            if expected_capabilities is not None and report["capabilities"] != expected_capabilities:
-                errors.append(f"adapter {adapter_name} capabilities drifted from the release manifest")
+            if (
+                expected_capabilities is not None
+                and report["capabilities"] != expected_capabilities
+            ):
+                errors.append(
+                    f"adapter {adapter_name} capabilities drifted from the release manifest"
+                )
 
     return {
         "passed": not errors,
@@ -209,7 +225,8 @@ def _sorted_route_contracts(
 
 
 def _display_route_module(contract: object) -> str:
-    module_key = getattr(contract, "module_key")
+    # The parameter is deliberately untyped, so the attribute is read dynamically.
+    module_key = getattr(contract, "module_key")  # noqa: B009
     if isinstance(module_key, type):
         return module_key.__name__
     module = getattr(module_key, "module", None)

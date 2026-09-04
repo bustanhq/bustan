@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Generic, TypeVar, cast
+from typing import TypeVar, cast
 
 from ...common.constants import BUSTAN_METADATA_ATTR_PREFIX
 from ...core.utils import _get_metadata
@@ -21,14 +21,14 @@ def _metadata_attr_name(name: str) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class MetadataKey(Generic[MetadataT]):
+class MetadataKey[MetadataT]:
     """Stable identifier for framework-consumed metadata."""
 
     name: str
     attr_name: str
 
 
-class MetadataDecorator(Generic[MetadataT]):
+class MetadataDecorator[MetadataT]:
     """Typed decorator factory bound to one metadata key."""
 
     def __init__(self, key: MetadataKey[MetadataT]) -> None:
@@ -46,7 +46,7 @@ class MetadataDecorator(Generic[MetadataT]):
         return decorate
 
 
-def override_metadata(*values: MetadataT | None) -> MetadataT | None:
+def override_metadata[MetadataT](*values: MetadataT | None) -> MetadataT | None:
     """Return the first declared metadata value in precedence order."""
 
     for value in values:
@@ -55,7 +55,7 @@ def override_metadata(*values: MetadataT | None) -> MetadataT | None:
     return None
 
 
-def merge_metadata(*value_groups: Iterable[MetadataT] | None) -> tuple[MetadataT, ...]:
+def merge_metadata[MetadataT](*value_groups: Iterable[MetadataT] | None) -> tuple[MetadataT, ...]:
     """Merge metadata collections while preserving caller order."""
 
     merged: list[MetadataT] = []
@@ -66,7 +66,7 @@ def merge_metadata(*value_groups: Iterable[MetadataT] | None) -> tuple[MetadataT
     return tuple(merged)
 
 
-def _coerce_metadata_key(
+def _coerce_metadata_key[MetadataT](
     metadata: MetadataKey[MetadataT] | MetadataDecorator[MetadataT],
 ) -> MetadataKey[MetadataT]:
     if isinstance(metadata, MetadataDecorator):
@@ -99,7 +99,9 @@ class Reflector:
         *,
         inherit: bool = False,
     ) -> MetadataT | None:
-        return override_metadata(*(self.get(metadata, target, inherit=inherit) for target in targets))
+        return override_metadata(
+            *(self.get(metadata, target, inherit=inherit) for target in targets)
+        )
 
     def get_all_and_merge(
         self,

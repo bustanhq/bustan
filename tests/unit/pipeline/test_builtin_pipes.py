@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from pydantic import BaseModel
+from starlette.requests import Request
 
 from bustan import (
     DefaultValuePipe,
@@ -18,12 +19,11 @@ from bustan import (
     ParseUUIDPipe,
     ValidationPipe,
 )
-from bustan.core.errors import BadRequestException
 from bustan.common.types import RouteMetadata
+from bustan.core.errors import BadRequestException
 from bustan.core.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.context import ExecutionContext, RequestContext
 from bustan.platform.http.metadata import ControllerRouteDefinition
-from starlette.requests import Request
 
 if TYPE_CHECKING:
     from bustan.core.ioc.container import Container
@@ -49,9 +49,9 @@ async def test_parse_pipes_coerce_expected_types() -> None:
     assert await ParseArrayPipe().transform("a,b,c", context) == ["a", "b", "c"]
     assert await ParseEnumPipe(Color).transform("red", context) is Color.RED
     assert await DefaultValuePipe("fallback").transform(None, context) == "fallback"
-    assert str(await ParseUUIDPipe().transform("12345678-1234-5678-1234-567812345678", context)) == (
-        "12345678-1234-5678-1234-567812345678"
-    )
+    assert str(
+        await ParseUUIDPipe().transform("12345678-1234-5678-1234-567812345678", context)
+    ) == ("12345678-1234-5678-1234-567812345678")
 
 
 @pytest.mark.anyio

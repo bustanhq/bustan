@@ -5,11 +5,11 @@ from .discovery import DiscoveryModule, DiscoveryService
 from .module_ref import ModuleRef
 
 __all__ = (
-	"ContextId",
-	"DiscoveryModule",
-	"DiscoveryService",
-	"ModuleRef",
-	"application_context_id",
-	"durable_context_id",
-	"request_context_id",
+    "ContextId",
+    "DiscoveryModule",
+    "DiscoveryService",
+    "ModuleRef",
+    "application_context_id",
+    "durable_context_id",
+    "request_context_id",
 )

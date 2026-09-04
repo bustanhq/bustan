@@ -1,6 +1,5 @@
-from starlette.testclient import TestClient
-
 from multi_module_app import build_application
+from starlette.testclient import TestClient
 
 
 def test_multi_module_app_exposes_users_with_auth_issuer() -> None:

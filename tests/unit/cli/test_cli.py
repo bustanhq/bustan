@@ -6,8 +6,8 @@ import importlib
 import json
 import os
 import sys
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -33,9 +33,7 @@ build-backend = "uv_build"
 
 
 def _write_pyproject(directory: Path, name: str) -> None:
-    (directory / "pyproject.toml").write_text(
-        _PYPROJECT_TOML.format(name=name), encoding="utf-8"
-    )
+    (directory / "pyproject.toml").write_text(_PYPROJECT_TOML.format(name=name), encoding="utf-8")
 
 
 def test_init_creates_expected_files(tmp_path: Path, capsys) -> None:
@@ -75,13 +73,13 @@ def test_init_adds_scripts_to_pyproject(tmp_path: Path) -> None:
         os.chdir(old_cwd)
 
     content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
-    assert '[project.scripts]' in content
+    assert "[project.scripts]" in content
     assert 'start = "my_app:main"' in content
     assert 'dev = "my_app:dev"' in content
 
 
 def test_package_name_from_pyproject_returns_none_for_blank_project_name(tmp_path: Path) -> None:
-    (tmp_path / "pyproject.toml").write_text("[project]\nname = \"   \"\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "   "\n', encoding="utf-8")
 
     old_cwd = os.getcwd()
     os.chdir(tmp_path)
@@ -93,7 +91,7 @@ def test_package_name_from_pyproject_returns_none_for_blank_project_name(tmp_pat
 
 def test_init_project_preserves_existing_readme_and_scripts_section(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        "[project]\nname = \"demo-app\"\n\n[project.scripts]\ncustom = \"demo_app:main\"\n",
+        '[project]\nname = "demo-app"\n\n[project.scripts]\ncustom = "demo_app:main"\n',
         encoding="utf-8",
     )
     readme_path = tmp_path / "README.md"
@@ -118,7 +116,7 @@ def test_init_project_preserves_existing_readme_and_scripts_section(tmp_path: Pa
 
 def test_init_project_does_not_duplicate_existing_start_and_dev_scripts(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        "[project]\nname = \"demo-app\"\n\n[project.scripts]\n"
+        '[project]\nname = "demo-app"\n\n[project.scripts]\n'
         'start = "demo_app:main"\ndev = "demo_app:dev"\n',
         encoding="utf-8",
     )
@@ -339,7 +337,9 @@ def test_routes_diff_reports_added_removed_and_changed_routes(tmp_path: Path, ca
     assert diff[2]["fields"] == ["path"]
 
 
-def test_governance_ownership_reports_owner_and_deprecation_metadata(tmp_path: Path, capsys) -> None:
+def test_governance_ownership_reports_owner_and_deprecation_metadata(
+    tmp_path: Path, capsys
+) -> None:
     route_module = tmp_path / "governance_app.py"
     route_module.write_text(
         """
@@ -571,7 +571,9 @@ class AppModule:
 
 def test_routes_and_governance_commands_report_missing_subcommands(capsys) -> None:
     assert routes_commands.run_routes_command(argparse.Namespace(routes_command=None)) == 1
-    assert governance_commands.run_governance_command(argparse.Namespace(governance_command=None)) == 1
+    assert (
+        governance_commands.run_governance_command(argparse.Namespace(governance_command=None)) == 1
+    )
 
     captured = capsys.readouterr()
     assert "routes subcommand" in captured.err
@@ -605,28 +607,41 @@ def test_route_command_helpers_validate_targets_and_snapshots(tmp_path: Path) ->
 
 
 def test_route_and_governance_command_error_wrappers_return_failure(tmp_path: Path, capsys) -> None:
-    assert routes_commands.run_snapshot_command(
-        argparse.Namespace(target="broken", output=None)
-    ) == 1
+    assert (
+        routes_commands.run_snapshot_command(argparse.Namespace(target="broken", output=None)) == 1
+    )
 
     invalid_snapshot = tmp_path / "invalid.json"
     invalid_snapshot.write_text("{", encoding="utf-8")
-    assert routes_commands.run_diff_command(
-        argparse.Namespace(previous=str(invalid_snapshot), current=str(invalid_snapshot))
-    ) == 1
+    assert (
+        routes_commands.run_diff_command(
+            argparse.Namespace(previous=str(invalid_snapshot), current=str(invalid_snapshot))
+        )
+        == 1
+    )
 
-    assert governance_commands._run_json_command(
-        lambda *args: (_ for _ in ()).throw(ValueError("boom"))
-    ) == 1
-    assert governance_commands._run_release_gate(
-        argparse.Namespace(target="broken", snapshot="missing", config="missing", manifest="missing")
-    ) == 1
+    assert (
+        governance_commands._run_json_command(
+            lambda *args: (_ for _ in ()).throw(ValueError("boom"))
+        )
+        == 1
+    )
+    assert (
+        governance_commands._run_release_gate(
+            argparse.Namespace(
+                target="broken", snapshot="missing", config="missing", manifest="missing"
+            )
+        )
+        == 1
+    )
 
     captured = capsys.readouterr()
     assert "boom" in captured.err
 
 
-def test_governance_release_gate_can_pass_without_optional_conformance(tmp_path: Path, capsys) -> None:
+def test_governance_release_gate_can_pass_without_optional_conformance(
+    tmp_path: Path, capsys
+) -> None:
     route_module = tmp_path / "passing_app.py"
     route_module.write_text(
         """
@@ -751,9 +766,7 @@ def test_release_gate_reports_failed_adapter_conformance_and_capability_drift(
         json.dumps(
             {
                 "bustan-governance": {
-                    "adapter-conformance": {
-                        "starlette": {"supports_raw_body": True}
-                    }
+                    "adapter-conformance": {"starlette": {"supports_raw_body": True}}
                 }
             }
         ),
@@ -795,4 +808,3 @@ def test_release_gate_reports_failed_adapter_conformance_and_capability_drift(
 
     assert "adapter starlette failed conformance" in errors
     assert "adapter starlette capabilities drifted from the release manifest" in errors
-

@@ -9,9 +9,9 @@ from ..adapter import CompiledAdapterRoute
 from ..routing import compile_routes_from_contracts
 
 if TYPE_CHECKING:
+    from ....pipeline.middleware import MiddlewareRegistry
     from ..compiler import RouteContract
     from ..execution import ExecutionPlan
-    from ....pipeline.middleware import MiddlewareRegistry
 
 
 class StarletteAdapterCompiler:
@@ -49,7 +49,9 @@ class StarletteAdapterCompiler:
                 contracts=getattr(route, "bustan_route_contracts", ()),
                 execution_plans=getattr(route, "bustan_execution_plans", ()),
                 path=route.path,
-                methods=_compiled_methods(getattr(route, "bustan_route_contracts", ()), route.methods),
+                methods=_compiled_methods(
+                    getattr(route, "bustan_route_contracts", ()), route.methods
+                ),
                 name=route.name,
             )
             for route in routes
@@ -60,5 +62,5 @@ def _compiled_methods(
     contracts: tuple[RouteContract, ...], route_methods: set[str] | None
 ) -> tuple[str, ...]:
     if contracts:
-        return tuple(dict.fromkeys(getattr(contract, "method") for contract in contracts))
+        return tuple(dict.fromkeys(contract.method for contract in contracts))
     return tuple(route_methods or ())

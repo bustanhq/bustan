@@ -54,7 +54,9 @@ class Logger:
         target = self._override
         resolved_context = context or self._context
         if target is not None:
-            target_method = getattr(target, level.name.lower(), None) or getattr(target, "log")
+            target_method = getattr(target, level.name.lower(), None) or getattr(  # noqa: B009
+                target, "log"
+            )
             target_method(message, resolved_context)
             return
 

@@ -1,0 +1,7 @@
+# Revisions listed here are excluded from `git blame` output.
+#
+# Configure a checkout to use this file with:
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: apply ruff format across the repository
+e697fba5348b6ac30a0bb3f4ec095451b3c93dd3

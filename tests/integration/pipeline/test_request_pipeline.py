@@ -11,21 +11,21 @@ from starlette.testclient import TestClient
 
 from bustan import (
     CallHandler,
-    ExceptionFilter,
-    Guard,
-    Interceptor,
-    Pipe,
     Controller,
-    create_param_decorator,
-    create_app,
+    ExceptionFilter,
     Get,
+    Guard,
     Injectable,
+    Interceptor,
     Module,
+    Pipe,
     Post,
     UseFilters,
     UseGuards,
     UseInterceptors,
     UsePipes,
+    create_app,
+    create_param_decorator,
 )
 from bustan.errors import ParameterBindingError
 from bustan.pipeline.context import ExecutionContext
@@ -37,9 +37,11 @@ class CreateUserPayload(BaseModel):
 
 
 RequestData = create_param_decorator(
-    lambda data, ctx: ctx.get_route_contract().handler_name
-    if data is None
-    else ctx.switch_to_http().get_request().headers[data],
+    lambda data, ctx: (
+        ctx.get_route_contract().handler_name
+        if data is None
+        else ctx.switch_to_http().get_request().headers[data]
+    ),
     name="RequestData",
 )
 
@@ -224,7 +226,8 @@ def test_request_pipeline_uses_exception_filters_to_convert_binding_errors() -> 
 
     assert response.status_code == 422
     assert response.json() == {
-        "detail": "Could not bind path parameter 'user_id' to int: invalid literal for int() with base 10: 'not-a-number'",
+        "detail": "Could not bind path parameter 'user_id' to int: invalid literal for int() with "
+        "base 10: 'not-a-number'",
         "kind": "binding",
         "path": "/users/not-a-number",
     }
@@ -265,7 +268,9 @@ def test_request_pipeline_returns_structured_parameter_binding_errors_by_default
     assert "not-a-number" in response.json()["detail"]
 
 
-def test_request_pipeline_auto_validation_rejects_invalid_payloads_before_handler_invocation() -> None:
+def test_request_pipeline_auto_validation_rejects_invalid_payloads_before_handler_invocation() -> (
+    None
+):
     handler_called = False
 
     @Controller("/users", validation_mode="auto")

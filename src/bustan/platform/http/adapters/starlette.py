@@ -95,7 +95,7 @@ async def _run_route_middleware(
                 return await invoke(index + 1, next_request)
 
             middleware_ref = entry.middleware
-            if isinstance(middleware_ref, type) or isinstance(middleware_ref, Middleware):
+            if isinstance(middleware_ref, type | Middleware):
                 middleware = factory.resolve_components(
                     (middleware_ref,),
                     Middleware,

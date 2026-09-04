@@ -1,6 +1,7 @@
 """Unit tests for injection tokens."""
 
 from __future__ import annotations
+
 from bustan.core.ioc.tokens import InjectionToken
 
 

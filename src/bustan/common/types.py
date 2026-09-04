@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TypeVar
-from dataclasses import dataclass
 
-T = TypeVar("T")
+# Shared by the decorator modules, which preserve the decorated class's own type.
 ClassT = TypeVar("ClassT", bound=type[object])
-DecoratedT = TypeVar("DecoratedT", bound=object)
 HostInput = str | list[str] | tuple[str, ...]
 
 

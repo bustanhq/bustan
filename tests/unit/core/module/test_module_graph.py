@@ -1,7 +1,8 @@
 """Unit tests for module graph discovery and validation."""
 
-import pytest
 from typing import cast
+
+import pytest
 
 from bustan import Controller, Get, Global, Injectable, Module
 from bustan.core.errors import (

@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Generic
 
-from ...common.types import T
-
-
-class InjectionToken(Generic[T]):
+class InjectionToken[T]:
     """A typed token representing a dependency for injection."""
 
     def __init__(self, name: str):

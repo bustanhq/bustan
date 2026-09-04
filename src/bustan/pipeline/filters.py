@@ -38,9 +38,7 @@ class ExceptionFilter:
 
     exception_types: tuple[type[BaseException], ...] = (Exception,)
 
-    def catch(
-        self, exc: Exception, context: ExecutionContext
-    ) -> object | Awaitable[object]:
+    def catch(self, exc: Exception, context: ExecutionContext) -> object | Awaitable[object]:
         """Convert an exception into a handler result or response payload."""
 
         raise exc
@@ -128,7 +126,9 @@ def _filter_match(
     return catch_all, min(matching_distances)
 
 
-def _exception_distance(exception_type: type[BaseException], declared_type: type[BaseException]) -> int:
+def _exception_distance(
+    exception_type: type[BaseException], declared_type: type[BaseException]
+) -> int:
     try:
         return exception_type.__mro__.index(declared_type)
     except ValueError:

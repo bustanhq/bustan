@@ -7,12 +7,12 @@ from collections.abc import Mapping
 from types import MappingProxyType
 
 from ...common.types import ProviderScope
-from ..ioc.container import Container
 from ..errors import LifecycleError
+from ..ioc.container import Container
 from ..module.dynamic import ModuleKey
 from ..module.graph import ModuleGraph, ModuleNode
 from ..utils import _display_name
-from .hooks import LifecycleHookName
+from .hooks import LIFECYCLE_HOOK_NAMES
 
 
 async def run_lifecycle_stage(
@@ -75,7 +75,7 @@ def instantiate_lifecycle_modules(nodes: tuple[ModuleNode, ...]) -> Mapping[Modu
 
 def _has_lifecycle_hooks(module_cls: type[object]) -> bool:
     """Return whether a module class implements at least one lifecycle hook."""
-    return any(callable(getattr(module_cls, hook_name, None)) for hook_name in LifecycleHookName)
+    return any(callable(getattr(module_cls, hook_name, None)) for hook_name in LIFECYCLE_HOOK_NAMES)
 
 
 def instantiate_lifecycle_providers(graph: ModuleGraph, container: Container) -> None:

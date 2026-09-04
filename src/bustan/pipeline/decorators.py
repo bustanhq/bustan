@@ -53,7 +53,8 @@ def _pipeline_decorator(
         handler_function = _unwrap_handler(target)
         if handler_function is None:
             raise InvalidPipelineError(
-                f"@Use{field_name.capitalize()} can only decorate controller classes or handler callables"
+                f"@Use{field_name.capitalize()} can only decorate controller classes or handler "
+                "callables"
             )
 
         extend_handler_pipeline_metadata(handler_function, **{field_name: components})

@@ -219,18 +219,22 @@ def test_override_provider_restores_previous_override_and_supports_application_t
 def test_override_provider_rejects_starlette_targets_without_a_bustan_container() -> None:
     starlette = Starlette()
 
-    with pytest.raises(TypeError, match="does not expose a Bustan container"):
-        with override_provider(starlette, object(), object()):
-            pass
+    with (
+        pytest.raises(TypeError, match="does not expose a Bustan container"),
+        override_provider(starlette, object(), object()),
+    ):
+        pass
 
 
 def test_override_provider_rejects_invalid_starlette_container_state() -> None:
     starlette = Starlette()
     starlette.state.bustan_container = object()
 
-    with pytest.raises(TypeError, match="does not expose a Bustan container"):
-        with override_provider(starlette, object(), object()):
-            pass
+    with (
+        pytest.raises(TypeError, match="does not expose a Bustan container"),
+        override_provider(starlette, object(), object()),
+    ):
+        pass
 
 
 @pytest.mark.anyio

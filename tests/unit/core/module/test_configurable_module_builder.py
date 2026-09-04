@@ -56,7 +56,9 @@ def test_configurable_module_builder_covers_register_and_async_variants() -> Non
     ConfigModule, options_token = builder.build()
 
     registered = ConfigModule.register({"name": "Ada"}, is_global=True)
-    factory_module = ConfigModule.for_root_async(use_factory=lambda: {"name": "Ada"}, inject=("DEP",))
+    factory_module = ConfigModule.for_root_async(
+        use_factory=lambda: {"name": "Ada"}, inject=("DEP",)
+    )
     class_module = ConfigModule.for_root_async(use_class=ConfigFactory)
     existing_module = ConfigModule.register_async(use_existing="CONFIG_TOKEN")
     factory_provider = cast(dict[str, object], factory_module.providers[0])
@@ -67,7 +69,10 @@ def test_configurable_module_builder_covers_register_and_async_variants() -> Non
     assert factory_provider["inject"] == ("DEP",)
     assert callable(factory_provider["use_factory"])
     assert class_module.providers[0] == {"provide": options_token, "use_class": ConfigFactory}
-    assert existing_module.providers[0] == {"provide": options_token, "use_existing": "CONFIG_TOKEN"}
+    assert existing_module.providers[0] == {
+        "provide": options_token,
+        "use_existing": "CONFIG_TOKEN",
+    }
 
     with pytest.raises(ValueError, match="requires use_factory, use_class, or use_existing"):
         ConfigModule.for_root_async()

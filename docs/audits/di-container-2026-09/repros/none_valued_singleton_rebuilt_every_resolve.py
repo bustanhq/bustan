@@ -23,7 +23,10 @@ def main() -> None:
     for _ in range(5):
         context.get(FEATURE_FLAG_CLIENT)
     if calls["count"] > 1:
-        print(f"RESULT: PN-02 REPRODUCED - singleton factory ran {calls['count']} times for 5 resolves")
+        print(
+            f"RESULT: PN-02 REPRODUCED - singleton factory ran {calls['count']} times for 5 "
+            "resolves"
+        )
     else:
         print("RESULT: PN-02 FIXED - singleton factory ran once")
 

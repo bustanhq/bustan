@@ -17,9 +17,9 @@ from bustan import (
     Module,
     ModuleRef,
     application_context_id,
+    create_app,
     durable_context_id,
     request_context_id,
-    create_app,
 )
 from bustan.addons.discovery import _resolve_application_context, _resolve_module_node
 from bustan.addons.module_ref import _resolve_application, _resolve_module_key
@@ -153,7 +153,9 @@ def test_discovery_helper_error_paths_are_covered() -> None:
         def read_greeting(self) -> dict[str, str]:
             return {"message": "hello"}
 
-    @Module(imports=[DiscoveryModule], controllers=[GreetingController], providers=[GreetingService])
+    @Module(
+        imports=[DiscoveryModule], controllers=[GreetingController], providers=[GreetingService]
+    )
     class AppModule:
         pass
 

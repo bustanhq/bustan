@@ -7,9 +7,9 @@ from collections.abc import Awaitable
 from typing import Any, cast
 
 from ..core.errors import GuardRejectedError, ProviderResolutionError
+from ..core.utils import _qualname
 from .auth import AUTHENTICATOR_REGISTRY, Principal
 from .context import ExecutionContext
-from ..core.utils import _qualname
 
 
 class Guard:
@@ -42,20 +42,16 @@ class PolicyGuard(Guard):
             request = context.request
             if request is None:
                 raise GuardRejectedError("Authentication required")
-            setattr(request.state, "principal", principal)
+            request.state.principal = principal
 
         if getattr(policy_plan, "roles", ()):
             if principal is None:
                 raise GuardRejectedError("Authentication required")
             missing_roles = [
-                role
-                for role in policy_plan.roles
-                if role not in getattr(principal, "roles", ())
+                role for role in policy_plan.roles if role not in getattr(principal, "roles", ())
             ]
             if missing_roles:
-                raise GuardRejectedError(
-                    f"Policy denied: missing roles {tuple(missing_roles)}"
-                )
+                raise GuardRejectedError(f"Policy denied: missing roles {tuple(missing_roles)}")
 
         if getattr(policy_plan, "permissions", ()):
             if principal is None:
@@ -81,7 +77,9 @@ class PolicyGuard(Guard):
                 request=request if request is not None else None,
             )
         except ProviderResolutionError as exc:
-            raise GuardRejectedError(f"Unknown authenticator registry for strategy {strategy!r}") from exc
+            raise GuardRejectedError(
+                f"Unknown authenticator registry for strategy {strategy!r}"
+            ) from exc
 
         authenticator = getattr(registry, "get", lambda _key, _default=None: None)(strategy, None)
         if authenticator is None:

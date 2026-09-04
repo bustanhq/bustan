@@ -4,8 +4,8 @@ import pytest
 
 from bustan import Controller, Get, Module
 from bustan.core.ioc.container import build_container
-from bustan.errors import ParameterBindingError, RouteDefinitionError
 from bustan.core.module.graph import build_module_graph
+from bustan.errors import ParameterBindingError, RouteDefinitionError
 from bustan.platform.http.routing import compile_routes
 
 

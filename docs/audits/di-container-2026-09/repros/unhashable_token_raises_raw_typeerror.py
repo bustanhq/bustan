@@ -8,7 +8,9 @@ from bustan.errors import BustanError
 
 def main() -> None:
     try:
-        module = Module(providers=[{"provide": {"name": "x"}, "use_value": 1}])(type("BadModule", (), {}))
+        module = Module(providers=[{"provide": {"name": "x"}, "use_value": 1}])(
+            type("BadModule", (), {})
+        )
         create_app_context(module)
         print("RESULT: PN-06 REPRODUCED - unhashable token accepted silently")
     except BustanError as exc:

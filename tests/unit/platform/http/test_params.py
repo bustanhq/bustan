@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import inspect
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Annotated, Any, Mapping, cast
+from typing import Annotated, Any, cast
 from urllib.parse import urlencode
 
 import anyio
@@ -35,25 +36,25 @@ from bustan.pipeline.context import ExecutionContext
 from bustan.platform.http.abstractions import HttpRequest, StarletteHttpRequest
 from bustan.platform.http.metadata import ControllerRouteDefinition, iter_controller_routes
 from bustan.platform.http.params import (
+    _MISSING,
+    _NO_BODY,
+    _UNSET_BODY,
     HandlerBindingPlan,
     ParameterBinding,
     ParameterBindingMode,
     ParameterSource,
     ValidationMode,
     _bind_parameter,
-    _compile_parameter_source,
     _coerce_value,
+    _compile_parameter_source,
     _extract_body_value,
     _extract_marker,
     _has_explicit_source,
     _infer_body_model,
-    _MISSING,
-    _NO_BODY,
     _query_value,
     _resolve_binding_mode,
     _resolve_validation_mode,
     _source_from_marker,
-    _UNSET_BODY,
     bind_handler_arguments,
     compile_parameter_bindings,
 )
@@ -71,9 +72,11 @@ class UpdateUserPayload(BaseModel):
 
 
 UnitCurrentRequestData = create_param_decorator(
-    lambda data, ctx: ctx.get_handler().__name__
-    if data is None
-    else ctx.switch_to_http().get_request().headers[data],
+    lambda data, ctx: (
+        ctx.get_handler().__name__
+        if data is None
+        else ctx.switch_to_http().get_request().headers[data]
+    ),
     name="CurrentRequestData",
 )
 
@@ -300,9 +303,7 @@ def test_bind_handler_arguments_rejects_boolean_json_values_for_int_parameters()
         anyio.run(bind_handler_arguments, request, binding_plan)
 
 
-def test_compile_parameter_bindings_resolves_string_annotations_and_ignores_return_annotations() -> (
-    None
-):
+def test_compile_parameter_bindings_resolves_string_annotations_and_return() -> None:
     @Controller("/users")
     class UsersController:
         @Post("/")
@@ -1064,21 +1065,30 @@ def test_marker_and_explicit_source_helpers_cover_supported_markers() -> None:
     assert _source_from_marker(CurrentUser) is ParameterSource.CUSTOM
     assert _source_from_marker(marker) is ParameterSource.QUERY
 
-    assert _has_explicit_source(
-        parameter=signature.parameters["request"],
-        annotation=Request,
-        path_parameter_names=frozenset(),
-    ) is True
-    assert _has_explicit_source(
-        parameter=signature.parameters["user_id"],
-        annotation=int,
-        path_parameter_names=frozenset({"user_id"}),
-    ) is True
-    assert _has_explicit_source(
-        parameter=signature.parameters["search"],
-        annotation=Annotated[str, Query("search")],
-        path_parameter_names=frozenset(),
-    ) is True
+    assert (
+        _has_explicit_source(
+            parameter=signature.parameters["request"],
+            annotation=Request,
+            path_parameter_names=frozenset(),
+        )
+        is True
+    )
+    assert (
+        _has_explicit_source(
+            parameter=signature.parameters["user_id"],
+            annotation=int,
+            path_parameter_names=frozenset({"user_id"}),
+        )
+        is True
+    )
+    assert (
+        _has_explicit_source(
+            parameter=signature.parameters["search"],
+            annotation=Annotated[str, Query("search")],
+            path_parameter_names=frozenset(),
+        )
+        is True
+    )
 
 
 def test_query_and_coerce_helpers_cover_missing_union_and_success_paths() -> None:
@@ -1105,43 +1115,61 @@ def test_query_and_coerce_helpers_cover_missing_union_and_success_paths() -> Non
         annotation=dict[str, object],
         has_default=False,
     )
-    assert _extract_body_value(
-        _binding_plan(inferred_binding, inferred_parameter_names=("payload",)),
-        inferred_binding,
-        _NO_BODY,
-    ) is _MISSING
+    assert (
+        _extract_body_value(
+            _binding_plan(inferred_binding, inferred_parameter_names=("payload",)),
+            inferred_binding,
+            _NO_BODY,
+        )
+        is _MISSING
+    )
 
     payload = Payload(name="Ada")
-    assert _coerce_value(
-        payload,
-        annotation=Payload,
-        parameter_name="payload",
-        source_description="request body",
-    ) is payload
-    assert _coerce_value(
-        None,
-        annotation=int | None,
-        parameter_name="count",
-        source_description="query parameter",
-    ) is None
-    assert _coerce_value(
-        b"4",
-        annotation=int,
-        parameter_name="count",
-        source_description="query parameter",
-    ) == 4
-    assert _coerce_value(
-        5,
-        annotation=float,
-        parameter_name="ratio",
-        source_description="query parameter",
-    ) == 5.0
-    assert _coerce_value(
-        1.5,
-        annotation=str,
-        parameter_name="text",
-        source_description="query parameter",
-    ) == "1.5"
+    assert (
+        _coerce_value(
+            payload,
+            annotation=Payload,
+            parameter_name="payload",
+            source_description="request body",
+        )
+        is payload
+    )
+    assert (
+        _coerce_value(
+            None,
+            annotation=int | None,
+            parameter_name="count",
+            source_description="query parameter",
+        )
+        is None
+    )
+    assert (
+        _coerce_value(
+            b"4",
+            annotation=int,
+            parameter_name="count",
+            source_description="query parameter",
+        )
+        == 4
+    )
+    assert (
+        _coerce_value(
+            5,
+            annotation=float,
+            parameter_name="ratio",
+            source_description="query parameter",
+        )
+        == 5.0
+    )
+    assert (
+        _coerce_value(
+            1.5,
+            annotation=str,
+            parameter_name="text",
+            source_description="query parameter",
+        )
+        == "1.5"
+    )
     assert _coerce_value(
         ["1", "2"],
         annotation=list[int],
@@ -1270,13 +1298,16 @@ class _RequestStub:
         return self._form_data
 
 
+_DEFAULT_CLIENT: Any = SimpleNamespace(host="testclient", port=50000)
+
+
 def _request_stub(
     *,
     path_params: dict[str, str] | None = None,
     query_params: dict[str, object] | list[tuple[str, object]] | None = None,
     headers: dict[str, str] | None = None,
     cookies: dict[str, str] | None = None,
-    client: Any = SimpleNamespace(host="testclient", port=50000),
+    client: Any = _DEFAULT_CLIENT,
     body: bytes = b"",
     json_value: object = None,
     form_data: FormData | None = None,

@@ -81,7 +81,13 @@ skip_covered = false
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-exclude = ["src/bustan/cli/templates"]
+exclude = [
+    "src/bustan/cli/templates",
+    "docs/audits/di-container-2026-09/repros/evidence",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
 [build-system]
 requires = ["uv_build>=0.11.8,<0.13.0"]

@@ -1,10 +1,11 @@
 """Integration tests for module and application lifecycle hooks."""
 
+from typing import Any, cast
+
 import pytest
 from starlette.testclient import TestClient
 
-from typing import Any, cast
-from bustan import create_app, Injectable, Module
+from bustan import Injectable, Module, create_app
 from bustan.errors import LifecycleError
 
 
@@ -65,9 +66,11 @@ def test_create_app_surfaces_lifecycle_hook_failures() -> None:
         def on_module_init(self) -> None:
             raise RuntimeError("boom")
 
-    with pytest.raises(LifecycleError, match="BrokenModule.on_module_init failed: boom"):
-        with TestClient(cast(Any, create_app(BrokenModule))):
-            pass
+    with (
+        pytest.raises(LifecycleError, match="BrokenModule.on_module_init failed: boom"),
+        TestClient(cast(Any, create_app(BrokenModule))),
+    ):
+        pass
 
 
 def test_provider_shutdown_hooks_run_in_reverse_creation_order() -> None:
@@ -116,8 +119,10 @@ def test_one_failing_shutdown_hook_does_not_abort_remaining_teardown() -> None:
     class AppModule:
         pass
 
-    with pytest.raises(LifecycleError, match="shutdown boom"):
-        with TestClient(cast(Any, create_app(AppModule))):
-            pass
+    with (
+        pytest.raises(LifecycleError, match="shutdown boom"),
+        TestClient(cast(Any, create_app(AppModule))),
+    ):
+        pass
 
     assert events == ["healthy:shutdown", "healthy:destroy"]

@@ -64,7 +64,7 @@ def test_application_introspection_properties(app_wrapper: Application) -> None:
     # Routes (public accessor)
     server = app_wrapper.get_http_server()
     server.routes.append(Route("/test", lambda r: None))
-    
+
     routes = app_wrapper.routes
     assert "/test" in routes
     assert len(routes["/test"]) == 1

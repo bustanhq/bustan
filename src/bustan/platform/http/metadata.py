@@ -4,24 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import FunctionType
-from typing import TypeVar
 
 from ...common.constants import (
     BUSTAN_CONTROLLER_ATTR as CONTROLLER_METADATA_ATTR,
+)
+from ...common.constants import (
     BUSTAN_ROUTE_ATTR as ROUTE_METADATA_ATTR,
 )
-
 from ...common.types import (
     ControllerMetadata,
     RouteMetadata,
 )
-
 from ...core.errors import InvalidControllerError, RouteDefinitionError
 from ...core.utils import _get_metadata, _normalize_path, _unwrap_handler
-
-
-ClassT = TypeVar("ClassT", bound=type[object])
-FunctionT = TypeVar("FunctionT", bound=FunctionType)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +44,9 @@ def normalize_route_path(path: str) -> str:
     return normalized_path or "/"
 
 
-def set_controller_metadata(controller_cls: ClassT, metadata: ControllerMetadata) -> ClassT:
+def set_controller_metadata[ClassT: type[object]](
+    controller_cls: ClassT, metadata: ControllerMetadata
+) -> ClassT:
     setattr(controller_cls, CONTROLLER_METADATA_ATTR, metadata)
     return controller_cls
 
@@ -61,7 +58,9 @@ def get_controller_metadata(
     return metadata if isinstance(metadata, ControllerMetadata) else None
 
 
-def set_route_metadata(handler: FunctionT, metadata: RouteMetadata) -> FunctionT:
+def set_route_metadata[FunctionT: FunctionType](
+    handler: FunctionT, metadata: RouteMetadata
+) -> FunctionT:
     setattr(handler, ROUTE_METADATA_ATTR, metadata)
     return handler
 

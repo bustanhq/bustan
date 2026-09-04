@@ -19,6 +19,7 @@ from bustan.core.ioc.scopes import ScopeManager
 from bustan.core.ioc.tokens import APPLICATION, INQUIRER, REQUEST, RESPONSE
 
 if TYPE_CHECKING:
+
     class MissingType:
         pass
 
@@ -41,46 +42,58 @@ def test_resolver_special_tokens_cover_runtime_success_and_error_paths() -> None
     response_token = resolver.scope_manager.push_response(response)
     application_token = resolver.scope_manager.push_application(application)
     try:
-        assert resolver._resolve_special_token(
-            ParsedDependency(annotation=object, token=REQUEST, optional=False),
-            class_cls=Service,
-            parameter_name="request",
-            active_request=request,
-            owner_is_controller=True,
-            is_request_scoped=False,
-            is_durable_scoped=False,
-        ) is request
-        assert resolver._resolve_special_token(
-            ParsedDependency(annotation=object, token=RESPONSE, optional=False),
-            class_cls=Service,
-            parameter_name="response",
-            active_request=request,
-            owner_is_controller=False,
-            is_request_scoped=False,
-            is_durable_scoped=False,
-        ) is response
-        assert resolver._resolve_special_token(
-            ParsedDependency(annotation=object, token=APPLICATION, optional=False),
-            class_cls=Service,
-            parameter_name="application",
-            active_request=request,
-            owner_is_controller=False,
-            is_request_scoped=False,
-            is_durable_scoped=False,
-        ) is application
+        assert (
+            resolver._resolve_special_token(
+                ParsedDependency(annotation=object, token=REQUEST, optional=False),
+                class_cls=Service,
+                parameter_name="request",
+                active_request=request,
+                owner_is_controller=True,
+                is_request_scoped=False,
+                is_durable_scoped=False,
+            )
+            is request
+        )
+        assert (
+            resolver._resolve_special_token(
+                ParsedDependency(annotation=object, token=RESPONSE, optional=False),
+                class_cls=Service,
+                parameter_name="response",
+                active_request=request,
+                owner_is_controller=False,
+                is_request_scoped=False,
+                is_durable_scoped=False,
+            )
+            is response
+        )
+        assert (
+            resolver._resolve_special_token(
+                ParsedDependency(annotation=object, token=APPLICATION, optional=False),
+                class_cls=Service,
+                parameter_name="application",
+                active_request=request,
+                owner_is_controller=False,
+                is_request_scoped=False,
+                is_durable_scoped=False,
+            )
+            is application
+        )
     finally:
         resolver.scope_manager.pop_application(application_token)
         resolver.scope_manager.pop_response(response_token)
 
-    assert resolver._resolve_special_token(
-        ParsedDependency(annotation=object, token=APPLICATION, optional=False),
-        class_cls=Service,
-        parameter_name="application",
-        active_request=request_with_app,
-        owner_is_controller=False,
-        is_request_scoped=False,
-        is_durable_scoped=False,
-    ) is application
+    assert (
+        resolver._resolve_special_token(
+            ParsedDependency(annotation=object, token=APPLICATION, optional=False),
+            class_cls=Service,
+            parameter_name="application",
+            active_request=request_with_app,
+            owner_is_controller=False,
+            is_request_scoped=False,
+            is_durable_scoped=False,
+        )
+        is application
+    )
 
     with pytest.raises(ProviderResolutionError, match="requested REQUEST"):
         resolver._resolve_special_token(
@@ -194,27 +207,36 @@ def test_resolver_cache_helpers_cover_request_durable_singleton_and_transient_pa
     try:
         request_cache_key = (AppModule, "request-token")
         resolver.scope_manager.get_request_cache(request)[request_cache_key] = "cached-request"
-        assert resolver._get_cached_instance(
-            request_binding,
-            request_cache_key,
-            AppModule,
-            "request-token",
-        ) == "cached-request"
-        assert resolver._cache_instance(
-            request_binding,
-            request_cache_key,
-            AppModule,
-            "request-token",
-            "new-request",
-        ) == "new-request"
+        assert (
+            resolver._get_cached_instance(
+                request_binding,
+                request_cache_key,
+                AppModule,
+                "request-token",
+            )
+            == "cached-request"
+        )
+        assert (
+            resolver._cache_instance(
+                request_binding,
+                request_cache_key,
+                AppModule,
+                "request-token",
+                "new-request",
+            )
+            == "new-request"
+        )
 
         durable_cache_key = (AppModule, "durable-token")
-        assert resolver._get_cached_instance(
-            durable_binding,
-            durable_cache_key,
-            AppModule,
-            "durable-token",
-        ) is None
+        assert (
+            resolver._get_cached_instance(
+                durable_binding,
+                durable_cache_key,
+                AppModule,
+                "durable-token",
+            )
+            is None
+        )
         first_durable = object()
         second_durable = object()
         assert (
@@ -241,12 +263,15 @@ def test_resolver_cache_helpers_cover_request_durable_singleton_and_transient_pa
         resolver.scope_manager.pop_request(request_token)
 
     singleton_cache_key = (AppModule, "singleton-token")
-    assert resolver._get_cached_instance(
-        singleton_binding,
-        singleton_cache_key,
-        AppModule,
-        "singleton-token",
-    ) is None
+    assert (
+        resolver._get_cached_instance(
+            singleton_binding,
+            singleton_cache_key,
+            AppModule,
+            "singleton-token",
+        )
+        is None
+    )
     first_singleton = object()
     second_singleton = object()
     assert (
@@ -269,21 +294,27 @@ def test_resolver_cache_helpers_cover_request_durable_singleton_and_transient_pa
         )
         is first_singleton
     )
-    assert resolver._get_cached_instance(
-        singleton_binding,
-        singleton_cache_key,
-        AppModule,
-        "singleton-token",
-    ) is first_singleton
+    assert (
+        resolver._get_cached_instance(
+            singleton_binding,
+            singleton_cache_key,
+            AppModule,
+            "singleton-token",
+        )
+        is first_singleton
+    )
 
     transient_cache_key = (AppModule, "transient-token")
     transient_instance = object()
-    assert resolver._get_cached_instance(
-        transient_binding,
-        transient_cache_key,
-        AppModule,
-        "transient-token",
-    ) is None
+    assert (
+        resolver._get_cached_instance(
+            transient_binding,
+            transient_cache_key,
+            AppModule,
+            "transient-token",
+        )
+        is None
+    )
     assert (
         resolver._cache_instance(
             transient_binding,
@@ -330,19 +361,28 @@ async def test_resolver_factory_helpers_cover_sync_async_and_binding_flags() -> 
     with pytest.raises(ProviderResolutionError, match="returned an awaitable"):
         resolver.call_factory(build_client_awaitable, (Config,), module=AppModule)
 
-    assert await resolver.call_factory_async(build_client_async, (Config,), module=AppModule) == "Config"
-    assert resolver._binding_requires_async(
-        Binding("sync", AppModule, "value", object(), ProviderScope.SINGLETON)
-    ) is False
-    assert resolver._binding_requires_async(
-        Binding(
-            "async",
-            AppModule,
-            "factory",
-            (build_client_async, (Config,)),
-            ProviderScope.SINGLETON,
+    assert (
+        await resolver.call_factory_async(build_client_async, (Config,), module=AppModule)
+        == "Config"
+    )
+    assert (
+        resolver._binding_requires_async(
+            Binding("sync", AppModule, "value", object(), ProviderScope.SINGLETON)
         )
-    ) is True
+        is False
+    )
+    assert (
+        resolver._binding_requires_async(
+            Binding(
+                "async",
+                AppModule,
+                "factory",
+                (build_client_async, (Config,)),
+                ProviderScope.SINGLETON,
+            )
+        )
+        is True
+    )
 
 
 def test_resolver_constructor_dependencies_cover_optional_inject_keywords_and_errors() -> None:

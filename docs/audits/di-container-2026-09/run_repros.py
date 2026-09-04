@@ -49,14 +49,20 @@ def run_script(path: Path, timeout: float) -> tuple[list[tuple[str, str, str]], 
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("directory", nargs="?", default=str(DEFAULT_DIR))
-    parser.add_argument("--timeout", type=float, default=120.0, help="per-script timeout in seconds")
+    parser.add_argument(
+        "--timeout", type=float, default=120.0, help="per-script timeout in seconds"
+    )
     parser.add_argument("--verbose", action="store_true", help="print full script output")
     parser.add_argument(
         "--expect-fixed",
         action="store_true",
-        help="exit non-zero when any finding still reproduces (default: exit non-zero on ERROR only)",
+        help=(
+            "exit non-zero when any finding still reproduces (default: exit non-zero on ERROR only)"
+        ),
     )
     args = parser.parse_args()
 
@@ -82,7 +88,9 @@ def main() -> int:
     reproduced = sum(1 for r in rows if r[2] == "REPRODUCED")
     errors = sum(1 for r in rows if r[2] == "ERROR")
     fixed = sum(1 for r in rows if r[2] == "FIXED")
-    print(f"\n{reproduced} reproduced, {fixed} fixed, {errors} errors across {len(scripts)} scripts")
+    print(
+        f"\n{reproduced} reproduced, {fixed} fixed, {errors} errors across {len(scripts)} scripts"
+    )
     if errors:
         return 1
     if args.expect_fixed and reproduced:

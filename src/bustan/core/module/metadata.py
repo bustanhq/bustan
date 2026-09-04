@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any
 
 from ...common.constants import BUSTAN_MODULE_ATTR as MODULE_METADATA_ATTR
 from ...core.utils import _get_metadata
 from .dynamic import DynamicModule
-
-ClassT = TypeVar("ClassT", bound=type[object])
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +21,9 @@ class ModuleMetadata:
     is_global: bool = False
 
 
-def set_module_metadata(module_cls: ClassT, metadata: ModuleMetadata) -> ClassT:
+def set_module_metadata[ClassT: type[object]](
+    module_cls: ClassT, metadata: ModuleMetadata
+) -> ClassT:
     """Attach module metadata to a class."""
     setattr(module_cls, MODULE_METADATA_ATTR, metadata)
     return module_cls

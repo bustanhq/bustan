@@ -18,8 +18,8 @@ from bustan.openapi import (
     ApiTags,
     DocumentBuilder,
 )
-from bustan.platform.http.compiler import compile_route_contracts
 from bustan.openapi.schema_builder import generate_schema
+from bustan.platform.http.compiler import compile_route_contracts
 
 
 class CatDto(BaseModel):
@@ -70,9 +70,9 @@ def test_schema_generation_uses_decorator_metadata() -> None:
 
     graph = build_module_graph(AppModule)
     schema = generate_schema(
-            compile_route_contracts(graph, build_container(graph)),
-            DocumentBuilder().set_title("Cats").set_version("1.0").build(),
-        )
+        compile_route_contracts(graph, build_container(graph)),
+        DocumentBuilder().set_title("Cats").set_version("1.0").build(),
+    )
 
     get_operation = schema["paths"]["/cats/{id}"]["get"]
     assert get_operation["tags"] == ["cats"]
@@ -116,7 +116,10 @@ def test_schema_generation_infers_pydantic_request_bodies() -> None:
     )
 
     request_body = schema["paths"]["/cats"]["post"]["requestBody"]
-    assert request_body["content"]["application/json"]["schema"]["$ref"] == "#/components/schemas/CatDto"
+    assert (
+        request_body["content"]["application/json"]["schema"]["$ref"]
+        == "#/components/schemas/CatDto"
+    )
 
 
 def test_schema_generation_infers_path_parameters_from_routes() -> None:

@@ -5,27 +5,27 @@ from typing import Any, cast
 import pytest
 
 from bustan import (
-    ExceptionFilter,
-    Guard,
-    Interceptor,
-    Pipe,
     Controller,
+    ExceptionFilter,
     Get,
+    Guard,
     Injectable,
+    Interceptor,
     Module,
+    Pipe,
     Post,
     UseFilters,
     UseGuards,
     UseInterceptors,
     UsePipes,
 )
+from bustan.common.types import ProviderScope
 from bustan.core.errors import (
     InvalidControllerError,
     InvalidPipelineError,
     InvalidProviderError,
     RouteDefinitionError,
 )
-from bustan.common.types import ProviderScope
 from bustan.core.module.metadata import (
     ModuleMetadata,
     get_module_metadata,
@@ -60,7 +60,8 @@ def test_decorators_attach_expected_metadata() -> None:
     class UserModule:
         pass
 
-    assert getattr(UserService, "__bustan_provider__") == {
+    # The decorator attaches this attribute at runtime; the class does not declare it.
+    assert getattr(UserService, "__bustan_provider__") == {  # noqa: B009
         "scope": ProviderScope.SINGLETON,
         "token": UserService,
         "use_class": UserService,

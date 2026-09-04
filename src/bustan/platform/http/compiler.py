@@ -15,17 +15,17 @@ from ...core.ioc.container import Container
 from ...core.ioc.tokens import APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE
 from ...core.module.dynamic import ModuleKey
 from ...core.module.graph import ModuleGraph
-from ...pipeline.metadata import (
-    PolicyMetadata,
-    PipelineMetadata,
-    get_controller_policy_metadata,
-    get_controller_pipeline_metadata,
-    get_handler_policy_metadata,
-    get_handler_pipeline_metadata,
-    merge_policy_metadata,
-    merge_pipeline_metadata,
-)
 from ...pipeline.guards import PolicyGuard
+from ...pipeline.metadata import (
+    PipelineMetadata,
+    PolicyMetadata,
+    get_controller_pipeline_metadata,
+    get_controller_policy_metadata,
+    get_handler_pipeline_metadata,
+    get_handler_policy_metadata,
+    merge_pipeline_metadata,
+    merge_policy_metadata,
+)
 from .metadata import ControllerRouteDefinition
 from .params import HandlerBindingPlan, compile_parameter_bindings
 from .scanner import ControllerScanner, ScannedHandler
@@ -249,7 +249,9 @@ def _resolve_declared_return_type(route_definition: ControllerRouteDefinition) -
     except (NameError, TypeError):
         raw_annotations = {}
 
-    declared_type = raw_annotations.get("return", inspect.signature(route_definition.handler).return_annotation)
+    declared_type = raw_annotations.get(
+        "return", inspect.signature(route_definition.handler).return_annotation
+    )
     if declared_type is inspect.Signature.empty:
         return None
     if not isinstance(declared_type, str):
@@ -301,8 +303,7 @@ def _resolve_public_policy(
     """
 
     route_label = (
-        f"{scanned_handler.controller_cls.__name__}."
-        f"{scanned_handler.route_definition.handler_name}"
+        f"{scanned_handler.controller_cls.__name__}.{scanned_handler.route_definition.handler_name}"
     )
     for level, policy in (("controller", controller_policy), ("handler", handler_policy)):
         if policy.public and _declares_access_requirements(policy):

@@ -1,17 +1,17 @@
 """Integration tests for route registration and request binding."""
 
 from __future__ import annotations
-from collections.abc import Iterator
-from typing import Any, cast
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
-from bustan import Controller, create_app, Get, Injectable, Module, Post, Scope
+from bustan import Controller, Get, Injectable, Module, Post, Scope, create_app
 from bustan.platform.http.abstractions import HttpRequest, HttpResponse
 
 
@@ -291,7 +291,8 @@ def test_create_app_returns_a_400_response_for_invalid_bound_inputs() -> None:
 
     assert response.status_code == 400
     assert response.json()["detail"] == (
-        "Could not bind path parameter 'user_id' to int: invalid literal for int() with base 10: 'not-a-number'"
+        "Could not bind path parameter 'user_id' to int: invalid literal for int() with base 10: "
+        "'not-a-number'"
     )
 
 

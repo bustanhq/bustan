@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, cast
 
+from starlette.testclient import TestClient
+
 from bustan import Controller, Get, Module, SkipThrottle, create_app
 from bustan.platform.http.abstractions import HttpRequest
 from bustan.security import AUTHENTICATOR_REGISTRY, Auth, Public, RateLimit, Roles
-from starlette.testclient import TestClient
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,8 +44,10 @@ def test_create_app_attaches_compiled_policy_plans_to_routes() -> None:
 
     application = create_app(AppModule)
     starlette_app = application.get_http_adapter().get_instance()
-    route = next(route for route in starlette_app.routes if getattr(route, "path", None) == "/secure")
-    contract = getattr(route, "bustan_route_contract")
+    route = next(
+        route for route in starlette_app.routes if getattr(route, "path", None) == "/secure"
+    )
+    contract = route.bustan_route_contract
 
     assert contract.policy_plan.auth is not None
     assert contract.policy_plan.auth.strategy == "jwt"

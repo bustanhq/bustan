@@ -52,7 +52,9 @@ def Global() -> Callable[[ClassT], ClassT]:
 
         metadata = get_module_metadata(module_cls)
         if metadata is None:
-            raise InvalidModuleError("@Global can only decorate classes already decorated with @Module")
+            raise InvalidModuleError(
+                "@Global can only decorate classes already decorated with @Module"
+            )
 
         # Replace immutable metadata so other decorators never observe partially mutated state.
         return set_module_metadata(module_cls, replace(metadata, is_global=True))

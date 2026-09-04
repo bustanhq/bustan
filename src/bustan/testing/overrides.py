@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from starlette.applications import Starlette
+
 from ..app.application import Application
 from ..core.ioc.container import Container
 from ..pipeline.metadata import PipelineMetadata
@@ -71,8 +72,7 @@ class PipelineOverrideRegistry:
             guards=tuple(self.guards.get(component, component) for component in metadata.guards),
             pipes=tuple(self.pipes.get(component, component) for component in metadata.pipes),
             interceptors=tuple(
-                self.interceptors.get(component, component)
-                for component in metadata.interceptors
+                self.interceptors.get(component, component) for component in metadata.interceptors
             ),
             filters=tuple(self.filters.get(component, component) for component in metadata.filters),
         )

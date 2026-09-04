@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import copy
 from enum import Enum
-from types import FunctionType
-from types import NoneType, UnionType
+from types import FunctionType, NoneType, UnionType
 from typing import Any, Union, cast, get_args, get_origin
 from uuid import UUID
 
@@ -21,7 +20,9 @@ from .decorators import (
 )
 
 
-def generate_schema(route_contracts: tuple[RouteContract, ...], document: dict[str, Any]) -> dict[str, Any]:
+def generate_schema(
+    route_contracts: tuple[RouteContract, ...], document: dict[str, Any]
+) -> dict[str, Any]:
     """Generate an OpenAPI document from compiled route contracts."""
 
     schema = copy.deepcopy(document)
@@ -218,7 +219,9 @@ def _build_responses(route_contract: RouteContract, components: dict[str, Any]) 
     if responses:
         rendered: dict[str, Any] = {}
         for response in responses:
-            entry: dict[str, Any] = {"description": response["description"] or "Successful Response"}
+            entry: dict[str, Any] = {
+                "description": response["description"] or "Successful Response"
+            }
             if response.get("schema") is not None:
                 entry["content"] = {
                     "application/json": {
@@ -256,9 +259,7 @@ def _register_model_schema(annotation: object, components: dict[str, Any]) -> di
     if name not in schemas:
         model_schema = cast(
             dict[str, Any],
-            cast(Any, annotation).model_json_schema(
-                ref_template="#/components/schemas/{model}"
-            ),
+            cast(Any, annotation).model_json_schema(ref_template="#/components/schemas/{model}"),
         )
         defs = model_schema.pop("$defs", {})
         if isinstance(defs, dict):

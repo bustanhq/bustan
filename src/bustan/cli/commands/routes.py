@@ -13,7 +13,9 @@ from ...app.bootstrap import _create_app
 from ...platform.http.registry import diff_route_snapshots
 
 
-def register_routes_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register_routes_commands(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     parser = subparsers.add_parser("routes", help="Inspect compiled application routes.")
     route_subparsers = parser.add_subparsers(dest="routes_command")
 
