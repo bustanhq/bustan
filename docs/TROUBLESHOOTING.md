@@ -31,6 +31,25 @@ or `@Injectable(scope="request")`. Keep long-lived business services singleton a
 alongside the request-scoped provider. If the owner must stay singleton, pass the request-local
 value into the method that needs it rather than holding it on the instance.
 
+### `... which reaches request-scoped state`
+
+Cause: the dependency itself keeps no instance - it is transient, or a `use_existing` alias -
+but something further down the chain is request-scoped. The owner would capture that state the
+first time it is built and hand it to every later caller, so the chain is refused even though
+the immediate dependency looks harmless.
+
+Fix: narrow the owner's scope, or break the chain by injecting the request-scoped provider
+directly into something that lives no longer than a request.
+
+### `Factory ... inject entry depends on ...`
+
+Cause: a `use_factory` provider injects a token whose scope is narrower than the scope the
+factory's result is cached under. A singleton factory that injects a request-scoped provider
+bakes the first caller's state into the cached result.
+
+Fix: declare the factory provider with a scope no wider than what it injects, for example
+`{"provide": Token, "use_factory": build, "inject": [RequestIdentity], "scope": "request"}`.
+
 ### `depends on durable-scoped provider ...`
 
 Cause: a singleton owner injects a durable-scoped provider. The singleton captures whichever

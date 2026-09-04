@@ -18,10 +18,25 @@ from ..utils import _display_name, _qualname
 from ...common.types import ProviderScope
 from .overrides import OverrideManager
 from .registry import Binding, Registry
-from .scopes import DurableKey, ScopeManager, dependency_escapes_owner
+from .scopes import (
+    DurableKey,
+    ScopeManager,
+    dependency_escapes_owner,
+    narrowest_scope,
+)
 
 ResolvedT = TypeVar("ResolvedT")
 FRAMEWORK_OWNED_TYPES = frozenset({Request, Response, Starlette})
+
+
+def _factory_label(factory: object) -> str:
+    """Return a stable name for a factory to use in a diagnostic."""
+
+    qualname = getattr(factory, "__qualname__", None)
+    if qualname is None:
+        return _qualname(factory)
+    module = getattr(factory, "__module__", None)
+    return f"{module}.{qualname}" if module else qualname
 
 
 class Resolver:
@@ -40,6 +55,7 @@ class Resolver:
             "bustan_resolution_stack", default=()
         )
         self._graph_scopes_validated = False
+        self._constructor_tokens: dict[tuple[type[object], ModuleKey], tuple[object, ...]] = {}
 
     def resolve(
         self,
@@ -162,7 +178,11 @@ class Resolver:
         elif binding.resolver_kind == "factory":
             factory, inject_tokens = binding.target  # type: ignore
             return self.call_factory(
-                factory, inject_tokens, module=module_key, request=self.scope_manager.active_request.get()
+                factory,
+                inject_tokens,
+                module=module_key,
+                request=self.scope_manager.active_request.get(),
+                owner_scope=binding.scope,
             )
         else:
             raise ProviderResolutionError(f"Unknown resolver kind: {binding.resolver_kind}")
@@ -214,9 +234,10 @@ class Resolver:
         self._graph_scopes_validated = True
 
         for (module_key, _token), binding in self.registry.bindings.items():
-            if binding.resolver_kind != "class" or not isinstance(binding.target, type):
-                continue
-            self._check_constructor_scopes(binding.target, module_key, binding.scope)
+            if binding.resolver_kind == "class" and isinstance(binding.target, type):
+                self._check_constructor_scopes(binding.target, module_key, binding.scope)
+            elif binding.resolver_kind == "factory":
+                self._check_factory_scopes(binding, module_key)
 
         for controller_cls, module_key in self.registry.controller_modules.items():
             owner_scope = controller_scopes.get(controller_cls, ProviderScope.SINGLETON)
@@ -253,13 +274,131 @@ class Resolver:
             if parameter.name == "self" or annotation is None:
                 continue
             self._guard_dependency_scope(
-                class_cls, parameter.name, annotation, module_key, owner_scope
+                f"{_qualname(class_cls)}.__init__",
+                f"parameter {parameter.name!r}",
+                annotation,
+                module_key,
+                owner_scope,
             )
+
+    def _check_factory_scopes(self, binding: Binding, module_key: ModuleKey) -> None:
+        """Apply the scope guard to a factory's injected tokens."""
+
+        factory, inject_tokens = cast(
+            tuple[Callable[..., object], tuple[object, ...]], binding.target
+        )
+        for token in inject_tokens:
+            self._guard_dependency_scope(
+                f"Factory {_factory_label(factory)}",
+                "inject entry",
+                token,
+                module_key,
+                binding.scope,
+            )
+
+    def _locate_binding(
+        self, token: object, module_key: ModuleKey
+    ) -> tuple[Binding, ModuleKey] | None:
+        """Return a token's binding and the module declaring it, if it has one."""
+
+        try:
+            declaring_module = self.registry.module_visibility.get(module_key, {}).get(token)
+        except TypeError:
+            # An unhashable annotation cannot be a provider token.
+            return None
+        if declaring_module is None:
+            return None
+        binding = self.registry.bindings.get((declaring_module, token))
+        if binding is None:
+            return None
+        return binding, declaring_module
+
+    def _effective_dependency_scope(
+        self,
+        token: object,
+        module_key: ModuleKey,
+        seen: tuple[object, ...] = (),
+    ) -> ProviderScope:
+        """Return the narrowest scope a dependency can hand to whoever holds it.
+
+        A provider with a cache of its own hands over exactly that cache's
+        scope. A transient has no cache and an alias has no instance of its own,
+        so each hands over whatever it reaches; the guard must see through both,
+        or a long-lived owner captures request-local state one hop removed.
+        """
+
+        if token is Request:
+            return ProviderScope.REQUEST
+        if any(previous is token for previous in seen):
+            # A cycle is reported by the resolution stack, not by this walk.
+            return ProviderScope.TRANSIENT
+
+        located = self._locate_binding(token, module_key)
+        if located is None:
+            return ProviderScope.TRANSIENT
+
+        binding, declaring_module = located
+        if binding.resolver_kind == "existing":
+            return self._effective_dependency_scope(
+                binding.target, declaring_module, (*seen, token)
+            )
+        if binding.scope is not ProviderScope.TRANSIENT:
+            return binding.scope
+        return self._reachable_scope(binding, declaring_module, (*seen, token))
+
+    def _reachable_scope(
+        self,
+        binding: Binding,
+        module_key: ModuleKey,
+        seen: tuple[object, ...],
+    ) -> ProviderScope:
+        """Return the narrowest scope reachable through a binding that caches nothing."""
+
+        if binding.resolver_kind == "factory":
+            _factory, tokens = cast(
+                tuple[Callable[..., object], tuple[object, ...]], binding.target
+            )
+        elif binding.resolver_kind == "class" and isinstance(binding.target, type):
+            tokens = self._constructor_dependency_tokens(binding.target, module_key)
+        else:
+            return ProviderScope.TRANSIENT
+
+        return narrowest_scope(
+            self._effective_dependency_scope(token, module_key, seen) for token in tokens
+        )
+
+    def _constructor_dependency_tokens(
+        self, class_cls: type[object], module_key: ModuleKey
+    ) -> tuple[object, ...]:
+        """Return the annotations a class's constructor asks the container for."""
+
+        cache_key = (class_cls, module_key)
+        cached = self._constructor_tokens.get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            inspected = self._inspect_constructor(class_cls, module_key)
+        except ProviderResolutionError:
+            inspected = None
+
+        tokens: tuple[object, ...] = ()
+        if inspected is not None:
+            signature, type_hints = inspected
+            tokens = tuple(
+                annotation
+                for parameter in signature.parameters.values()
+                if parameter.name != "self"
+                and (annotation := type_hints.get(parameter.name)) is not None
+            )
+
+        self._constructor_tokens[cache_key] = tokens
+        return tokens
 
     def _guard_dependency_scope(
         self,
-        class_cls: type[object],
-        parameter_name: str,
+        owner_label: str,
+        dependency_label: str,
         annotation: object,
         module_key: ModuleKey,
         owner_scope: ProviderScope,
@@ -269,33 +408,39 @@ class Resolver:
         if annotation is Request:
             if dependency_escapes_owner(owner_scope, ProviderScope.REQUEST):
                 raise ProviderResolutionError(
-                    f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} requests "
-                    "framework-owned type Request, which is available only to request-scoped "
-                    f"and transient owners. A {owner_scope.value}-scoped owner outlives the "
-                    "request and would serve the first caller's request to every later caller"
+                    f"{owner_label} {dependency_label} requests framework-owned type Request, "
+                    "which is available only to request-scoped and transient owners. A "
+                    f"{owner_scope.value}-scoped owner outlives the request and would serve the "
+                    "first caller's request to every later caller"
                 )
             return
 
         if isinstance(annotation, str) or annotation in FRAMEWORK_OWNED_TYPES:
             return
 
-        dependency_declaring_module = self.registry.module_visibility.get(module_key, {}).get(
-            annotation
-        )
-        if dependency_declaring_module is None:
+        located = self._locate_binding(annotation, module_key)
+        if located is None:
             return
-        dependency_binding = self.registry.bindings.get(
-            (dependency_declaring_module, annotation)
-        )
-        if dependency_binding is None:
+
+        binding, _declaring_module = located
+        effective_scope = self._effective_dependency_scope(annotation, module_key)
+        if not dependency_escapes_owner(owner_scope, effective_scope):
             return
-        if dependency_escapes_owner(owner_scope, dependency_binding.scope):
+
+        if binding.scope is effective_scope:
             raise ProviderResolutionError(
-                f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} depends on "
-                f"{dependency_binding.scope.value}-scoped provider {_qualname(annotation)}, "
-                f"which cannot be injected into a {owner_scope.value}-scoped owner. The owner "
-                "outlives the dependency and would share one caller's instance with the rest"
+                f"{owner_label} {dependency_label} depends on {effective_scope.value}-scoped "
+                f"provider {_qualname(annotation)}, which cannot be injected into a "
+                f"{owner_scope.value}-scoped owner. The owner outlives the dependency and would "
+                "share one caller's instance with the rest"
             )
+
+        raise ProviderResolutionError(
+            f"{owner_label} {dependency_label} depends on {_qualname(annotation)}, which reaches "
+            f"{effective_scope.value}-scoped state and so cannot be injected into a "
+            f"{owner_scope.value}-scoped owner. The owner would capture that state when it is "
+            "first built and share it with every later caller"
+        )
 
     def call_factory(
         self,
@@ -304,11 +449,29 @@ class Resolver:
         *,
         module: ModuleKey,
         request: Request | None = None,
+        owner_scope: ProviderScope | None = None,
     ) -> object:
-        """Resolve parameters using inject mapping and calls the factory."""
+        """Resolve parameters using inject mapping and calls the factory.
+
+        ``owner_scope`` is the lifetime the caller will cache the result under,
+        and every injected token is checked against it. When it is omitted the
+        widest lifetime is assumed, so anything shorter-lived is refused rather
+        than captured by a result that outlives it.
+        """
 
         active_request_token = self.scope_manager.push_request(request)
         try:
+            effective_scope = (
+                owner_scope if owner_scope is not None else ProviderScope.SINGLETON
+            )
+            for token in inject:
+                self._guard_dependency_scope(
+                    f"Factory {_factory_label(factory)}",
+                    "inject entry",
+                    token,
+                    module,
+                    effective_scope,
+                )
             args = [self.resolve(t, module=module) for t in inject]
             return factory(*args)
         finally:
@@ -399,7 +562,11 @@ class Resolver:
                 )
 
             self._guard_dependency_scope(
-                class_cls, parameter.name, annotation, module_key, owner_scope
+                f"{_qualname(class_cls)}.__init__",
+                f"parameter {parameter.name!r}",
+                annotation,
+                module_key,
+                owner_scope,
             )
 
             if annotation in FRAMEWORK_OWNED_TYPES:

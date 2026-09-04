@@ -160,3 +160,127 @@ def test_durable_scoped_controller_is_refused_with_a_clear_message() -> None:
 
     with pytest.raises(InvalidControllerError, match="durable scope"):
         create_app(AppModule)
+
+
+def test_singleton_controller_cannot_reach_request_state_through_a_transient() -> None:
+    @Injectable(scope=Scope.REQUEST)
+    class CurrentUser:
+        def __init__(self, request: Request) -> None:
+            self.name = request.headers.get("x-user", "anonymous")
+
+    @Injectable(scope=Scope.TRANSIENT)
+    class UserHolder:
+        def __init__(self, current_user: CurrentUser) -> None:
+            self.current_user = current_user
+
+    @Controller("/whoami")
+    class WhoAmIController:
+        def __init__(self, holder: UserHolder) -> None:
+            self.holder = holder
+
+        @Get()
+        async def whoami(self) -> dict[str, str]:
+            return {"user": self.holder.current_user.name}
+
+    @Module(controllers=[WhoAmIController], providers=[CurrentUser, UserHolder])
+    class AppModule:
+        pass
+
+    with pytest.raises(ProviderResolutionError, match="reaches request-scoped state"):
+        create_app(AppModule)
+
+
+def test_singleton_controller_cannot_reach_request_state_through_an_alias() -> None:
+    class AuditPort:
+        name: str
+
+    @Injectable(scope=Scope.REQUEST)
+    class RequestAudit(AuditPort):
+        def __init__(self, request: Request) -> None:
+            self.name = request.headers.get("x-user", "anonymous")
+
+    @Controller("/audit")
+    class AuditController:
+        def __init__(self, audit: AuditPort) -> None:
+            self.audit = audit
+
+        @Get()
+        async def read(self) -> dict[str, str]:
+            return {"user": self.audit.name}
+
+    @Module(
+        controllers=[AuditController],
+        providers=[RequestAudit, {"provide": AuditPort, "use_existing": RequestAudit}],
+    )
+    class AppModule:
+        pass
+
+    with pytest.raises(ProviderResolutionError, match="reaches request-scoped state"):
+        create_app(AppModule)
+
+
+def test_singleton_factory_cannot_inject_a_request_scoped_provider() -> None:
+    @Injectable(scope=Scope.REQUEST)
+    class CurrentUser:
+        def __init__(self, request: Request) -> None:
+            self.name = request.headers.get("x-user", "anonymous")
+
+    class Snapshot:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    def build_snapshot(current_user: CurrentUser) -> Snapshot:
+        return Snapshot(current_user.name)
+
+    @Controller("/snapshot", scope=Scope.REQUEST)
+    class SnapshotController:
+        def __init__(self, snapshot: Snapshot) -> None:
+            self.snapshot = snapshot
+
+        @Get()
+        async def read(self) -> dict[str, str]:
+            return {"user": self.snapshot.name}
+
+    @Module(
+        controllers=[SnapshotController],
+        providers=[
+            CurrentUser,
+            {"provide": Snapshot, "use_factory": build_snapshot, "inject": [CurrentUser]},
+        ],
+    )
+    class AppModule:
+        pass
+
+    with pytest.raises(ProviderResolutionError, match="request-scoped provider"):
+        create_app(AppModule, _no_lifespan=True)
+
+
+def test_a_transient_that_reaches_only_singletons_is_still_injectable() -> None:
+    @Injectable
+    class BillingService:
+        def read_plan(self) -> str:
+            return "pro"
+
+    @Injectable(scope=Scope.TRANSIENT)
+    class BillingHelper:
+        def __init__(self, billing: BillingService) -> None:
+            self.billing = billing
+
+    @Controller("/plan")
+    class PlanController:
+        def __init__(self, helper: BillingHelper) -> None:
+            self.helper = helper
+
+        @Get()
+        async def read(self) -> dict[str, str]:
+            return {"plan": self.helper.billing.read_plan()}
+
+    @Module(controllers=[PlanController], providers=[BillingService, BillingHelper])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/plan")
+
+    assert response.status_code == 200
+    assert response.json() == {"plan": "pro"}

@@ -58,6 +58,10 @@ without limit.
 - a singleton provider whose constructor takes a durable-scoped provider
 - an `@Injectable(scope="durable")` provider whose constructor takes `Request`
 - a `@Controller(scope=Scope.DURABLE)`
+- a singleton owner reaching request-scoped state through a transient provider or a
+  `use_existing` alias, which look harmless at the first hop
+- a `use_factory` provider whose `inject` list names a provider shorter-lived than the scope
+  the factory's result is cached under
 
 **Upgrading.** `1.1.1` refuses each of these while the application is being assembled rather
 than at request time, so an affected application fails at start-up with a message naming the

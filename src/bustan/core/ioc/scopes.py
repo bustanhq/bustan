@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
@@ -59,6 +59,12 @@ def dependency_escapes_owner(
     if owner_scope is ProviderScope.TRANSIENT or dependency_scope is ProviderScope.TRANSIENT:
         return False
     return is_wider_scope(owner_scope, dependency_scope)
+
+
+def narrowest_scope(scopes: Iterable[ProviderScope]) -> ProviderScope:
+    """Return the scope caching over the narrowest context, TRANSIENT when empty."""
+
+    return min(scopes, key=lambda scope: _CONTEXT_WIDTH[scope], default=ProviderScope.TRANSIENT)
 
 
 @dataclass(slots=True)

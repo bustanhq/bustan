@@ -16,6 +16,8 @@ vulnerable shapes to check for in an application running `1.1.0`.
 * **ioc:** reject `Request` injection into durable providers, which retained the first caller's headers for the life of the partition
 * **ioc:** default a `use_class` provider dict's scope from the target class, and refuse a dict scope wider than the one the class declares
 * **http:** reject `@Controller(scope=Scope.DURABLE)` explicitly rather than treating it as a singleton shared across every partition
+* **ioc:** follow transient providers and `use_existing` aliases to the narrowest scope they reach, so neither can carry request-local state into a longer-lived owner
+* **ioc:** apply the scope guard to `use_factory` providers, whose `inject` tokens were never checked against the scope their result is cached under
 * **ioc:** bound the durable instance store with least-recently-used eviction and release each partition's construction lock when construction finishes, so an unauthenticated caller cannot grow either by rotating a header
 
 

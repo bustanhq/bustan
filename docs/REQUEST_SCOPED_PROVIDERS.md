@@ -37,7 +37,15 @@ serves it to the next.
   partition, so it would hand the first caller's headers to every later caller routed there.
 - Singleton providers may depend only on other singletons. They may **not** depend on `Request`,
   on request-scoped providers, or on durable providers.
-- Transient providers are constructed fresh for whoever asks and may depend on anything.
+- Transient providers are constructed fresh for whoever asks and may depend on anything, but
+  they do not launder scope: a transient is checked by what it *reaches*, so a singleton cannot
+  hold a transient that itself depends on request-scoped state.
+
+The rule follows the whole chain, not just the first hop. A binding that keeps no instance of
+its own - a transient, or a `use_existing` alias - is judged by the narrowest scope reachable
+through it, so neither can be used to smuggle request-local state into a longer-lived owner.
+Factory providers are checked the same way: every token in a factory's `inject` list is
+measured against the scope the factory's result is cached under.
 
 A graph that breaks these rules raises `ProviderResolutionError` while the application is being
 assembled, before it can accept traffic.
