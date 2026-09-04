@@ -5,6 +5,20 @@
 
 ## [1.1.1](https://github.com/bustanhq/bustan/compare/v1.1.0...v1.1.1) (2026-09-04)
 
+
+### Bug Fixes
+
+* **ioc:** close three bypasses of the scope containment guard ([aeb0071](https://github.com/bustanhq/bustan/commit/aeb007103c36935aa874d5d975d7944bdadaec15))
+* **ioc:** contain request identity within the request that owns it ([600c01b](https://github.com/bustanhq/bustan/commit/600c01b7d7b84976821c212c82611ee58a7d8dfe))
+
+
+### Documentation
+
+* **security:** add the 1.1 line repro harness for the security patch ([b0b01d8](https://github.com/bustanhq/bustan/commit/b0b01d829d3d803510503e926b475ed12cab2d8c))
+* **security:** stop the RI-02 probe contradicting the fix it demands ([6da6016](https://github.com/bustanhq/bustan/commit/6da60160ed37c1ab4ae6283ea42442b500cf9000))
+
+## [1.1.1](https://github.com/bustanhq/bustan/compare/v1.1.0...v1.1.1) (2026-09-04)
+
 Security patch for the `1.1` line. See `SECURITY.md` for the advisory and the list of
 vulnerable shapes to check for in an application running `1.1.0`.
 
