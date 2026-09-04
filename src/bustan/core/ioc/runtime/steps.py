@@ -18,7 +18,16 @@ if TYPE_CHECKING:
 
     from ...module.dynamic import ModuleKey
 
-__all__ = ["Guarded", "InstanceCache", "Invoke", "Machine", "Resolve", "Site", "Step"]
+__all__ = [
+    "NO_CACHE",
+    "Guarded",
+    "InstanceCache",
+    "Invoke",
+    "Machine",
+    "Resolve",
+    "Site",
+    "Step",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,4 +108,6 @@ class InstanceCache:
             self.store[self.key] = instance
 
 
+# The slot a transient binding has: none at all. A transient is built afresh for
+# whoever asks, so there is nothing to read back and nothing to serialize on.
 NO_CACHE = InstanceCache(store=None, key=None, shared=False)
