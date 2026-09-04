@@ -25,6 +25,17 @@ _SCOPED_USE_KEYS = frozenset({"use_class", "use_factory"})
 
 _ALLOWED_KEYS = frozenset({"provide", "scope", "inject", *_USE_KEYS})
 
+# How long a context each lifetime keeps an instance for, shortest first. A binding
+# may narrow the lifetime a class declares but never widen it, and this is the order
+# that judges which is which. A transient sorts shortest because it keeps nothing at
+# all: rebuilding a request-scoped class for every consumer shares nothing.
+_LIFETIME_ORDER: dict[ProviderScope, int] = {
+    ProviderScope.TRANSIENT: 0,
+    ProviderScope.REQUEST: 1,
+    ProviderScope.DURABLE: 2,
+    ProviderScope.SINGLETON: 3,
+}
+
 
 @dataclass(frozen=True, slots=True)
 class Binding:
@@ -131,17 +142,21 @@ def _normalize_dict_provider(defn: dict[str, Any], declaring_module: ModuleKey) 
             f"{token!r} declares 'inject' beside '{use_key}', which takes no dependencies",
         )
 
-    scope = _resolve_declared_scope(defn, token, use_key, declaring_module)
-    return _bind_dict_provider(defn, token, use_key, scope, declaring_module)
+    declared_scope = _resolve_declared_scope(defn, token, use_key, declaring_module)
+    return _bind_dict_provider(defn, token, use_key, declared_scope, declaring_module)
 
 
 def _resolve_declared_scope(
     defn: dict[str, Any], token: object, use_key: str, declaring_module: ModuleKey
-) -> ProviderScope:
-    """Resolve the lifetime a definition asks for, refusing one it cannot honour."""
+) -> ProviderScope | None:
+    """Resolve the lifetime a definition asks for, refusing one it cannot honour.
+
+    ``None`` means the definition named no lifetime, which is not the same as naming
+    the default: a ``use_class`` that names none takes the one its target declares.
+    """
 
     if "scope" not in defn:
-        return ProviderScope.TRANSIENT if use_key == "use_existing" else ProviderScope.SINGLETON
+        return None
 
     if use_key not in _SCOPED_USE_KEYS:
         raise _refused(
@@ -163,7 +178,7 @@ def _bind_dict_provider(
     defn: dict[str, Any],
     token: object,
     use_key: str,
-    scope: ProviderScope,
+    declared_scope: ProviderScope | None,
     declaring_module: ModuleKey,
 ) -> Binding:
     """Build the binding for the single ``use_*`` key the definition declared."""
@@ -175,10 +190,12 @@ def _bind_dict_provider(
                 declaring_module,
                 f"{token!r} declares a 'use_class' that is not a class: {target!r}",
             )
+        scope = _use_class_scope(declared_scope, token, target, declaring_module)
         _refuse_unusable_durable_key_hook(target, scope, declaring_module)
         return Binding(token, declaring_module, "class", target, scope)
 
     if use_key == "use_factory":
+        scope = declared_scope if declared_scope is not None else ProviderScope.SINGLETON
         factory = defn["use_factory"]
         if not callable(factory):
             raise _refused(
@@ -199,10 +216,47 @@ def _bind_dict_provider(
             scope,
         )
 
+    # Neither a value nor an alias may name a lifetime, so both are bound under the one
+    # they always had: a value is the single object it was written as, and an alias
+    # keeps nothing of its own and borrows the lifetime of the token it points at.
     if use_key == "use_value":
-        return Binding(token, declaring_module, "value", defn["use_value"], scope)
+        return Binding(token, declaring_module, "value", defn["use_value"], ProviderScope.SINGLETON)
 
-    return Binding(token, declaring_module, "existing", defn["use_existing"], scope)
+    return Binding(
+        token, declaring_module, "existing", defn["use_existing"], ProviderScope.TRANSIENT
+    )
+
+
+def _use_class_scope(
+    declared_scope: ProviderScope | None,
+    token: object,
+    target: type[object],
+    declaring_module: ModuleKey,
+) -> ProviderScope:
+    """Return the lifetime a ``use_class`` definition registers its target under.
+
+    A class carries the lifetime its author declared on it, and binding it under
+    another token does not change what its instances are safe to hold. A definition
+    that names no lifetime therefore takes the class's own. One that names a lifetime
+    may narrow it but never widen it: widening keeps one caller's state on an instance
+    that outlives them, which is what the class's declaration exists to prevent.
+    """
+
+    metadata = get_provider_metadata(target)
+    class_scope = metadata.scope if metadata is not None else None
+
+    if declared_scope is None:
+        return class_scope if class_scope is not None else ProviderScope.SINGLETON
+
+    if class_scope is not None and _LIFETIME_ORDER[declared_scope] > _LIFETIME_ORDER[class_scope]:
+        raise _refused(
+            declaring_module,
+            f"{token!r} binds {_display_name(target)} as {declared_scope.value}-scoped, but the "
+            f"class declares {class_scope.value} scope. A binding may narrow a declared scope, "
+            "never widen it, because a wider scope shares one caller's state with every later "
+            "caller",
+        )
+    return declared_scope
 
 
 def _coerce_inject(

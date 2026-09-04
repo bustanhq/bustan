@@ -350,3 +350,58 @@ def _invalid_dict_provider_shapes() -> Iterator[tuple[dict[str, object], str]]:
         "get_durable_context_key",
     )
     yield {"provide": "t", "use_factory": _factory, "scope": "durable"}, "use_factory"
+
+
+def test_a_use_class_definition_takes_the_lifetime_its_target_declares() -> None:
+    # Binding a class under an interface token does not change what its instances are
+    # safe to hold, so a definition naming no lifetime takes the class's own. Reading
+    # the default instead made a per-request class a process-wide singleton, and the
+    # first caller's state was then served to every later one.
+    @Injectable(scope=ProviderScope.REQUEST)
+    class PerRequestAudit:
+        pass
+
+    binding = normalize_provider({"provide": "audit", "use_class": PerRequestAudit}, AppModule)
+
+    assert binding.scope is ProviderScope.REQUEST
+
+
+def test_a_use_class_definition_may_narrow_a_declared_lifetime_but_never_widen_it() -> None:
+    @Injectable(scope=ProviderScope.REQUEST)
+    class PerRequestAudit:
+        pass
+
+    narrowed = normalize_provider(
+        {"provide": "audit", "use_class": PerRequestAudit, "scope": ProviderScope.TRANSIENT},
+        AppModule,
+    )
+
+    assert narrowed.scope is ProviderScope.TRANSIENT
+
+    with pytest.raises(InvalidProviderError, match="never widen it") as refusal:
+        normalize_provider(
+            {"provide": "audit", "use_class": PerRequestAudit, "scope": "singleton"}, AppModule
+        )
+
+    assert "PerRequestAudit" in str(refusal.value)
+    assert "the class declares request scope" in str(refusal.value)
+
+
+def test_a_use_class_definition_whose_target_declares_nothing_keeps_the_default() -> None:
+    # An undecorated class declares no lifetime of its own, and neither does an
+    # undecorated subclass of one that does.
+    @Injectable(scope=ProviderScope.REQUEST)
+    class Base:
+        pass
+
+    class Derived(Base):
+        pass
+
+    assert (
+        normalize_provider({"provide": "t", "use_class": Service}, AppModule).scope
+        is ProviderScope.SINGLETON
+    )
+    assert (
+        normalize_provider({"provide": "t", "use_class": Derived}, AppModule).scope
+        is ProviderScope.SINGLETON
+    )
