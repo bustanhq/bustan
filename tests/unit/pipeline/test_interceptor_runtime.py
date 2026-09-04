@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
 from bustan import (
@@ -26,11 +25,14 @@ from bustan.pipeline.interceptors import (
     call_with_interceptors,
 )
 
+if TYPE_CHECKING:
+    from tests.conftest import RequestFactory
+
 
 @pytest.mark.anyio
-async def test_interceptors_execute_in_documented_order() -> None:
+async def test_interceptors_execute_in_documented_order(build_request: RequestFactory) -> None:
     events: list[str] = []
-    context = _execution_context()
+    context = _execution_context(build_request)
 
     class OuterInterceptor(Interceptor):
         async def intercept(self, context: ExecutionContext, next: CallHandler) -> object:
@@ -67,9 +69,11 @@ async def test_interceptors_execute_in_documented_order() -> None:
 
 
 @pytest.mark.anyio
-async def test_streaming_handlers_remain_interceptable_without_eager_buffering() -> None:
+async def test_streaming_handlers_remain_interceptable_without_eager_buffering(
+    build_request: RequestFactory,
+) -> None:
     pulls: list[str] = []
-    context = _execution_context()
+    context = _execution_context(build_request)
 
     class UppercaseStreamInterceptor(Interceptor):
         async def intercept(self, context: ExecutionContext, next: CallHandler) -> object:
@@ -128,8 +132,10 @@ def test_raw_response_incompatibilities_fail_before_execution() -> None:
 
 
 @pytest.mark.anyio
-async def test_interceptor_helpers_cover_base_and_adapter_paths() -> None:
-    context = _execution_context()
+async def test_interceptor_helpers_cover_base_and_adapter_paths(
+    build_request: RequestFactory,
+) -> None:
+    context = _execution_context(build_request)
 
     async def final_handler() -> object:
         return "done"
@@ -151,8 +157,8 @@ async def test_interceptor_helpers_cover_base_and_adapter_paths() -> None:
     assert await call_with_interceptors(context, (), handle_only) == "handled"
 
 
-def _execution_context() -> ExecutionContext:
-    request = _build_request("/")
+def _execution_context(build_request: RequestFactory) -> ExecutionContext:
+    request = build_request(path="/")
 
     class UsersController:
         def read_users(self) -> None:
@@ -168,25 +174,3 @@ def _execution_context() -> ExecutionContext:
         controller=controller,
         container=cast(Any, object()),
     )
-
-
-def _build_request(path: str) -> Request:
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": path,
-        "raw_path": path.encode("utf-8"),
-        "query_string": b"",
-        "headers": [(b"host", b"testserver")],
-        "client": ("testclient", 50000),
-        "server": ("testserver", 80),
-        "path_params": {},
-    }
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    return Request(scope, receive)

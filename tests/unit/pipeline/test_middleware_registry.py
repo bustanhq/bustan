@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 from starlette.requests import Request
 from starlette.responses import Response
@@ -22,6 +24,9 @@ from bustan.pipeline.middleware import (
     path_matches,
 )
 from bustan.platform.http.compiler import compile_route_contracts
+
+if TYPE_CHECKING:
+    from tests.conftest import RequestFactory
 
 
 class RootMiddleware:
@@ -142,7 +147,9 @@ def test_middleware_helpers_cover_path_matching_host_patterns_and_invalid_target
 
 
 @pytest.mark.anyio
-async def test_conditional_middleware_dispatch_covers_sync_and_bypass_paths() -> None:
+async def test_conditional_middleware_dispatch_covers_sync_and_bypass_paths(
+    build_request: RequestFactory,
+) -> None:
     events: list[str] = []
 
     def sync_handler(request: Request, call_next) -> Response:
@@ -159,8 +166,8 @@ async def test_conditional_middleware_dispatch_covers_sync_and_bypass_paths() ->
         events.append("next")
         return Response(content=b"next", status_code=200)
 
-    handled_response = await middleware.dispatch(_build_request("/users/123"), call_next)
-    bypass_response = await middleware.dispatch(_build_request("/health"), call_next)
+    handled_response = await middleware.dispatch(build_request(path="/users/123"), call_next)
+    bypass_response = await middleware.dispatch(build_request(path="/health"), call_next)
 
     assert handled_response.status_code == 201
     assert bypass_response.status_code == 200
@@ -168,11 +175,13 @@ async def test_conditional_middleware_dispatch_covers_sync_and_bypass_paths() ->
 
 
 @pytest.mark.anyio
-async def test_middleware_base_use_and_exclude_paths_are_supported() -> None:
+async def test_middleware_base_use_and_exclude_paths_are_supported(
+    build_request: RequestFactory,
+) -> None:
     async def call_next(current_request: Request) -> Response:
         return Response(content=b"next", status_code=200)
 
-    request = _build_request("/users/skip")
+    request = build_request(path="/users/skip")
     assert (await Middleware().use(request, call_next)).status_code == 200
 
     class AsyncMiddleware(Middleware):
@@ -187,30 +196,7 @@ async def test_middleware_base_use_and_exclude_paths_are_supported() -> None:
     )
 
     excluded_response = await middleware.dispatch(request, call_next)
-    handled_response = await middleware.dispatch(_build_request("/users/run"), call_next)
+    handled_response = await middleware.dispatch(build_request(path="/users/run"), call_next)
 
     assert excluded_response.status_code == 200
     assert handled_response.status_code == 202
-
-
-def _build_request(path: str) -> Request:
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    return Request(
-        {
-            "type": "http",
-            "asgi": {"version": "3.0"},
-            "http_version": "1.1",
-            "method": "GET",
-            "scheme": "http",
-            "path": path,
-            "raw_path": path.encode("utf-8"),
-            "query_string": b"",
-            "headers": [(b"host", b"testserver")],
-            "client": ("testclient", 50000),
-            "server": ("testserver", 80),
-            "path_params": {},
-        },
-        receive,
-    )

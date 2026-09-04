@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import pytest
-from starlette.requests import Request
 
 from bustan import (
     APPLICATION,
@@ -20,6 +19,9 @@ from bustan import (
 from bustan.core.errors import ProviderResolutionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
+
+if TYPE_CHECKING:
+    from tests.conftest import RequestFactory
 
 CONFIG_TOKEN = InjectionToken[str]("CONFIG")
 MISSING_TOKEN = InjectionToken[object]("MISSING")
@@ -87,7 +89,7 @@ def test_special_request_token_is_rejected_outside_request_scope() -> None:
         container.resolve(RequestAwareService, module=AppModule)
 
 
-def test_special_request_token_resolves_within_request_scope() -> None:
+def test_special_request_token_resolves_within_request_scope(build_request: RequestFactory) -> None:
     @Injectable(scope="request")
     class RequestAwareService:
         def __init__(self, request: Annotated[object, Inject(REQUEST)]) -> None:
@@ -98,7 +100,7 @@ def test_special_request_token_resolves_within_request_scope() -> None:
         pass
 
     container = build_container(build_module_graph(AppModule))
-    request = _build_request("/request-aware")
+    request = build_request(path="/request-aware")
 
     service = cast(Any, container.resolve(RequestAwareService, module=AppModule, request=request))
 
@@ -119,25 +121,3 @@ def test_application_token_resolves_in_application_context() -> None:
     service = context.get(AppAwareService)
 
     assert service.app is context
-
-
-def _build_request(path: str) -> Request:
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": path,
-        "raw_path": path.encode("utf-8"),
-        "query_string": b"",
-        "headers": [(b"host", b"testserver")],
-        "client": ("testclient", 50000),
-        "server": ("testserver", 80),
-        "path_params": {},
-    }
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    return Request(scope, receive)

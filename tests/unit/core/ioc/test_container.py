@@ -1,6 +1,8 @@
 """Unit tests for provider and controller resolution behavior."""
 
-from typing import Any, cast
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from starlette.requests import Request
@@ -9,6 +11,9 @@ from bustan import Controller, Get, Injectable, Module
 from bustan.core.errors import ProviderResolutionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
+
+if TYPE_CHECKING:
+    from tests.conftest import RequestFactory
 
 
 def test_container_resolves_singleton_providers_and_transient_controllers() -> None:
@@ -106,7 +111,9 @@ def test_container_resolves_controller_dependencies_from_imported_exports() -> N
     assert isinstance(controller_instance.user_service, UserService)
 
 
-def test_container_resolves_request_scoped_providers_once_per_request() -> None:
+def test_container_resolves_request_scoped_providers_once_per_request(
+    build_request: RequestFactory,
+) -> None:
     @Injectable(scope="request")
     class RequestState:
         def __init__(self, request: Request) -> None:
@@ -121,12 +128,12 @@ def test_container_resolves_request_scoped_providers_once_per_request() -> None:
     with pytest.raises(ProviderResolutionError, match="requires an active request"):
         container.resolve(RequestState, module=AppModule)
 
-    first_request = _build_request("/requests/one")
+    first_request = build_request(path="/requests/one")
     first_instance = cast(
         Any, container.resolve(RequestState, module=AppModule, request=first_request)
     )
     second_instance = container.resolve(RequestState, module=AppModule, request=first_request)
-    third_request = _build_request("/requests/one")
+    third_request = build_request(path="/requests/one")
     third_instance = cast(
         Any, container.resolve(RequestState, module=AppModule, request=third_request)
     )
@@ -137,7 +144,9 @@ def test_container_resolves_request_scoped_providers_once_per_request() -> None:
     assert third_instance.request is third_request
 
 
-def test_container_rejects_request_scoped_dependencies_from_singleton_providers() -> None:
+def test_container_rejects_request_scoped_dependencies_from_singleton_providers(
+    build_request: RequestFactory,
+) -> None:
     @Injectable(scope="request")
     class RequestState:
         def __init__(self, request: Request) -> None:
@@ -155,7 +164,7 @@ def test_container_rejects_request_scoped_dependencies_from_singleton_providers(
     container = build_container(build_module_graph(AppModule))
 
     with pytest.raises(ProviderResolutionError, match="request-scoped provider"):
-        container.resolve(SingletonService, module=AppModule, request=_build_request("/scope"))
+        container.resolve(SingletonService, module=AppModule, request=build_request(path="/scope"))
 
 
 def test_container_rejects_missing_constructor_annotations() -> None:
@@ -352,27 +361,3 @@ def test_container_resolves_transient_factory_provider_def() -> None:
     second = cast(dict[str, Any], second)
     assert first["id"] == 1
     assert second["id"] == 2
-
-
-def _build_request(path: str) -> Request:
-    """Construct a minimal Request object for container tests."""
-
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": path,
-        "raw_path": path.encode("utf-8"),
-        "query_string": b"",
-        "headers": [(b"host", b"testserver")],
-        "client": ("testclient", 50000),
-        "server": ("testserver", 80),
-        "path_params": {},
-    }
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    return Request(scope, receive)

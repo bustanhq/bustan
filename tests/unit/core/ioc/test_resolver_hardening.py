@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import anyio
 import pytest
@@ -15,6 +15,9 @@ from bustan.core.errors import ProviderResolutionError
 from bustan.core.ioc.container import build_container
 from bustan.core.ioc.tokens import INQUIRER
 from bustan.core.module.graph import build_module_graph
+
+if TYPE_CHECKING:
+    from tests.conftest import RequestFactory
 
 
 def test_inquirer_receives_the_dependent_class_during_nested_resolution() -> None:
@@ -112,7 +115,9 @@ def test_same_token_name_in_two_modules_is_not_reported_as_a_cycle() -> None:
     assert holder.svc.cfg == "inner-config"
 
 
-def test_class_bound_in_two_modules_uses_the_scope_of_the_resolved_binding() -> None:
+def test_class_bound_in_two_modules_uses_the_scope_of_the_resolved_binding(
+    build_request: RequestFactory,
+) -> None:
     class Shared:
         def __init__(self, request: Request) -> None:
             self.request = request
@@ -132,7 +137,7 @@ def test_class_bound_in_two_modules_uses_the_scope_of_the_resolved_binding() -> 
         pass
 
     container = build_container(build_module_graph(AppModule))
-    request = _build_request("/shared")
+    request = build_request(path="/shared")
 
     resolved = cast(
         Any,
@@ -203,25 +208,3 @@ def test_resolve_async_supports_class_providers_with_async_factory_dependencies(
 
     instance = cast(Any, anyio.run(resolve))
     assert instance.conn == "connected"
-
-
-def _build_request(path: str) -> Request:
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": path,
-        "raw_path": path.encode("utf-8"),
-        "query_string": b"",
-        "headers": [(b"host", b"testserver")],
-        "client": ("testclient", 50000),
-        "server": ("testserver", 80),
-        "path_params": {},
-    }
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    return Request(scope, receive)
