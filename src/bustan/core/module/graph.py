@@ -17,7 +17,7 @@ from ..errors import (
     ModuleCycleError,
     RouteDefinitionError,
 )
-from ..ioc.registry import Binding
+from ..ioc.registry import Binding, TokenKey, TokenMap, token_identity
 from ..utils import _display_name, _join_paths, _qualname
 from .compiler import CompiledModuleDef, expand_module_input, validate_module_compiled
 from .dynamic import DynamicModule, ModuleKey
@@ -38,8 +38,10 @@ class ModuleNode:
     # Every token this module can resolve, mapped to the module that declares it. The
     # module named is always the one holding the binding, never a module that merely
     # passed the token on, so a re-export resolves to its origin. This is the only
-    # visibility computation in the framework: the container copies it verbatim, and
-    # available_providers is its key set.
+    # visibility computation in the framework, and the container copies it verbatim.
+    # available_providers is this table's keys gathered into a frozenset, which keys by
+    # equality alone: two equal tokens of different types are two entries here and one
+    # member there, and resolution reads this table rather than that set.
     visibility: Mapping[object, ModuleKey] = field(repr=False)
 
     @property
@@ -219,12 +221,12 @@ def _build_visibility_tables(discovery: _Discovery) -> _VisibilityTables:
     """
 
     local_tokens = {
-        key: frozenset(binding.token for binding in discovery.bindings_by_key[key])
+        key: frozenset(token_identity(binding.token) for binding in discovery.bindings_by_key[key])
         for key in discovery.ordered_keys
     }
-    base: dict[ModuleKey, dict[object, ModuleKey]] = {}
+    base: dict[ModuleKey, TokenMap[ModuleKey]] = {}
     imported_exports: dict[ModuleKey, Mapping[ModuleKey, frozenset[object]]] = {}
-    export_origins: dict[ModuleKey, dict[object, ModuleKey]] = {}
+    export_origins: dict[ModuleKey, TokenMap[ModuleKey]] = {}
 
     def resolve(key: ModuleKey) -> None:
         if key in base:
@@ -233,10 +235,10 @@ def _build_visibility_tables(discovery: _Discovery) -> _VisibilityTables:
         metadata = discovery.compiled_by_key[key].metadata
         _validate_export_targets(key, metadata.exports)
 
-        visible: dict[object, ModuleKey] = {
-            binding.token: key for binding in discovery.bindings_by_key[key]
-        }
-        supplier: dict[object, ModuleKey] = {}
+        visible: TokenMap[ModuleKey] = TokenMap(
+            (binding.token, key) for binding in discovery.bindings_by_key[key]
+        )
+        supplier: TokenMap[ModuleKey] = TokenMap()
         view: dict[ModuleKey, frozenset[object]] = {}
 
         for imported_key in discovery.imported_keys(key):
@@ -257,9 +259,9 @@ def _build_visibility_tables(discovery: _Discovery) -> _VisibilityTables:
         # A token exported but not visible here is either invalid, which the export
         # validation reports once the global layer is known, or globally visible to
         # every module anyway, so omitting it changes no importer's view.
-        export_origins[key] = {
-            token: visible[token] for token in metadata.exports if token in visible
-        }
+        export_origins[key] = TokenMap(
+            (token, visible[token]) for token in metadata.exports if token in visible
+        )
 
     for key in discovery.ordered_keys:
         resolve(key)
@@ -279,14 +281,19 @@ def _merge_import(
     owner: ModuleKey,
     imported_key: ModuleKey,
     origins: Mapping[object, ModuleKey],
-    shadowed: frozenset[object],
-    visible: dict[object, ModuleKey],
-    supplier: dict[object, ModuleKey],
+    shadowed: frozenset[TokenKey],
+    visible: TokenMap[ModuleKey],
+    supplier: TokenMap[ModuleKey],
 ) -> None:
-    """Add one import's exports to the importer's view, refusing an unshadowed collision."""
+    """Add one import's exports to the importer's view, refusing an unshadowed collision.
+
+    A local binding shadows only the token it was written as. A token equal to it but of
+    another type is a different token, so the import still contributes its own binding
+    rather than disappearing behind the local one.
+    """
 
     for token, origin in origins.items():
-        if token in shadowed:
+        if token_identity(token) in shadowed:
             # A module's own binding wins over anything an import offers for that token.
             continue
 
@@ -306,11 +313,11 @@ def _merge_import(
 
 def _build_global_visibility(
     discovery: _Discovery, base: Mapping[ModuleKey, Mapping[object, ModuleKey]]
-) -> dict[object, ModuleKey]:
+) -> TokenMap[ModuleKey]:
     """Map each token a global module exports to the module that declares it."""
 
-    visibility: dict[object, ModuleKey] = {}
-    exporter: dict[object, ModuleKey] = {}
+    visibility: TokenMap[ModuleKey] = TokenMap()
+    exporter: TokenMap[ModuleKey] = TokenMap()
 
     for key in discovery.ordered_keys:
         metadata = discovery.compiled_by_key[key].metadata
@@ -339,10 +346,10 @@ def _build_global_visibility(
 
 def _with_global_fallback(
     visible: Mapping[object, ModuleKey], global_visibility: Mapping[object, ModuleKey]
-) -> dict[object, ModuleKey]:
+) -> TokenMap[ModuleKey]:
     """Return a module's own view extended with the global exports it does not shadow."""
 
-    merged = dict(visible)
+    merged: TokenMap[ModuleKey] = TokenMap(visible)
     for token, origin in global_visibility.items():
         merged.setdefault(token, origin)
     return merged
