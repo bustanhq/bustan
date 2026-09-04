@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any
 
 from ...common.constants import BUSTAN_MODULE_ATTR as MODULE_METADATA_ATTR
 from ...core.utils import _get_metadata
 from .dynamic import DynamicModule
-
-ClassT = TypeVar("ClassT", bound=type[object])
 
 
 @dataclass(frozen=True, slots=True)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import FunctionType
-from typing import TypeVar
 
 from ...common.constants import (
     BUSTAN_CONTROLLER_ATTR as CONTROLLER_METADATA_ATTR,
@@ -18,9 +17,6 @@ from ...common.types import (
 )
 from ...core.errors import InvalidControllerError, RouteDefinitionError
 from ...core.utils import _get_metadata, _normalize_path, _unwrap_handler
-
-ClassT = TypeVar("ClassT", bound=type[object])
-FunctionT = TypeVar("FunctionT", bound=FunctionType)
 
 
 @dataclass(frozen=True, slots=True)

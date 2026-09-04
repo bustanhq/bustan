@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TypeVar, cast
+from typing import cast
 
 from ..ioc.tokens import InjectionToken
 from .decorators import Module
 from .dynamic import DynamicModule
-
-OptionsT = TypeVar("OptionsT")
 
 
 class ConfigurableModuleDefinition[OptionsT]:
