@@ -6,7 +6,17 @@ from typing import Any, cast
 
 from starlette.testclient import TestClient
 
-from bustan import Controller, DiscoveryModule, DiscoveryService, Get, Module, create_app
+from bustan import (
+    Controller,
+    DiscoveryModule,
+    DiscoveryService,
+    Get,
+    Injectable,
+    Module,
+    ModuleRef,
+    create_app,
+    create_app_context,
+)
 
 
 def test_create_app_exposes_public_runtime_artifacts_on_http_server_state() -> None:
@@ -54,3 +64,24 @@ def test_discovery_service_is_injectable_during_request_runtime() -> None:
         "modules": ["AppModule", "DiscoveryModule"],
         "routes": ["/discovery"],
     }
+
+
+def test_discovery_service_and_module_ref_resolve_from_a_standalone_context() -> None:
+    @Injectable()
+    class GreetingService:
+        pass
+
+    @Module(imports=[DiscoveryModule], providers=[GreetingService], exports=[GreetingService])
+    class AppModule:
+        pass
+
+    context = create_app_context(AppModule)
+    discovery = context.get(DiscoveryService)
+    module_ref = context.get(ModuleRef)
+
+    assert isinstance(discovery, DiscoveryService)
+    assert isinstance(module_ref, ModuleRef)
+    # A standalone context serves no routes, so there are none to report.
+    assert discovery.routes() == ()
+    assert any(entry["module"] == "AppModule" for entry in discovery.modules())
+    assert module_ref.get(GreetingService) is context.get(GreetingService)

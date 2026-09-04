@@ -14,7 +14,7 @@ from ...core.errors import InvalidControllerError, RouteDefinitionError
 from ...core.ioc.container import Container
 from ...core.ioc.registry import DURABLE_CONTEXT_KEY_HOOK
 from ...core.ioc.scopes import DurableProvider
-from ...core.ioc.tokens import APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE
+from ...core.ioc.tokens import APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, InjectionToken
 from ...core.module.dynamic import ModuleKey
 from ...core.module.graph import ModuleGraph
 from ...core.utils import _qualname
@@ -33,6 +33,40 @@ from .metadata import ControllerRouteDefinition, get_controller_metadata
 from .params import HandlerBindingPlan, compile_parameter_bindings
 from .scanner import ControllerScanner, ScannedHandler
 from .versioning import normalize_versions
+
+
+@dataclass(frozen=True, slots=True)
+class GlobalPipelineProvider:
+    """A pipeline component declared under a global token and built for each request.
+
+    A route contract records where a global guard, pipe, interceptor or filter comes
+    from rather than which instance it is. Resolving it while routes are compiled would
+    freeze an answer that is not yet settled: the provider may be request-scoped, may be
+    built by an asynchronous factory that nothing has been able to await yet, and may be
+    replaced by an override registered after the application was built.
+
+    One token may stand for several components: a module that binds a list under it
+    registers every entry, and they run in the order the list was written.
+
+    ``declared_component`` is the class, value or list the declaring module bound, which
+    is what the compiler reads when a rule has to be checked before any request exists.
+    It is ``None`` for a component only a factory can produce.
+    """
+
+    token: InjectionToken[object]
+    module: ModuleKey
+    declared_component: object | None = None
+
+    @property
+    def label(self) -> str:
+        """Name the component or components for a diagnostic, falling back to its token."""
+
+        declared = self.declared_component
+        if isinstance(declared, (list, tuple)):
+            return ", ".join(_component_name(entry) for entry in declared) or self.token.name
+        if declared is None:
+            return self.token.name
+        return _component_name(declared)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,15 +159,39 @@ class RouteCompiler:
         _refuse_unservable_controller_lifetimes(self._module_graph)
         scan_result = ControllerScanner(self._module_graph).scan()
         global_pipeline = PipelineMetadata(
-            guards=self._container.get_global_pipeline_providers(APP_GUARD),
-            pipes=self._container.get_global_pipeline_providers(APP_PIPE),
-            interceptors=self._container.get_global_pipeline_providers(APP_INTERCEPTOR),
-            filters=self._container.get_global_pipeline_providers(APP_FILTER),
+            guards=self._global_providers(APP_GUARD),
+            pipes=self._global_providers(APP_PIPE),
+            interceptors=self._global_providers(APP_INTERCEPTOR),
+            filters=self._global_providers(APP_FILTER),
         )
         return tuple(
             self._compile_handler_contract(scanned_handler, global_pipeline)
             for scanned_handler in scan_result.handlers
         )
+
+    def _global_providers(
+        self, token: InjectionToken[object]
+    ) -> tuple[GlobalPipelineProvider, ...]:
+        """Name every module-declared component for one global token, in module order.
+
+        A module may declare the token more than once, and every declaration runs, in
+        the order the modules were registered and then the order they were written.
+        """
+
+        return tuple(
+            GlobalPipelineProvider(token, module, self._declared_component(token, module))
+            for module in self._container.get_global_pipeline_providers(token)
+        )
+
+    def _declared_component(
+        self, token: InjectionToken[object], module: ModuleKey
+    ) -> object | None:
+        """Return the class or value a module bound to a global token, if it bound one."""
+
+        binding = self._container.registry.get_binding((module, token))
+        if binding is None or binding.resolver_kind not in {"class", "value"}:
+            return None
+        return binding.target
 
     def _compile_handler_contract(
         self,
@@ -377,6 +435,31 @@ def _has_policy(policy_plan: PolicyPlan) -> bool:
     )
 
 
+def _component_name(component: object) -> str:
+    """Name one pipeline component, whether it was declared as a class or a value."""
+
+    return component.__name__ if isinstance(component, type) else type(component).__name__
+
+
+def _declared_interceptors(interceptor: object) -> tuple[object, ...]:
+    """Return the interceptors a declaration names, seeing through a global reference."""
+
+    if not isinstance(interceptor, GlobalPipelineProvider):
+        return (interceptor,)
+    declared = interceptor.declared_component
+    if isinstance(declared, (list, tuple)):
+        return tuple(declared)
+    return () if declared is None else (declared,)
+
+
+def _interceptor_name(interceptor: object) -> str:
+    """Name an interceptor for a diagnostic, however it was declared."""
+
+    if isinstance(interceptor, GlobalPipelineProvider):
+        return interceptor.label
+    return _component_name(interceptor)
+
+
 def _validate_interceptor_response_compatibility(
     scanned_handler: ScannedHandler,
     interceptors: tuple[object, ...],
@@ -388,7 +471,10 @@ def _validate_interceptor_response_compatibility(
     incompatible_interceptors = tuple(
         interceptor
         for interceptor in interceptors
-        if bool(getattr(interceptor, "mutates_response_body", False))
+        if any(
+            bool(getattr(declared, "mutates_response_body", False))
+            for declared in _declared_interceptors(interceptor)
+        )
     )
     if not incompatible_interceptors:
         return
@@ -398,8 +484,7 @@ def _validate_interceptor_response_compatibility(
         f"{scanned_handler.route_definition.handler_name}"
     )
     interceptor_names = ", ".join(
-        interceptor.__name__ if isinstance(interceptor, type) else type(interceptor).__name__
-        for interceptor in incompatible_interceptors
+        _interceptor_name(interceptor) for interceptor in incompatible_interceptors
     )
     raise RouteDefinitionError(
         f"{route_owner} uses raw response mode and cannot apply interceptor "

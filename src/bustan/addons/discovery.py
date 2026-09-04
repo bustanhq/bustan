@@ -6,9 +6,10 @@ from typing import Annotated
 
 from starlette.applications import Starlette
 
-from ..app.application import Application
+from ..app.application import Application, ApplicationContext
 from ..common.decorators.injectable import Inject, Injectable
 from ..common.types import ProviderScope
+from ..core.errors import ProviderResolutionError
 from ..core.ioc.tokens import APPLICATION
 from ..core.module.decorators import Module
 from ..core.module.dynamic import ModuleKey
@@ -69,7 +70,14 @@ class DiscoveryService:
         )
 
     def routes(self) -> tuple[dict[str, object], ...]:
-        return self._application.snapshot_routes()
+        """Return the compiled routes, or nothing when there is no HTTP runtime.
+
+        A standalone application context serves no routes, so there are none to report
+        rather than an error to raise.
+        """
+        if isinstance(self._application, Application):
+            return self._application.snapshot_routes()
+        return ()
 
 
 @Module(providers=[DiscoveryService, ModuleRef], exports=[DiscoveryService, ModuleRef])
@@ -79,14 +87,19 @@ class DiscoveryModule:
     pass
 
 
-def _resolve_application_context(application: object) -> Application:
-    if isinstance(application, Application):
+def _resolve_application_context(application: object) -> ApplicationContext:
+    """Return the application context behind whatever ``APPLICATION`` resolved to."""
+
+    if isinstance(application, ApplicationContext):
         return application
     if isinstance(application, Starlette):
         runtime = getattr(application.state, "bustan_application", None)
-        if isinstance(runtime, Application):
+        if isinstance(runtime, ApplicationContext):
             return runtime
-    raise TypeError("DiscoveryService requires an Application runtime")
+    raise ProviderResolutionError(
+        "DiscoveryService requires an application context; APPLICATION resolved to "
+        f"{type(application).__name__}"
+    )
 
 
 def _resolve_module_node(
