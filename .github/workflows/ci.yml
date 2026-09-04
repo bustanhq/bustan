@@ -156,6 +156,19 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
 
+      # Each example is a standalone uv project that depends on the root project by
+      # path, so the root's own metadata - including its dev-dependency-group
+      # specifiers - is recorded in every example lockfile, and a root dependency
+      # edit makes all six stale. Checked before the example run below, because that
+      # run re-locks each example in place and would repair the drift unseen.
+      - name: Check example lockfiles are current
+        run: |
+          for manifest in examples/*/pyproject.toml; do
+            project="$(dirname "$manifest")"
+            echo "Checking $project/uv.lock"
+            uv lock --check --project "$project"
+          done
+
       - name: Install dependencies
         run: uv sync --group dev --frozen
 

@@ -6,6 +6,14 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
 
+  # This updater edits only the manifest in `directory`, so a bump here leaves the
+  # six `examples/*/uv.lock` files stale: each example depends on the root project
+  # by path and therefore records the root's dev-dependency-group specifiers. The
+  # Example Execution job checks those locks, so such a pull request goes red until
+  # a follow-up commit runs `uv lock` in each example directory. Listing the example
+  # directories here would not avoid that - a directory is re-locked when a
+  # dependency this updater manages *there* changes, and no example declares the
+  # root's dev-group tools.
   - package-ecosystem: pip
     directory: "/"
     schedule:
