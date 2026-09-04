@@ -19,6 +19,7 @@ from bustan.core.ioc.scopes import ScopeManager
 from bustan.core.ioc.tokens import APPLICATION, INQUIRER, REQUEST, RESPONSE
 
 if TYPE_CHECKING:
+    from tests.conftest import AppFactory, RequestFactory
 
     class MissingType:
         pass
@@ -32,11 +33,14 @@ class MissingDependency:
     pass
 
 
-def test_resolver_special_tokens_cover_runtime_success_and_error_paths() -> None:
+def test_resolver_special_tokens_cover_runtime_success_and_error_paths(
+    build_request: RequestFactory,
+    build_app: AppFactory,
+) -> None:
     resolver, _registry = _resolver()
-    request = _build_request("/runtime")
-    application = Starlette()
-    request_with_app = _build_request("/runtime", app=application)
+    request = build_request(path="/runtime")
+    application = build_app()
+    request_with_app = build_request(path="/runtime", app=application)
     response = Response("ok")
 
     response_token = resolver.scope_manager.push_response(response)
@@ -179,9 +183,11 @@ def test_resolver_special_tokens_cover_runtime_success_and_error_paths() -> None
         resolver.construction_stack.reset(construction_token)
 
 
-def test_resolver_cache_helpers_cover_request_durable_singleton_and_transient_paths() -> None:
+def test_resolver_cache_helpers_cover_request_durable_singleton_and_transient_paths(
+    build_request: RequestFactory,
+) -> None:
     resolver, _registry = _resolver()
-    request = _build_request("/cache")
+    request = build_request(path="/cache")
     request_binding = _binding("request-token", ProviderScope.REQUEST)
 
     class _DurableTarget:
@@ -444,30 +450,6 @@ def _resolver() -> tuple[Resolver, Registry]:
 
 def _binding(token: object, scope: ProviderScope) -> Binding:
     return Binding(token, AppModule, "value", object(), scope)
-
-
-def _build_request(path: str, *, app: Starlette | None = None) -> Request:
-    scope: dict[str, object] = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": path,
-        "raw_path": path.encode("utf-8"),
-        "query_string": b"",
-        "headers": [(b"host", b"testserver")],
-        "client": ("testclient", 50000),
-        "server": ("testserver", 80),
-        "path_params": {},
-    }
-    if app is not None:
-        scope["app"] = app
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    return Request(scope, receive)
 
 
 class Service:

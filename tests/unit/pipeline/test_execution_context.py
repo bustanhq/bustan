@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from starlette.requests import Request
 
 from bustan.common.types import RouteMetadata
 from bustan.core.module.dynamic import ModuleInstanceKey
@@ -18,9 +17,14 @@ from bustan.pipeline.context import (
 )
 from bustan.platform.http.metadata import ControllerRouteDefinition
 
+if TYPE_CHECKING:
+    from tests.conftest import RequestFactory
 
-def test_execution_context_exposes_http_arguments_in_stable_order() -> None:
-    request = _build_request("/")
+
+def test_execution_context_exposes_http_arguments_in_stable_order(
+    build_request: RequestFactory,
+) -> None:
+    request = build_request(path="/")
     response = object()
 
     class UsersController:
@@ -45,8 +49,10 @@ def test_execution_context_exposes_http_arguments_in_stable_order() -> None:
     assert context.switch_to_http().get_response() is response
 
 
-def test_execution_context_exposes_handler_and_controller_metadata() -> None:
-    request = _build_request("/")
+def test_execution_context_exposes_handler_and_controller_metadata(
+    build_request: RequestFactory,
+) -> None:
+    request = build_request(path="/")
 
     class UsersController:
         def list_users(self) -> None:
@@ -69,14 +75,16 @@ def test_execution_context_exposes_handler_and_controller_metadata() -> None:
     assert context.policy_plan is None
 
 
-def test_context_helpers_cover_remaining_http_and_metadata_accessors() -> None:
+def test_context_helpers_cover_remaining_http_and_metadata_accessors(
+    build_request: RequestFactory,
+) -> None:
     host = ArgumentsHost(("request", "response", "next"))
     assert host.get_arg_by_index(-1) is None
     assert host.get_arg_by_index(3) is None
     assert host.get_type() == "http"
     assert host.switch_to_http().get_next() == "next"
 
-    request = _build_request("/")
+    request = build_request(path="/")
     request.state.principal = "user-1"
 
     class UsersController:
@@ -162,8 +170,10 @@ def test_execution_context_properties_handle_missing_request_values() -> None:
     assert context.controller is controller
 
 
-def test_execution_context_parameter_accessors_cover_default_and_compatibility_paths() -> None:
-    request = _build_request("/")
+def test_execution_context_parameter_accessors_cover_default_and_compatibility_paths(
+    build_request: RequestFactory,
+) -> None:
+    request = build_request(path="/")
 
     class UsersController:
         def list_users(self) -> None:
@@ -210,7 +220,9 @@ def test_execution_context_parameter_accessors_cover_default_and_compatibility_p
     assert updated_context.parameter_value == 2
 
 
-def test_request_context_raises_runtime_errors_when_required_http_state_is_missing() -> None:
+def test_request_context_raises_runtime_errors_when_required_http_state_is_missing(
+    build_request: RequestFactory,
+) -> None:
     class UsersController:
         def list_users(self) -> None:
             return None
@@ -231,7 +243,7 @@ def test_request_context_raises_runtime_errors_when_required_http_state_is_missi
     )
 
     missing_route_context = RequestContext(
-        request=_build_request("/"),
+        request=build_request(path="/"),
         module=ModuleInstanceKey(module=UsersController, instance_id="test"),
         controller_type=UsersController,
         controller=UsersController(),
@@ -245,25 +257,3 @@ def test_request_context_raises_runtime_errors_when_required_http_state_is_missi
 
     with pytest.raises(RuntimeError, match="active route definition"):
         _ = missing_route_context.route
-
-
-def _build_request(path: str) -> Request:
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": path,
-        "raw_path": path.encode("utf-8"),
-        "query_string": b"",
-        "headers": [(b"host", b"testserver")],
-        "client": ("testclient", 50000),
-        "server": ("testserver", 80),
-        "path_params": {},
-    }
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    return Request(scope, receive)

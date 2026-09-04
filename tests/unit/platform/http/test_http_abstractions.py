@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import anyio
-from starlette.requests import Request
 from starlette.responses import Response
 
 from bustan.platform.http.abstractions import (
@@ -13,9 +14,14 @@ from bustan.platform.http.abstractions import (
     to_starlette_response,
 )
 
+if TYPE_CHECKING:
+    from tests.conftest import RequestFactory
 
-def test_starlette_http_request_exposes_stable_request_fields() -> None:
-    request = _build_request("POST", "/users?active=true", body=b'{"name":"Ada"}')
+
+def test_starlette_http_request_exposes_stable_request_fields(
+    build_request: RequestFactory,
+) -> None:
+    request = build_request(method="POST", path="/users?active=true", raw_body=b'{"name":"Ada"}')
     wrapped = StarletteHttpRequest(request)
 
     assert wrapped.method == "POST"
@@ -50,29 +56,6 @@ def test_http_request_protocol_accepts_non_starlette_url_query_and_form_shapes()
     assert request.query_params["active"] == "true"
     assert request.query_params.getlist("active") == ["true"]
     assert anyio.run(request.form).get("avatar") == "ada.png"
-
-
-def _build_request(method: str, path: str, *, body: bytes = b"") -> Request:
-    path_only, _, query_string = path.partition("?")
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": method,
-        "scheme": "http",
-        "path": path_only,
-        "raw_path": path_only.encode("utf-8"),
-        "query_string": query_string.encode("utf-8"),
-        "headers": [(b"host", b"testserver")],
-        "client": ("testclient", 50000),
-        "server": ("testserver", 80),
-        "path_params": {},
-    }
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": body, "more_body": False}
-
-    return Request(scope, receive)
 
 
 class _AdapterNeutralUrl:

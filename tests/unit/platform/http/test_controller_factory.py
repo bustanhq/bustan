@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
-
-from starlette.requests import Request
+from typing import TYPE_CHECKING, Any, cast
 
 from bustan import Controller, Get, Injectable, Module, Scope
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
 from bustan.platform.http.controller_factory import ControllerFactory
 
+if TYPE_CHECKING:
+    from tests.conftest import RequestFactory
 
-def test_controller_factory_reuses_singleton_controllers_by_default() -> None:
+
+def test_controller_factory_reuses_singleton_controllers_by_default(
+    build_request: RequestFactory,
+) -> None:
     @Injectable
     class UserService:
         pass
@@ -35,18 +38,24 @@ def test_controller_factory_reuses_singleton_controllers_by_default() -> None:
 
     first = cast(
         Any,
-        factory.instantiate(UsersController, module=AppModule, request=_build_request("/users")),
+        factory.instantiate(
+            UsersController, module=AppModule, request=build_request(path="/users")
+        ),
     )
     second = cast(
         Any,
-        factory.instantiate(UsersController, module=AppModule, request=_build_request("/users")),
+        factory.instantiate(
+            UsersController, module=AppModule, request=build_request(path="/users")
+        ),
     )
 
     assert first is second
     assert first.user_service is second.user_service
 
 
-def test_controller_factory_reuses_request_scoped_controllers_per_request() -> None:
+def test_controller_factory_reuses_request_scoped_controllers_per_request(
+    build_request: RequestFactory,
+) -> None:
     @Controller("/users", scope=Scope.REQUEST)
     class UsersController:
         @Get("/")
@@ -59,8 +68,8 @@ def test_controller_factory_reuses_request_scoped_controllers_per_request() -> N
 
     container = build_container(build_module_graph(AppModule))
     factory = ControllerFactory(container)
-    first_request = _build_request("/users")
-    second_request = _build_request("/users")
+    first_request = build_request(path="/users")
+    second_request = build_request(path="/users")
 
     first = factory.instantiate(UsersController, module=AppModule, request=first_request)
     second = factory.instantiate(UsersController, module=AppModule, request=first_request)
@@ -70,7 +79,9 @@ def test_controller_factory_reuses_request_scoped_controllers_per_request() -> N
     assert first is not third
 
 
-def test_controller_factory_creates_transient_controllers_each_time() -> None:
+def test_controller_factory_creates_transient_controllers_each_time(
+    build_request: RequestFactory,
+) -> None:
     @Controller("/users", scope=Scope.TRANSIENT)
     class UsersController:
         @Get("/")
@@ -83,31 +94,9 @@ def test_controller_factory_creates_transient_controllers_each_time() -> None:
 
     container = build_container(build_module_graph(AppModule))
     factory = ControllerFactory(container)
-    request = _build_request("/users")
+    request = build_request(path="/users")
 
     first = factory.instantiate(UsersController, module=AppModule, request=request)
     second = factory.instantiate(UsersController, module=AppModule, request=request)
 
     assert first is not second
-
-
-def _build_request(path: str) -> Request:
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": path,
-        "raw_path": path.encode("utf-8"),
-        "query_string": b"",
-        "headers": [(b"host", b"testserver")],
-        "client": ("testclient", 50000),
-        "server": ("testserver", 80),
-        "path_params": {},
-    }
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    return Request(scope, receive)
