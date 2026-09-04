@@ -165,6 +165,52 @@ class AppModule:
     pass
 ```
 
+Global components are resolved through the container **once per request**, not once
+while routes are compiled. Three things follow:
+
+- A global component may declare any lifetime a provider can. A request-scoped global
+  guard is built for each request and may inject `Request` or any other request-scoped
+  provider.
+- A global component may be built by an asynchronous factory, because the request path
+  awaits every provider it builds.
+- An override registered against the token takes effect on the next request, so
+  `override_provider(app, APP_GUARD, AllowAllGuard())` really does replace the guard.
+
+Bind a list to register more than one component under one token. They run in the order
+the list was written, and the components of every declaring module run in the order the
+modules were registered:
+
+```python
+@Module(
+    providers=[{"provide": APP_GUARD, "use_value": [AuditGuard(), RejectAllGuard()]}],
+)
+class AppModule:
+    pass
+```
+
+## Resolving Providers Inside a Handler
+
+`ApplicationContext.get()` resolves as though no request were being served, so it
+refuses anything request-scoped. To reach a request-scoped provider from inside a
+handler, a guard or an interceptor, inject `ModuleRef` and call its `get()`: it resolves
+against the request currently in flight and returns the same instance the rest of that
+request sees.
+
+```python
+from bustan import Controller, Get, ModuleRef, Scope
+
+
+@Controller("/orders", scope=Scope.REQUEST)
+class OrdersController:
+    def __init__(self, module_ref: ModuleRef) -> None:
+        self.module_ref = module_ref
+
+    @Get("/")
+    def index(self) -> dict[str, str]:
+        identity = self.module_ref.get(RequestIdentity)
+        return {"user": identity.user}
+```
+
 ## Operational Notes
 
 - If no exception filter handles a `ParameterBindingError`, Bustan returns HTTP `400` with a structured payload.

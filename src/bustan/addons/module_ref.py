@@ -5,10 +5,12 @@ from __future__ import annotations
 from typing import Annotated
 
 from starlette.applications import Starlette
+from starlette.requests import Request
 
-from ..app.application import Application
+from ..app.application import ApplicationContext
 from ..common.decorators.injectable import Inject, Injectable
 from ..common.types import ProviderScope
+from ..core.errors import ProviderResolutionError
 from ..core.ioc.tokens import APPLICATION
 from ..core.module.dynamic import ModuleKey
 
@@ -24,7 +26,7 @@ class ModuleRef:
     @classmethod
     def _from_application(
         cls,
-        application: Application,
+        application: ApplicationContext,
         *,
         module_key: ModuleKey | None = None,
     ) -> ModuleRef:
@@ -44,27 +46,55 @@ class ModuleRef:
         )
 
     def get(self, token: object, *, strict: bool = True) -> object:
+        """Resolve a provider, against the request being served when there is one.
+
+        This is the request-aware entry point: called from inside a handler, a guard or
+        an interceptor it reaches request-scoped providers and returns the same instance
+        the rest of that request sees. Called with no request in flight it resolves as
+        `ApplicationContext.get` does, and a request-scoped provider is refused.
+
+        `strict` keeps the lookup inside the module this reference names; pass `False`
+        to fall back to what the root module can see.
+        """
         module_key = self._module_key if strict else self._application.root_key
-        return self._application.container.resolve(token, module=module_key)
+        return self._application.container.resolve(
+            token, module=module_key, request=self._active_request()
+        )
 
     def resolve(self, token: object, *, strict: bool = True) -> object:
+        """Alias for `get()`, with the same request-aware semantics."""
         return self.get(token, strict=strict)
 
     def create(self, cls: type[object]) -> object:
-        return self._application.container.instantiate_class(cls, module=self._module_key)
+        """Build one fresh instance of a class, against the request being served."""
+        return self._application.container.instantiate_class(
+            cls, module=self._module_key, request=self._active_request()
+        )
+
+    def _active_request(self) -> Request | None:
+        """Return the request currently being served, or ``None`` outside one."""
+
+        return self._application.container.scope_manager.active_request.get()
 
 
-def _resolve_application(application: object) -> Application:
-    if isinstance(application, Application):
+def _resolve_application(application: object) -> ApplicationContext:
+    """Return the application context behind whatever ``APPLICATION`` resolved to."""
+
+    if isinstance(application, ApplicationContext):
         return application
     if isinstance(application, Starlette):
         runtime = getattr(application.state, "bustan_application", None)
-        if isinstance(runtime, Application):
+        if isinstance(runtime, ApplicationContext):
             return runtime
-    raise TypeError("ModuleRef requires an Application runtime")
+    raise ProviderResolutionError(
+        "ModuleRef requires an application context; APPLICATION resolved to "
+        f"{type(application).__name__}"
+    )
 
 
-def _resolve_module_key(application: Application, module: ModuleKey | type[object]) -> ModuleKey:
+def _resolve_module_key(
+    application: ApplicationContext, module: ModuleKey | type[object]
+) -> ModuleKey:
     for node in application.module_graph.nodes:
         if node.key == module or node.module is module:
             return node.key

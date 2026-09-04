@@ -111,7 +111,13 @@ async def execute_http_route(
     """Execute one compiled HTTP route through the shared runtime pipeline."""
 
     native_http_request = cast(Request, native_request)
-    application_token = container.scope_manager.push_application(application_runtime)
+    # The request is bound for the whole execution, not merely for the duration of one
+    # resolve call, so anything running inside the route - a handler, a guard, an
+    # interceptor - can reach the request being served and the providers scoped to it.
+    request_token = container.scope_manager.push_request(native_http_request)
+    application_token = container.scope_manager.push_application(
+        _application_runtime(application_runtime)
+    )
     response_context = Response()
     response_token = container.scope_manager.push_response(response_context)
     response_handler = ResponseHandler()
@@ -121,7 +127,7 @@ async def execute_http_route(
     observation = None
 
     try:
-        controller_instance = factory.instantiate(
+        controller_instance = await factory.instantiate_async(
             execution_plan.controller_cls,
             module=execution_plan.module_key,
             request=native_http_request,
@@ -139,7 +145,7 @@ async def execute_http_route(
             route_contract=execution_plan.route_contract,
             policy_plan=execution_plan.policy_plan,
         )
-        resolved_pipeline = factory.resolve_pipeline(
+        resolved_pipeline = await factory.resolve_pipeline_async(
             execution_plan.pipeline_plan,
             module=execution_plan.module_key,
             request=native_http_request,
@@ -215,6 +221,7 @@ async def execute_http_route(
         container.scope_manager.pop_response(response_token)
         container.scope_manager.clear_request_state(native_http_request)
         container.scope_manager.pop_application(application_token)
+        container.scope_manager.pop_request(request_token)
 
 
 async def execute_http_exception(
@@ -230,7 +237,10 @@ async def execute_http_exception(
     """Render an exception through the route's compiled filter chain."""
 
     native_http_request = cast(Request, native_request)
-    application_token = container.scope_manager.push_application(application_runtime)
+    request_token = container.scope_manager.push_request(native_http_request)
+    application_token = container.scope_manager.push_application(
+        _application_runtime(application_runtime)
+    )
     response_context = Response()
     response_token = container.scope_manager.push_response(response_context)
     response_handler = ResponseHandler()
@@ -239,7 +249,7 @@ async def execute_http_exception(
     context: ExecutionContext | None = None
 
     try:
-        controller_instance = factory.instantiate(
+        controller_instance = await factory.instantiate_async(
             execution_plan.controller_cls,
             module=execution_plan.module_key,
             request=native_http_request,
@@ -256,7 +266,7 @@ async def execute_http_exception(
             route_contract=execution_plan.route_contract,
             policy_plan=execution_plan.policy_plan,
         )
-        resolved_pipeline = factory.resolve_pipeline(
+        resolved_pipeline = await factory.resolve_pipeline_async(
             execution_plan.pipeline_plan,
             module=execution_plan.module_key,
             request=native_http_request,
@@ -283,6 +293,27 @@ async def execute_http_exception(
         container.scope_manager.pop_response(response_token)
         container.scope_manager.clear_request_state(native_http_request)
         container.scope_manager.pop_application(application_token)
+        container.scope_manager.pop_request(request_token)
+
+
+def _application_runtime(application_runtime: object) -> object:
+    """Return the Bustan application behind whatever the transport handed over.
+
+    ``APPLICATION`` names the application a provider is running inside, and that has
+    to be the same object whichever way the resolution was entered. An adapter that
+    passes its own server instance is unwrapped to the runtime attached to it, so a
+    provider is never handed the web server on one path and the application on another.
+    """
+
+    from ...app.application import ApplicationContext
+
+    if isinstance(application_runtime, ApplicationContext):
+        return application_runtime
+    state = getattr(application_runtime, "state", None)
+    attached = getattr(state, "bustan_application", None)
+    if isinstance(attached, ApplicationContext):
+        return attached
+    return application_runtime
 
 
 async def _apply_pipes(

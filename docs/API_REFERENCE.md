@@ -89,16 +89,27 @@ IoC container, without an associated HTTP server instance.
   Accessor for the application's root module class.
 - `(property) root_key`
   Accessor for the application's root module key (ModuleKey).
-- `get(self, token: object) -> Any`
-  Resolve a provider from the root module context.
+- `(property) lifecycle_manager`
+  Accessor for the manager that runs startup and shutdown, if there is one.
 
-This is a non-request-scoped resolution. For request-scoped
-providers, use the dependency injection system directly via
-decorators (@Param, @Body, etc.) or app.resolve().
+A context built without one never runs a lifecycle hook, so `init()` and
+`close()` on it do nothing.
+- `get(self, token: object) -> Any`
+  Resolve a provider as though no request were being served.
+
+Anything scoped to a request is refused here, whether or not a request happens
+to be in flight, so a provider resolved this way can never capture one caller's
+state and hand it to the next. To reach a request-scoped provider from inside a
+handler, a guard or an interceptor, inject `ModuleRef` and call its `get()`:
+that resolves against the request currently being served.
 - `resolve(self, token: object) -> Any`
-  Alias for app.get().
+  Alias for app.get(), with the same non-request semantics.
 - `init(self) -> ApplicationContext`
   Initialize asynchronous providers and lifecycle hooks.
+
+The application is the running application for the whole of startup, so a
+provider built eagerly here may inject `APPLICATION` exactly as one built
+lazily during a request can.
 - `close(self) -> None`
   Trigger the application shutdown sequence.
 
@@ -413,6 +424,10 @@ Read-only inspection surface for compiled modules, providers, and routes.
 - `providers(self) -> tuple[dict[str, object], ...]`
 - `providers_for_module(self, module: ModuleKey | type[object]) -> tuple[dict[str, object], ...]`
 - `routes(self) -> tuple[dict[str, object], ...]`
+  Return the compiled routes, or nothing when there is no HTTP runtime.
+
+A standalone application context serves no routes, so there are none to report
+rather than an error to raise.
 
 #### `DurableProvider`
 
@@ -903,8 +918,19 @@ Resolve providers through the finalized public application semantics.
 - `(property) module_key`
 - `for_module(self, module: ModuleKey | type[object]) -> ModuleRef`
 - `get(self, token: object, *, strict: bool = True) -> object`
+  Resolve a provider, against the request being served when there is one.
+
+This is the request-aware entry point: called from inside a handler, a guard or
+an interceptor it reaches request-scoped providers and returns the same instance
+the rest of that request sees. Called with no request in flight it resolves as
+`ApplicationContext.get` does, and a request-scoped provider is refused.
+
+`strict` keeps the lookup inside the module this reference names; pass `False`
+to fall back to what the root module can see.
 - `resolve(self, token: object, *, strict: bool = True) -> object`
+  Alias for `get()`, with the same request-aware semantics.
 - `create(self, cls: type[object]) -> object`
+  Build one fresh instance of a class, against the request being served.
 
 #### `Module`
 

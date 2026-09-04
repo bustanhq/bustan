@@ -187,14 +187,20 @@ class Container:
         """Return the replacement object registered for a provider, if there is one."""
         return self.override_manager.get_override(token, module=module)
 
-    def get_global_pipeline_providers(self, token: InjectionToken[object]) -> tuple[object, ...]:
-        """Resolve APP_* providers in module registration order."""
-        resolved: list[object] = []
-        for node in self.module_graph.nodes:
-            if (node.key, token) not in self.registry.bindings:
-                continue
-            resolved.append(self.resolve(token, module=node.key))
-        return tuple(resolved)
+    def get_global_pipeline_providers(self, token: InjectionToken[object]) -> tuple[ModuleKey, ...]:
+        """Return the modules declaring a global pipeline token, in registration order.
+
+        What a global guard, pipe, interceptor or filter token means is not settled
+        until a request runs it: the provider may be request-scoped, may be built by an
+        async factory, and may have been replaced by an override registered after the
+        application was built. So this names where each component comes from rather
+        than building it, and the runtime resolves it once per request.
+        """
+        return tuple(
+            node.key
+            for node in self.module_graph.nodes
+            if (node.key, token) in self.registry.bindings
+        )
 
 
 def build_container(module_graph: ModuleGraph) -> Container:

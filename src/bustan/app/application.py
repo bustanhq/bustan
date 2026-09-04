@@ -50,12 +50,23 @@ class ApplicationContext:
         """Accessor for the application's root module key (ModuleKey)."""
         return self._container.module_graph.root_key
 
-    def get(self, token: object) -> Any:
-        """Resolve a provider from the root module context.
+    @property
+    def lifecycle_manager(self) -> LifecycleManager | None:
+        """Accessor for the manager that runs startup and shutdown, if there is one.
 
-        This is a non-request-scoped resolution. For request-scoped
-        providers, use the dependency injection system directly via
-        decorators (@Param, @Body, etc.) or app.resolve().
+        A context built without one never runs a lifecycle hook, so `init()` and
+        `close()` on it do nothing.
+        """
+        return self._lifecycle_manager
+
+    def get(self, token: object) -> Any:
+        """Resolve a provider as though no request were being served.
+
+        Anything scoped to a request is refused here, whether or not a request happens
+        to be in flight, so a provider resolved this way can never capture one caller's
+        state and hand it to the next. To reach a request-scoped provider from inside a
+        handler, a guard or an interceptor, inject `ModuleRef` and call its `get()`:
+        that resolves against the request currently being served.
         """
         application_token = self._container.scope_manager.push_application(self)
         try:
@@ -64,14 +75,23 @@ class ApplicationContext:
             self._container.scope_manager.pop_application(application_token)
 
     def resolve(self, token: object) -> Any:
-        """Alias for app.get()."""
+        """Alias for app.get(), with the same non-request semantics."""
         return self.get(token)
 
     async def init(self) -> ApplicationContext:
-        """Initialize asynchronous providers and lifecycle hooks."""
+        """Initialize asynchronous providers and lifecycle hooks.
+
+        The application is the running application for the whole of startup, so a
+        provider built eagerly here may inject `APPLICATION` exactly as one built
+        lazily during a request can.
+        """
 
         if self._lifecycle_manager is not None:
-            await self._lifecycle_manager.startup()
+            application_token = self._container.scope_manager.push_application(self)
+            try:
+                await self._lifecycle_manager.startup()
+            finally:
+                self._container.scope_manager.pop_application(application_token)
         return self
 
     async def close(self) -> None:
@@ -80,7 +100,11 @@ class ApplicationContext:
         Mainly used for graceful teardown in tests.
         """
         if self._lifecycle_manager is not None:
-            await self._lifecycle_manager.shutdown()
+            application_token = self._container.scope_manager.push_application(self)
+            try:
+                await self._lifecycle_manager.shutdown()
+            finally:
+                self._container.scope_manager.pop_application(application_token)
 
 
 class Application(ApplicationContext):

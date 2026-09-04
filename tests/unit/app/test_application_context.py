@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 import pytest
 
-from bustan import ApplicationContext, Injectable, Module, create_app_context
+from bustan import (
+    APPLICATION,
+    ApplicationContext,
+    Inject,
+    Injectable,
+    Module,
+    create_app_context,
+)
 from bustan.core.errors import ProviderResolutionError
 
 
@@ -82,3 +91,27 @@ async def test_application_context_init_matches_http_startup_semantics() -> None
 
     await context.close()
     assert events[-2:] == ["shutdown", "destroy"]
+
+
+@pytest.mark.anyio
+async def test_a_provider_built_during_startup_can_inject_the_application() -> None:
+    @Injectable()
+    class NeedsApplication:
+        def __init__(self, application: Annotated[object, Inject(APPLICATION)]) -> None:
+            self.application = application
+
+    @Module(providers=[NeedsApplication], exports=[NeedsApplication])
+    class RootModule:
+        pass
+
+    context = create_app_context(RootModule)
+    await context.init()
+
+    assert context.get(NeedsApplication).application is context
+
+
+def test_the_lifecycle_manager_is_reachable_without_reading_a_private_attribute() -> None:
+    context = create_app_context(AppModule)
+
+    assert context.lifecycle_manager is not None
+    assert context.lifecycle_manager.state.initialized is False

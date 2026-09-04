@@ -7,6 +7,7 @@ from typing import Any, cast
 import pytest
 from starlette.applications import Starlette
 from starlette.requests import Request
+from starlette.testclient import TestClient
 
 from bustan import (
     ContextId,
@@ -18,11 +19,13 @@ from bustan import (
     ModuleRef,
     application_context_id,
     create_app,
+    create_app_context,
     durable_context_id,
     request_context_id,
 )
 from bustan.addons.discovery import _resolve_application_context, _resolve_module_node
 from bustan.addons.module_ref import _resolve_application, _resolve_module_key
+from bustan.errors import ProviderResolutionError
 
 
 def test_module_ref_resolves_providers_through_public_application_semantics() -> None:
@@ -134,11 +137,11 @@ def test_module_ref_create_and_helper_error_paths_are_covered() -> None:
     with pytest.raises(KeyError, match="Unknown module"):
         _resolve_module_key(application, cast(Any, object()))
 
-    with pytest.raises(TypeError, match="Application runtime"):
+    with pytest.raises(ProviderResolutionError, match="requires an application context"):
         _resolve_application(object())
 
     bare_starlette = Starlette()
-    with pytest.raises(TypeError, match="Application runtime"):
+    with pytest.raises(ProviderResolutionError, match="requires an application context"):
         _resolve_application(bare_starlette)
 
 
@@ -164,14 +167,58 @@ def test_discovery_helper_error_paths_are_covered() -> None:
     with pytest.raises(KeyError, match="Unknown module"):
         _resolve_module_node(application.module_graph.nodes, cast(Any, object()))
 
-    with pytest.raises(TypeError, match="Application runtime"):
+    with pytest.raises(ProviderResolutionError, match="requires an application context"):
         _resolve_application_context(object())
 
     bare_starlette = Starlette()
-    with pytest.raises(TypeError, match="Application runtime"):
+    with pytest.raises(ProviderResolutionError, match="requires an application context"):
         _resolve_application_context(bare_starlette)
 
     starlette = Starlette()
     starlette.state.bustan_application = application
     assert _resolve_application(starlette) is application
     assert _resolve_application_context(starlette) is application
+
+
+@Injectable(scope="request")
+class RequestIdentity:
+    def __init__(self, request: Request) -> None:
+        self.user = request.headers.get("x-user-id", "anonymous")
+
+
+def test_module_ref_reaches_request_scope_from_inside_a_handler() -> None:
+    @Controller("/identity", scope="request")
+    class IdentityController:
+        def __init__(self, module_ref: ModuleRef) -> None:
+            self.module_ref = module_ref
+
+        @Get("/")
+        def read_identity(self) -> dict[str, object]:
+            first = self.module_ref.get(RequestIdentity)
+            second = self.module_ref.get(RequestIdentity)
+            assert isinstance(first, RequestIdentity)
+            return {"user": first.user, "same_instance": first is second}
+
+    @Module(
+        imports=[DiscoveryModule],
+        controllers=[IdentityController],
+        providers=[RequestIdentity],
+    )
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        body = client.get("/identity/", headers={"x-user-id": "ada"}).json()
+
+    assert body == {"user": "ada", "same_instance": True}
+
+
+def test_module_ref_refuses_request_scope_when_no_request_is_being_served() -> None:
+    @Module(imports=[DiscoveryModule], providers=[RequestIdentity])
+    class AppModule:
+        pass
+
+    module_ref = create_app_context(AppModule).get(ModuleRef)
+
+    with pytest.raises(ProviderResolutionError, match="requires an active request"):
+        module_ref.get(RequestIdentity)
