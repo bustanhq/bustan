@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -48,7 +49,10 @@ class Binding:
     scope: ProviderScope
 
 
-def token_identity(token: object) -> tuple[type[object], object]:
+type TokenKey = tuple[type[object], object]
+
+
+def token_identity(token: object) -> TokenKey:
     """Return a token's type-aware identity.
 
     Python maps equal keys onto one dict entry, so a string enum member and the bare
@@ -57,6 +61,96 @@ def token_identity(token: object) -> tuple[type[object], object]:
     """
 
     return (type(token), token)
+
+
+class TokenMap[V](MutableMapping[object, V]):
+    """A mapping keyed by provider token that never merges two tokens of different types.
+
+    A plain dict keys by equality alone, so a string enum member and the bare string it
+    equals become one entry and whichever was written last answers for both. Every table
+    that says what a token means keys by ``token_identity`` instead, so a token means
+    what its author declared and nothing else. Lookup, membership and deletion all take
+    the token as written, and iteration yields those same tokens in declaration order.
+
+    An unhashable token raises ``TypeError`` here exactly as it would from a dict,
+    because a caller that probes a mapping with an arbitrary annotation relies on it.
+    """
+
+    __slots__ = ("_entries",)
+
+    def __init__(self, entries: Mapping[object, V] | Iterable[tuple[object, V]] = ()) -> None:
+        self._entries: dict[TokenKey, V] = {}
+        pairs = entries.items() if isinstance(entries, Mapping) else entries
+        for token, value in pairs:
+            self[token] = value
+
+    def __getitem__(self, token: object) -> V:
+        return self._entries[token_identity(token)]
+
+    def __setitem__(self, token: object, value: V) -> None:
+        self._entries[token_identity(token)] = value
+
+    def __delitem__(self, token: object) -> None:
+        del self._entries[token_identity(token)]
+
+    def __iter__(self) -> Iterator[object]:
+        # The identity carries the token itself, so the declared token is what is yielded.
+        return (token for _token_type, token in self._entries)
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def __eq__(self, other: object) -> bool:
+        # Comparing through a dict would collapse the very tokens this mapping keeps
+        # apart, so both sides are compared by token identity.
+        if isinstance(other, TokenMap):
+            return self._entries == other._entries
+        if isinstance(other, Mapping):
+            other_entries: dict[TokenKey, object] = {
+                token_identity(token): value for token, value in other.items()
+            }
+            return self._entries == other_entries
+        return NotImplemented
+
+    def __repr__(self) -> str:
+        shown = ", ".join(f"{token!r}: {value!r}" for token, value in self.items())
+        return f"{type(self).__name__}({{{shown}}})"
+
+
+class BindingTable(MutableMapping[tuple[ModuleKey, object], Binding]):
+    """The binding table, keyed by the declaring module and the token's identity.
+
+    Keys are read and written as the ``(module, token)`` pair they have always been.
+    The token half is keyed by identity, so asking a module for a token equal to one it
+    declares, but of another type, finds nothing rather than the other token's binding.
+    """
+
+    __slots__ = ("_entries",)
+
+    def __init__(self) -> None:
+        self._entries: dict[tuple[ModuleKey, TokenKey], Binding] = {}
+
+    def __getitem__(self, key: tuple[ModuleKey, object]) -> Binding:
+        module_key, token = key
+        return self._entries[(module_key, token_identity(token))]
+
+    def __setitem__(self, key: tuple[ModuleKey, object], binding: Binding) -> None:
+        module_key, token = key
+        self._entries[(module_key, token_identity(token))] = binding
+
+    def __delitem__(self, key: tuple[ModuleKey, object]) -> None:
+        module_key, token = key
+        del self._entries[(module_key, token_identity(token))]
+
+    def __iter__(self) -> Iterator[tuple[ModuleKey, object]]:
+        return ((module_key, token) for module_key, (_token_type, token) in self._entries)
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def __repr__(self) -> str:
+        shown = ", ".join(f"{key!r}: {binding!r}" for key, binding in self.items())
+        return f"{type(self).__name__}({{{shown}}})"
 
 
 def normalize_provider(defn: object | dict[str, Any], declaring_module: ModuleKey) -> Binding:
@@ -327,15 +421,17 @@ class Registry:
     """Manages the mapping of provider tokens to their resolving bindings."""
 
     def __init__(self) -> None:
-        self.bindings: dict[tuple[ModuleKey, object], Binding] = {}
-        self.module_visibility: dict[ModuleKey, dict[object, ModuleKey]] = {}
+        self.bindings: BindingTable = BindingTable()
+        self.module_visibility: dict[ModuleKey, TokenMap[ModuleKey]] = {}
         self.controller_modules: dict[type[object], ModuleKey] = {}
 
     def register_binding(self, key: tuple[ModuleKey, object], binding: Binding) -> None:
         self.bindings[key] = binding
 
-    def set_visibility(self, module_key: ModuleKey, visibility: dict[object, ModuleKey]) -> None:
-        self.module_visibility[module_key] = visibility
+    def set_visibility(self, module_key: ModuleKey, visibility: Mapping[object, ModuleKey]) -> None:
+        """Record what one module can see, keyed so equal tokens of two types stay apart."""
+
+        self.module_visibility[module_key] = TokenMap(visibility)
 
     def register_controller(self, controller_cls: type[object], module_key: ModuleKey) -> None:
         self.controller_modules[controller_cls] = module_key

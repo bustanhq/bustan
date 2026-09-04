@@ -12,10 +12,21 @@ from bustan import Injectable
 from bustan.common.constants import BUSTAN_PROVIDER_ATTR
 from bustan.common.types import ProviderScope
 from bustan.core.errors import InvalidProviderError
-from bustan.core.ioc.registry import Binding, Registry, normalize_provider, token_identity
+from bustan.core.ioc.registry import (
+    Binding,
+    BindingTable,
+    Registry,
+    TokenMap,
+    normalize_provider,
+    token_identity,
+)
 
 
 class AppModule:
+    pass
+
+
+class FeatureModule:
     pass
 
 
@@ -405,3 +416,66 @@ def test_a_use_class_definition_whose_target_declares_nothing_keeps_the_default(
         normalize_provider({"provide": "t", "use_class": Derived}, AppModule).scope
         is ProviderScope.SINGLETON
     )
+
+
+def test_token_map_keeps_equal_tokens_of_different_types_apart() -> None:
+    class Tokens(StrEnum):
+        DB = "db"
+
+    # The pairs are written as a sequence because a dict literal would already have
+    # collapsed them onto one entry, which is the whole defect.
+    table: TokenMap[str] = TokenMap([(Tokens.DB, "enum"), ("db", "string")])
+    table[True] = "bool"
+    table[1] = "int"
+
+    assert table[Tokens.DB] == "enum"
+    assert table["db"] == "string"
+    assert (table[True], table[1]) == ("bool", "int")
+    assert list(table) == [Tokens.DB, "db", True, 1]
+    # A plain dict would report these as the same mapping, which is the collapse this
+    # mapping exists to prevent.
+    assert table != {"db": "string", 1: "int"}
+    assert table == TokenMap([(Tokens.DB, "enum"), ("db", "string"), (True, "bool"), (1, "int")])
+
+    assert table != "not a mapping"
+    assert repr(table).startswith("TokenMap({<Tokens.DB: 'db'>: 'enum', 'db': 'string'")
+
+    del table[Tokens.DB]
+
+    assert Tokens.DB not in table
+    assert table["db"] == "string"
+
+
+def test_binding_table_keys_a_binding_by_its_module_and_token_identity() -> None:
+    class Tokens(StrEnum):
+        DB = "db"
+
+    enum_binding = Binding(Tokens.DB, AppModule, "value", "enum", ProviderScope.SINGLETON)
+    string_binding = Binding("db", FeatureModule, "value", "string", ProviderScope.SINGLETON)
+    table = BindingTable()
+    table[(AppModule, Tokens.DB)] = enum_binding
+    table[(FeatureModule, "db")] = string_binding
+
+    assert table[(AppModule, Tokens.DB)] is enum_binding
+    assert (AppModule, "db") not in table
+    assert list(table) == [(AppModule, Tokens.DB), (FeatureModule, "db")]
+    assert len(table) == 2
+    assert repr(table).startswith("BindingTable({")
+
+    del table[(AppModule, Tokens.DB)]
+
+    assert list(table) == [(FeatureModule, "db")]
+
+
+def test_registry_tells_two_equal_tokens_of_different_types_apart() -> None:
+    class Tokens(StrEnum):
+        DB = "db"
+
+    registry = Registry()
+    enum_binding = Binding(Tokens.DB, AppModule, "value", "enum-db", ProviderScope.SINGLETON)
+    registry.register_binding((AppModule, Tokens.DB), enum_binding)
+    registry.set_visibility(AppModule, {Tokens.DB: AppModule})
+
+    assert registry.get_binding((AppModule, Tokens.DB)) is enum_binding
+    assert registry.get_binding((AppModule, "db")) is None
+    assert registry.module_visibility[AppModule].get("db") is None

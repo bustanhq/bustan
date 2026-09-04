@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -470,7 +471,7 @@ def test_container_visibility_is_the_graph_visibility_and_every_entry_has_a_bind
     container = build_container(graph)
 
     for node in graph.nodes:
-        assert container.registry.module_visibility[node.key] == dict(node.visibility)
+        assert container.registry.module_visibility[node.key] == node.visibility
         assert set(node.available_providers) == set(node.visibility)
         for token, declaring_module in node.visibility.items():
             assert (declaring_module, token) in container.registry.bindings
@@ -498,3 +499,83 @@ def test_container_refuses_visibility_that_no_binding_backs() -> None:
 
     with pytest.raises(InvalidModuleError, match="declares no provider for it"):
         build_container(graph)
+
+
+def test_a_local_binding_and_an_imported_export_of_an_equal_token_resolve_apart() -> None:
+    # A string enum member equals the bare string it is written as. The local string
+    # binding used to answer for both, so the imported enum export became unreachable
+    # in the module that imported it and nothing said so.
+    class Tokens(StrEnum):
+        DB = "db"
+
+    @Module(providers=[{"provide": Tokens.DB, "use_value": "enum-db"}], exports=[Tokens.DB])
+    class SharedModule:
+        pass
+
+    @Module(
+        imports=[SharedModule],
+        providers=[{"provide": "db", "use_value": "string-db"}],
+    )
+    class FeatureModule:
+        pass
+
+    container = build_container(build_module_graph(FeatureModule))
+
+    assert container.resolve(Tokens.DB, module=FeatureModule) == "enum-db"
+    assert container.resolve("db", module=FeatureModule) == "string-db"
+
+
+def test_a_token_equal_to_a_visible_one_but_of_another_type_resolves_to_nothing() -> None:
+    class Tokens(StrEnum):
+        DB = "db"
+
+    @Module(providers=[{"provide": Tokens.DB, "use_value": "enum-db"}], exports=[Tokens.DB])
+    class SharedModule:
+        pass
+
+    @Module(imports=[SharedModule])
+    class FeatureModule:
+        pass
+
+    container = build_container(build_module_graph(FeatureModule))
+
+    with pytest.raises(ProviderResolutionError, match="is not available to FeatureModule"):
+        container.resolve("db", module=FeatureModule)
+
+
+def test_an_override_replaces_the_token_it_names_and_not_an_equal_one() -> None:
+    class Tokens(StrEnum):
+        DB = "db"
+
+    @Module(providers=[{"provide": Tokens.DB, "use_value": "enum-db"}], exports=[Tokens.DB])
+    class SharedModule:
+        pass
+
+    @Module(
+        imports=[SharedModule],
+        providers=[{"provide": "db", "use_value": "string-db"}],
+    )
+    class FeatureModule:
+        pass
+
+    container = build_container(build_module_graph(FeatureModule))
+    container.override(Tokens.DB, "fake-enum-db")
+
+    assert container.resolve(Tokens.DB, module=FeatureModule) == "fake-enum-db"
+    assert container.resolve("db", module=FeatureModule) == "string-db"
+    assert container.has_override("db") is False
+
+
+def test_a_true_token_and_a_one_token_are_two_providers() -> None:
+    @Module(providers=[{"provide": 1, "use_value": "int-one"}], exports=[1])
+    class IntModule:
+        pass
+
+    @Module(imports=[IntModule], providers=[{"provide": True, "use_value": "bool-true"}])
+    class BoolModule:
+        pass
+
+    container = build_container(build_module_graph(BoolModule))
+
+    assert container.resolve(1, module=BoolModule) == "int-one"
+    assert container.resolve(True, module=BoolModule) == "bool-true"
