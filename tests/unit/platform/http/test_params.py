@@ -71,9 +71,11 @@ class UpdateUserPayload(BaseModel):
 
 
 UnitCurrentRequestData = create_param_decorator(
-    lambda data, ctx: ctx.get_handler().__name__
-    if data is None
-    else ctx.switch_to_http().get_request().headers[data],
+    lambda data, ctx: (
+        ctx.get_handler().__name__
+        if data is None
+        else ctx.switch_to_http().get_request().headers[data]
+    ),
     name="CurrentRequestData",
 )
 
@@ -1064,21 +1066,30 @@ def test_marker_and_explicit_source_helpers_cover_supported_markers() -> None:
     assert _source_from_marker(CurrentUser) is ParameterSource.CUSTOM
     assert _source_from_marker(marker) is ParameterSource.QUERY
 
-    assert _has_explicit_source(
-        parameter=signature.parameters["request"],
-        annotation=Request,
-        path_parameter_names=frozenset(),
-    ) is True
-    assert _has_explicit_source(
-        parameter=signature.parameters["user_id"],
-        annotation=int,
-        path_parameter_names=frozenset({"user_id"}),
-    ) is True
-    assert _has_explicit_source(
-        parameter=signature.parameters["search"],
-        annotation=Annotated[str, Query("search")],
-        path_parameter_names=frozenset(),
-    ) is True
+    assert (
+        _has_explicit_source(
+            parameter=signature.parameters["request"],
+            annotation=Request,
+            path_parameter_names=frozenset(),
+        )
+        is True
+    )
+    assert (
+        _has_explicit_source(
+            parameter=signature.parameters["user_id"],
+            annotation=int,
+            path_parameter_names=frozenset({"user_id"}),
+        )
+        is True
+    )
+    assert (
+        _has_explicit_source(
+            parameter=signature.parameters["search"],
+            annotation=Annotated[str, Query("search")],
+            path_parameter_names=frozenset(),
+        )
+        is True
+    )
 
 
 def test_query_and_coerce_helpers_cover_missing_union_and_success_paths() -> None:
@@ -1105,43 +1116,61 @@ def test_query_and_coerce_helpers_cover_missing_union_and_success_paths() -> Non
         annotation=dict[str, object],
         has_default=False,
     )
-    assert _extract_body_value(
-        _binding_plan(inferred_binding, inferred_parameter_names=("payload",)),
-        inferred_binding,
-        _NO_BODY,
-    ) is _MISSING
+    assert (
+        _extract_body_value(
+            _binding_plan(inferred_binding, inferred_parameter_names=("payload",)),
+            inferred_binding,
+            _NO_BODY,
+        )
+        is _MISSING
+    )
 
     payload = Payload(name="Ada")
-    assert _coerce_value(
-        payload,
-        annotation=Payload,
-        parameter_name="payload",
-        source_description="request body",
-    ) is payload
-    assert _coerce_value(
-        None,
-        annotation=int | None,
-        parameter_name="count",
-        source_description="query parameter",
-    ) is None
-    assert _coerce_value(
-        b"4",
-        annotation=int,
-        parameter_name="count",
-        source_description="query parameter",
-    ) == 4
-    assert _coerce_value(
-        5,
-        annotation=float,
-        parameter_name="ratio",
-        source_description="query parameter",
-    ) == 5.0
-    assert _coerce_value(
-        1.5,
-        annotation=str,
-        parameter_name="text",
-        source_description="query parameter",
-    ) == "1.5"
+    assert (
+        _coerce_value(
+            payload,
+            annotation=Payload,
+            parameter_name="payload",
+            source_description="request body",
+        )
+        is payload
+    )
+    assert (
+        _coerce_value(
+            None,
+            annotation=int | None,
+            parameter_name="count",
+            source_description="query parameter",
+        )
+        is None
+    )
+    assert (
+        _coerce_value(
+            b"4",
+            annotation=int,
+            parameter_name="count",
+            source_description="query parameter",
+        )
+        == 4
+    )
+    assert (
+        _coerce_value(
+            5,
+            annotation=float,
+            parameter_name="ratio",
+            source_description="query parameter",
+        )
+        == 5.0
+    )
+    assert (
+        _coerce_value(
+            1.5,
+            annotation=str,
+            parameter_name="text",
+            source_description="query parameter",
+        )
+        == "1.5"
+    )
     assert _coerce_value(
         ["1", "2"],
         annotation=list[int],

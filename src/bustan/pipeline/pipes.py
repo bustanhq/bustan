@@ -11,9 +11,7 @@ from .context import ExecutionContext
 class Pipe:
     """Base class for parameter transformation and validation."""
 
-    def transform(
-        self, value: object, context: ExecutionContext
-    ) -> object | Awaitable[object]:
+    def transform(self, value: object, context: ExecutionContext) -> object | Awaitable[object]:
         """Return the transformed parameter value passed to the handler."""
 
         return value

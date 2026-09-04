@@ -45,6 +45,7 @@ class OnModuleDestroy(Protocol):
     def on_module_destroy(self) -> None | Awaitable[None]:
         pass
 
+
 LifecycleHookName: tuple[str, ...] = (
     "on_module_init",
     "on_application_bootstrap",

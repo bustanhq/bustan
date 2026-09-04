@@ -9,7 +9,13 @@ from starlette.requests import Request
 
 from bustan.common.types import RouteMetadata
 from bustan.core.module.dynamic import ModuleInstanceKey
-from bustan.pipeline.context import ArgumentsHost, ExecutionContext, HandlerContext, ParameterContext, RequestContext
+from bustan.pipeline.context import (
+    ArgumentsHost,
+    ExecutionContext,
+    HandlerContext,
+    ParameterContext,
+    RequestContext,
+)
 from bustan.platform.http.metadata import ControllerRouteDefinition
 
 
@@ -112,19 +118,25 @@ def test_context_helpers_cover_remaining_http_and_metadata_accessors() -> None:
 
     assert parameter_context.execution_context is request_context
     assert parameter_context.metatype is str
-    assert HandlerContext(
-        request_context=request_context,
-        arguments=(),
-        keyword_arguments={},
-    ).execution_context is request_context
+    assert (
+        HandlerContext(
+            request_context=request_context,
+            arguments=(),
+            keyword_arguments={},
+        ).execution_context
+        is request_context
+    )
     assert handler_context.execution_context is request_context
-    assert ParameterContext(
-        request_context=request_context,
-        name="payload",
-        source="body",
-        annotation="Payload",
-        value=None,
-    ).metatype is None
+    assert (
+        ParameterContext(
+            request_context=request_context,
+            name="payload",
+            source="body",
+            annotation="Payload",
+            value=None,
+        ).metatype
+        is None
+    )
 
 
 def test_execution_context_properties_handle_missing_request_values() -> None:

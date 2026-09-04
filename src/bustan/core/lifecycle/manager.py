@@ -95,9 +95,7 @@ class LifecycleManager:
             if len(errors) == 1:
                 raise errors[0]
             summary = "; ".join(str(error) for error in errors)
-            raise LifecycleError(
-                f"{len(errors)} lifecycle hooks failed during shutdown: {summary}"
-            )
+            raise LifecycleError(f"{len(errors)} lifecycle hooks failed during shutdown: {summary}")
 
     async def _warm_async_factories(self) -> None:
         for node in reversed(self._module_graph.nodes):

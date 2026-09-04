@@ -37,7 +37,9 @@ def main() -> None:
         print(f"RESULT: MG-02 FIXED - ambiguity rejected: {type(exc).__name__}")
         return
     if first != second:
-        print(f"RESULT: MG-02 REPRODUCED - imports=[G1,G2] -> {first}, imports=[G2,G1] -> {second}, no error")
+        print(
+            f"RESULT: MG-02 REPRODUCED - imports=[G1,G2] -> {first}, imports=[G2,G1] -> {second}, no error"
+        )
     else:
         print("RESULT: MG-02 FIXED - deterministic winner or rejection")
 

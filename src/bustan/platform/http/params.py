@@ -119,7 +119,9 @@ def compile_parameter_bindings(
     """Compile a handler signature into a reusable binding plan."""
 
     controller_metadata = get_controller_metadata(controller_cls, inherit=True)
-    binding_mode = _resolve_binding_mode(controller_metadata.binding_mode if controller_metadata else "infer")
+    binding_mode = _resolve_binding_mode(
+        controller_metadata.binding_mode if controller_metadata else "infer"
+    )
     validation_mode = _resolve_validation_mode(
         controller_metadata.validation_mode if controller_metadata else "auto"
     )
@@ -129,7 +131,9 @@ def compile_parameter_bindings(
     signature = inspect.signature(route_definition.handler)
     type_hints = _resolve_handler_parameter_annotations(controller_cls, route_definition)
     path_parameter_names = _extract_path_parameter_names(route_definition.route.path)
-    parameters = [parameter for parameter in signature.parameters.values() if parameter.name != "self"]
+    parameters = [
+        parameter for parameter in signature.parameters.values() if parameter.name != "self"
+    ]
     unresolved_parameter_count = sum(
         1
         for parameter in parameters

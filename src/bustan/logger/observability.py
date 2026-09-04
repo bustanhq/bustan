@@ -152,4 +152,11 @@ def _route_version_label(route_contract: object) -> str:
     return ",".join(versions)
 
 
-__all__ = ["ActiveObservation", "MetricsSink", "ObservabilityHooks", "RequestTracer", "TraceSpan", "build_route_labels"]
+__all__ = [
+    "ActiveObservation",
+    "MetricsSink",
+    "ObservabilityHooks",
+    "RequestTracer",
+    "TraceSpan",
+    "build_route_labels",
+]

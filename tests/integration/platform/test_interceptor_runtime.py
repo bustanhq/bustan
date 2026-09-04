@@ -7,7 +7,16 @@ from typing import Any, cast
 
 from starlette.testclient import TestClient
 
-from bustan import APP_INTERCEPTOR, Controller, ExecutionContext, Get, Interceptor, Module, UseInterceptors, create_app
+from bustan import (
+    APP_INTERCEPTOR,
+    Controller,
+    ExecutionContext,
+    Get,
+    Interceptor,
+    Module,
+    UseInterceptors,
+    create_app,
+)
 from bustan.pipeline.interceptors import CallHandler
 
 
@@ -55,9 +64,7 @@ def test_create_app_executes_interceptors_in_canonical_attachment_order() -> Non
         response = client.get("/users")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "global": {"controller": {"handler": {"status": "ok"}}}
-    }
+    assert response.json() == {"global": {"controller": {"handler": {"status": "ok"}}}}
     assert events == [
         "global:before",
         "controller:before",

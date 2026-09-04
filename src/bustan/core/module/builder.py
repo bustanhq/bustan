@@ -65,7 +65,9 @@ class ConfigurableModuleBuilder(Generic[OptionsT]):
         self._extras_providers = providers
         return self
 
-    def build(self) -> tuple[type[ConfigurableModuleDefinition[OptionsT]], InjectionToken[OptionsT]]:
+    def build(
+        self,
+    ) -> tuple[type[ConfigurableModuleDefinition[OptionsT]], InjectionToken[OptionsT]]:
         """Return a generated module class and its stable options token."""
         if self._token is None:
             self._token = InjectionToken(f"{self._class_name}_OPTIONS")

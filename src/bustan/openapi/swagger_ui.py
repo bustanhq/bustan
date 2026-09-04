@@ -32,20 +32,24 @@ class SwaggerModule:
 
         app.get_http_adapter().register_routes(
             [
-            CompiledAdapterRoute(
-              registration=Route(json_path, endpoint=openapi_json, methods=["GET"], name="openapi_json"),
-              contracts=(),
-              path=json_path,
-              methods=("GET",),
-              name="openapi_json",
-            ),
-            CompiledAdapterRoute(
-              registration=Route(ui_path, endpoint=swagger_html, methods=["GET"], name="swagger_ui"),
-              contracts=(),
-              path=ui_path,
-              methods=("GET",),
-              name="swagger_ui",
-            ),
+                CompiledAdapterRoute(
+                    registration=Route(
+                        json_path, endpoint=openapi_json, methods=["GET"], name="openapi_json"
+                    ),
+                    contracts=(),
+                    path=json_path,
+                    methods=("GET",),
+                    name="openapi_json",
+                ),
+                CompiledAdapterRoute(
+                    registration=Route(
+                        ui_path, endpoint=swagger_html, methods=["GET"], name="swagger_ui"
+                    ),
+                    contracts=(),
+                    path=ui_path,
+                    methods=("GET",),
+                    name="swagger_ui",
+                ),
             ]
         )
 

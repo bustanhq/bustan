@@ -24,7 +24,9 @@ class AppModule:
 def main() -> None:
     binding = normalize_provider({"provide": AUDIT, "use_class": PerRequestAudit}, AppModule)
     if binding.scope is Scope.SINGLETON:
-        print("RESULT: RI-02 REPRODUCED - class declares scope=request but the binding is singleton")
+        print(
+            "RESULT: RI-02 REPRODUCED - class declares scope=request but the binding is singleton"
+        )
     else:
         print(f"RESULT: RI-02 FIXED - binding scope is {binding.scope.value}")
 

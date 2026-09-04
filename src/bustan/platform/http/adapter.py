@@ -38,7 +38,7 @@ class AbstractHttpAdapter(ABC):
     """Base class for decoupling Bustan from specific web frameworks.
 
     Adapters are responsible for wrapping the underlying framework instance
-    (e.g., Starlette, FastAPI) and handling route registration and 
+    (e.g., Starlette, FastAPI) and handling route registration and
     server initialization.
     """
 
@@ -76,11 +76,7 @@ class AbstractHttpAdapter(ABC):
 
     @abstractmethod
     async def listen(
-        self, 
-        port: int, 
-        host: str = "127.0.0.1", 
-        reload: bool = False, 
-        **kwargs: Any
+        self, port: int, host: str = "127.0.0.1", reload: bool = False, **kwargs: Any
     ) -> None:
         """Start the ASGI server asynchronously."""
         pass

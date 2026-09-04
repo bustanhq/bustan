@@ -6,7 +6,11 @@ import pytest
 
 from bustan import Module
 from bustan.core.errors import InvalidModuleError, InvalidProviderError
-from bustan.core.module.compiler import CompiledModuleDef, expand_module_input, validate_module_compiled
+from bustan.core.module.compiler import (
+    CompiledModuleDef,
+    expand_module_input,
+    validate_module_compiled,
+)
 from bustan.core.module.dynamic import DynamicModule, ModuleInstanceKey
 from bustan.core.module.metadata import ModuleMetadata
 
@@ -85,7 +89,9 @@ def test_validate_module_compiled_rejects_duplicates_and_invalid_providers() -> 
     compiled = CompiledModuleDef(
         key=ProviderA,
         module=ProviderA,
-        metadata=ModuleMetadata(imports=(), controllers=(), providers=(ProviderA, ProviderA), exports=()),
+        metadata=ModuleMetadata(
+            imports=(), controllers=(), providers=(ProviderA, ProviderA), exports=()
+        ),
     )
     with pytest.raises(InvalidModuleError, match="duplicate entries in providers"):
         validate_module_compiled(compiled)
@@ -93,7 +99,9 @@ def test_validate_module_compiled_rejects_duplicates_and_invalid_providers() -> 
     compiled = CompiledModuleDef(
         key=ProviderA,
         module=ProviderA,
-        metadata=ModuleMetadata(imports=(ProviderA, ProviderA), controllers=(), providers=(), exports=()),
+        metadata=ModuleMetadata(
+            imports=(ProviderA, ProviderA), controllers=(), providers=(), exports=()
+        ),
     )
     with pytest.raises(InvalidModuleError, match="duplicate entries in imports"):
         validate_module_compiled(compiled)

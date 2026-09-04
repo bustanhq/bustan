@@ -80,7 +80,13 @@ from .addons import (
     durable_context_id,
     request_context_id,
 )
-from .platform.http.abstractions import HttpFormData, HttpQueryParams, HttpRequest, HttpResponse, HttpUrl
+from .platform.http.abstractions import (
+    HttpFormData,
+    HttpQueryParams,
+    HttpRequest,
+    HttpResponse,
+    HttpUrl,
+)
 from .platform.http.versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType
 from .config import ConfigModule, ConfigService
 from .logger import LogLevel, Logger, LoggerService

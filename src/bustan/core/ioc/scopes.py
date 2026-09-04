@@ -31,9 +31,7 @@ class ScopeManager:
         self.singletons: dict[tuple[ModuleKey, object], object] = {}
         self.singleton_locks: dict[tuple[ModuleKey, object], threading.Lock] = {}
         self.controller_singletons: dict[tuple[ModuleKey, type[object]], object] = {}
-        self.controller_singleton_locks: dict[
-            tuple[ModuleKey, type[object]], threading.Lock
-        ] = {}
+        self.controller_singleton_locks: dict[tuple[ModuleKey, type[object]], threading.Lock] = {}
         self.durable_instances: dict[tuple[ModuleKey, object, Hashable], object] = {}
         self.durable_locks: dict[tuple[ModuleKey, object, Hashable], threading.Lock] = {}
         self.async_construction_locks: dict[object, anyio.Lock] = {}
@@ -69,9 +67,7 @@ class ScopeManager:
     ) -> None:
         self.controller_singletons[key] = instance
 
-    def get_controller_singleton_lock(
-        self, key: tuple[ModuleKey, type[object]]
-    ) -> threading.Lock:
+    def get_controller_singleton_lock(self, key: tuple[ModuleKey, type[object]]) -> threading.Lock:
         try:
             return self.controller_singleton_locks[key]
         except KeyError:

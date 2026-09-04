@@ -11,7 +11,11 @@ from bustan import Controller, Get, Module, Post
 from bustan.core.errors import RouteDefinitionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
-from bustan.platform.http.adapter import AbstractHttpAdapter, AdapterCapabilities, compile_adapter_routes
+from bustan.platform.http.adapter import (
+    AbstractHttpAdapter,
+    AdapterCapabilities,
+    compile_adapter_routes,
+)
 from bustan.platform.http.adapters.starlette_adapter import StarletteAdapter
 from bustan.platform.http.compiler import ResponseStrategy, compile_route_contracts
 
@@ -185,15 +189,18 @@ def test_compile_adapter_routes_delegates_to_adapter_compile_hook() -> None:
 
     route_contracts: tuple[object, ...] = ()
 
-    assert compile_adapter_routes(
-        RecordingAdapter(),
-        route_contracts,
-        container=sentinel,
-        execution_plans=(),
-        pipeline_override_registry=sentinel,
-        versioning=sentinel,
-        middleware_registry=cast(Any, sentinel),
-    ) == ()
+    assert (
+        compile_adapter_routes(
+            RecordingAdapter(),
+            route_contracts,
+            container=sentinel,
+            execution_plans=(),
+            pipeline_override_registry=sentinel,
+            versioning=sentinel,
+            middleware_registry=cast(Any, sentinel),
+        )
+        == ()
+    )
     assert calls == {
         "route_contracts": route_contracts,
         "container": sentinel,

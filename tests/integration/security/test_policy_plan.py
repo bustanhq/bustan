@@ -43,7 +43,9 @@ def test_create_app_attaches_compiled_policy_plans_to_routes() -> None:
 
     application = create_app(AppModule)
     starlette_app = application.get_http_adapter().get_instance()
-    route = next(route for route in starlette_app.routes if getattr(route, "path", None) == "/secure")
+    route = next(
+        route for route in starlette_app.routes if getattr(route, "path", None) == "/secure"
+    )
     contract = getattr(route, "bustan_route_contract")
 
     assert contract.policy_plan.auth is not None

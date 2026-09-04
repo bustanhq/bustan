@@ -91,7 +91,9 @@ def compile_execution_plan(route_contract: RouteContract) -> ExecutionPlan:
     )
 
 
-def compile_execution_plans(route_contracts: tuple[RouteContract, ...]) -> tuple[ExecutionPlan, ...]:
+def compile_execution_plans(
+    route_contracts: tuple[RouteContract, ...],
+) -> tuple[ExecutionPlan, ...]:
     """Compile stable execution plans for all discovered route contracts."""
 
     return tuple(compile_execution_plan(route_contract) for route_contract in route_contracts)
@@ -161,7 +163,9 @@ async def execute_http_route(
         async def final_handler() -> object:
             if execution_plan.is_async_handler:
                 return await handler(*positional_arguments, **keyword_arguments)
-            return await to_thread.run_sync(partial(handler, *positional_arguments, **keyword_arguments))
+            return await to_thread.run_sync(
+                partial(handler, *positional_arguments, **keyword_arguments)
+            )
 
         result = await call_with_interceptors(
             context,
@@ -342,10 +346,10 @@ def _merge_response_context(
                 continue
             response.headers[header_name] = header_value
 
-    if (
-        response_context.status_code != 200
-        and getattr(response, "status_code", 200) in {200, default_status_code}
-    ):
+    if response_context.status_code != 200 and getattr(response, "status_code", 200) in {
+        200,
+        default_status_code,
+    }:
         response.status_code = response_context.status_code
 
     return response

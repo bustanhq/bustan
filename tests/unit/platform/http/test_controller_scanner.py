@@ -36,7 +36,9 @@ def test_controller_scanner_rejects_public_handler_without_route_metadata() -> N
 
     scanner = ControllerScanner(build_module_graph(AppModule))
 
-    with pytest.raises(RouteDefinitionError, match="UsersController.list_users.*missing an HTTP route decorator"):
+    with pytest.raises(
+        RouteDefinitionError, match="UsersController.list_users.*missing an HTTP route decorator"
+    ):
         scanner.scan()
 
 
@@ -73,7 +75,12 @@ def test_controller_scanner_preserves_module_ownership_and_deterministic_order()
         UsersModule,
     ]
     assert [
-        (handler.module_key, handler.controller_cls.__name__, handler.handler_name, handler.full_path)
+        (
+            handler.module_key,
+            handler.controller_cls.__name__,
+            handler.handler_name,
+            handler.full_path,
+        )
         for handler in scan_result.handlers
     ] == [
         (AppModule, "AdminController", "health", "/admin/health"),

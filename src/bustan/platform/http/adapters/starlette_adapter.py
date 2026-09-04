@@ -32,11 +32,11 @@ class StarletteAdapter(AbstractHttpAdapter):
     )
 
     def __init__(
-        self, 
+        self,
         starlette_app: Starlette | None = None,
         *,
         debug: bool = False,
-        lifespan: Any | None = None
+        lifespan: Any | None = None,
     ) -> None:
         """Initialize the Starlette adapter.
 
@@ -51,9 +51,7 @@ class StarletteAdapter(AbstractHttpAdapter):
 
     def register_routes(self, routes: list[CompiledAdapterRoute]) -> None:
         """Register routes into the Starlette application."""
-        registrations: list[BaseRoute] = [
-            cast(BaseRoute, route.registration) for route in routes
-        ]
+        registrations: list[BaseRoute] = [cast(BaseRoute, route.registration) for route in routes]
         self._app.routes.extend(registrations)
 
     def compile_routes(
@@ -81,20 +79,10 @@ class StarletteAdapter(AbstractHttpAdapter):
         self._app.add_middleware(middleware_class, **options)
 
     async def listen(
-        self, 
-        port: int, 
-        host: str = "127.0.0.1", 
-        reload: bool = False, 
-        **kwargs: Any
+        self, port: int, host: str = "127.0.0.1", reload: bool = False, **kwargs: Any
     ) -> None:
         """Start the ASGI server asynchronously using Uvicorn."""
-        config = uvicorn.Config(
-            self._app, 
-            host=host, 
-            port=port, 
-            reload=reload, 
-            **kwargs
-        )
+        config = uvicorn.Config(self._app, host=host, port=port, reload=reload, **kwargs)
         server = uvicorn.Server(config)
         await server.serve()
 

@@ -37,9 +37,11 @@ class CreateUserPayload(BaseModel):
 
 
 RequestData = create_param_decorator(
-    lambda data, ctx: ctx.get_route_contract().handler_name
-    if data is None
-    else ctx.switch_to_http().get_request().headers[data],
+    lambda data, ctx: (
+        ctx.get_route_contract().handler_name
+        if data is None
+        else ctx.switch_to_http().get_request().headers[data]
+    ),
     name="RequestData",
 )
 
@@ -265,7 +267,9 @@ def test_request_pipeline_returns_structured_parameter_binding_errors_by_default
     assert "not-a-number" in response.json()["detail"]
 
 
-def test_request_pipeline_auto_validation_rejects_invalid_payloads_before_handler_invocation() -> None:
+def test_request_pipeline_auto_validation_rejects_invalid_payloads_before_handler_invocation() -> (
+    None
+):
     handler_called = False
 
     @Controller("/users", validation_mode="auto")

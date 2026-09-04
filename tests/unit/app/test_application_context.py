@@ -21,7 +21,7 @@ class AppModule:
 def test_create_app_context_basic() -> None:
     context = create_app_context(AppModule)
     assert isinstance(context, ApplicationContext)
-    
+
     # Context should not have HTTP properties
     assert not hasattr(context, "listen")
     assert not hasattr(context, "starlette_app")

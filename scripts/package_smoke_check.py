@@ -26,7 +26,9 @@ def _venv_python(venv_dir: Path) -> Path:
     executable = "python.exe" if os.name == "nt" else "python"
     python_path = _venv_bin_dir(venv_dir) / executable
     if not python_path.exists():
-        raise FileNotFoundError(f"Python executable not found in virtual environment: {python_path}")
+        raise FileNotFoundError(
+            f"Python executable not found in virtual environment: {python_path}"
+        )
     return python_path
 
 
@@ -52,7 +54,9 @@ def _bustan_command(venv_dir: Path) -> list[str]:
             return [str(python_path), str(path)]
         return [str(path)]
 
-    raise FileNotFoundError(f"Bustan console entry point not found in virtual environment: {scripts_dir}")
+    raise FileNotFoundError(
+        f"Bustan console entry point not found in virtual environment: {scripts_dir}"
+    )
 
 
 def _write_smoke_pyproject(smoke_root: Path) -> None:
@@ -89,7 +93,9 @@ def _verify_scaffold(smoke_root: Path) -> None:
     expected_entries = ('start = "smoke_app:main"', 'dev = "smoke_app:dev"')
     missing_entries = [entry for entry in expected_entries if entry not in pyproject_text]
     if missing_entries:
-        raise RuntimeError(f"Scaffolded project is missing expected pyproject entries: {missing_entries}")
+        raise RuntimeError(
+            f"Scaffolded project is missing expected pyproject entries: {missing_entries}"
+        )
 
 
 def main() -> int:

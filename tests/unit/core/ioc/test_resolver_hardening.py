@@ -53,9 +53,7 @@ def test_inquirer_receives_the_class_passed_to_instantiate_class() -> None:
         pass
 
     container = build_container(build_module_graph(AppModule))
-    consumer = cast(
-        Any, container.instantiate_class(StandaloneConsumer, module=AppModule)
-    )
+    consumer = cast(Any, container.instantiate_class(StandaloneConsumer, module=AppModule))
 
     assert consumer.audit_trail.inquirer is StandaloneConsumer
 

@@ -12,7 +12,6 @@ from .dynamic import DynamicModule
 ClassT = TypeVar("ClassT", bound=type[object])
 
 
-
 @dataclass(frozen=True, slots=True)
 class ModuleMetadata:
     """Static metadata captured from a @Module declaration."""

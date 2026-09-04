@@ -97,12 +97,14 @@ def evaluate_adapter_conformance(adapter: AbstractHttpAdapter) -> AdapterConform
     checks = (
         ConformanceCheck(
             name="health_route",
-            passed=health_response.status_code == 200 and health_response.json() == {"status": "ok"},
+            passed=health_response.status_code == 200
+            and health_response.json() == {"status": "ok"},
             detail=f"status={health_response.status_code}",
         ),
         ConformanceCheck(
             name="body_binding",
-            passed=payload_response.status_code == 200 and payload_response.json() == {"name": "Ada"},
+            passed=payload_response.status_code == 200
+            and payload_response.json() == {"name": "Ada"},
             detail=f"status={payload_response.status_code}",
         ),
     )

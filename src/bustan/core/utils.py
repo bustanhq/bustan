@@ -48,7 +48,9 @@ def _unwrap_handler(handler: object) -> FunctionType | None:
     return handler if isinstance(handler, FunctionType) else None
 
 
-def _get_metadata(target: type[object] | object, attribute_name: str, *, inherit: bool) -> object | None:
+def _get_metadata(
+    target: type[object] | object, attribute_name: str, *, inherit: bool
+) -> object | None:
     """Retrieve metadata from a class, optionally inheriting from base classes."""
     if inherit:
         return getattr(target, attribute_name, None)

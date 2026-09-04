@@ -69,7 +69,9 @@ from bustan.core.errors import (
     BustanError,
 )
 from bustan.core.module.dynamic import DynamicModule as InternalDynamicModule
-from bustan.core.module.builder import ConfigurableModuleBuilder as InternalConfigurableModuleBuilder
+from bustan.core.module.builder import (
+    ConfigurableModuleBuilder as InternalConfigurableModuleBuilder,
+)
 from bustan.core.ioc.tokens import (
     APPLICATION as InternalApplicationToken,
     APP_FILTER as InternalAppFilter,

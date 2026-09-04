@@ -32,7 +32,9 @@ def test_route_registry_reports_both_handlers_for_duplicate_routes() -> None:
     graph = build_module_graph(AppModule)
     contracts = compile_route_contracts(graph, build_container(graph))
 
-    with pytest.raises(RouteDefinitionError, match="UsersController.index.*ProfilesController.index"):
+    with pytest.raises(
+        RouteDefinitionError, match="UsersController.index.*ProfilesController.index"
+    ):
         RouteRegistry(contracts).validate()
 
 

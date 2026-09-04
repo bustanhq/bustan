@@ -46,7 +46,9 @@ def main() -> None:
     instances = len(scope_manager.durable_instances)
     locks = len(scope_manager.durable_locks)
     if instances >= REQUESTS:
-        print(f"RESULT: CR-01 REPRODUCED - {instances} durable instances and {locks} locks retained")
+        print(
+            f"RESULT: CR-01 REPRODUCED - {instances} durable instances and {locks} locks retained"
+        )
     else:
         print(f"RESULT: CR-01 FIXED - {instances} durable instances retained after {REQUESTS} keys")
 

@@ -49,7 +49,9 @@ class StarletteAdapterCompiler:
                 contracts=getattr(route, "bustan_route_contracts", ()),
                 execution_plans=getattr(route, "bustan_execution_plans", ()),
                 path=route.path,
-                methods=_compiled_methods(getattr(route, "bustan_route_contracts", ()), route.methods),
+                methods=_compiled_methods(
+                    getattr(route, "bustan_route_contracts", ()), route.methods
+                ),
                 name=route.name,
             )
             for route in routes

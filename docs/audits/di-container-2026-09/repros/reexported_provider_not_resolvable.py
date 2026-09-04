@@ -39,7 +39,9 @@ def main() -> None:
         context.get(Service)
         print("RESULT: MG-01 FIXED - re-exported provider resolves through the importing module")
     except ProviderResolutionError as exc:
-        print(f"RESULT: MG-01 REPRODUCED - graph accepted the re-export but resolve failed: {str(exc)[-60:]}")
+        print(
+            f"RESULT: MG-01 REPRODUCED - graph accepted the re-export but resolve failed: {str(exc)[-60:]}"
+        )
 
 
 if __name__ == "__main__":

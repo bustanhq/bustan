@@ -24,10 +24,7 @@ class AppController:
         return {"message": self.service.get_hello()}
 
 
-@Module(
-    controllers=[AppController],
-    providers=[HelloWorldService]
-)
+@Module(controllers=[AppController], providers=[HelloWorldService])
 class RootModule:
     pass
 
@@ -36,11 +33,11 @@ class RootModule:
 async def test_factory_manual_verification() -> None:
     # 1. Create App
     app = create_app(RootModule, debug=True)
-    
+
     # 2. Verify DI access via app.get()
     service = app.get(HelloWorldService)
     assert service.get_hello() == "Hello World!"
-    
+
     # 3. Verify HTTP handling via get_http_server()
     transport = httpx.ASGITransport(app=app.get_http_server())
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -50,6 +47,7 @@ async def test_factory_manual_verification() -> None:
 
     # 4. Verify Async Listen (Mocked uvicorn to avoid blocking)
     from unittest.mock import AsyncMock, patch
+
     with patch("uvicorn.Server.serve", new_callable=AsyncMock) as mock_serve:
         await app.listen(3000)
         mock_serve.assert_awaited_once()

@@ -52,9 +52,7 @@ def expand_module_input(
 
     base_metadata = get_module_metadata(module_input)
     if base_metadata is None:
-        raise InvalidModuleError(
-            f"{_qualname(module_input)} is not a decorated module"
-        )
+        raise InvalidModuleError(f"{_qualname(module_input)} is not a decorated module")
 
     return CompiledModuleDef(
         key=module_input,

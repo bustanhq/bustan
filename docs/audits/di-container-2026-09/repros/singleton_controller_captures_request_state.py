@@ -48,7 +48,9 @@ def main() -> None:
             first = client.get(path, headers={"x-user-id": "alice"}).json()["user"]
             second = client.get(path, headers={"x-user-id": "bob"}).json()["user"]
             if second == "alice":
-                print(f"RESULT: {label} REPRODUCED - {path} answered {first!r} then {second!r}; bob saw alice")
+                print(
+                    f"RESULT: {label} REPRODUCED - {path} answered {first!r} then {second!r}; bob saw alice"
+                )
             else:
                 print(f"RESULT: {label} FIXED - {path} answered {first!r} then {second!r}")
 

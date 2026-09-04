@@ -83,7 +83,9 @@ def test_application_route_diff_reports_additions_removals_and_changed_dimension
     assert diff[2]["fields"] == ["module", "path"]
 
 
-def test_application_route_diff_keeps_same_controller_names_from_distinct_modules_separate() -> None:
+def test_application_route_diff_keeps_same_controller_names_from_distinct_modules_separate() -> (
+    None
+):
     @Controller("/public")
     class UsersController:
         @Get("/")

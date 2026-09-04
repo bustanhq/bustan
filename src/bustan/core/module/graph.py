@@ -87,16 +87,16 @@ def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph
 
     ordered_keys: list[ModuleKey] = []
     compiled_by_key: dict[ModuleKey, CompiledModuleDef] = {}
-    
+
     # Mapping of (id(DynamicModule) | ModuleClass) to ModuleKey
     input_to_key: dict[int | type[object], ModuleKey] = {}
-    
+
     # Stack for cycle detection (ModuleKey based)
     visiting_stack: list[ModuleKey] = []
-    
+
     # Track which exact objects we are currently expanding to catch same-object recursion
     visiting_ids: set[int | type[object]] = set()
-    
+
     bindings_by_key: dict[ModuleKey, tuple[Binding, ...]] = {}
     dynamic_counter = 0
 
@@ -104,7 +104,7 @@ def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph
         nonlocal dynamic_counter
 
         input_id = id(module_input) if isinstance(module_input, DynamicModule) else module_input
-            
+
         # 1. Return cached key if we've already fully processed this input
         if input_id in input_to_key:
             return input_to_key[input_id]
@@ -112,14 +112,14 @@ def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph
         # 2. Expand just enough to get the key for the cycle checks
         compiled = expand_module_input(module_input, instance_id=str(dynamic_counter))
         key = compiled.key
-        
+
         # 3. Path-based cycle detection (test expects path reporting!)
         if key in visiting_stack:
             cycle_start = visiting_stack.index(key)
             cycle_keys = visiting_stack[cycle_start:] + [key]
             cycle_path = " -> ".join(_display_name(k) for k in cycle_keys)
             raise ModuleCycleError(f"Circular module imports detected: {cycle_path}")
-            
+
         # 4. Identity-based cycle detection (safety)
         if input_id in visiting_ids:
             raise ModuleCycleError(
@@ -141,7 +141,7 @@ def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph
             # Preserve pre-order node discovery because import-order semantics and tests depend on it.
             compiled_by_key[key] = compiled
             bindings_by_key[key] = validate_module_compiled(compiled)
-            
+
             ordered_keys.append(key)
 
             for imported_input in compiled.metadata.imports:
@@ -161,28 +161,30 @@ def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph
     # We must be careful: if we process in ordered_keys, we might hit KeyErrors
     # if dependencies are NOT already in nodes_by_key.
     # Solve this by calculating topological order separately OR using recursion to build nodes.
-    
+
     nodes_by_key: dict[ModuleKey, ModuleNode] = {}
-    
+
     def ensure_node(key: ModuleKey) -> ModuleNode:
         if key in nodes_by_key:
             return nodes_by_key[key]
-            
+
         compiled = compiled_by_key[key]
         metadata = compiled.metadata
-        
+
         imported_exports: dict[ModuleKey, frozenset[object]] = {}
         available_providers: set[object] = {b.token for b in bindings_by_key[key]}
-        
+
         for imported_input in metadata.imports:
-            imp_id = id(imported_input) if isinstance(imported_input, DynamicModule) else imported_input
+            imp_id = (
+                id(imported_input) if isinstance(imported_input, DynamicModule) else imported_input
+            )
             imported_key = input_to_key[imp_id]
-            
+
             dep_node = ensure_node(imported_key)
             exports = dep_node.exported_providers
             imported_exports[imported_key] = exports
             available_providers.update(exports)
-            
+
         node = ModuleNode(
             key=key,
             module=compiled.module,
@@ -192,11 +194,11 @@ def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph
             bindings=bindings_by_key[key],
             imported_exports=MappingProxyType(imported_exports),
         )
-        
+
         _validate_exports(node)
         for controller_cls in node.controllers:
             _validate_controller_routes(controller_cls)
-            
+
         nodes_by_key[key] = node
         return node
 

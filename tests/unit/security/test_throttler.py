@@ -58,7 +58,9 @@ def test_throttler_module_supports_custom_key_resolution() -> None:
             ThrottlerModule.for_root(
                 ttl=60,
                 limit=1,
-                key_resolver=lambda context: f"client:{context.request.headers.get('x-client-id', 'missing')}",
+                key_resolver=lambda context: (
+                    f"client:{context.request.headers.get('x-client-id', 'missing')}"
+                ),
             )
         ],
         controllers=[AppController],

@@ -34,7 +34,9 @@ def normalize_versions(version: str | list[str] | None) -> tuple[str, ...]:
     return (version,)
 
 
-def extract_request_version(request: HttpRequest | object, options: VersioningOptions) -> str | None:
+def extract_request_version(
+    request: HttpRequest | object, options: VersioningOptions
+) -> str | None:
     """Extract a request version according to the configured strategy."""
     http_request = as_http_request(request)
     if options.type is VersioningType.HEADER:

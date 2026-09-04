@@ -9,7 +9,15 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
-from bustan import Controller, ExecutionContext, Get, Interceptor, Module, UseInterceptors, create_app
+from bustan import (
+    Controller,
+    ExecutionContext,
+    Get,
+    Interceptor,
+    Module,
+    UseInterceptors,
+    create_app,
+)
 from bustan.core.errors import RouteDefinitionError
 from bustan.pipeline.interceptors import (
     CallHandler,

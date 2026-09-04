@@ -45,14 +45,17 @@ def test_openapi_generation_uses_compiled_contracts_without_rescanning_routes() 
     class AppModule:
         pass
 
-    with patch(
-        "bustan.openapi.schema_builder.iter_controller_routes",
-        side_effect=AssertionError("route rescan should not happen"),
-        create=True,
-    ), patch(
-        "bustan.openapi.schema_builder.compile_parameter_bindings",
-        side_effect=AssertionError("binding recompilation should not happen"),
-        create=True,
+    with (
+        patch(
+            "bustan.openapi.schema_builder.iter_controller_routes",
+            side_effect=AssertionError("route rescan should not happen"),
+            create=True,
+        ),
+        patch(
+            "bustan.openapi.schema_builder.compile_parameter_bindings",
+            side_effect=AssertionError("binding recompilation should not happen"),
+            create=True,
+        ),
     ):
         app = create_app(
             AppModule,

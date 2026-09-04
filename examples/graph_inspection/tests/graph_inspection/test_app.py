@@ -10,5 +10,9 @@ def test_graph_inspection_exposes_discovery_and_route_snapshot() -> None:
     modules = discovery.modules()
     routes = application.snapshot_routes()
 
-    assert [entry["module"] for entry in modules] == ["AppModule", "CatalogModule", "DiscoveryModule"]
+    assert [entry["module"] for entry in modules] == [
+        "AppModule",
+        "CatalogModule",
+        "DiscoveryModule",
+    ]
     assert [entry["path"] for entry in routes] == ["/catalog"]

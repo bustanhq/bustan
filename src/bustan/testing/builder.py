@@ -10,7 +10,12 @@ from typing import Any, cast
 
 from ..app.application import Application
 from ..app.bootstrap import _create_app, create_app
-from ..core.lifecycle.runner import run_bootstrap_hooks, run_destroy_hooks, run_init_hooks, run_shutdown_hooks
+from ..core.lifecycle.runner import (
+    run_bootstrap_hooks,
+    run_destroy_hooks,
+    run_init_hooks,
+    run_shutdown_hooks,
+)
 from ..core.module.decorators import Module
 from ..core.module.dynamic import ModuleKey
 from .overrides import PipelineOverrideRegistry

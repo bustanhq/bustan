@@ -38,7 +38,9 @@ def main() -> None:
     with override_provider(context.container, Clock, FakeClock()):
         seen = context.get(ReportService).stamp()
     if seen == "real":
-        print("RESULT: OL-01 REPRODUCED - ReportService still used the real Clock during the override")
+        print(
+            "RESULT: OL-01 REPRODUCED - ReportService still used the real Clock during the override"
+        )
     else:
         print("RESULT: OL-01 FIXED - dependent observed the override")
 

@@ -106,9 +106,7 @@ def test_compile_middleware_registry_applies_exclusions_after_includes() -> None
     contracts = compile_route_contracts(graph, container)
 
     get_contract = next(
-        contract
-        for contract in contracts
-        if contract.path == "/users" and contract.method == "GET"
+        contract for contract in contracts if contract.path == "/users" and contract.method == "GET"
     )
     post_contract = next(
         contract
@@ -117,9 +115,7 @@ def test_compile_middleware_registry_applies_exclusions_after_includes() -> None
     )
 
     assert registry.resolve_for(get_contract) == ()
-    assert [entry.middleware for entry in registry.resolve_for(post_contract)] == [
-        ScopedMiddleware
-    ]
+    assert [entry.middleware for entry in registry.resolve_for(post_contract)] == [ScopedMiddleware]
 
 
 def test_middleware_helpers_cover_path_matching_host_patterns_and_invalid_targets() -> None:

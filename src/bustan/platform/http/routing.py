@@ -77,7 +77,8 @@ def compile_routes_from_contracts(
     seen_routes: dict[tuple[str, str], str] = {}
     compiled_routes: list[Route] = []
     versioned_dispatchers: dict[
-        tuple[str, str], list[tuple[tuple[str, ...], EndpointHandler, str, RouteContract, ExecutionPlan]]
+        tuple[str, str],
+        list[tuple[tuple[str, ...], EndpointHandler, str, RouteContract, ExecutionPlan]],
     ] = defaultdict(list)
     if versioning is None:
         RouteRegistry(route_contracts).validate()
@@ -106,7 +107,9 @@ def compile_routes_from_contracts(
         endpoint = create_starlette_endpoint(
             container,
             execution_plan,
-            middleware_registry.resolve_for(route_contract) if middleware_registry is not None else (),
+            middleware_registry.resolve_for(route_contract)
+            if middleware_registry is not None
+            else (),
             pipeline_override_registry,
         )
 
@@ -146,7 +149,13 @@ def compile_routes_from_contracts(
             continue
 
         existing = versioned_dispatchers[route_key]
-        for existing_versions, _existing_endpoint, existing_owner, _existing_contract, _existing_plan in existing:
+        for (
+            existing_versions,
+            _existing_endpoint,
+            existing_owner,
+            _existing_contract,
+            _existing_plan,
+        ) in existing:
             is_new_neutral = _is_neutral_version(effective_versions)
             is_existing_neutral = _is_neutral_version(existing_versions)
             if is_new_neutral and is_existing_neutral:

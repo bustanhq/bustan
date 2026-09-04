@@ -25,7 +25,7 @@ def main() -> int:
         return 1
 
     code = match.group(1)
-    
+
     print("--- README Quickstart Code ---")
     print(code)
     print("------------------------------")
@@ -40,6 +40,7 @@ def main() -> int:
     except Exception as e:
         print(f"Error executing README quickstart: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -49,6 +50,7 @@ def main() -> int:
         return 1
 
     from bustan import Application
+
     app = namespace["app"]
     if not isinstance(app, Application):
         print(f"Error: 'app' is not an instance of Application (got {type(app)})")

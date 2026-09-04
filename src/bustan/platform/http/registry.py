@@ -37,7 +37,9 @@ class RouteRegistry:
             for previous_contract in seen_patterns:
                 if not _route_dimensions_overlap(previous_contract, contract):
                     continue
-                if _canonical_path_pattern(previous_contract.path) == _canonical_path_pattern(contract.path):
+                if _canonical_path_pattern(previous_contract.path) == _canonical_path_pattern(
+                    contract.path
+                ):
                     raise RouteDefinitionError(
                         f"Conflicting route path pattern for {contract.method} "
                         f"{_canonical_path_pattern(contract.path)} declared by "
@@ -83,16 +85,20 @@ def diff_route_snapshots(
 ) -> RouteSnapshotDiff:
     previous_entries = tuple(_normalize_snapshot_entry(entry) for entry in previous)
     current_entries = tuple(_normalize_snapshot_entry(entry) for entry in current)
-    duplicate_identities = _duplicate_snapshot_identities(previous_entries) | _duplicate_snapshot_identities(
-        current_entries
-    )
+    duplicate_identities = _duplicate_snapshot_identities(
+        previous_entries
+    ) | _duplicate_snapshot_identities(current_entries)
 
     previous_by_identity = {
-        _snapshot_identity(entry, include_module=_base_snapshot_identity(entry) in duplicate_identities): entry
+        _snapshot_identity(
+            entry, include_module=_base_snapshot_identity(entry) in duplicate_identities
+        ): entry
         for entry in previous_entries
     }
     current_by_identity = {
-        _snapshot_identity(entry, include_module=_base_snapshot_identity(entry) in duplicate_identities): entry
+        _snapshot_identity(
+            entry, include_module=_base_snapshot_identity(entry) in duplicate_identities
+        ): entry
         for entry in current_entries
     }
 
@@ -124,9 +130,7 @@ def diff_route_snapshots(
             )
             continue
 
-        changed_fields = [
-            field for field in _SNAPSHOT_DIMENSIONS if before[field] != after[field]
-        ]
+        changed_fields = [field for field in _SNAPSHOT_DIMENSIONS if before[field] != after[field]]
         if changed_fields:
             diff.append(
                 {

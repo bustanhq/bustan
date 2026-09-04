@@ -153,7 +153,9 @@ def test_discovery_helper_error_paths_are_covered() -> None:
         def read_greeting(self) -> dict[str, str]:
             return {"message": "hello"}
 
-    @Module(imports=[DiscoveryModule], controllers=[GreetingController], providers=[GreetingService])
+    @Module(
+        imports=[DiscoveryModule], controllers=[GreetingController], providers=[GreetingService]
+    )
     class AppModule:
         pass
 

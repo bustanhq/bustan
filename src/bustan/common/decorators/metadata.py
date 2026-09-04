@@ -99,7 +99,9 @@ class Reflector:
         *,
         inherit: bool = False,
     ) -> MetadataT | None:
-        return override_metadata(*(self.get(metadata, target, inherit=inherit) for target in targets))
+        return override_metadata(
+            *(self.get(metadata, target, inherit=inherit) for target in targets)
+        )
 
     def get_all_and_merge(
         self,
