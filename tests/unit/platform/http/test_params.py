@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import inspect
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Annotated, Any, Mapping, cast
+from typing import Annotated, Any, cast
 from urllib.parse import urlencode
 
 import anyio
@@ -35,25 +36,25 @@ from bustan.pipeline.context import ExecutionContext
 from bustan.platform.http.abstractions import HttpRequest, StarletteHttpRequest
 from bustan.platform.http.metadata import ControllerRouteDefinition, iter_controller_routes
 from bustan.platform.http.params import (
+    _MISSING,
+    _NO_BODY,
+    _UNSET_BODY,
     HandlerBindingPlan,
     ParameterBinding,
     ParameterBindingMode,
     ParameterSource,
     ValidationMode,
     _bind_parameter,
-    _compile_parameter_source,
     _coerce_value,
+    _compile_parameter_source,
     _extract_body_value,
     _extract_marker,
     _has_explicit_source,
     _infer_body_model,
-    _MISSING,
-    _NO_BODY,
     _query_value,
     _resolve_binding_mode,
     _resolve_validation_mode,
     _source_from_marker,
-    _UNSET_BODY,
     bind_handler_arguments,
     compile_parameter_bindings,
 )
@@ -302,9 +303,7 @@ def test_bind_handler_arguments_rejects_boolean_json_values_for_int_parameters()
         anyio.run(bind_handler_arguments, request, binding_plan)
 
 
-def test_compile_parameter_bindings_resolves_string_annotations_and_ignores_return_annotations() -> (
-    None
-):
+def test_compile_parameter_bindings_resolves_string_annotations_and_return() -> None:
     @Controller("/users")
     class UsersController:
         @Post("/")
@@ -1299,13 +1298,16 @@ class _RequestStub:
         return self._form_data
 
 
+_DEFAULT_CLIENT: Any = SimpleNamespace(host="testclient", port=50000)
+
+
 def _request_stub(
     *,
     path_params: dict[str, str] | None = None,
     query_params: dict[str, object] | list[tuple[str, object]] | None = None,
     headers: dict[str, str] | None = None,
     cookies: dict[str, str] | None = None,
-    client: Any = SimpleNamespace(host="testclient", port=50000),
+    client: Any = _DEFAULT_CLIENT,
     body: bytes = b"",
     json_value: object = None,
     form_data: FormData | None = None,

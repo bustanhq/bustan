@@ -21,8 +21,8 @@ from bustan import (
 from bustan.core.errors import RouteDefinitionError
 from bustan.pipeline.interceptors import (
     CallHandler,
-    _CallableCallHandler,
     _as_call_handler,
+    _CallableCallHandler,
     call_with_interceptors,
 )
 

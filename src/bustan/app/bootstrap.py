@@ -8,11 +8,11 @@ from ..core.ioc.container import build_container
 from ..core.lifecycle.manager import LifecycleManager
 from ..core.module.dynamic import DynamicModule
 from ..core.module.graph import build_module_graph
+from ..pipeline.middleware import compile_middleware_registry
 from ..platform.http.adapter import AbstractHttpAdapter, compile_adapter_routes
 from ..platform.http.adapters.starlette_adapter import StarletteAdapter
 from ..platform.http.compiler import compile_route_contracts
 from ..platform.http.execution import compile_execution_plans
-from ..pipeline.middleware import compile_middleware_registry
 from .application import Application, ApplicationContext
 from .lifespan import build_lifespan
 

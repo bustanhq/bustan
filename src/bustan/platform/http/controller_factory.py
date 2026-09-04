@@ -1,22 +1,23 @@
 """Factory for controller instantiation and pipeline component resolution."""
 
 from __future__ import annotations
-from dataclasses import dataclass
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar, cast
 
-from ...core.ioc.container import Container
-from ...core.errors import InvalidPipelineError
-from ...core.module.dynamic import ModuleKey
-from ...common.types import ProviderScope
-from ...core.utils import _qualname
-from ...common.constants import BUSTAN_PROVIDER_ATTR
-from ...pipeline.metadata import PipelineMetadata
-from ...pipeline.guards import Guard
-from ...pipeline.pipes import Pipe
-from ...pipeline.interceptors import Interceptor
-from ...pipeline.filters import ExceptionFilter
 from starlette.requests import Request
+
+from ...common.constants import BUSTAN_PROVIDER_ATTR
+from ...common.types import ProviderScope
+from ...core.errors import InvalidPipelineError
+from ...core.ioc.container import Container
+from ...core.module.dynamic import ModuleKey
+from ...core.utils import _qualname
+from ...pipeline.filters import ExceptionFilter
+from ...pipeline.guards import Guard
+from ...pipeline.interceptors import Interceptor
+from ...pipeline.metadata import PipelineMetadata
+from ...pipeline.pipes import Pipe
 from .metadata import get_controller_metadata
 
 if TYPE_CHECKING:

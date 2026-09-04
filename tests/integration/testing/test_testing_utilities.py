@@ -1,9 +1,10 @@
 """Integration tests for test-time provider override helpers."""
 
 from typing import Any, cast
+
 from starlette.testclient import TestClient
 
-from bustan import Controller, create_app, Get, Injectable, Module
+from bustan import Controller, Get, Injectable, Module, create_app
 from bustan.testing import create_test_app, override_provider
 
 

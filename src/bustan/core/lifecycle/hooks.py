@@ -46,7 +46,7 @@ class OnModuleDestroy(Protocol):
         pass
 
 
-LifecycleHookName: tuple[str, ...] = (
+LIFECYCLE_HOOK_NAMES: tuple[str, ...] = (
     "on_module_init",
     "on_application_bootstrap",
     "before_application_shutdown",

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from pydantic import BaseModel
+from starlette.requests import Request
 
 from bustan import (
     DefaultValuePipe,
@@ -18,12 +19,11 @@ from bustan import (
     ParseUUIDPipe,
     ValidationPipe,
 )
-from bustan.core.errors import BadRequestException
 from bustan.common.types import RouteMetadata
+from bustan.core.errors import BadRequestException
 from bustan.core.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.context import ExecutionContext, RequestContext
 from bustan.platform.http.metadata import ControllerRouteDefinition
-from starlette.requests import Request
 
 if TYPE_CHECKING:
     from bustan.core.ioc.container import Container

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TypeVar
-from dataclasses import dataclass
 
 T = TypeVar("T")
 ClassT = TypeVar("ClassT", bound=type[object])

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from starlette.applications import Starlette
+
 from ..app.application import Application
 from ..core.ioc.container import Container
 from ..pipeline.metadata import PipelineMetadata

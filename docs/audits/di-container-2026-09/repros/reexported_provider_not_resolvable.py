@@ -40,7 +40,8 @@ def main() -> None:
         print("RESULT: MG-01 FIXED - re-exported provider resolves through the importing module")
     except ProviderResolutionError as exc:
         print(
-            f"RESULT: MG-01 REPRODUCED - graph accepted the re-export but resolve failed: {str(exc)[-60:]}"
+            "RESULT: MG-01 REPRODUCED - graph accepted the re-export but resolve failed: "
+            f"{str(exc)[-60:]}"
         )
 
 

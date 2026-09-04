@@ -1,10 +1,11 @@
 """Integration tests for application bootstrap state."""
 
 from typing import Any, cast
-from starlette.applications import Starlette
-import pytest
 
-from bustan import Controller, create_app, Get, Injectable, Module
+import pytest
+from starlette.applications import Starlette
+
+from bustan import Controller, Get, Injectable, Module, create_app
 from bustan.app.application import Application
 from bustan.errors import RouteDefinitionError
 from bustan.platform.http.adapter import CompiledAdapterRoute

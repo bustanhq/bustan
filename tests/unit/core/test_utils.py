@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
 from typing import cast
+
+import pytest
+
+from bustan.core.errors import RouteDefinitionError
 from bustan.core.utils import (
     _display_name,
     _get_metadata,
@@ -12,7 +15,6 @@ from bustan.core.utils import (
     _qualname,
     _unwrap_handler,
 )
-from bustan.core.errors import RouteDefinitionError
 
 
 class MockModule:

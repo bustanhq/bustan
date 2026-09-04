@@ -11,21 +11,21 @@ from starlette.testclient import TestClient
 
 from bustan import (
     CallHandler,
-    ExceptionFilter,
-    Guard,
-    Interceptor,
-    Pipe,
     Controller,
-    create_param_decorator,
-    create_app,
+    ExceptionFilter,
     Get,
+    Guard,
     Injectable,
+    Interceptor,
     Module,
+    Pipe,
     Post,
     UseFilters,
     UseGuards,
     UseInterceptors,
     UsePipes,
+    create_app,
+    create_param_decorator,
 )
 from bustan.errors import ParameterBindingError
 from bustan.pipeline.context import ExecutionContext
@@ -226,7 +226,8 @@ def test_request_pipeline_uses_exception_filters_to_convert_binding_errors() -> 
 
     assert response.status_code == 422
     assert response.json() == {
-        "detail": "Could not bind path parameter 'user_id' to int: invalid literal for int() with base 10: 'not-a-number'",
+        "detail": "Could not bind path parameter 'user_id' to int: invalid literal for int() with "
+        "base 10: 'not-a-number'",
         "kind": "binding",
         "path": "/users/not-a-number",
     }

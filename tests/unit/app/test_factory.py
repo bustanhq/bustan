@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from starlette.applications import Starlette
 
-from bustan import Module, Controller, Get, create_app, Application
+from bustan import Application, Controller, Get, Module, create_app
 
 
 @Module()

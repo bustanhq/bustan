@@ -88,7 +88,7 @@ def _coerce_stream_response(value: object) -> HttpStreamResponse | Response:
         return value
     if isinstance(value, (bytes, str, dict, list)):
         raise TypeError(f"Unsupported stream response type: {type(value).__name__}")
-    if isinstance(value, Iterable) or isinstance(value, AsyncIterable):
+    if isinstance(value, Iterable | AsyncIterable):
         return HttpStreamResponse(body=cast(Iterable[bytes] | AsyncIterable[bytes], value))
     raise TypeError(f"Unsupported stream response type: {type(value).__name__}")
 

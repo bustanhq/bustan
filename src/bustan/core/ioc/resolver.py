@@ -8,10 +8,9 @@ import threading
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Annotated, TypeVar, cast, get_args, get_origin, get_type_hints
+from typing import Annotated, cast, get_args, get_origin, get_type_hints
 
 import anyio
-
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import Response
@@ -25,9 +24,6 @@ from .overrides import OverrideManager
 from .registry import Binding, Registry
 from .scopes import ScopeManager
 from .tokens import APPLICATION, INQUIRER, REQUEST, RESPONSE
-
-ResolvedT = TypeVar("ResolvedT")
-FRAMEWORK_OWNED_TYPES = frozenset({Request, Response, Starlette})
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,7 +126,8 @@ class Resolver:
 
             if self._binding_requires_async(binding):
                 raise ProviderResolutionError(
-                    f"{_qualname(token)} in {_display_name(declaring_module)} uses an async factory. "
+                    f"{_qualname(token)} in {_display_name(declaring_module)} uses an async "
+                    "factory. "
                     "Initialize the application before resolving it synchronously."
                 )
 
@@ -399,7 +396,8 @@ class Resolver:
             result = factory(*args)
             if inspect.isawaitable(result):
                 raise ProviderResolutionError(
-                    f"Factory {_qualname(factory)} in {_display_name(module)} returned an awaitable "
+                    f"Factory {_qualname(factory)} in {_display_name(module)} returned an "
+                    "awaitable "
                     "during synchronous resolution"
                 )
             return result
@@ -574,13 +572,15 @@ class Resolver:
                 inspect.Parameter.VAR_KEYWORD,
             ):
                 raise ProviderResolutionError(
-                    f"{_qualname(class_cls)}.__init__ uses unsupported variadic parameter {parameter.name!r}"
+                    f"{_qualname(class_cls)}.__init__ uses unsupported variadic parameter "
+                    f"{parameter.name!r}"
                 )
 
             annotation = type_hints.get(parameter.name)
             if annotation is None:
                 raise ProviderResolutionError(
-                    f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} is missing a type annotation"
+                    f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} is missing a "
+                    "type annotation"
                 )
 
             positional = parameter.kind in (
@@ -712,7 +712,8 @@ class Resolver:
         ):
             raise ProviderResolutionError(
                 f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} depends on "
-                f"request-scoped provider {_qualname(dependency.token)}, which can only be injected "
+                f"request-scoped provider {_qualname(dependency.token)}, which can only be "
+                "injected "
                 "into request-scoped providers or controllers"
             )
 
@@ -748,7 +749,8 @@ class Resolver:
                 return active_request
             if dependency.token is REQUEST:
                 raise ProviderResolutionError(
-                    f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} requested REQUEST, "
+                    f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} requested "
+                    "REQUEST, "
                     "which is only available during request-scoped resolution"
                 )
             raise ProviderResolutionError(
@@ -777,7 +779,8 @@ class Resolver:
                     "framework-owned type Starlette, which is not available in provider DI"
                 )
             raise ProviderResolutionError(
-                f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} requested APPLICATION, "
+                f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} requested "
+                "APPLICATION, "
                 "which is not available in the current runtime scope"
             )
 
@@ -787,7 +790,8 @@ class Resolver:
             construction_stack = self.construction_stack.get()
             if len(construction_stack) < 2:
                 raise ProviderResolutionError(
-                    f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} requested INQUIRER, "
+                    f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} requested "
+                    "INQUIRER, "
                     "which is only available during nested provider resolution"
                 )
             return construction_stack[-2]
@@ -848,7 +852,7 @@ class Resolver:
         if isinstance(target, type) and hasattr(target, "get_durable_context_key"):
             return cast(
                 object,
-                getattr(target, "get_durable_context_key")(request),
+                getattr(target, "get_durable_context_key")(request),  # noqa: B009
             )
         # A durable instance cache must never be keyed on id(request):
         # CPython reuses object ids, which hands one request's instance to a

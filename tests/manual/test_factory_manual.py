@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import httpx
 import anyio
+import httpx
 import pytest
-from bustan import Module, Controller, Get, create_app, Injectable
+
+from bustan import Controller, Get, Injectable, Module, create_app
 
 
 @Injectable()

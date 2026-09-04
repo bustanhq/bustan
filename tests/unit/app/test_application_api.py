@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from bustan import Module, Injectable, create_app
+
+from bustan import Injectable, Module, create_app
 
 
 @Injectable()

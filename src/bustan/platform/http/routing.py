@@ -6,22 +6,22 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from starlette.routing import Router, Route
+from starlette.routing import Route, Router
 
-from ...core.ioc.container import Container
 from ...core.errors import RouteDefinitionError
+from ...core.ioc.container import Container
 from ...core.module.graph import ModuleGraph
 from ...core.utils import _join_paths, _qualname
 from .abstractions import HttpResponse, to_starlette_response
+from .adapters.starlette import create_starlette_endpoint
 from .compiler import RouteContract, compile_route_contracts
 from .execution import ExecutionPlan, compile_execution_plans
-from .adapters.starlette import create_starlette_endpoint
 from .registry import RouteRegistry
 from .versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType, extract_request_version
 
 if TYPE_CHECKING:
-    from ...testing.overrides import PipelineOverrideRegistry
     from ...pipeline.middleware import MiddlewareRegistry
+    from ...testing.overrides import PipelineOverrideRegistry
 
 EndpointHandler = Callable[[object], Awaitable[object]]
 
@@ -214,16 +214,18 @@ def _attach_route_artifacts(
     contracts: tuple[RouteContract, ...],
     execution_plans: tuple[ExecutionPlan, ...],
 ) -> None:
-    setattr(endpoint, "bustan_route_contracts", contracts)
-    setattr(route, "bustan_route_contracts", contracts)
-    setattr(endpoint, "bustan_execution_plans", execution_plans)
-    setattr(route, "bustan_execution_plans", execution_plans)
+    # Neither the endpoint callable nor Starlette's Route declares these attributes,
+    # so they are attached dynamically and read back the same way.
+    setattr(endpoint, "bustan_route_contracts", contracts)  # noqa: B010
+    setattr(route, "bustan_route_contracts", contracts)  # noqa: B010
+    setattr(endpoint, "bustan_execution_plans", execution_plans)  # noqa: B010
+    setattr(route, "bustan_execution_plans", execution_plans)  # noqa: B010
     if len(contracts) == 1:
-        setattr(endpoint, "bustan_route_contract", contracts[0])
-        setattr(route, "bustan_route_contract", contracts[0])
+        setattr(endpoint, "bustan_route_contract", contracts[0])  # noqa: B010
+        setattr(route, "bustan_route_contract", contracts[0])  # noqa: B010
     if len(execution_plans) == 1:
-        setattr(endpoint, "bustan_execution_plan", execution_plans[0])
-        setattr(route, "bustan_execution_plan", execution_plans[0])
+        setattr(endpoint, "bustan_execution_plan", execution_plans[0])  # noqa: B010
+        setattr(route, "bustan_execution_plan", execution_plans[0])  # noqa: B010
 
 
 def _is_neutral_version(versions: tuple[str, ...]) -> bool:
@@ -267,5 +269,6 @@ def _validate_starlette_route_support(route_contracts: tuple[RouteContract, ...]
     for route_contract in route_contracts:
         if route_contract.hosts:
             raise RouteDefinitionError(
-                f"Direct Starlette route compilation does not support host routing for {route_contract.method} {route_contract.path}"
+                "Direct Starlette route compilation does not support host routing for "
+                f"{route_contract.method} {route_contract.path}"
             )

@@ -7,9 +7,9 @@ from collections.abc import Awaitable
 from typing import Any, cast
 
 from ..core.errors import GuardRejectedError, ProviderResolutionError
+from ..core.utils import _qualname
 from .auth import AUTHENTICATOR_REGISTRY, Principal
 from .context import ExecutionContext
-from ..core.utils import _qualname
 
 
 class Guard:
@@ -42,7 +42,7 @@ class PolicyGuard(Guard):
             request = context.request
             if request is None:
                 raise GuardRejectedError("Authentication required")
-            setattr(request.state, "principal", principal)
+            request.state.principal = principal
 
         if getattr(policy_plan, "roles", ()):
             if principal is None:

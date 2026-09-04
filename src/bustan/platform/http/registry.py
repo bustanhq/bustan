@@ -43,7 +43,8 @@ class RouteRegistry:
                     raise RouteDefinitionError(
                         f"Conflicting route path pattern for {contract.method} "
                         f"{_canonical_path_pattern(contract.path)} declared by "
-                        f"{_describe_contract(previous_contract)} and {_describe_contract(contract)}"
+                        f"{_describe_contract(previous_contract)} and "
+                        f"{_describe_contract(contract)}"
                     )
 
             seen_exact[exact_key] = contract
@@ -146,7 +147,10 @@ def diff_route_snapshots(
 
 
 def _describe_contract(contract: RouteContract) -> str:
-    return f"{_qualname(contract.controller_cls)}.{contract.handler_name} in {_display_name(contract.module_key)}"
+    return (
+        f"{_qualname(contract.controller_cls)}.{contract.handler_name} "
+        f"in {_display_name(contract.module_key)}"
+    )
 
 
 def _route_dimensions_overlap(left: RouteContract, right: RouteContract) -> bool:

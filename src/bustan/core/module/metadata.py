@@ -23,7 +23,9 @@ class ModuleMetadata:
     is_global: bool = False
 
 
-def set_module_metadata(module_cls: ClassT, metadata: ModuleMetadata) -> ClassT:
+def set_module_metadata[ClassT: type[object]](
+    module_cls: ClassT, metadata: ModuleMetadata
+) -> ClassT:
     """Attach module metadata to a class."""
     setattr(module_cls, MODULE_METADATA_ATTR, metadata)
     return module_cls

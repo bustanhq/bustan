@@ -6,8 +6,9 @@ import argparse
 import json
 import sys
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, cast
 
 from ...app.bootstrap import _create_app
 from ...platform.http.registry import diff_route_snapshots
@@ -224,7 +225,8 @@ def _sorted_route_contracts(
 
 
 def _display_route_module(contract: object) -> str:
-    module_key = getattr(contract, "module_key")
+    # The parameter is deliberately untyped, so the attribute is read dynamically.
+    module_key = getattr(contract, "module_key")  # noqa: B009
     if isinstance(module_key, type):
         return module_key.__name__
     module = getattr(module_key, "module", None)

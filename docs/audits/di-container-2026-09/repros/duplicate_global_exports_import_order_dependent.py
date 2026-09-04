@@ -38,7 +38,8 @@ def main() -> None:
         return
     if first != second:
         print(
-            f"RESULT: MG-02 REPRODUCED - imports=[G1,G2] -> {first}, imports=[G2,G1] -> {second}, no error"
+            f"RESULT: MG-02 REPRODUCED - imports=[G1,G2] -> {first}, imports=[G2,G1] -> {second}, "
+            "no error"
         )
     else:
         print("RESULT: MG-02 FIXED - deterministic winner or rejection")

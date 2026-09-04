@@ -16,8 +16,8 @@ from bustan.pipeline.middleware import (
     RequestMethod,
     RouteInfo,
     _normalize_host_pattern,
-    _route_host_matches,
     _normalize_route_target,
+    _route_host_matches,
     compile_middleware_registry,
     path_matches,
 )

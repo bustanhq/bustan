@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from starlette.requests import Request
 
-from bustan import Controller, Get, Module, VERSION_NEUTRAL, VersioningOptions, VersioningType
+from bustan import VERSION_NEUTRAL, Controller, Get, Module, VersioningOptions, VersioningType
 from bustan.core.errors import RouteDefinitionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph

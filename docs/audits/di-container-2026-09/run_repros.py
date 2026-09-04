@@ -60,7 +60,9 @@ def main() -> int:
     parser.add_argument(
         "--expect-fixed",
         action="store_true",
-        help="exit non-zero when any finding still reproduces (default: exit non-zero on ERROR only)",
+        help=(
+            "exit non-zero when any finding still reproduces (default: exit non-zero on ERROR only)"
+        ),
     )
     args = parser.parse_args()
 

@@ -1,10 +1,9 @@
 from starlette.testclient import TestClient
-
-from bustan.testing import create_test_app, override_provider
-
 from testing_overrides.app_module import AppModule
 from testing_overrides.fake_greeting_service import FakeGreetingService
 from testing_overrides.greeting_service import GreetingService
+
+from bustan.testing import create_test_app, override_provider
 
 
 def test_create_test_app_applies_provider_overrides() -> None:

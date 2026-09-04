@@ -9,8 +9,8 @@ import pytest
 
 from bustan.core.errors import GuardRejectedError, ProviderResolutionError
 from bustan.pipeline.guards import Guard, PolicyGuard, run_guards
-from bustan.platform.http.compiler import PolicyPlan
 from bustan.pipeline.metadata import AuthPolicy
+from bustan.platform.http.compiler import PolicyPlan
 from bustan.security import AUTHENTICATOR_REGISTRY
 
 

@@ -8,7 +8,7 @@ from typing import Any, cast
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Module, Post, create_app
-from bustan.platform.http.adapter import AdapterCapabilities, AbstractHttpAdapter
+from bustan.platform.http.adapter import AbstractHttpAdapter, AdapterCapabilities
 from bustan.platform.http.adapters.starlette_adapter import StarletteAdapter
 
 

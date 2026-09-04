@@ -1,6 +1,6 @@
 """Interceptor that adds request metadata around a handler result."""
 
-from bustan import CallHandler, ExecutionContext, Interceptor, Injectable
+from bustan import CallHandler, ExecutionContext, Injectable, Interceptor
 
 from .request_identity import RequestIdentity
 

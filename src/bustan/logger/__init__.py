@@ -1,6 +1,6 @@
 """Logging public exports."""
 
-from .logger import LogLevel, Logger
+from .logger import Logger, LogLevel
 from .logger_service import LoggerService
 from .observability import ObservabilityHooks, build_route_labels
 

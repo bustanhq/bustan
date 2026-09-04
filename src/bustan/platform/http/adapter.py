@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from ...pipeline.middleware import MiddlewareRegistry
     from .compiler import RouteContract
     from .execution import ExecutionPlan
-    from ...pipeline.middleware import MiddlewareRegistry
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,17 +127,20 @@ def _validate_adapter_capabilities(
     for route_contract in route_contracts:
         if getattr(route_contract, "hosts", ()) and not capabilities.supports_host_routing:
             raise RouteDefinitionError(
-                f"{type(adapter).__name__} does not support host routing for {route_contract.method} {route_contract.path}"
+                f"{type(adapter).__name__} does not support host routing for "
+                f"{route_contract.method} {route_contract.path}"
             )
 
         if not capabilities.supports_raw_body and _requires_raw_body(route_contract):
             raise RouteDefinitionError(
-                f"{type(adapter).__name__} does not support raw body access required by {route_contract.method} {route_contract.path}"
+                f"{type(adapter).__name__} does not support raw body access required by "
+                f"{route_contract.method} {route_contract.path}"
             )
 
         if not capabilities.supports_streaming_responses and _requires_streaming(route_contract):
             raise RouteDefinitionError(
-                f"{type(adapter).__name__} does not support streaming responses required by {route_contract.method} {route_contract.path}"
+                f"{type(adapter).__name__} does not support streaming responses required by "
+                f"{route_contract.method} {route_contract.path}"
             )
 
 

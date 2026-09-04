@@ -8,8 +8,8 @@ from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
 from bustan import Controller, ExceptionFilter, Get, Middleware, Module, UseFilters, create_app
-from bustan.platform.http.abstractions import HttpRequest
 from bustan.pipeline.middleware import MiddlewareConsumer
+from bustan.platform.http.abstractions import HttpRequest
 
 
 class RootOrderMiddleware(Middleware):

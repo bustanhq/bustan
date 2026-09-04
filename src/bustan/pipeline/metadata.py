@@ -77,7 +77,9 @@ class PolicyMetadata:
     deprecation: DeprecationPolicy | None = None
 
 
-def set_controller_pipeline_metadata(controller_cls: ClassT, metadata: PipelineMetadata) -> ClassT:
+def set_controller_pipeline_metadata[ClassT: type[object]](
+    controller_cls: ClassT, metadata: PipelineMetadata
+) -> ClassT:
     setattr(controller_cls, CONTROLLER_PIPELINE_ATTR, metadata)
     return controller_cls
 
@@ -89,12 +91,16 @@ def get_controller_pipeline_metadata(
     return metadata if isinstance(metadata, PipelineMetadata) else None
 
 
-def set_handler_pipeline_metadata(handler: FunctionT, metadata: PipelineMetadata) -> FunctionT:
+def set_handler_pipeline_metadata[FunctionT: FunctionType](
+    handler: FunctionT, metadata: PipelineMetadata
+) -> FunctionT:
     setattr(handler, HANDLER_PIPELINE_ATTR, metadata)
     return handler
 
 
-def set_controller_policy_metadata(controller_cls: ClassT, metadata: PolicyMetadata) -> ClassT:
+def set_controller_policy_metadata[ClassT: type[object]](
+    controller_cls: ClassT, metadata: PolicyMetadata
+) -> ClassT:
     setattr(controller_cls, CONTROLLER_POLICY_ATTR, metadata)
     return controller_cls
 
@@ -106,7 +112,9 @@ def get_controller_policy_metadata(
     return metadata if isinstance(metadata, PolicyMetadata) else None
 
 
-def set_handler_policy_metadata(handler: FunctionT, metadata: PolicyMetadata) -> FunctionT:
+def set_handler_policy_metadata[FunctionT: FunctionType](
+    handler: FunctionT, metadata: PolicyMetadata
+) -> FunctionT:
     setattr(handler, HANDLER_POLICY_ATTR, metadata)
     return handler
 
@@ -129,7 +137,7 @@ def get_handler_pipeline_metadata(handler: object) -> PipelineMetadata | None:
     return metadata if isinstance(metadata, PipelineMetadata) else None
 
 
-def extend_controller_pipeline_metadata(
+def extend_controller_pipeline_metadata[ClassT: type[object]](
     controller_cls: ClassT,
     *,
     guards: tuple[object, ...] = (),
@@ -150,7 +158,7 @@ def extend_controller_pipeline_metadata(
     return set_controller_pipeline_metadata(controller_cls, merged_metadata)
 
 
-def extend_handler_pipeline_metadata(
+def extend_handler_pipeline_metadata[FunctionT: FunctionType](
     handler: FunctionT,
     *,
     guards: tuple[object, ...] = (),
@@ -171,7 +179,7 @@ def extend_handler_pipeline_metadata(
     return set_handler_pipeline_metadata(handler, merged_metadata)
 
 
-def extend_controller_policy_metadata(
+def extend_controller_policy_metadata[ClassT: type[object]](
     controller_cls: ClassT,
     *,
     auth: AuthPolicy | None = None,
@@ -204,7 +212,7 @@ def extend_controller_policy_metadata(
     return set_controller_policy_metadata(controller_cls, merged_metadata)
 
 
-def extend_handler_policy_metadata(
+def extend_handler_policy_metadata[FunctionT: FunctionType](
     handler: FunctionT,
     *,
     auth: AuthPolicy | None = None,

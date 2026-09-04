@@ -18,8 +18,8 @@ from bustan.openapi import (
     ApiTags,
     DocumentBuilder,
 )
-from bustan.platform.http.compiler import compile_route_contracts
 from bustan.openapi.schema_builder import generate_schema
+from bustan.platform.http.compiler import compile_route_contracts
 
 
 class CatDto(BaseModel):

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import copy
 from enum import Enum
-from types import FunctionType
-from types import NoneType, UnionType
+from types import FunctionType, NoneType, UnionType
 from typing import Any, Union, cast, get_args, get_origin
 from uuid import UUID
 

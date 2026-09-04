@@ -78,7 +78,8 @@ def main() -> None:
             )
         else:
             print(
-                f"RESULT: RI-06a REPRODUCED - startup failed with a misleading error: {message[:90]}"
+                "RESULT: RI-06a REPRODUCED - startup failed with a misleading error: "
+                f"{message[:90]}"
             )
 
     client = TestClient(create_app(AppModule))  # no lifespan: singletons are built lazily
@@ -87,7 +88,8 @@ def main() -> None:
     for key, label in (("factory", "RI-06b"), ("alias", "RI-06c")):
         if second[key] == "alice":
             print(
-                f"RESULT: {label} REPRODUCED - {key} path served alice to bob: {first} then {second}"
+                f"RESULT: {label} REPRODUCED - {key} path served alice to bob: {first} then "
+                f"{second}"
             )
         else:
             print(f"RESULT: {label} FIXED - {key} path isolated: {first} then {second}")

@@ -1,6 +1,6 @@
-from bustan import DiscoveryService
-
 from graph_inspection import build_application
+
+from bustan import DiscoveryService
 
 
 def test_graph_inspection_exposes_discovery_and_route_snapshot() -> None:

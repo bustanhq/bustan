@@ -9,7 +9,7 @@ from ...app.bootstrap import create_app
 from ...common.decorators.controller import Controller
 from ...common.decorators.route import Get, Post
 from ...core.module.decorators import Module
-from .adapter import AdapterCapabilities, AbstractHttpAdapter
+from .adapter import AbstractHttpAdapter, AdapterCapabilities
 from .adapters.starlette_adapter import StarletteAdapter
 
 

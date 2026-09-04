@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 
 import uvicorn
 from starlette.applications import Starlette
@@ -11,9 +12,9 @@ from starlette.routing import BaseRoute
 from ..adapter import AbstractHttpAdapter, AdapterCapabilities, CompiledAdapterRoute
 
 if TYPE_CHECKING:
+    from ....pipeline.middleware import MiddlewareRegistry
     from ..compiler import RouteContract
     from ..execution import ExecutionPlan
-    from ....pipeline.middleware import MiddlewareRegistry
 
 
 class StarletteAdapter(AbstractHttpAdapter):

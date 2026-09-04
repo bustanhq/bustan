@@ -8,10 +8,10 @@ from starlette.requests import Request
 
 from ..module.dynamic import ModuleKey
 from ..module.graph import ModuleGraph
-from .registry import Registry
-from .scopes import ScopeManager
-from .resolver import Resolver
 from .overrides import OverrideManager
+from .registry import Registry
+from .resolver import Resolver
+from .scopes import ScopeManager
 from .tokens import InjectionToken
 
 

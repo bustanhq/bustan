@@ -17,9 +17,9 @@ from bustan import (
     Module,
     ModuleRef,
     application_context_id,
+    create_app,
     durable_context_id,
     request_context_id,
-    create_app,
 )
 from bustan.addons.discovery import _resolve_application_context, _resolve_module_node
 from bustan.addons.module_ref import _resolve_application, _resolve_module_key

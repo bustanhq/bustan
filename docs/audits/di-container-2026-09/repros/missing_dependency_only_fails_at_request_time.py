@@ -46,7 +46,8 @@ def main() -> None:
         return
     if status == 500:
         print(
-            "RESULT: MG-04 REPRODUCED - app started; unresolvable controller dependency became HTTP 500"
+            "RESULT: MG-04 REPRODUCED - app started; unresolvable controller dependency became "
+            "HTTP 500"
         )
     else:
         print(f"RESULT: MG-04 FIXED - request returned {status}")

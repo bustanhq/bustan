@@ -35,8 +35,6 @@ def Injectable(
     try:
         resolved_scope = ProviderScope(scope)
     except ValueError as exc:
-        # We re-raise from InvalidProviderError if it exists, otherwise use a generic TypeError
-        # until the full core/errors migration is complete if needed.
         raise InvalidProviderError(f"Unsupported provider scope: {scope!r}") from exc
 
     def decorate(provider_cls: ClassT) -> ClassT:

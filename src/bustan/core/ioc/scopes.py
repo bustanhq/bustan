@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Hashable
 from contextvars import ContextVar, Token
-from typing import Hashable, Protocol, cast, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 import anyio
-
 from starlette.requests import Request
 
 from ..module.dynamic import ModuleKey

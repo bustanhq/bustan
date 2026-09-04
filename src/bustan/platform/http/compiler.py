@@ -15,17 +15,17 @@ from ...core.ioc.container import Container
 from ...core.ioc.tokens import APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE
 from ...core.module.dynamic import ModuleKey
 from ...core.module.graph import ModuleGraph
-from ...pipeline.metadata import (
-    PolicyMetadata,
-    PipelineMetadata,
-    get_controller_policy_metadata,
-    get_controller_pipeline_metadata,
-    get_handler_policy_metadata,
-    get_handler_pipeline_metadata,
-    merge_policy_metadata,
-    merge_pipeline_metadata,
-)
 from ...pipeline.guards import PolicyGuard
+from ...pipeline.metadata import (
+    PipelineMetadata,
+    PolicyMetadata,
+    get_controller_pipeline_metadata,
+    get_controller_policy_metadata,
+    get_handler_pipeline_metadata,
+    get_handler_policy_metadata,
+    merge_pipeline_metadata,
+    merge_policy_metadata,
+)
 from .metadata import ControllerRouteDefinition
 from .params import HandlerBindingPlan, compile_parameter_bindings
 from .scanner import ControllerScanner, ScannedHandler

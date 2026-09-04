@@ -12,19 +12,19 @@ class DocumentBuilder:
         self._description = ""
         self._security_schemes: dict[str, dict[str, object]] = {}
 
-    def set_title(self, title: str) -> "DocumentBuilder":
+    def set_title(self, title: str) -> "DocumentBuilder":  # noqa: UP037
         self._title = title
         return self
 
-    def set_version(self, version: str) -> "DocumentBuilder":
+    def set_version(self, version: str) -> "DocumentBuilder":  # noqa: UP037
         self._version = version
         return self
 
-    def set_description(self, description: str) -> "DocumentBuilder":
+    def set_description(self, description: str) -> "DocumentBuilder":  # noqa: UP037
         self._description = description
         return self
 
-    def add_bearer_auth(self, name: str = "bearer") -> "DocumentBuilder":
+    def add_bearer_auth(self, name: str = "bearer") -> "DocumentBuilder":  # noqa: UP037
         self._security_schemes[name] = {"type": "http", "scheme": "bearer"}
         return self
 

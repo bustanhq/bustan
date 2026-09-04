@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import importlib
 import inspect
+from collections.abc import Sequence
 from enum import Enum
 from pathlib import Path
 from types import ModuleType
-from collections.abc import Sequence
 from typing import Any, cast
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -42,7 +42,10 @@ SPECIAL_VALUE_NOTES: dict[tuple[str, str], str] = {
     (
         "bustan",
         "__version__",
-    ): "Runtime behavior: resolved from the installed distribution metadata, or from local project metadata when running from a source checkout.",
+    ): (
+        "Runtime behavior: resolved from the installed distribution metadata, or from local "
+        "project metadata when running from a source checkout."
+    ),
 }
 
 SPECIAL_CLASS_ATTRIBUTES: dict[tuple[str, str], dict[str, str]] = {

@@ -1,7 +1,8 @@
 """RI-01: a default-scope (singleton) controller that injects a request-scoped provider or the
 Request itself is built once and then serves the first caller's state to every later caller.
 
-docs/REQUEST_SCOPED_PROVIDERS.md promises a ProviderResolutionError for this shape; no error is raised.
+docs/REQUEST_SCOPED_PROVIDERS.md promises a ProviderResolutionError for this shape;
+no error is raised.
 """
 
 from starlette.requests import Request
@@ -49,7 +50,8 @@ def main() -> None:
             second = client.get(path, headers={"x-user-id": "bob"}).json()["user"]
             if second == "alice":
                 print(
-                    f"RESULT: {label} REPRODUCED - {path} answered {first!r} then {second!r}; bob saw alice"
+                    f"RESULT: {label} REPRODUCED - {path} answered {first!r} then {second!r}; bob "
+                    "saw alice"
                 )
             else:
                 print(f"RESULT: {label} FIXED - {path} answered {first!r} then {second!r}")
