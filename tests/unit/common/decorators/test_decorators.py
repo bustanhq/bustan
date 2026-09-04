@@ -1,5 +1,6 @@
 """Unit tests for public decorators and pipeline metadata attachment."""
 
+from dataclasses import FrozenInstanceError, fields
 from typing import Any, cast
 
 import pytest
@@ -19,6 +20,7 @@ from bustan import (
     UseInterceptors,
     UsePipes,
 )
+from bustan.common.decorators.injectable import ProviderMetadata, get_provider_metadata
 from bustan.common.types import ProviderScope
 from bustan.core.errors import (
     InvalidControllerError,
@@ -60,12 +62,7 @@ def test_decorators_attach_expected_metadata() -> None:
     class UserModule:
         pass
 
-    # The decorator attaches this attribute at runtime; the class does not declare it.
-    assert getattr(UserService, "__bustan_provider__") == {  # noqa: B009
-        "scope": ProviderScope.SINGLETON,
-        "token": UserService,
-        "use_class": UserService,
-    }
+    assert get_provider_metadata(UserService) == ProviderMetadata(scope=ProviderScope.SINGLETON)
     assert get_controller_metadata(UserController) == ControllerMetadata(prefix="/users")
     assert get_module_metadata(UserModule) == ModuleMetadata(
         imports=(),
@@ -181,3 +178,39 @@ def test_controller_and_route_decorators_validate_invalid_inputs() -> None:
         from bustan.common.decorators.route import Get
 
         Get("/users")(cast(Any, 1))
+
+
+def test_injectable_metadata_is_frozen_and_carries_only_the_scope() -> None:
+    # Provider metadata that could hold a token and a target was a second, editable copy
+    # of an identity the class already carries, and the two could be made to disagree.
+    @Injectable(scope=ProviderScope.REQUEST)
+    class Service:
+        pass
+
+    metadata = get_provider_metadata(Service)
+    assert metadata == ProviderMetadata(scope=ProviderScope.REQUEST)
+    assert [field.name for field in fields(ProviderMetadata)] == ["scope"]
+
+    with pytest.raises(FrozenInstanceError):
+        cast(Any, metadata).scope = ProviderScope.SINGLETON
+
+
+def test_injectable_metadata_is_read_from_the_class_it_was_written_on() -> None:
+    @Injectable(scope=ProviderScope.REQUEST)
+    class Base:
+        pass
+
+    class Derived(Base):
+        pass
+
+    assert get_provider_metadata(Base) == ProviderMetadata(scope=ProviderScope.REQUEST)
+    assert get_provider_metadata(Derived) is None
+    assert get_provider_metadata(Derived, inherit=True) == get_provider_metadata(Base)
+
+
+def test_injectable_refuses_a_scope_it_does_not_support() -> None:
+    with pytest.raises(InvalidProviderError, match="Unsupported provider scope"):
+        Injectable(scope="Request")
+
+    with pytest.raises(InvalidProviderError, match="only decorate classes"):
+        Injectable(cast(Any, lambda: None))
