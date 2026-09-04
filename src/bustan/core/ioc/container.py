@@ -6,8 +6,10 @@ from collections.abc import Callable
 
 from starlette.requests import Request
 
+from ..errors import InvalidModuleError
 from ..module.dynamic import ModuleKey
 from ..module.graph import ModuleGraph
+from ..utils import _display_name, _qualname
 from .overrides import OverrideManager
 from .registry import Registry
 from .resolver import Resolver
@@ -34,39 +36,34 @@ class Container:
 
     def _build_bindings(self) -> None:
         """Populate the registry and visibility rules from the module graph."""
-        global_provider_modules: dict[object, ModuleKey] = {}
         for node in self.module_graph.nodes:
-            if not node.metadata.is_global:
-                continue
-            for exported_token in node.exports:
-                global_provider_modules.setdefault(exported_token, node.key)
-
-        for node in self.module_graph.nodes:
-            # Register bindings
             for binding in node.bindings:
                 self.registry.register_binding((node.key, binding.token), binding)
 
-            # Determine visibility
-            accessible_provider_modules: dict[object, ModuleKey] = {
-                b.token: node.key for b in node.bindings
-            }
+            # Visibility is computed once, by the graph. Copying it here rather than
+            # recomputing the rule is what keeps the documented graph view and the
+            # resolvable set the same set.
+            self.registry.set_visibility(node.key, dict(node.visibility))
 
-            for imported_key in node.imported_exports:
-                for exported_token in self.module_graph.exports_for(imported_key):
-                    # Local bindings are authoritative: only add imported exports
-                    # for tokens not already defined locally.
-                    if exported_token not in accessible_provider_modules:
-                        accessible_provider_modules[exported_token] = imported_key
-
-            for exported_token, declaring_module in global_provider_modules.items():
-                if exported_token not in accessible_provider_modules:
-                    accessible_provider_modules[exported_token] = declaring_module
-
-            self.registry.set_visibility(node.key, accessible_provider_modules)
-
-            # Register controllers
             for controller_cls in node.controllers:
                 self.registry.register_controller(controller_cls, node.key)
+
+        self._verify_visibility_is_backed_by_bindings()
+
+    def _verify_visibility_is_backed_by_bindings(self) -> None:
+        """Assert the invariant that every visible token names a module that binds it.
+
+        Visibility a binding does not back is a promise kept only until the first
+        request that needs the token, so it is refused at bootstrap instead.
+        """
+        for module_key, visibility in self.registry.module_visibility.items():
+            for token, declaring_module in visibility.items():
+                if (declaring_module, token) in self.registry.bindings:
+                    continue
+                raise InvalidModuleError(
+                    f"{_qualname(token)} is visible to {_display_name(module_key)} through "
+                    f"{_display_name(declaring_module)}, which declares no provider for it"
+                )
 
     def resolve(
         self,
