@@ -4,14 +4,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from starlette.testclient import TestClient
 
-from bustan.core.errors import GuardRejectedError, ProviderResolutionError
+from bustan import Controller, Get, Injectable, Module, UseGuards, create_app
+from bustan.core.errors import (
+    GuardRejectedError,
+    InvalidPipelineError,
+    ProviderResolutionError,
+)
+from bustan.core.ioc.container import build_container
+from bustan.core.module.graph import build_module_graph
 from bustan.pipeline.guards import Guard, PolicyGuard, run_guards
 from bustan.pipeline.metadata import AuthPolicy
 from bustan.platform.http.compiler import PolicyPlan
+from bustan.platform.http.controller_factory import ControllerFactory
 from bustan.security import AUTHENTICATOR_REGISTRY
+
+if TYPE_CHECKING:
+    from tests.conftest import RequestFactory
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,3 +167,101 @@ async def test_run_guards_supports_async_and_sync_guards_and_rejections() -> Non
         await run_guards(context, (AsyncAllowGuard(), SyncBlockGuard()))
 
     assert events == ["async", "sync"]
+
+
+def test_undecorated_subclass_of_an_injectable_guard_is_constructed_and_serves_the_request() -> (
+    None
+):
+    @Injectable()
+    class BaseGuard(Guard):
+        def can_activate(self, context) -> bool:
+            return True
+
+    class StrictGuard(BaseGuard):
+        pass
+
+    @Controller("/reports")
+    class ReportsController:
+        @Get("/")
+        @UseGuards(StrictGuard)
+        def read_report(self) -> dict[str, bool]:
+            return {"ok": True}
+
+    @Module(controllers=[ReportsController])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/reports/")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
+def test_a_decorated_guard_is_still_resolved_through_the_container(
+    build_request: RequestFactory,
+) -> None:
+    @Injectable()
+    class DependencyService:
+        pass
+
+    @Injectable()
+    class DecoratedGuard(Guard):
+        def __init__(self, dependency: DependencyService) -> None:
+            self.dependency = dependency
+
+        def can_activate(self, context) -> bool:
+            return True
+
+    @Controller("/reports")
+    class ReportsController:
+        @Get("/")
+        def read_report(self) -> dict[str, bool]:
+            return {"ok": True}
+
+    @Module(controllers=[ReportsController], providers=[DecoratedGuard, DependencyService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    factory = ControllerFactory(container)
+    request = build_request(path="/reports")
+
+    (resolved,) = factory.resolve_components(
+        (DecoratedGuard,), Guard, module=AppModule, request=request, kind="guard"
+    )
+
+    assert resolved is container.resolve(DecoratedGuard, module=AppModule, request=request)
+
+
+def test_an_undeclared_guard_that_needs_arguments_is_still_refused(
+    build_request: RequestFactory,
+) -> None:
+    class NeedsArgumentsGuard(Guard):
+        def __init__(self, dependency: object) -> None:
+            self.dependency = dependency
+
+        def can_activate(self, context) -> bool:
+            return True
+
+    @Controller("/reports")
+    class ReportsController:
+        @Get("/")
+        def read_report(self) -> dict[str, bool]:
+            return {"ok": True}
+
+    @Module(controllers=[ReportsController])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    factory = ControllerFactory(container)
+
+    with pytest.raises(InvalidPipelineError):
+        factory.resolve_components(
+            (NeedsArgumentsGuard,),
+            Guard,
+            module=AppModule,
+            request=build_request(path="/reports"),
+            kind="guard",
+        )

@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, TypeVar, cast
 
 from starlette.requests import Request
 
-from ...common.constants import BUSTAN_PROVIDER_ATTR
+from ...common.decorators.injectable import get_provider_metadata
 from ...common.types import ProviderScope
-from ...core.errors import InvalidPipelineError
+from ...core.errors import InvalidControllerError, InvalidPipelineError
 from ...core.ioc.container import Container
 from ...core.module.dynamic import ModuleKey
 from ...core.utils import _qualname
@@ -62,6 +62,16 @@ class ControllerFactory:
                 )
                 request_cache[controller_key] = instance
             return instance
+
+        if scope is not ProviderScope.SINGLETON:
+            # Every remaining lifetime partitions instances by a key a controller does not
+            # carry, so serving one would mean handing one caller's instance to the next.
+            # The compiler refuses such a declaration while the application is built; this
+            # guard keeps the fall-through from quietly reappearing behind a new scope.
+            raise InvalidControllerError(
+                f"{_qualname(controller_cls)} declares scope {scope.value!r}, which a "
+                "controller cannot have; declare a singleton, request or transient controller"
+            )
 
         instance = self.container.scope_manager.get_controller_singleton(controller_key)
         if instance is not None:
@@ -123,7 +133,7 @@ class ControllerFactory:
             instance = component
             if isinstance(component, type):
                 comp_type = cast(type[ComponentT], component)
-                if getattr(comp_type, BUSTAN_PROVIDER_ATTR, None) is not None:
+                if get_provider_metadata(comp_type) is not None:
                     instance = self.container.resolve(comp_type, module=module, request=request)
                 else:
                     try:
