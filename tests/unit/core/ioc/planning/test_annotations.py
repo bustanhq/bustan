@@ -18,6 +18,7 @@ import pytest
 from bustan.common.decorators.injectable import Inject, OptionalDep
 from bustan.core.errors import ProviderResolutionError
 from bustan.core.ioc.planning.annotations import (
+    ConstructorDependency,
     _ConstructorNamespace,
     plan_constructor_dependencies,
 )
@@ -33,6 +34,13 @@ if TYPE_CHECKING:
         """Writes a throwaway package and returns its imported modules by name."""
 
         def __call__(self, **sources: str) -> dict[str, ModuleType]: ...
+
+
+def only(dependencies: tuple[ConstructorDependency, ...]) -> ConstructorDependency:
+    """Return the one planned dependency, failing if the plan does not hold exactly one."""
+
+    assert len(dependencies) == 1, dependencies
+    return dependencies[0]
 
 
 class Dep:
@@ -224,7 +232,7 @@ def test_lexical_scope_wins_over_a_visible_token_of_the_same_name(
     consumer = modules["beta"].Consumer
 
     for visible in ([alpha_repo, beta_repo], [beta_repo, alpha_repo]):
-        (dependency,) = plan_constructor_dependencies(consumer, visible)
+        dependency = only(plan_constructor_dependencies(consumer, visible))
         assert dependency.token is beta_repo
         assert dependency.annotation is beta_repo
         assert dependency.name == "repo"
@@ -356,7 +364,7 @@ def test_an_inherited_constructor_is_read_in_the_module_that_defines_it(
     assert marker[0].token is base.Helper
     assert marker[1].token is base.CONFIG
 
-    (alias,) = plan_constructor_dependencies(child.AliasChild, [base.CONFIG])
+    alias = only(plan_constructor_dependencies(child.AliasChild, [base.CONFIG]))
     assert alias.token is base.CONFIG
     assert alias.annotation is base.Alias
 
@@ -374,7 +382,7 @@ def test_an_inherited_constructor_is_read_in_the_module_that_defines_it(
 def test_optional_annotations_unwrap_to_the_type_that_is_actually_injected(
     target: type[object], optional: bool
 ) -> None:
-    (dependency,) = plan_constructor_dependencies(target, [Dep])
+    dependency = only(plan_constructor_dependencies(target, [Dep]))
 
     assert dependency.token is Dep
     assert dependency.annotation is Dep
@@ -382,7 +390,7 @@ def test_optional_annotations_unwrap_to_the_type_that_is_actually_injected(
 
 
 def test_a_union_without_none_is_left_as_the_token() -> None:
-    (dependency,) = plan_constructor_dependencies(UsesUnionWithoutNone, [Dep])
+    dependency = only(plan_constructor_dependencies(UsesUnionWithoutNone, [Dep]))
 
     assert dependency.token == Dep | Other
     assert not dependency.optional
@@ -406,13 +414,13 @@ def test_a_parameter_whose_token_is_invisible_is_left_to_its_default(
 
 
 def test_a_defaulted_parameter_is_still_injected_when_its_token_is_visible() -> None:
-    (dependency,) = plan_constructor_dependencies(DefaultedVisibleDep, [Dep])
+    dependency = only(plan_constructor_dependencies(DefaultedVisibleDep, [Dep]))
 
     assert dependency.token is Dep
 
 
 def test_the_visibility_mapping_may_be_passed_directly() -> None:
-    (dependency,) = plan_constructor_dependencies(DefaultedVisibleDep, {Dep: "any-module"})
+    dependency = only(plan_constructor_dependencies(DefaultedVisibleDep, {Dep: "any-module"}))
 
     assert dependency.token is Dep
 
@@ -422,7 +430,7 @@ def test_an_unhashable_token_with_a_default_is_left_to_its_default() -> None:
 
 
 def test_a_container_token_is_planned_even_though_no_module_declares_it() -> None:
-    (dependency,) = plan_constructor_dependencies(DefaultedContainerToken, [])
+    dependency = only(plan_constructor_dependencies(DefaultedContainerToken, []))
 
     assert dependency.token is REQUEST
 
@@ -506,7 +514,7 @@ def test_the_instance_parameter_is_skipped_by_position_not_by_name(
     renamed = modules["renamed"]
 
     for target in (renamed.NamesInstanceThis, renamed.PositionalOnlyInstance):
-        (dependency,) = plan_constructor_dependencies(target, [renamed.Dep])
+        dependency = only(plan_constructor_dependencies(target, [renamed.Dep]))
         assert dependency.name == "dep"
         assert dependency.token is renamed.Dep
         assert dependency.positional
@@ -532,7 +540,7 @@ def test_a_parameter_after_one_left_to_its_default_is_passed_by_keyword(
     )
     shifted = modules["shifted"]
 
-    (dependency,) = plan_constructor_dependencies(shifted.Shifted, [shifted.Dep])
+    dependency = only(plan_constructor_dependencies(shifted.Shifted, [shifted.Dep]))
 
     assert dependency.name == "dep"
     assert not dependency.positional
@@ -565,7 +573,7 @@ def test_a_positional_only_parameter_after_one_left_to_its_default_is_rejected(
 
 
 def test_a_keyword_only_parameter_is_not_marked_positional() -> None:
-    (dependency,) = plan_constructor_dependencies(UsesKeywordOnlyDep, [Dep])
+    dependency = only(plan_constructor_dependencies(UsesKeywordOnlyDep, [Dep]))
 
     assert not dependency.positional
 
@@ -575,7 +583,7 @@ def test_a_class_with_no_constructor_of_its_own_needs_nothing() -> None:
 
 
 def test_dependencies_are_planned_from_new_when_init_is_inherited_from_object() -> None:
-    (dependency,) = plan_constructor_dependencies(NewOnly, [Dep])
+    dependency = only(plan_constructor_dependencies(NewOnly, [Dep]))
 
     assert dependency.name == "dep"
     assert dependency.token is Dep
@@ -650,7 +658,7 @@ def test_an_annotation_that_only_ever_names_another_name_is_rejected(
 
 
 def test_annotated_metadata_that_is_not_a_marker_is_ignored() -> None:
-    (dependency,) = plan_constructor_dependencies(UsesAnnotatedNote, [Dep])
+    dependency = only(plan_constructor_dependencies(UsesAnnotatedNote, [Dep]))
 
     assert dependency.token is Dep
     assert not dependency.optional
@@ -696,8 +704,8 @@ def test_a_constructor_without_an_instance_parameter_keeps_every_parameter(
     )
     keyword_only = modules["keyword_only"]
 
-    (dependency,) = plan_constructor_dependencies(
-        keyword_only.NoInstanceParameter, [keyword_only.Dep]
+    dependency = only(
+        plan_constructor_dependencies(keyword_only.NoInstanceParameter, [keyword_only.Dep])
     )
 
     assert dependency.name == "dep"
