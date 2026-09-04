@@ -56,6 +56,23 @@ container.
 Open a pending review, attach each finding as an inline comment on the line it concerns,
 then submit as `APPROVE` or `REQUEST_CHANGES`.
 
+**When the agents run under your own account, GitHub refuses both verdicts** - it will not
+let an account approve or request changes on its own pull request. Submit the review as a
+`COMMENT` instead and say in the first line which verdict it carries, so the record is
+unambiguous for anyone reading the thread later. Do not let the tooling limitation soften
+the verdict into a suggestion.
+
+## Before you merge, check the issue actually closes
+
+`Closes #N` inside backticks is a code span, and GitHub does not parse closing keywords
+inside one. A pull request whose description reads ``Closes #12`` in code formatting will
+merge and leave its issue open, which silently breaks the wave epic's progress bar and the
+milestone burndown you are using to decide when the wave is done.
+
+Check the issue's state after every merge, and close it by hand when the link did not
+fire. Better, catch it at review time: the contract says the description must contain a
+working `Closes #N`, and a formatted one does not qualify.
+
 ## Answering a blocked or decision-required draft
 
 A review comment is your only channel. Make it complete enough to unblock in one round:
