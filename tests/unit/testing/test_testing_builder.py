@@ -361,21 +361,28 @@ async def test_close_reports_every_failing_teardown_hook_not_only_the_first() ->
     with pytest.raises(LifecycleError) as failure:
         await compiled.close()
 
-    assert "shutdown failed" in str(failure.value)
-    assert "destroy failed" in str(failure.value)
+    # Both stages ran to completion and both failures survive: teardown raises a group
+    # whose members name the hooks that failed, not a summary that keeps only the first.
+    assert isinstance(failure.value, ExceptionGroup)
+    reported = [str(error) for error in failure.value.exceptions]
+    assert any("shutdown failed" in message for message in reported)
+    assert any("destroy failed" in message for message in reported)
 
 
 @pytest.mark.anyio
 async def test_compiled_application_shares_lifecycle_state_with_the_testing_module() -> None:
     # compile() drives the application's own manager, so the application agrees about
-    # what has already run: closing it tears down once, and re-initializing it after a
-    # close is refused rather than quietly running the init hooks a second time.
+    # what has already run: initializing an already-started application does nothing,
+    # closing it tears down once, and a second close is a no-op. Starting it again
+    # after that begins a new cycle over instances the closed one no longer holds.
     events: list[str] = []
+    built: list[object] = []
 
     @Module()
     class AppModule:
         def on_module_init(self) -> None:
             events.append("init")
+            built.append(self)
 
         def on_application_shutdown(self, signal: str | None) -> None:
             events.append("shutdown")
@@ -393,8 +400,12 @@ async def test_compiled_application_shares_lifecycle_state_with_the_testing_modu
     await compiled.close()
     assert events == ["init", "shutdown"]
 
-    with pytest.raises(LifecycleError, match="already closed"):
-        await compiled.application.init()
+    await compiled.application.init()
+    assert events == ["init", "shutdown", "init"]
+    assert built[1] is not built[0]
+
+    await compiled.close()
+    assert events == ["init", "shutdown", "init", "shutdown"]
 
 
 @pytest.mark.anyio
