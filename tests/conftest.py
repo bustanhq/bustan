@@ -45,13 +45,15 @@ class RequestFactory(Protocol):
         raw_body: bytes | None = None,
         content_type: str | None = None,
         app: Starlette | None = None,
-    ) -> Request: ...
+    ) -> Request:
+        raise NotImplementedError
 
 
 class AppFactory(Protocol):
     """Builds a Starlette application; see ``build_app`` for the parameter meanings."""
 
-    def __call__(self, *, routes: Sequence[BaseRoute] | None = None) -> Starlette: ...
+    def __call__(self, *, routes: Sequence[BaseRoute] | None = None) -> Starlette:
+        raise NotImplementedError
 
 
 def _build_headers(
