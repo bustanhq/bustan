@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from bustan import Controller, create_app, Get, Injectable, Module, Post
+from bustan import Controller, create_app, Get, Injectable, Module, Post, Scope
 from starlette.requests import Request
 from typing import Any, cast
 from starlette.testclient import TestClient
@@ -93,7 +93,7 @@ class IdentityModule:
     pass
 
 
-@Controller("/posts")
+@Controller("/posts", scope=Scope.REQUEST)
 class BlogController:
     def __init__(self, blog_service: BlogService, request_actor: RequestActor) -> None:
         self.blog_service = blog_service

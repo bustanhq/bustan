@@ -20,6 +20,59 @@ Cause: a controller or provider depends on something the container cannot resolv
 
 Fix: confirm the dependency is decorated with `@injectable`, registered in a module, and exported from any module boundary it must cross.
 
+### `depends on request-scoped provider ...`
+
+Cause: a longer-lived owner injects a request-scoped provider. The most common shape is a
+controller declared without `scope=`, which makes it a singleton: it is built once and reused for
+every request, so the first caller's request-local state would be served to every later caller.
+
+Fix: declare the owner request-scoped, for example `@Controller("/account", scope=Scope.REQUEST)`
+or `@Injectable(scope="request")`. Keep long-lived business services singleton and inject them
+alongside the request-scoped provider. If the owner must stay singleton, pass the request-local
+value into the method that needs it rather than holding it on the instance.
+
+### `... which reaches request-scoped state`
+
+Cause: the dependency itself keeps no instance - it is transient, or a `use_existing` alias -
+but something further down the chain is request-scoped. The owner would capture that state the
+first time it is built and hand it to every later caller, so the chain is refused even though
+the immediate dependency looks harmless.
+
+Fix: narrow the owner's scope, or break the chain by injecting the request-scoped provider
+directly into something that lives no longer than a request.
+
+### `Factory ... inject entry depends on ...`
+
+Cause: a `use_factory` provider injects a token whose scope is narrower than the scope the
+factory's result is cached under. A singleton factory that injects a request-scoped provider
+bakes the first caller's state into the cached result.
+
+Fix: declare the factory provider with a scope no wider than what it injects, for example
+`{"provide": Token, "use_factory": build, "inject": [RequestIdentity], "scope": "request"}`.
+
+### `depends on durable-scoped provider ...`
+
+Cause: a singleton owner injects a durable-scoped provider. The singleton captures whichever
+partition was resolved first and then serves that tenant's instance to every other tenant.
+
+Fix: declare the owner durable, request-scoped, or transient, so that it does not outlive the
+partition it is reading.
+
+### `requests framework-owned type Request ...`
+
+Cause: a singleton or durable owner injects Starlette's `Request`. Both outlive the request, so
+they would retain the first caller's headers, including its `Authorization` header.
+
+Fix: only request-scoped and transient owners may inject `Request`. Move the request-derived
+value into a request-scoped provider and inject that instead.
+
+### `get_durable_context_key returned a ... which cannot be used as a cache key`
+
+Cause: a durable provider's `get_durable_context_key` returned an unhashable value, such as a
+list or a dict.
+
+Fix: return a hashable key, for example a string or a tuple of strings.
+
 ## `ParameterBindingError`
 
 Cause: route inputs cannot be converted from path, query, or JSON body data.
