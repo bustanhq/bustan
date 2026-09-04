@@ -23,7 +23,10 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release/config.json
-          manifest-file: release/manifest.json
+          # release/manifest.json is the governance document read by the CLI, and
+          # its nested objects are not versions. Release automation reads its own
+          # file, which holds nothing but the path-to-version map it expects.
+          manifest-file: release/.release-please-manifest.json
 
       - name: Check out repository
         if: ${{ steps.release.outputs.releases_created == 'true' }}
