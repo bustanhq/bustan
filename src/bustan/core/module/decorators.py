@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, MappingView, Set
 from dataclasses import replace
 from typing import Any, TypeVar, cast
 
@@ -38,6 +38,13 @@ def Module(
     def decorate(module_cls: ClassT) -> ClassT:
         if not isinstance(module_cls, type):
             raise InvalidModuleError("@Module can only decorate classes")
+        # Two declarations on one class have no merge rule, so the second would replace
+        # the first and quietly discard everything the first declared.
+        if get_module_metadata(module_cls) is not None:
+            raise InvalidModuleError(
+                f"{module_cls.__name__} is already decorated with @Module; one class declares "
+                "its imports, controllers, providers and exports exactly once"
+            )
         return set_module_metadata(module_cls, module_metadata)
 
     return decorate
@@ -72,6 +79,19 @@ def _coerce_tuple(
         return ()
     if isinstance(values, (str, bytes)):
         raise InvalidModuleError(f"Module {field_name} must be an iterable of objects")
+    if isinstance(values, Mapping):
+        raise InvalidModuleError(
+            f"Module {field_name} must be an iterable of objects, and a mapping is read as its "
+            "keys; a single provider definition must still be written inside a sequence"
+        )
+    # Declaration order decides construction and lifecycle-hook order, so a set makes
+    # those orders vary between interpreter runs. A view over a mapping is exempt:
+    # it is a set by protocol but iterates in the mapping's own insertion order.
+    if isinstance(values, Set) and not isinstance(values, MappingView):
+        raise InvalidModuleError(
+            f"Module {field_name} must be an ordered iterable of objects, and "
+            f"{type(values).__name__} does not preserve declaration order"
+        )
 
     try:
         return tuple(values)

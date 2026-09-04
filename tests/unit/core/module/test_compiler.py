@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 import pytest
 
 from bustan import Module
@@ -118,3 +120,56 @@ def test_validate_module_compiled_rejects_duplicates_and_invalid_providers() -> 
     )
     with pytest.raises(InvalidProviderError, match="Invalid provider"):
         validate_module_compiled(compiled)
+
+
+def test_validate_module_compiled_separates_duplicate_tokens_from_aliasing_ones() -> None:
+    # A string enum member and the bare string it equals hash alike, so the container
+    # would key both onto one binding. Reporting that as a duplicate hides the cause,
+    # which is that the two declarations are not actually the same token.
+    class Tokens(StrEnum):
+        DB = "db"
+
+    aliased = CompiledModuleDef(
+        key=_OwnerModule,
+        module=_OwnerModule,
+        metadata=ModuleMetadata(
+            providers=(
+                {"provide": Tokens.DB, "use_value": "from-enum"},
+                {"provide": "db", "use_value": "from-string"},
+            )
+        ),
+    )
+    with pytest.raises(InvalidProviderError, match="are equal but are not the same token"):
+        validate_module_compiled(aliased)
+
+    repeated = CompiledModuleDef(
+        key=_OwnerModule,
+        module=_OwnerModule,
+        metadata=ModuleMetadata(
+            providers=(
+                {"provide": "db", "use_value": 1},
+                {"provide": "db", "use_value": 2},
+            )
+        ),
+    )
+    with pytest.raises(InvalidModuleError, match="duplicate entries in providers"):
+        validate_module_compiled(repeated)
+
+
+def test_validate_module_compiled_names_the_module_and_the_key_it_refused() -> None:
+    compiled = CompiledModuleDef(
+        key=_OwnerModule,
+        module=_OwnerModule,
+        metadata=ModuleMetadata(providers=({"provide": "http", "use_factory": 42},)),
+    )
+
+    with pytest.raises(InvalidProviderError) as refusal:
+        validate_module_compiled(compiled)
+
+    message = str(refusal.value)
+    assert "_OwnerModule" in message
+    assert "use_factory" in message
+
+
+class _OwnerModule:
+    pass

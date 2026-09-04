@@ -8,7 +8,7 @@ from ..errors import (
     InvalidModuleError,
     InvalidProviderError,
 )
-from ..ioc.registry import Binding, normalize_provider
+from ..ioc.registry import Binding, normalize_provider, token_identity
 from ..utils import _display_name, _qualname
 from .dynamic import DynamicModule, ModuleInstanceKey, ModuleKey
 from .metadata import ModuleMetadata, get_module_metadata
@@ -75,24 +75,38 @@ def validate_module_compiled(
     _validate_unique_entries(owner, "exports", metadata.exports)
 
     bindings: list[Binding] = []
-    seen_tokens: set[object] = set()
+    # Keyed the way the container will key them, so a token that collides here is a token
+    # that would silently share one binding there.
+    seen_tokens: dict[object, object] = {}
 
     for provider_entry in metadata.providers:
-        try:
-            binding = normalize_provider(provider_entry, owner)
-        except TypeError as exc:
-            raise InvalidProviderError(
-                f"Invalid provider in {_display_name(owner)}: {exc}"
-            ) from exc
-
-        if binding.token in seen_tokens:
-            raise InvalidModuleError(
-                f"{_display_name(owner)} declares duplicate entries in providers: {binding.token!r}"
-            )
-        seen_tokens.add(binding.token)
+        binding = normalize_provider(provider_entry, owner)
+        _reject_colliding_token(owner, seen_tokens, binding.token)
+        seen_tokens[binding.token] = binding.token
         bindings.append(binding)
 
     return tuple(bindings)
+
+
+def _reject_colliding_token(
+    owner: ModuleKey, seen_tokens: dict[object, object], token: object
+) -> None:
+    """Reject a second provider whose token cannot be told apart from an earlier one."""
+
+    if token not in seen_tokens:
+        return
+
+    first_token = seen_tokens[token]
+    if token_identity(first_token) == token_identity(token):
+        raise InvalidModuleError(
+            f"{_display_name(owner)} declares duplicate entries in providers: {token!r}"
+        )
+
+    raise InvalidProviderError(
+        f"Invalid provider in {_display_name(owner)}: {token!r} and {first_token!r} are equal "
+        "but are not the same token, so one would silently take the other's binding; declare "
+        "one of them under a distinct token"
+    )
 
 
 def _validate_unique_entries(
