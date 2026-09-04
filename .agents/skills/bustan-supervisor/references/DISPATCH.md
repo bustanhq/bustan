@@ -49,6 +49,22 @@ transition can all arrive late or not at all. Schedule a check-in far enough out
 cheap and re-arm it silently while nothing has changed. Do not message anyone to say
 nothing happened.
 
+**Do not schedule a check-in for something only a person can unblock.** If every piece of
+work you can do is done and the one remaining step is a human saying go - merge this,
+dispatch that, pick between these two - ask now, in your reply, and let the answer arrive
+when it arrives. A timer cannot produce consent. Scheduling one only guarantees that you
+wake up, find nothing changed, and ask the same question later than you could have.
+
+Check-ins are for work that *time* changes: an agent still writing code, a CI run still
+going, a webhook that may not arrive.
+
+**Keep them short.** A check-in is a note to yourself, not a briefing. Name what is in
+flight, the one or two things that decide whether it is good, and what to do next. Facts
+you can look up when it fires do not belong in it - state that moves is stale by the time
+it arrives, and re-reading a long prompt costs more than re-querying the two things that
+matter. If a check-in has grown into a status report, the status belongs on the epic where
+people can read it, and the check-in should point there.
+
 ## Dependencies inside a wave
 
 Withhold the dependent ticket's issue until its dependency has merged. Do not dispatch
