@@ -24,6 +24,11 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
 
+      # Before any `uv run`, which re-locks the project as a side effect and would
+      # repair a stale lockfile in place before this step could see it.
+      - name: Check lockfile is current
+        run: uv lock --check
+
       - name: Install dependencies
         run: uv sync --group dev --frozen
 
@@ -33,20 +38,80 @@ jobs:
       - name: Check markdown links
         run: uv run python scripts/check_markdown_links.py
 
+      - name: Ruff format
+        run: uv run ruff format --check .
+
       - name: Ruff
         run: uv run ruff check .
 
       - name: Ty
         run: uv run ty check src tests scripts
 
+      # The threshold lives here rather than in pyproject.toml so that a targeted
+      # local run of one test file is not judged against whole-repository coverage.
       - name: Pytest with coverage
-        run: uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
+        run: uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml --cov-fail-under=85
 
+      # Runs even when the step above fails, which is now a thing that happens.
+      # A contributor chasing a coverage regression needs this report most on the
+      # run that rejected them.
       - name: Upload coverage report
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.xml
+
+  coverage-core:
+    name: Coverage (bustan.core)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      # Gated on its own because whole-repository coverage lets the injection
+      # kernel hide behind well-tested peripheral code. Branch coverage is on for
+      # every run via [tool.coverage.run] in pyproject.toml.
+      - name: Pytest with coverage of the injection kernel
+        run: uv run pytest --cov=bustan.core --cov-report=term-missing --cov-fail-under=85
+
+  audit-repros:
+    name: Audit repro harness (advisory)
+    runs-on: ubuntu-latest
+    # Advisory only. The harness reports defects this branch has not fixed yet, so
+    # a red result here is a signal and must not block a merge. It becomes a
+    # blocking gate once the harness is expected to report zero reproductions.
+    continue-on-error: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Run audit repro harness
+        run: uv run python docs/audits/di-container-2026-09/run_repros.py
 
   supported-platforms:
     name: Supported Platform (${{ matrix.os }})

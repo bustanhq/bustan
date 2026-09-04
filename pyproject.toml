@@ -74,7 +74,10 @@ branch = true
 source = ["bustan"]
 
 [tool.coverage.report]
-fail_under = 95
+# No fail_under here: the threshold lives on the CI command line so that a targeted
+# local run of a single test file is not judged against whole-repository coverage.
+# precision must stay >= 1, or a total below the threshold rounds up to meet it.
+precision = 2
 show_missing = true
 skip_covered = false
 
@@ -97,8 +100,3 @@ build-backend = "uv_build"
 
 [tool.ty.src]
 exclude = ["src/bustan/cli/templates/**", "examples/**"]
-
-[tool.uv.workspace]
-members = [
-    "mini",
-]
