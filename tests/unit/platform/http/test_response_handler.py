@@ -104,28 +104,25 @@ def test_response_handler_covers_passthrough_and_error_branches() -> None:
     stream = HttpStreamResponse(body=iter((b"a", b"b")))
     file_response = HttpFileResponse(path="payload.txt")
 
-    assert (
-        ResponseHandler().write(
-            result=stream,
-            response_plan=ResponsePlan(
-                declared_type=Iterator[bytes],
-                strategy=ResponseStrategy.STREAM,
-                declared_responses=(DeclaredResponse(status=200),),
-            ),
-        )
-        is stream
+    written_stream = ResponseHandler().write(
+        result=stream,
+        response_plan=ResponsePlan(
+            declared_type=Iterator[bytes],
+            strategy=ResponseStrategy.STREAM,
+            declared_responses=(DeclaredResponse(status=200),),
+        ),
     )
-    assert (
-        ResponseHandler().write(
-            result=file_response,
-            response_plan=ResponsePlan(
-                declared_type=Path,
-                strategy=ResponseStrategy.FILE,
-                declared_responses=(DeclaredResponse(status=200),),
-            ),
-        )
-        is file_response
+    assert written_stream is stream
+
+    written_file = ResponseHandler().write(
+        result=file_response,
+        response_plan=ResponsePlan(
+            declared_type=Path,
+            strategy=ResponseStrategy.FILE,
+            declared_responses=(DeclaredResponse(status=200),),
+        ),
     )
+    assert written_file is file_response
 
     with pytest.raises(TypeError, match="Unsupported raw response type"):
         ResponseHandler().write(
