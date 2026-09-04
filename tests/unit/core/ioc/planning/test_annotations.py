@@ -33,7 +33,8 @@ if TYPE_CHECKING:
     class ModuleBuilder(Protocol):
         """Writes a throwaway package and returns its imported modules by name."""
 
-        def __call__(self, **sources: str) -> dict[str, ModuleType]: ...
+        def __call__(self, **sources: str) -> dict[str, ModuleType]:
+            """Write each keyword's source as a module of one package, and import it."""
 
 
 def only(dependencies: tuple[ConstructorDependency, ...]) -> ConstructorDependency:
@@ -600,7 +601,7 @@ def test_the_namespace_reports_the_names_it_can_resolve() -> None:
     assert len(namespace) == len(set(namespace))
 
     with pytest.raises(KeyError):
-        namespace["Missing"]
+        _ = namespace["Missing"]
 
 
 def test_a_quoted_annotation_is_resolved_through_its_extra_layer_of_quoting(
@@ -710,3 +711,26 @@ def test_a_constructor_without_an_instance_parameter_keeps_every_parameter(
 
     assert dependency.name == "dep"
     assert not dependency.positional
+
+
+def test_a_name_nothing_defines_is_reported_as_the_undefined_name_it_is(
+    build_modules: ModuleBuilder,
+) -> None:
+    modules = build_modules(
+        unknown="""
+            from __future__ import annotations
+
+
+            class Consumer:
+                def __init__(self, dep: Nowhere) -> None:
+                    self.dep = dep
+        """
+    )
+
+    with pytest.raises(ProviderResolutionError) as error:
+        plan_constructor_dependencies(modules["unknown"].Consumer, [])
+
+    message = str(error.value)
+    assert "'dep'" in message
+    assert "'Nowhere' is not defined" in message
+    assert "ambiguous" not in message

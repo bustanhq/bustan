@@ -75,8 +75,12 @@ class _ConstructorNamespace(Mapping[str, object]):
     The module that defines the constructor is consulted first, so an inherited
     ``__init__`` is read in the namespace it was written in rather than the
     subclass's. Only a name that module does not define falls through to the visible
-    tokens, and a name that two visible tokens both claim is reported as ambiguous
-    rather than guessed at.
+    tokens, and a name that two visible tokens both claim resolves to neither.
+
+    A lookup that fails must raise ``KeyError`` and nothing else, or the interpreter
+    stops falling through to the builtins while evaluating an annotation. An ambiguous
+    name is therefore recorded on the way past and explained by ``ambiguity`` once
+    evaluation has failed, rather than raised from here.
 
     The defining module's globals are read lazily, because a constructor that has no
     annotations to evaluate - one implemented in C, for instance - has no globals to
@@ -89,6 +93,7 @@ class _ConstructorNamespace(Mapping[str, object]):
         self._constructor = constructor
         self._lexical_scope: dict[str, object] | None = None
         self._tokens_by_name = _index_tokens_by_name(visible_tokens)
+        self._ambiguous_names: dict[str, str] = {}
 
     def __getitem__(self, name: str) -> object:
         lexical = self._lexical()
@@ -96,20 +101,36 @@ class _ConstructorNamespace(Mapping[str, object]):
             return lexical[name]
 
         candidates = self._tokens_by_name.get(name, [])
-        if not candidates:
-            raise KeyError(name)
+        if len(candidates) == 1:
+            return candidates[0]
         if len(candidates) > 1:
-            named = ", ".join(sorted(_qualname(candidate) for candidate in candidates))
-            raise ProviderResolutionError(
-                f"the name {name!r} is ambiguous between {named}, and the module declaring "
-                "the constructor does not define it"
+            self._ambiguous_names[name] = ", ".join(
+                sorted(_qualname(candidate) for candidate in candidates)
             )
-        return candidates[0]
+        raise KeyError(name)
+
+    def ambiguity(self, error: Exception) -> str | None:
+        """Explain a failed lookup that two visible tokens both claimed, if it was one."""
+
+        name = getattr(error, "name", None)
+        if not isinstance(name, str):
+            return None
+        claimants = self._ambiguous_names.get(name)
+        if claimants is None:
+            return None
+        return (
+            f"the name {name!r} is ambiguous between {claimants}, and the module declaring "
+            "the constructor does not define it"
+        )
 
     def __iter__(self) -> Iterator[str]:
         lexical = self._lexical()
         yield from lexical
-        yield from (name for name in self._tokens_by_name if name not in lexical)
+        yield from (
+            name
+            for name, candidates in self._tokens_by_name.items()
+            if len(candidates) == 1 and name not in lexical
+        )
 
     def __len__(self) -> int:
         return sum(1 for _ in self)
@@ -269,7 +290,7 @@ def _dereference(
         except Exception as exc:
             raise ProviderResolutionError(
                 f"Could not evaluate the annotation of {_qualname(target)} constructor "
-                f"parameter {parameter_name!r}: {exc}"
+                f"parameter {parameter_name!r}: {namespace.ambiguity(exc) or exc}"
             ) from exc
 
     raise ProviderResolutionError(
