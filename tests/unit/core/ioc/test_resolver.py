@@ -40,10 +40,7 @@ def test_resolver_special_tokens_cover_runtime_success_and_error_paths(
     resolver, _registry = _resolver()
     request = build_request(path="/runtime")
     application = build_app()
-    request_with_app = build_request(path="/runtime", app=application)
-    response = Response("ok")
 
-    response_token = resolver.scope_manager.push_response(response)
     application_token = resolver.scope_manager.push_application(application)
     try:
         assert (
@@ -60,18 +57,6 @@ def test_resolver_special_tokens_cover_runtime_success_and_error_paths(
         )
         assert (
             resolver._resolve_special_token(
-                ParsedDependency(annotation=object, token=RESPONSE, optional=False),
-                class_cls=Service,
-                parameter_name="response",
-                active_request=request,
-                owner_is_controller=False,
-                is_request_scoped=False,
-                is_durable_scoped=False,
-            )
-            is response
-        )
-        assert (
-            resolver._resolve_special_token(
                 ParsedDependency(annotation=object, token=APPLICATION, optional=False),
                 class_cls=Service,
                 parameter_name="application",
@@ -84,20 +69,6 @@ def test_resolver_special_tokens_cover_runtime_success_and_error_paths(
         )
     finally:
         resolver.scope_manager.pop_application(application_token)
-        resolver.scope_manager.pop_response(response_token)
-
-    assert (
-        resolver._resolve_special_token(
-            ParsedDependency(annotation=object, token=APPLICATION, optional=False),
-            class_cls=Service,
-            parameter_name="application",
-            active_request=request_with_app,
-            owner_is_controller=False,
-            is_request_scoped=False,
-            is_durable_scoped=False,
-        )
-        is application
-    )
 
     with pytest.raises(ProviderResolutionError, match="requested REQUEST"):
         resolver._resolve_special_token(
@@ -181,6 +152,52 @@ def test_resolver_special_tokens_cover_runtime_success_and_error_paths(
         )
     finally:
         resolver.construction_stack.reset(construction_token)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="request-lifetime framework objects are handed to owners that outlive the request",
+)
+def test_owner_outliving_the_request_is_refused_request_lifetime_objects(
+    build_request: RequestFactory,
+    build_app: AppFactory,
+) -> None:
+    # An owner that is neither a controller nor request- nor durable-scoped is built
+    # once and kept for the process, so whatever it takes from the request in flight
+    # is served to every caller after it. Such an owner is therefore refused the
+    # objects that belong to one request, exactly as REQUEST is already refused: the
+    # application read back off the active request, and the live response.
+    resolver, _registry = _resolver()
+    request = build_request(path="/runtime")
+    application = build_app()
+    request_with_app = build_request(path="/runtime", app=application)
+    response = Response("ok")
+
+    with pytest.raises(ProviderResolutionError, match="APPLICATION"):
+        resolver._resolve_special_token(
+            ParsedDependency(annotation=object, token=APPLICATION, optional=False),
+            class_cls=Service,
+            parameter_name="application",
+            active_request=request_with_app,
+            owner_is_controller=False,
+            is_request_scoped=False,
+            is_durable_scoped=False,
+        )
+
+    response_token = resolver.scope_manager.push_response(response)
+    try:
+        with pytest.raises(ProviderResolutionError, match="RESPONSE"):
+            resolver._resolve_special_token(
+                ParsedDependency(annotation=object, token=RESPONSE, optional=False),
+                class_cls=Service,
+                parameter_name="response",
+                active_request=request,
+                owner_is_controller=False,
+                is_request_scoped=False,
+                is_durable_scoped=False,
+            )
+    finally:
+        resolver.scope_manager.pop_response(response_token)
 
 
 def test_resolver_cache_helpers_cover_request_durable_singleton_and_transient_paths(
