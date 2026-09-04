@@ -22,6 +22,30 @@ reports the granted file as a violation and the reviewer has no reason to doubt 
 also invisible to an agent that read the issue before the comment existed. Edit the body,
 then say in the comment that you did.
 
+## 1b. When a ticket edits the acceptance gate
+
+Normally an edit to the probes that grade a ticket is the clearest possible `REQUEST_CHANGES`:
+a ticket that adjusts the thing measuring it has stopped being measured.
+
+**But a fix can make a probe's own setup illegal.** A probe that builds a graph the framework
+now refuses cannot observe its own fix - left alone it raises before reaching its verdict and
+reports `ERROR` forever, which fails the shared verification block for every ticket after it.
+That edit is necessary, and forbidding it outright pushes an honest agent into either shipping
+a red gate or arguing the point in a pull request.
+
+Tell them the difference in the ticket: adapt the plumbing so the probe can still reach its
+verdict, never the condition it grades. Then check it rather than believing it.
+
+**The check that settles it: run the edited probe against the branch the defect still lives
+on.** A probe edited to pass will pass there too; a probe edited to survive a legal change
+still reports the defect. That one run distinguishes an adaptation from a laundering, and it
+takes a minute.
+
+Two supporting signals, neither sufficient alone: a probe whose finding **still reproduces**
+after being edited is strong evidence of good faith, since gaming would have flipped it; and a
+probe whose edit changes the *shape* of what it constructs, rather than only its plumbing,
+deserves more scrutiny than one that moves a line into a `try`.
+
 ## 2. Continuous integration
 
 Red means not reviewed. Say so and stop; do not spend a review round on code whose own
