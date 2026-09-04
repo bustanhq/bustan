@@ -12,7 +12,7 @@ from .planning.plan import ProvidedToken
 from .registry import Registry, TokenKey, TokenMap, token_identity
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, MutableMapping
+    from collections.abc import Iterator, MutableMapping
 
     from .planning.plan import ContainerPlan
     from .registry import Binding
@@ -304,7 +304,9 @@ def _needed_tokens(
             if isinstance(argument.source, ProvidedToken)
         )
     if binding.resolver_kind == "factory":
-        _factory, inject = cast("tuple[Callable[..., object], tuple[object, ...]]", binding.target)
+        # Only the inject list is read here; nothing calls the factory, so the callable
+        # half of the target is left as the object it is.
+        _factory, inject = cast("tuple[object, tuple[object, ...]]", binding.target)
         return inject
     if binding.resolver_kind == "existing":
         return (binding.target,)
