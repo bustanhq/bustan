@@ -5,7 +5,7 @@ from typing import Any, cast
 import pytest
 from starlette.testclient import TestClient
 
-from bustan import Injectable, Module, create_app
+from bustan import Injectable, InjectionToken, Module, create_app
 from bustan.errors import LifecycleError
 
 
@@ -126,3 +126,75 @@ def test_one_failing_shutdown_hook_does_not_abort_remaining_teardown() -> None:
         pass
 
     assert events == ["healthy:shutdown", "healthy:destroy"]
+
+
+def test_a_failed_startup_tears_down_what_it_had_already_built() -> None:
+    events: list[str] = []
+
+    @Injectable
+    class Pool:
+        def on_module_init(self) -> None:
+            events.append("pool:open")
+
+        def on_module_destroy(self) -> None:
+            events.append("pool:close")
+
+    @Module(providers=[Pool], exports=[Pool])
+    class PoolModule:
+        pass
+
+    @Module(imports=[PoolModule])
+    class AppModule:
+        def on_application_bootstrap(self) -> None:
+            raise RuntimeError("boom")
+
+    with (
+        pytest.raises(LifecycleError, match="AppModule.on_application_bootstrap failed: boom"),
+        TestClient(cast(Any, create_app(AppModule))),
+    ):
+        pass
+
+    assert events == ["pool:open", "pool:close"]
+
+
+def test_a_second_client_block_starts_the_application_again() -> None:
+    events: list[str] = []
+
+    @Injectable
+    class Pool:
+        def on_application_bootstrap(self) -> None:
+            events.append("open")
+
+        def on_module_destroy(self) -> None:
+            events.append("close")
+
+    @Module(providers=[Pool], exports=[Pool])
+    class AppModule:
+        pass
+
+    app = create_app(AppModule)
+
+    with TestClient(cast(Any, app)):
+        pass
+    with TestClient(cast(Any, app)):
+        pass
+
+    assert events == ["open", "close", "open", "close"]
+
+
+def test_a_value_provider_takes_no_part_in_the_lifecycle() -> None:
+    class UnboundHooks:
+        def on_module_init(self) -> None:
+            raise AssertionError("a hook was called on a class handed over as a value")
+
+        def on_module_destroy(self) -> None:
+            raise AssertionError("a hook was called on a class handed over as a value")
+
+    token = InjectionToken("UNBOUND")
+
+    @Module(providers=[{"provide": token, "use_value": UnboundHooks}])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        assert client is not None

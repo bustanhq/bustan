@@ -16,10 +16,11 @@ def build_lifespan(lifecycle_manager: LifecycleManager) -> StatelessLifespan[Sta
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
-        module_instances = await lifecycle_manager.startup()
-        app.state.bustan_module_instances = module_instances
-
+        # Startup is inside the guard: a startup that fails part-way has resources
+        # to release, and one that fails outside a ``try`` releases none of them.
         try:
+            module_instances = await lifecycle_manager.startup()
+            app.state.bustan_module_instances = module_instances
             yield
         finally:
             await lifecycle_manager.shutdown()
