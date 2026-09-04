@@ -113,6 +113,24 @@ unrecorded complaint. Name the pull request that introduced it and the acceptanc
 criterion it undermines. Attach it to the wave epic if it blocks the release, or to a
 later wave if it does not.
 
+## Cutting a release
+
+Read the release automation before you trigger it, not after. The questions that decide
+whether a release is even possible: which branches does it run on, what gates the publish
+step, and does the branch you are releasing from satisfy both. A maintenance branch that
+inherited its workflow from the development line usually satisfies neither.
+
+Then verify the released artifact rather than the branch that produced it. Install the
+published package into a clean environment at the supported interpreter version and drive
+the defect the release exists to fix. A green branch proves the code is right; only the
+installed package proves users get it.
+
+Two traps, both seen: a resolver silently filtering the new version out because the local
+interpreter is too old reads exactly like a failed upload, and the package index's JSON
+view lags its own simple index by minutes, so the first check after publishing can say the
+release does not exist when it does. Check the simple index and the upload log before
+concluding anything went wrong.
+
 ## Two habits that matter more than they look
 
 **Write the reason down where the work lives.** A decision recorded in your own session

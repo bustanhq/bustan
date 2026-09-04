@@ -69,6 +69,10 @@ inside one. A pull request whose description reads ``Closes #12`` in code format
 merge and leave its issue open, which silently breaks the wave epic's progress bar and the
 milestone burndown you are using to decide when the wave is done.
 
+A closing keyword also only fires for a pull request merged into the repository's
+**default** branch. Work on a maintenance or release branch never closes its issue
+automatically however the description is written, so those always need closing by hand.
+
 Check the issue's state after every merge, and close it by hand when the link did not
 fire. Better, catch it at review time: the contract says the description must contain a
 working `Closes #N`, and a formatted one does not qualify.
