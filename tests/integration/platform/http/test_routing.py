@@ -126,7 +126,9 @@ def test_create_app_reuses_a_singleton_controller_instance_per_request() -> None
 
 
 def test_create_app_exposes_response_token_during_controller_resolution() -> None:
-    @Controller("/responses")
+    # The response belongs to one request, so a controller that holds it has to be
+    # built for one request too.
+    @Controller("/responses", scope=Scope.REQUEST)
     class ResponseController:
         def __init__(self, response: Response) -> None:
             self._response = response
@@ -160,7 +162,7 @@ def test_create_app_reports_content_length_matching_the_response_body() -> None:
         def read_passthrough(self) -> PlainTextResponse:
             return PlainTextResponse("plain body", status_code=200)
 
-    @Controller("/mutations")
+    @Controller("/mutations", scope=Scope.REQUEST)
     class MutationController:
         def __init__(self, response: Response) -> None:
             self._response = response

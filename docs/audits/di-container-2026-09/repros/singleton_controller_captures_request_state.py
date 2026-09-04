@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Injectable, Module, create_app
+from bustan.errors import ProviderResolutionError
 
 
 @Injectable(scope="request")
@@ -43,7 +44,15 @@ class AppModule:
 
 
 def main() -> None:
-    app = create_app(AppModule)
+    try:
+        app = create_app(AppModule)
+    except ProviderResolutionError as exc:
+        for label in ("RI-01a", "RI-01b"):
+            print(
+                f"RESULT: {label} FIXED - the composition is refused while the application is "
+                f"built: {str(exc).splitlines()[0][:80]}"
+            )
+        return
     with TestClient(app) as client:
         for path, label in (("/me/", "RI-01a"), ("/raw/", "RI-01b")):
             first = client.get(path, headers={"x-user-id": "alice"}).json()["user"]

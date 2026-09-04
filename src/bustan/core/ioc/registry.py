@@ -235,9 +235,22 @@ def _refuse_unusable_durable_key_hook(
         return
 
     hook = _declared_durable_key_hook(target)
+    # A durable lifetime is a cache partitioned by a key the class derives, so a class
+    # that declares no hook at all has no partition and can never resolve. There is no
+    # input that makes it work, so it is refused while the graph is built rather than
+    # on whichever request first happens to touch it.
+    if hook is None:
+        raise _refused(
+            declaring_module,
+            f"{_display_name(target)} asks for a durable lifetime but declares no "
+            f"'{DURABLE_CONTEXT_KEY_HOOK}'; a durable instance is cached per context key, so "
+            "the class must carry a classmethod or staticmethod that derives one from the "
+            "request",
+        )
+
     # A hook written as a plain method needs the instance the key is meant to select,
     # so the definition can never resolve; refuse it here rather than once per request.
-    if hook is not None and not isinstance(hook, (classmethod, staticmethod)):
+    if not isinstance(hook, (classmethod, staticmethod)):
         raise _refused(
             declaring_module,
             f"{_display_name(target)} declares '{DURABLE_CONTEXT_KEY_HOOK}' as an instance "

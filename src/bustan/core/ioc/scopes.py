@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Hashable
 from contextvars import ContextVar, Token
-from typing import Protocol, cast, runtime_checkable
+from typing import Final, Protocol, cast, runtime_checkable
 
 import anyio
 from starlette.requests import Request
@@ -14,6 +14,21 @@ from ..module.dynamic import ModuleKey
 
 REQUEST_SCOPE_CACHE_ATTR = "bustan_request_provider_cache"
 REQUEST_SCOPE_CONTROLLER_CACHE_ATTR = "bustan_request_controller_cache"
+
+
+class _CacheMiss:
+    """The type of the one object standing for 'nothing is cached here'."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "CACHE_MISS"
+
+
+# What a cache getter returns when it holds no instance. ``None`` cannot serve as
+# that answer: a provider may legitimately produce ``None``, and a probe that reads
+# the absence of a value out of it rebuilds that provider on every resolution.
+CACHE_MISS: Final = _CacheMiss()
 
 
 @runtime_checkable
@@ -29,13 +44,12 @@ class ScopeManager:
 
     def __init__(self) -> None:
         self.singletons: dict[tuple[ModuleKey, object], object] = {}
-        self.singleton_locks: dict[tuple[ModuleKey, object], threading.Lock] = {}
         self.controller_singletons: dict[tuple[ModuleKey, type[object]], object] = {}
         self.controller_singleton_locks: dict[tuple[ModuleKey, type[object]], threading.Lock] = {}
         self.durable_instances: dict[tuple[ModuleKey, object, Hashable], object] = {}
-        self.durable_locks: dict[tuple[ModuleKey, object, Hashable], threading.Lock] = {}
+        self.construction_locks: dict[object, threading.Lock] = {}
         self.async_construction_locks: dict[object, anyio.Lock] = {}
-        self._singleton_locks_guard = threading.Lock()
+        self._lock_table_guard = threading.Lock()
         self.active_request: ContextVar[Request | None] = ContextVar(
             "bustan_active_request", default=None
         )
@@ -46,18 +60,13 @@ class ScopeManager:
             "bustan_active_application", default=None
         )
 
-    def get_singleton(self, key: tuple[ModuleKey, object]) -> object | None:
-        return self.singletons.get(key)
+    def get_singleton(self, key: tuple[ModuleKey, object]) -> object:
+        """Return the cached process-wide instance, or ``CACHE_MISS`` when there is none."""
+
+        return self.singletons.get(key, CACHE_MISS)
 
     def set_singleton(self, key: tuple[ModuleKey, object], instance: object) -> None:
         self.singletons[key] = instance
-
-    def get_singleton_lock(self, key: tuple[ModuleKey, object]) -> threading.Lock:
-        try:
-            return self.singleton_locks[key]
-        except KeyError:
-            with self._singleton_locks_guard:
-                return self.singleton_locks.setdefault(key, threading.Lock())
 
     def get_controller_singleton(self, key: tuple[ModuleKey, type[object]]) -> object | None:
         return self.controller_singletons.get(key)
@@ -71,27 +80,37 @@ class ScopeManager:
         try:
             return self.controller_singleton_locks[key]
         except KeyError:
-            with self._singleton_locks_guard:
+            with self._lock_table_guard:
                 return self.controller_singleton_locks.setdefault(key, threading.Lock())
 
-    def get_durable(self, key: tuple[ModuleKey, object, Hashable]) -> object | None:
-        return self.durable_instances.get(key)
+    def get_durable(self, key: tuple[ModuleKey, object, Hashable]) -> object:
+        """Return the cached instance for a durable partition, or ``CACHE_MISS``."""
+
+        return self.durable_instances.get(key, CACHE_MISS)
 
     def set_durable(self, key: tuple[ModuleKey, object, Hashable], instance: object) -> None:
         self.durable_instances[key] = instance
 
-    def get_durable_lock(self, key: tuple[ModuleKey, object, Hashable]) -> threading.Lock:
+    def get_construction_lock(self, key: object) -> threading.Lock:
+        """Return the lock serializing synchronous construction of one cached instance."""
+
         try:
-            return self.durable_locks[key]
+            return self.construction_locks[key]
         except KeyError:
-            with self._singleton_locks_guard:
-                return self.durable_locks.setdefault(key, threading.Lock())
+            with self._lock_table_guard:
+                return self.construction_locks.setdefault(key, threading.Lock())
 
     def get_async_construction_lock(self, key: object) -> anyio.Lock:
+        """Return the lock serializing awaited construction of one cached instance.
+
+        A threading lock held across an await would block the whole event loop, so the
+        two drivers serialize on locks of different kinds under the same cache key.
+        """
+
         try:
             return self.async_construction_locks[key]
         except KeyError:
-            with self._singleton_locks_guard:
+            with self._lock_table_guard:
                 return self.async_construction_locks.setdefault(key, anyio.Lock())
 
     def push_request(self, request: Request | None) -> Token[Request | None] | None:

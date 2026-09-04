@@ -413,6 +413,13 @@ Defined in `bustan.core.module.dynamic`.
 
 Metadata overlay that compiles into a unique module instance.
 
+Two registrations that declare the same thing *are* the same registration: calling
+``for_root(options)`` twice with the same options describes one module, not two,
+and building both would give the application two copies of every provider inside
+it and two sets of their singletons. Constructing one therefore returns the
+registration that already describes those values whenever there is one, so identity
+follows the declaration rather than the order the objects were created in.
+
 #### `DocumentBuilder`
 
 ```python

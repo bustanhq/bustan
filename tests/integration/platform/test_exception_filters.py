@@ -79,10 +79,6 @@ def test_create_app_returns_problem_details_for_unhandled_exceptions() -> None:
     }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a default-scope controller may still compose a request-scoped provider",
-)
 def test_create_app_refuses_a_default_scope_controller_holding_a_request_scoped_provider() -> None:
     # A controller declared without a scope is constructed once and cached for the
     # process, so a request-scoped provider in its constructor pins the first

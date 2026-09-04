@@ -8,8 +8,9 @@ import pytest
 from starlette.requests import Request
 
 from bustan import Injectable, Module, Scope
-from bustan.core.errors import ProviderResolutionError
+from bustan.core.errors import InvalidProviderError, ProviderResolutionError
 from bustan.core.ioc.container import build_container
+from bustan.core.ioc.registry import Binding
 from bustan.core.module.graph import build_module_graph
 
 if TYPE_CHECKING:
@@ -85,9 +86,11 @@ def test_durable_scope_shares_instances_across_distinct_requests_with_the_same_k
     assert first is second
 
 
-def test_durable_scope_requires_an_explicit_context_key_classmethod(
-    build_request: RequestFactory,
-) -> None:
+def test_durable_scope_requires_an_explicit_context_key_classmethod() -> None:
+    # A durable instance is cached per context key, so a class that declares no hook
+    # to derive one can never resolve for any request at all. There is no input that
+    # makes it work, so the graph is refused while it is built rather than on
+    # whichever request first happens to reach the provider.
     @Injectable(scope=Scope.DURABLE)
     class KeylessDurableService:
         pass
@@ -96,7 +99,36 @@ def test_durable_scope_requires_an_explicit_context_key_classmethod(
     class AppModule:
         pass
 
+    with pytest.raises(InvalidProviderError, match="get_durable_context_key"):
+        build_module_graph(AppModule)
+
+
+def test_a_durable_binding_that_escaped_the_declaration_check_still_refuses_to_resolve(
+    build_request: RequestFactory,
+) -> None:
+    # The declaration check above is the only way a durable binding is created, so
+    # this guards the invariant it establishes rather than a reachable input: a
+    # durable cache keyed on anything but a declared key would hand one request's
+    # instance to a later, unrelated one.
+    class KeylessDurableService:
+        pass
+
+    @Module()
+    class AppModule:
+        pass
+
     container = build_container(build_module_graph(AppModule))
+    container.registry.register_binding(
+        (AppModule, KeylessDurableService),
+        Binding(
+            token=KeylessDurableService,
+            declaring_module=AppModule,
+            resolver_kind="class",
+            target=KeylessDurableService,
+            scope=Scope.DURABLE,
+        ),
+    )
+    container.registry.module_visibility[AppModule][KeylessDurableService] = AppModule
     request = build_request(path="/items", headers=[(b"x-tenant-id", b"tenant-a")])
 
     with pytest.raises(ProviderResolutionError, match="get_durable_context_key"):

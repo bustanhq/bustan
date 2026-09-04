@@ -16,8 +16,8 @@ from bustan.errors import ProviderResolutionError  # noqa: E402
 
 
 def main() -> None:
-    context = create_app_context(FeatureModule)
     try:
+        context = create_app_context(FeatureModule)
         service = context.get(FeatureService)
     except ProviderResolutionError as exc:
         print(
