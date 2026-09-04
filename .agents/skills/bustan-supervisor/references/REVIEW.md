@@ -16,6 +16,12 @@ rather than infer a preference.
 The script prints the patterns it parsed. Read that line. If it parsed the wrong thing,
 pass the patterns explicitly with repeated `--owns` flags instead of trusting the parse.
 
+**An amendment to `Owns` belongs in the issue body, never only in a comment.** Granting a
+file in a review comment is invisible to the gate, which reads the body, so the next run
+reports the granted file as a violation and the reviewer has no reason to doubt it. It is
+also invisible to an agent that read the issue before the comment existed. Edit the body,
+then say in the comment that you did.
+
 ## 2. Continuous integration
 
 Red means not reviewed. Say so and stop; do not spend a review round on code whose own
