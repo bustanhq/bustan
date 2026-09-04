@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
 from starlette.requests import Request
 
 from bustan import Controller, Get, Injectable, Module, Scope
+from bustan.core.errors import InvalidControllerError, ProviderResolutionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
 from bustan.platform.http.controller_factory import ControllerFactory
@@ -89,6 +91,48 @@ def test_controller_factory_creates_transient_controllers_each_time() -> None:
     second = factory.instantiate(UsersController, module=AppModule, request=request)
 
     assert first is not second
+
+
+def test_controller_factory_refuses_durable_controllers() -> None:
+    @Controller("/tenant", scope=Scope.DURABLE)
+    class TenantController:
+        @Get("/")
+        def read(self) -> list[str]:
+            return ["Ada"]
+
+    @Module(controllers=[TenantController])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    with pytest.raises(InvalidControllerError, match="durable scope"):
+        ControllerFactory(container)
+
+
+def test_controller_factory_refuses_a_singleton_controller_holding_request_state() -> None:
+    @Injectable(scope=Scope.REQUEST)
+    class RequestState:
+        def __init__(self, request: Request) -> None:
+            self.request = request
+
+    @Controller("/state")
+    class StateController:
+        def __init__(self, request_state: RequestState) -> None:
+            self.request_state = request_state
+
+        @Get("/")
+        def read(self) -> list[str]:
+            return ["Ada"]
+
+    @Module(controllers=[StateController], providers=[RequestState])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    with pytest.raises(ProviderResolutionError, match="request-scoped provider"):
+        ControllerFactory(container)
 
 
 def _build_request(path: str) -> Request:

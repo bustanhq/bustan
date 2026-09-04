@@ -6,7 +6,10 @@ from typing import Any, cast
 
 from starlette.requests import Request
 
+import pytest
+
 from bustan import Injectable, Module, Scope
+from bustan.core.errors import ProviderResolutionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
 
@@ -54,6 +57,71 @@ def test_durable_scope_isolated_by_context_key() -> None:
     )
 
     assert first is not second
+
+
+def test_durable_store_evicts_the_least_recently_used_partition() -> None:
+    @Injectable(scope=Scope.DURABLE)
+    class DurableService:
+        @classmethod
+        def get_durable_context_key(cls, request: Request | None) -> str:
+            assert request is not None
+            return request.headers["x-tenant-id"]
+
+    @Module(providers=[DurableService], exports=[DurableService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    container.scope_manager.durable_instance_limit = 4
+
+    for index in range(50):
+        request = _build_request(
+            "/items", headers=[(b"x-tenant-id", f"tenant-{index}".encode("utf-8"))]
+        )
+        container.resolve(DurableService, module=AppModule, request=request)
+
+    assert len(container.scope_manager.durable_instances) == 4
+
+
+def test_durable_locks_are_released_once_construction_finishes() -> None:
+    @Injectable(scope=Scope.DURABLE)
+    class DurableService:
+        @classmethod
+        def get_durable_context_key(cls, request: Request | None) -> str:
+            assert request is not None
+            return request.headers["x-tenant-id"]
+
+    @Module(providers=[DurableService], exports=[DurableService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    for index in range(20):
+        request = _build_request(
+            "/items", headers=[(b"x-tenant-id", f"tenant-{index}".encode("utf-8"))]
+        )
+        container.resolve(DurableService, module=AppModule, request=request)
+
+    assert container.scope_manager.durable_locks == {}
+
+
+def test_durable_context_key_must_be_hashable() -> None:
+    @Injectable(scope=Scope.DURABLE)
+    class DurableService:
+        @classmethod
+        def get_durable_context_key(cls, request: Request | None) -> Any:
+            return ["not", "hashable"]
+
+    @Module(providers=[DurableService], exports=[DurableService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    request = _build_request("/items", headers=[(b"x-tenant-id", b"tenant-a")])
+
+    with pytest.raises(ProviderResolutionError, match="must be hashable"):
+        container.resolve(DurableService, module=AppModule, request=request)
 
 
 def _build_request(path: str, *, headers: list[tuple[bytes, bytes]]) -> Request:

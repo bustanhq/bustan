@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import inspect
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
-from typing import TypeVar, cast, get_type_hints
+from typing import Hashable, TypeVar, cast, get_type_hints
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -18,7 +18,7 @@ from ..utils import _display_name, _qualname
 from ...common.types import ProviderScope
 from .overrides import OverrideManager
 from .registry import Binding, Registry
-from .scopes import ScopeManager
+from .scopes import DurableKey, ScopeManager, dependency_escapes_owner
 
 ResolvedT = TypeVar("ResolvedT")
 FRAMEWORK_OWNED_TYPES = frozenset({Request, Response, Starlette})
@@ -39,6 +39,7 @@ class Resolver:
         self.resolution_stack: ContextVar[tuple[object, ...]] = ContextVar(
             "bustan_resolution_stack", default=()
         )
+        self._graph_scopes_validated = False
 
     def resolve(
         self,
@@ -73,6 +74,10 @@ class Resolver:
             if binding is None:
                 # This shouldn't happen if _get_declaring_module passed
                 raise ProviderResolutionError(f"Binding not found for {token!r}")
+
+            # The durable key is derived from the request by provider code, so it
+            # is computed once per resolution and reused for the write-back.
+            durable_cache_key: DurableKey | None = None
 
             if binding.scope is ProviderScope.REQUEST:
                 active_req = self.scope_manager.active_request.get()
@@ -119,11 +124,8 @@ class Resolver:
                 request_cache = self.scope_manager.get_request_cache(active_req)
                 request_cache[binding_key] = instance
             elif binding.scope is ProviderScope.DURABLE:
-                active_req = self.scope_manager.active_request.get()
-                durable_key = self._get_durable_context_key(binding, active_req)
-                durable_cache_key = (declaring_module, token, durable_key)
-                lock = self.scope_manager.get_durable_lock(durable_cache_key)
-                with lock:
+                assert durable_cache_key is not None
+                with self.scope_manager.durable_construction_lock(durable_cache_key):
                     existing = self.scope_manager.get_durable(durable_cache_key)
                     if existing is None:
                         self.scope_manager.set_durable(durable_cache_key, instance)
@@ -152,7 +154,10 @@ class Resolver:
         elif binding.resolver_kind == "class":
             cls_target = cast(type[object], binding.target)
             return self.instantiate_class(
-                cls_target, module=module_key, request=self.scope_manager.active_request.get()
+                cls_target,
+                module=module_key,
+                request=self.scope_manager.active_request.get(),
+                owner_scope=binding.scope,
             )
         elif binding.resolver_kind == "factory":
             factory, inject_tokens = binding.target  # type: ignore
@@ -168,17 +173,129 @@ class Resolver:
         *,
         module: ModuleKey,
         request: Request | None = None,
+        owner_scope: ProviderScope | None = None,
     ) -> object:
-        """Resolve a fresh controller or class instance for request handling."""
+        """Resolve a fresh controller or class instance for request handling.
+
+        ``owner_scope`` is the lifetime the caller will cache the new instance
+        under, and it is what every dependency is checked against. A caller that
+        caches beyond the current request must pass it. When it is omitted the
+        class's registered scope is used, and a class with no registration is
+        assumed to live for the whole process, so anything shorter-lived is
+        refused rather than silently captured.
+        """
 
         active_request_token = self.scope_manager.push_request(request)
         try:
+            effective_scope = (
+                owner_scope if owner_scope is not None else self._registered_scope(cls)
+            )
             positional_arguments, keyword_arguments = self._resolve_constructor_dependencies(
-                cls, module
+                cls, module, effective_scope
             )
             return cls(*positional_arguments, **keyword_arguments)
         finally:
             self.scope_manager.pop_request(active_request_token)
+
+    def validate_graph_scopes(
+        self, controller_scopes: Mapping[type[object], ProviderScope]
+    ) -> None:
+        """Refuse a graph in which an owner would capture shorter-lived state.
+
+        Every class the graph can build is checked against the lifetime it will
+        be cached under, so a graph that would serve one caller's state to the
+        next is rejected while the application is being assembled rather than by
+        the first request that happens to trip it. The check runs once; the
+        graph does not change after assembly.
+        """
+
+        if self._graph_scopes_validated:
+            return
+        self._graph_scopes_validated = True
+
+        for (module_key, _token), binding in self.registry.bindings.items():
+            if binding.resolver_kind != "class" or not isinstance(binding.target, type):
+                continue
+            self._check_constructor_scopes(binding.target, module_key, binding.scope)
+
+        for controller_cls, module_key in self.registry.controller_modules.items():
+            owner_scope = controller_scopes.get(controller_cls, ProviderScope.SINGLETON)
+            self._check_constructor_scopes(controller_cls, module_key, owner_scope)
+
+    def _registered_scope(self, class_cls: type[object]) -> ProviderScope:
+        """Return the scope a class is registered under, widest when unknown."""
+
+        for binding in self.registry.bindings.values():
+            if binding.resolver_kind == "class" and binding.target is class_cls:
+                return binding.scope
+        return ProviderScope.SINGLETON
+
+    def _check_constructor_scopes(
+        self,
+        class_cls: type[object],
+        module_key: ModuleKey,
+        owner_scope: ProviderScope,
+    ) -> None:
+        """Apply the scope guard to a constructor without building anything."""
+
+        try:
+            inspected = self._inspect_constructor(class_cls, module_key)
+        except ProviderResolutionError:
+            # A constructor that cannot be inspected is not a scope problem, and
+            # resolution reports it with the context of the request that hit it.
+            return
+        if inspected is None:
+            return
+
+        signature, type_hints = inspected
+        for parameter in signature.parameters.values():
+            annotation = type_hints.get(parameter.name)
+            if parameter.name == "self" or annotation is None:
+                continue
+            self._guard_dependency_scope(
+                class_cls, parameter.name, annotation, module_key, owner_scope
+            )
+
+    def _guard_dependency_scope(
+        self,
+        class_cls: type[object],
+        parameter_name: str,
+        annotation: object,
+        module_key: ModuleKey,
+        owner_scope: ProviderScope,
+    ) -> None:
+        """Refuse a dependency that lives for less time than the owner holding it."""
+
+        if annotation is Request:
+            if dependency_escapes_owner(owner_scope, ProviderScope.REQUEST):
+                raise ProviderResolutionError(
+                    f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} requests "
+                    "framework-owned type Request, which is available only to request-scoped "
+                    f"and transient owners. A {owner_scope.value}-scoped owner outlives the "
+                    "request and would serve the first caller's request to every later caller"
+                )
+            return
+
+        if isinstance(annotation, str) or annotation in FRAMEWORK_OWNED_TYPES:
+            return
+
+        dependency_declaring_module = self.registry.module_visibility.get(module_key, {}).get(
+            annotation
+        )
+        if dependency_declaring_module is None:
+            return
+        dependency_binding = self.registry.bindings.get(
+            (dependency_declaring_module, annotation)
+        )
+        if dependency_binding is None:
+            return
+        if dependency_escapes_owner(owner_scope, dependency_binding.scope):
+            raise ProviderResolutionError(
+                f"{_qualname(class_cls)}.__init__ parameter {parameter_name!r} depends on "
+                f"{dependency_binding.scope.value}-scoped provider {_qualname(annotation)}, "
+                f"which cannot be injected into a {owner_scope.value}-scoped owner. The owner "
+                "outlives the dependency and would share one caller's instance with the rest"
+            )
 
     def call_factory(
         self,
@@ -212,27 +329,16 @@ class Resolver:
             )
         return declaring_module
 
-    def _resolve_constructor_dependencies(
+    def _inspect_constructor(
         self,
         class_cls: type[object],
         module_key: ModuleKey,
-    ) -> tuple[tuple[object, ...], dict[str, object]]:
-
-        owner_is_controller = class_cls in self.registry.controller_modules
-        is_request_scoped = False
-        is_durable_scoped = False
-
-        for binding in self.registry.bindings.values():
-            if binding.resolver_kind == "class" and binding.target is class_cls:
-                if binding.scope is ProviderScope.REQUEST:
-                    is_request_scoped = True
-                elif binding.scope is ProviderScope.DURABLE:
-                    is_durable_scoped = True
-                break
+    ) -> tuple[inspect.Signature, dict[str, object]] | None:
+        """Return a constructor's signature and resolved hints, or None if trivial."""
 
         constructor = class_cls.__init__
         if constructor is object.__init__:
-            return (), {}
+            return None
 
         try:
             signature = inspect.signature(constructor)
@@ -256,6 +362,20 @@ class Resolver:
                 f"Could not resolve type hints for {_qualname(class_cls)}.__init__: {exc}"
             ) from exc
 
+        return signature, cast(dict[str, object], type_hints)
+
+    def _resolve_constructor_dependencies(
+        self,
+        class_cls: type[object],
+        module_key: ModuleKey,
+        owner_scope: ProviderScope,
+    ) -> tuple[tuple[object, ...], dict[str, object]]:
+
+        inspected = self._inspect_constructor(class_cls, module_key)
+        if inspected is None:
+            return (), {}
+        signature, type_hints = inspected
+
         positional_arguments: list[object] = []
         keyword_arguments: dict[str, object] = {}
         active_request = self.scope_manager.active_request.get()
@@ -278,56 +398,48 @@ class Resolver:
                     f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} is missing a type annotation"
                 )
 
+            self._guard_dependency_scope(
+                class_cls, parameter.name, annotation, module_key, owner_scope
+            )
+
             if annotation in FRAMEWORK_OWNED_TYPES:
-                if (
-                    annotation is Request
-                    and (is_request_scoped or is_durable_scoped or owner_is_controller)
-                    and active_request is not None
-                ):
-                    if parameter.kind in (
-                        inspect.Parameter.POSITIONAL_ONLY,
-                        inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    ):
-                        positional_arguments.append(active_request)
-                    else:
-                        keyword_arguments[parameter.name] = active_request
+                if annotation is Request and active_request is not None:
+                    self._bind_argument(
+                        parameter, active_request, positional_arguments, keyword_arguments
+                    )
                     continue
+
+                if annotation is Request:
+                    raise ProviderResolutionError(
+                        f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} requests "
+                        "framework-owned type Request, which is only available while a request "
+                        "is being handled"
+                    )
 
                 raise ProviderResolutionError(
                     f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} requests "
                     f"framework-owned type {annotation.__name__ if hasattr(annotation, '__name__') else annotation}, which is not available in provider DI"
                 )
 
-            if not isinstance(annotation, str):
-                dependency_declaring_module = self.registry.module_visibility.get(module_key, {}).get(
-                    annotation
-                )
-                if dependency_declaring_module is not None:
-                    dependency_binding = self.registry.bindings.get(
-                        (dependency_declaring_module, annotation)
-                    )
-                    if dependency_binding is not None:
-                        if (
-                            dependency_binding.scope is ProviderScope.REQUEST
-                            and not is_request_scoped
-                            and not owner_is_controller
-                        ):
-                            raise ProviderResolutionError(
-                                f"{_qualname(class_cls)}.__init__ parameter {parameter.name!r} depends on "
-                                f"request-scoped provider {_qualname(annotation)}, which can only be injected "
-                                "into request-scoped providers or controllers"
-                            )
-
             dependency = self.resolve(annotation, module=module_key, request=active_request)
-            if parameter.kind in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            ):
-                positional_arguments.append(dependency)
-            else:
-                keyword_arguments[parameter.name] = dependency
+            self._bind_argument(parameter, dependency, positional_arguments, keyword_arguments)
 
         return tuple(positional_arguments), keyword_arguments
+
+    @staticmethod
+    def _bind_argument(
+        parameter: inspect.Parameter,
+        value: object,
+        positional_arguments: list[object],
+        keyword_arguments: dict[str, object],
+    ) -> None:
+        if parameter.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            positional_arguments.append(value)
+        else:
+            keyword_arguments[parameter.name] = value
 
     def _build_type_hint_namespace(
         self,
@@ -357,13 +469,19 @@ class Resolver:
         self,
         binding: Binding,
         request: Request | None,
-    ) -> object:
+    ) -> Hashable:
         target = binding.target
         if isinstance(target, type) and hasattr(target, "get_durable_context_key"):
-            return cast(
-                object,
-                getattr(target, "get_durable_context_key")(request),
-            )
+            key = cast(object, getattr(target, "get_durable_context_key")(request))
+            try:
+                hash(key)
+            except TypeError as exc:
+                raise ProviderResolutionError(
+                    f"{_qualname(binding.token)}.get_durable_context_key returned a "
+                    f"{type(key).__name__}, which cannot be used as a cache key. "
+                    "A durable context key must be hashable"
+                ) from exc
+            return key
         if request is not None:
             return id(request)
         return "__default_durable_context__"
