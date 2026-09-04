@@ -32,6 +32,8 @@ PAGE_SIZE = 100
 SECTION_END = re.compile(r"^\s*(\*\*[A-Z]|#{1,6}\s|---\s*$)")
 OWNS_HEADING = re.compile(r"^\s*(\*\*Owns\*\*|#{1,6}\s+Owns\b)", re.IGNORECASE)
 BACKTICKED = re.compile(r"`([^`]+)`")
+# A bare lowercase identifier: a symbol name, never a path.
+IDENTIFIER = re.compile(r"[a-z_][a-z0-9_]*")
 
 
 class GitHubError(RuntimeError):
@@ -105,7 +107,32 @@ def owns_patterns_from_issue(repo: str, issue_number: int) -> list[str]:
             f"found no backticked paths in the Owns section of issue {issue_number}; "
             "pass the patterns explicitly with --owns"
         )
+
+    # An Owns section that points at a list elsewhere ("the 13 files listed below")
+    # parses into fragments that are not paths, and matching against those reports
+    # violations that are not real. Refusing is the only safe answer: a gate that
+    # silently checks the wrong thing is worse than one that declines to run.
+    suspect = [pattern for pattern in patterns if not _looks_like_a_path(pattern)]
+    if suspect:
+        raise GitHubError(
+            f"the Owns section of issue {issue_number} did not parse into file paths. "
+            f"These do not look like paths: {', '.join(suspect)}. The section probably "
+            "refers to a list given elsewhere in the issue, which this cannot follow. "
+            "Pass the paths explicitly with --owns, and fix the issue to carry literal "
+            "paths in its Owns list."
+        )
     return patterns
+
+
+def _looks_like_a_path(pattern: str) -> bool:
+    """Report whether a parsed fragment is plausibly a file path rather than prose.
+
+    The fragments worth rejecting are bare lowercase identifiers - a function or symbol
+    name the Owns section mentioned while describing its files instead of listing them.
+    Everything else is treated as a path, including extension-less repository files like
+    CODEOWNERS and dotfiles like .git-blame-ignore-revs, which no suffix rule would pass.
+    """
+    return not IDENTIFIER.fullmatch(pattern)
 
 
 def is_owned(path: str, patterns: list[str]) -> bool:
