@@ -34,15 +34,11 @@ def test_dynamic_module_merges_metadata() -> None:
     assert len(root_node.bindings) == 2
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="two imports exporting one token resolve first-wins by traversal order",
-)
 def test_dynamic_module_instances_are_distinct_and_their_colliding_exports_are_refused() -> None:
-    # Two instances of one base module are separate identities, so each may bind the
-    # same token to its own value. What the importer cannot be given is both under
-    # one name: nothing in the declaration says which instance wins, so the graph is
-    # refused rather than settled by the order the modules happened to be visited.
+    # Two instances of one base module are separate identities, so each may bind its
+    # own tokens. What the importer cannot be given is one name bound twice: nothing in
+    # the declaration says which instance wins, so the graph is refused rather than
+    # settled by the order the modules happened to be visited.
     @Module()
     class ConfigModule:
         pass
@@ -51,7 +47,7 @@ def test_dynamic_module_instances_are_distinct_and_their_colliding_exports_are_r
         ConfigModule, providers=({"provide": "A", "use_value": 1},), exports=("A",)
     )
     dynamic2 = DynamicModule(
-        ConfigModule, providers=({"provide": "A", "use_value": 2},), exports=("A",)
+        ConfigModule, providers=({"provide": "B", "use_value": 2},), exports=("B",)
     )
 
     @Module(imports=[dynamic1, dynamic2])
@@ -73,8 +69,20 @@ def test_dynamic_module_instances_are_distinct_and_their_colliding_exports_are_r
     assert isinstance(k0, ModuleInstanceKey) and k0.module is ConfigModule
     assert isinstance(k1, ModuleInstanceKey) and k1.module is ConfigModule
 
+    # The same two identities, now colliding on one token, cannot be assembled at all.
+    colliding1 = DynamicModule(
+        ConfigModule, providers=({"provide": "A", "use_value": 1},), exports=("A",)
+    )
+    colliding2 = DynamicModule(
+        ConfigModule, providers=({"provide": "A", "use_value": 2},), exports=("A",)
+    )
+
+    @Module(imports=[colliding1, colliding2])
+    class CollidingAppModule:
+        pass
+
     with pytest.raises(InvalidModuleError, match="'A'"):
-        create_app(AppModule)
+        create_app(CollidingAppModule)
 
 
 def test_dynamic_module_singleton_isolation() -> None:
@@ -129,10 +137,6 @@ def test_dynamic_module_circular_dependency() -> None:
         build_module_graph(dynamic_cycle)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a re-exported token is visible to the importer but has no binding to resolve",
-)
 def test_dynamic_module_nested_expansion_resolves_the_reexported_provider() -> None:
     # A module that re-exports a token it imported is promising the importer an
     # instance, not a name. Visibility that no binding backs is a promise kept only

@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 from starlette.requests import Request
 
-from bustan import Controller, Get, Injectable, Module
-from bustan.core.errors import ProviderResolutionError
+from bustan import Controller, Get, Global, Injectable, Module
+from bustan.core.errors import InvalidModuleError, ProviderResolutionError
 from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.core.module.graph import ModuleGraph, ModuleNode, build_module_graph
+from bustan.core.module.metadata import ModuleMetadata
 
 if TYPE_CHECKING:
     from tests.conftest import RequestFactory
@@ -361,3 +362,145 @@ def test_container_resolves_transient_factory_provider_def() -> None:
     second = cast(dict[str, Any], second)
     assert first["id"] == 1
     assert second["id"] == 2
+
+
+def test_container_resolves_a_two_hop_re_export_through_the_importing_module() -> None:
+    # The facade pattern: one module imports a feature module and re-exports its service
+    # so consumers depend on a single name. Resolving the token is the only proof that
+    # the re-export is backed by a binding; presence in a mapping is not.
+    @Injectable
+    class Repository:
+        pass
+
+    @Module(providers=[Repository], exports=[Repository])
+    class DataModule:
+        pass
+
+    @Module(imports=[DataModule], exports=[Repository])
+    class SharedModule:
+        pass
+
+    @Injectable
+    class UserService:
+        def __init__(self, repository: Repository) -> None:
+            self.repository = repository
+
+    @Module(imports=[SharedModule], providers=[UserService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    assert isinstance(container.resolve(Repository, module=AppModule), Repository)
+    service = cast(Any, container.resolve(UserService, module=AppModule))
+    assert isinstance(service.repository, Repository)
+
+
+def test_container_resolves_a_global_facade_re_export() -> None:
+    @Injectable
+    class Repository:
+        pass
+
+    @Module(providers=[Repository], exports=[Repository])
+    class DataModule:
+        pass
+
+    @Global()
+    @Module(imports=[DataModule], exports=[Repository])
+    class FacadeModule:
+        pass
+
+    @Module()
+    class ConsumerModule:
+        pass
+
+    @Module(imports=[FacadeModule, ConsumerModule])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    assert isinstance(container.resolve(Repository, module=ConsumerModule), Repository)
+    assert isinstance(container.resolve(Repository, module=AppModule), Repository)
+
+
+def test_container_overrides_a_re_exported_provider_at_its_declaring_module() -> None:
+    # Visibility names the declaring module, so an override needs no module argument and
+    # reaches every module the token was passed on to.
+    @Injectable
+    class Clock:
+        pass
+
+    @Module(providers=[Clock], exports=[Clock])
+    class TimeModule:
+        pass
+
+    @Module(imports=[TimeModule], exports=[Clock])
+    class SharedModule:
+        pass
+
+    @Module(imports=[SharedModule])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    replacement = object()
+    container.override(Clock, replacement)
+
+    assert container.resolve(Clock, module=AppModule) is replacement
+
+
+def test_container_visibility_is_the_graph_visibility_and_every_entry_has_a_binding() -> None:
+    @Injectable
+    class Repository:
+        pass
+
+    @Module(providers=[Repository], exports=[Repository])
+    class DataModule:
+        pass
+
+    @Global()
+    @Module(providers=[{"provide": "config", "use_value": "value"}], exports=["config"])
+    class SettingsModule:
+        pass
+
+    @Module(imports=[DataModule], exports=[Repository])
+    class SharedModule:
+        pass
+
+    @Module(imports=[SharedModule, SettingsModule])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+
+    for node in graph.nodes:
+        assert container.registry.module_visibility[node.key] == dict(node.visibility)
+        assert set(node.available_providers) == set(node.visibility)
+        for token, declaring_module in node.visibility.items():
+            assert (declaring_module, token) in container.registry.bindings
+
+
+def test_container_refuses_visibility_that_no_binding_backs() -> None:
+    # A hand-built graph is the only way to reach the bootstrap check, because the graph
+    # no longer produces visibility a binding does not back. The check exists so that a
+    # future regression fails at build time rather than on the first request.
+    @Module()
+    class AppModule:
+        pass
+
+    node = ModuleNode(
+        key=AppModule,
+        module=AppModule,
+        metadata=ModuleMetadata(),
+        exported_providers=frozenset(),
+        available_providers=frozenset({"config"}),
+        bindings=(),
+        imported_exports={},
+        visibility={"config": AppModule},
+    )
+    graph = ModuleGraph(root_key=AppModule, nodes=(node,), _nodes_by_key={AppModule: node})
+
+    with pytest.raises(InvalidModuleError, match="declares no provider for it"):
+        build_container(graph)
