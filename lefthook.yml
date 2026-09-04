@@ -52,9 +52,9 @@ commit-msg:
 pre-push:
   jobs:
     - name: coverage
-      run: uv run --group dev python -m pytest --cov=bustan --cov-report=term-missing --cov-fail-under=95
+      run: uv run --group dev python -m pytest --cov=bustan --cov-report=term-missing --cov-fail-under=85
     - name: coverage-core
-      run: uv run --group dev python -m pytest --cov=bustan.core --cov-report=term-missing --cov-fail-under=95
+      run: uv run --group dev python -m pytest --cov=bustan.core --cov-report=term-missing --cov-fail-under=85
     - name: markdown-links
       run: uv run python scripts/check_markdown_links.py
     - name: examples

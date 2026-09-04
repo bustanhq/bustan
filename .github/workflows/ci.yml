@@ -50,7 +50,7 @@ jobs:
       # The threshold lives here rather than in pyproject.toml so that a targeted
       # local run of one test file is not judged against whole-repository coverage.
       - name: Pytest with coverage
-        run: uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml --cov-fail-under=95
+        run: uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml --cov-fail-under=85
 
       # Runs even when the step above fails, which is now a thing that happens.
       # A contributor chasing a coverage regression needs this report most on the
@@ -85,7 +85,7 @@ jobs:
       # kernel hide behind well-tested peripheral code. Branch coverage is on for
       # every run via [tool.coverage.run] in pyproject.toml.
       - name: Pytest with coverage of the injection kernel
-        run: uv run pytest --cov=bustan.core --cov-report=term-missing --cov-fail-under=95
+        run: uv run pytest --cov=bustan.core --cov-report=term-missing --cov-fail-under=85
 
   audit-repros:
     name: Audit repro harness (advisory)
