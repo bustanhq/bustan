@@ -14,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
+from ..core.lifecycle.runner import build_module_instance
 from ..core.module.dynamic import ModuleKey
 
 if TYPE_CHECKING:
@@ -155,7 +156,12 @@ def compile_middleware_registry(
     controller_owners = _controller_owner_map(module_graph)
 
     for node in module_graph.nodes:
-        configure = getattr(node.module(), "configure", None)
+        # A module is built here only to read the middleware it declares, so one that
+        # declares none is never built at all.
+        if not callable(getattr(node.module, "configure", None)):
+            continue
+
+        configure = getattr(build_module_instance(node.module, node.key), "configure", None)
         if not callable(configure):
             continue
 
