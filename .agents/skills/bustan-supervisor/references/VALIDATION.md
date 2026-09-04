@@ -69,6 +69,20 @@ the documentation recommends, because that is the shape users will have written.
 generated file compared byte for byte, a coverage floor - all of these reach outside a
 narrow `Owns` set.
 
+## Diagnosing a failure on one branch does not diagnose it on another
+
+A red job on two branches is two failures until you have looked at both. Read the **step
+conclusions**, not just the job conclusion: a job that fails early skips everything after
+it, so two branches can show the same red badge for entirely unrelated reasons, and the
+later step you already diagnosed on one branch may never have run on the other.
+
+This costs more than a wasted look. A fix aimed at the wrong step lands, the badge stays
+red, and the next person inherits both a broken pipeline and a confident, wrong
+explanation of it in the commit log.
+
+Cheapest habit: before generalising any CI diagnosis across branches, fetch the step list
+for the specific run on the specific branch you are about to change.
+
 ## Writing the result down
 
 Rewrite the ticket from what you found: the verified finding list, a corrected `Owns`,
