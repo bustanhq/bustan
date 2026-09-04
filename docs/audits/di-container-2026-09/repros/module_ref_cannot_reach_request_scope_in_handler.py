@@ -1,4 +1,4 @@
-"""LEAD-13: the active request is pushed into the resolver's ContextVar only while the controller is
+"""OL-11: the active request is pushed into the resolver's ContextVar only while the controller is
 being instantiated. Inside a handler, ModuleRef.get() of a request-scoped provider fails with
 'requires an active request' even though a request is in flight.
 """
@@ -39,9 +39,9 @@ def main() -> None:
     with TestClient(create_app(AppModule)) as client:
         body = client.get("/m/", headers={"x-user-id": "alice"}).json()
     if "error" in body:
-        print(f"RESULT: LEAD-13 REPRODUCED - {body['error'][:110]}")
+        print(f"RESULT: OL-11 REPRODUCED - {body['error'][:110]}")
     else:
-        print(f"RESULT: LEAD-13 FIXED - handler resolved request scope: {body}")
+        print(f"RESULT: OL-11 FIXED - handler resolved request scope: {body}")
 
 
 if __name__ == "__main__":

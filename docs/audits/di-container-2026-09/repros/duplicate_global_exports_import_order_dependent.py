@@ -1,4 +1,4 @@
-"""LEAD-14: two global modules exporting the same token are accepted silently; which one wins
+"""MG-02: two global modules exporting the same token are accepted silently; which one wins
 depends on module discovery order (first global wins), so re-ordering imports changes behavior.
 """
 
@@ -34,12 +34,12 @@ def main() -> None:
         first = create_app_context(AppA).get(TOKEN)
         second = create_app_context(AppB).get(TOKEN)
     except Exception as exc:  # noqa: BLE001 - a rejection of the ambiguity is the fixed state
-        print(f"RESULT: LEAD-14 FIXED - ambiguity rejected: {type(exc).__name__}")
+        print(f"RESULT: MG-02 FIXED - ambiguity rejected: {type(exc).__name__}")
         return
     if first != second:
-        print(f"RESULT: LEAD-14 REPRODUCED - imports=[G1,G2] -> {first}, imports=[G2,G1] -> {second}, no error")
+        print(f"RESULT: MG-02 REPRODUCED - imports=[G1,G2] -> {first}, imports=[G2,G1] -> {second}, no error")
     else:
-        print("RESULT: LEAD-14 FIXED - deterministic winner or rejection")
+        print("RESULT: MG-02 FIXED - deterministic winner or rejection")
 
 
 if __name__ == "__main__":

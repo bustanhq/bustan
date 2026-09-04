@@ -1,4 +1,4 @@
-"""LEAD-01: a default-scope (singleton) controller that injects a request-scoped provider or the
+"""RI-01: a default-scope (singleton) controller that injects a request-scoped provider or the
 Request itself is built once and then serves the first caller's state to every later caller.
 
 docs/REQUEST_SCOPED_PROVIDERS.md promises a ProviderResolutionError for this shape; no error is raised.
@@ -44,7 +44,7 @@ class AppModule:
 def main() -> None:
     app = create_app(AppModule)
     with TestClient(app) as client:
-        for path, label in (("/me/", "LEAD-01a"), ("/raw/", "LEAD-01b")):
+        for path, label in (("/me/", "RI-01a"), ("/raw/", "RI-01b")):
             first = client.get(path, headers={"x-user-id": "alice"}).json()["user"]
             second = client.get(path, headers={"x-user-id": "bob"}).json()["user"]
             if second == "alice":

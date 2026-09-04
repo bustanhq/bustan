@@ -1,4 +1,4 @@
-"""LEAD-18: APP_GUARD / APP_PIPE / APP_INTERCEPTOR / APP_FILTER providers are resolved once at
+"""OL-02: APP_GUARD / APP_PIPE / APP_INTERCEPTOR / APP_FILTER providers are resolved once at
 create_app time without a request, so a request-scoped global guard cannot exist, and the
 one-binding-per-token rule allows at most one global guard per module.
 """
@@ -36,9 +36,9 @@ class RequestScopedGuardModule:
 def main() -> None:
     try:
         create_app(RequestScopedGuardModule)
-        print("RESULT: LEAD-18a FIXED - request-scoped APP_GUARD accepted")
+        print("RESULT: OL-02a FIXED - request-scoped APP_GUARD accepted")
     except ProviderResolutionError as exc:
-        print(f"RESULT: LEAD-18a REPRODUCED - request-scoped APP_GUARD rejected: {str(exc)[:70]}")
+        print(f"RESULT: OL-02a REPRODUCED - request-scoped APP_GUARD rejected: {str(exc)[:70]}")
 
     try:
         module = Module(
@@ -48,9 +48,9 @@ def main() -> None:
             ]
         )(type("TwoGuards", (), {}))
         create_app(module)
-        print("RESULT: LEAD-18b FIXED - two APP_GUARD bindings in one module accepted")
+        print("RESULT: OL-02b FIXED - two APP_GUARD bindings in one module accepted")
     except InvalidModuleError as exc:
-        print(f"RESULT: LEAD-18b REPRODUCED - {str(exc)[:80]}")
+        print(f"RESULT: OL-02b REPRODUCED - {str(exc)[:80]}")
 
 
 if __name__ == "__main__":

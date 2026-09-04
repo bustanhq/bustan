@@ -36,6 +36,10 @@ The checked-in examples now mirror the standalone mini-project layout rather tha
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md): the common module graph, binding, scope, and lifecycle failures.
 - [COMPARISONS.md](COMPARISONS.md): how Bustan fits beside Starlette, FastAPI, and NestJS-style architecture.
 
+## Audits
+
+- [audits/di-container-2026-09/REPORT.md](audits/di-container-2026-09/REPORT.md): adversarial audit of the dependency-injection container (findings, executable repros, and the maintenance roadmap).
+
 ## Stability And Release
 
 - [STABILITY.md](STABILITY.md): what counts as public, what does not, and how to read the generated API reference safely.

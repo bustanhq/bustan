@@ -1,4 +1,4 @@
-"""LEAD-09: durable instances and their locks are keyed by whatever get_durable_context_key returns
+"""CR-01: durable instances and their locks are keyed by whatever get_durable_context_key returns
 and are never evicted. When the key derives from a request header, an unauthenticated client can
 grow process memory without bound (one instance plus one threading.Lock per distinct value).
 """
@@ -46,9 +46,9 @@ def main() -> None:
     instances = len(scope_manager.durable_instances)
     locks = len(scope_manager.durable_locks)
     if instances >= REQUESTS:
-        print(f"RESULT: LEAD-09 REPRODUCED - {instances} durable instances and {locks} locks retained")
+        print(f"RESULT: CR-01 REPRODUCED - {instances} durable instances and {locks} locks retained")
     else:
-        print(f"RESULT: LEAD-09 FIXED - {instances} durable instances retained after {REQUESTS} keys")
+        print(f"RESULT: CR-01 FIXED - {instances} durable instances retained after {REQUESTS} keys")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""LEAD-15: constructor defaults are ignored and X | None is treated as an opaque token, so
+"""RF-02 and RF-04: constructor defaults are ignored and X | None is treated as an opaque token, so
 ordinary Python constructors fail to resolve unless every parameter is a registered provider or
 carries OptionalDep().
 """
@@ -24,7 +24,7 @@ class UsesDefault:
 
 
 def main() -> None:
-    for cls, label in ((UsesUnion, "LEAD-15a"), (UsesDefault, "LEAD-15b")):
+    for cls, label in ((UsesUnion, "RF-02"), (UsesDefault, "RF-04")):
         module = Module(providers=[cls])(type("TestModule", (), {}))
         try:
             create_app_context(module).get(cls)

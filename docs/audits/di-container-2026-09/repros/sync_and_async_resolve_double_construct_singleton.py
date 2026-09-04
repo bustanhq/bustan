@@ -1,4 +1,4 @@
-"""LEAD-11: the sync resolve path serializes singleton construction with a threading.Lock while the
+"""CR-02: the sync resolve path serializes singleton construction with a threading.Lock while the
 async path uses a separate anyio.Lock. A sync resolution running in a worker thread and an async
 resolution on the event loop can construct the same singleton twice; the loser is discarded without
 any lifecycle hook, so any resource it opened leaks.
@@ -43,9 +43,9 @@ def main() -> None:
 
     anyio.run(race)
     if constructions["count"] > 1:
-        print(f"RESULT: LEAD-11 REPRODUCED - singleton constructed {constructions['count']} times")
+        print(f"RESULT: CR-02 REPRODUCED - singleton constructed {constructions['count']} times")
     else:
-        print("RESULT: LEAD-11 FIXED - singleton constructed once")
+        print("RESULT: CR-02 FIXED - singleton constructed once")
 
 
 if __name__ == "__main__":

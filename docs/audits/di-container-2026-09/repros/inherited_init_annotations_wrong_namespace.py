@@ -1,4 +1,4 @@
-"""LEAD-05: the resolver evaluates string annotations (PEP 563) of an inherited __init__ in the
+"""RF-03: the resolver evaluates string annotations (PEP 563) of an inherited __init__ in the
 SUBCLASS module's globals instead of the function's own globals, so names that only exist in the
 base module (Inject, a token constant) raise NameError -> ProviderResolutionError.
 """
@@ -24,9 +24,9 @@ def main() -> None:
     context = create_app_context(AppModule)
     try:
         repo = context.get(UserRepository)
-        print(f"RESULT: LEAD-05 FIXED - inherited constructor resolved settings={repo.settings}")
+        print(f"RESULT: RF-03 FIXED - inherited constructor resolved settings={repo.settings}")
     except ProviderResolutionError as exc:
-        print(f"RESULT: LEAD-05 REPRODUCED - {str(exc)[:120]}")
+        print(f"RESULT: RF-03 REPRODUCED - {str(exc)[:120]}")
 
 
 if __name__ == "__main__":

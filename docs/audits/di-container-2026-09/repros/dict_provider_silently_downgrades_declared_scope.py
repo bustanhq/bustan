@@ -1,4 +1,4 @@
-"""LEAD-08: binding an @Injectable(scope="request") class under an interface token with a dict
+"""RI-02: binding an @Injectable(scope="request") class under an interface token with a dict
 provider that omits the scope key silently produces a SINGLETON binding. Per-request state on that
 class is then shared by every request.
 """
@@ -24,9 +24,9 @@ class AppModule:
 def main() -> None:
     binding = normalize_provider({"provide": AUDIT, "use_class": PerRequestAudit}, AppModule)
     if binding.scope is Scope.SINGLETON:
-        print("RESULT: LEAD-08 REPRODUCED - class declares scope=request but the binding is singleton")
+        print("RESULT: RI-02 REPRODUCED - class declares scope=request but the binding is singleton")
     else:
-        print(f"RESULT: LEAD-08 FIXED - binding scope is {binding.scope.value}")
+        print(f"RESULT: RI-02 FIXED - binding scope is {binding.scope.value}")
 
 
 if __name__ == "__main__":

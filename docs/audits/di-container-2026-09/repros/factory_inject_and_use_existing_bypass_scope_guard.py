@@ -1,4 +1,4 @@
-"""LEAD-02: the request-scope guard only inspects class constructor parameters. A singleton
+"""RI-06: the request-scope guard only inspects class constructor parameters. A singleton
 use_factory provider with inject=[RequestScoped] and a use_existing alias (forced TRANSIENT)
 pointing at a request-scoped binding both slip through. With the lifespan running, eager
 singleton construction fails at startup with a misleading 'requires an active request' error;
@@ -65,18 +65,18 @@ def main() -> None:
     try:
         with TestClient(create_app(AppModule)) as client:
             client.get("/snap/", headers={"x-user-id": "alice"})
-        print("RESULT: LEAD-02a REPRODUCED - startup accepted a singleton that depends on request scope")
+        print("RESULT: RI-06a REPRODUCED - startup accepted a singleton that depends on request scope")
     except ProviderResolutionError as exc:
         message = str(exc)
         if "request-scoped provider" in message and "can only be injected" in message:
-            print("RESULT: LEAD-02a FIXED - startup rejected the shape with the documented guard error")
+            print("RESULT: RI-06a FIXED - startup rejected the shape with the documented guard error")
         else:
-            print(f"RESULT: LEAD-02a REPRODUCED - startup failed with a misleading error: {message[:90]}")
+            print(f"RESULT: RI-06a REPRODUCED - startup failed with a misleading error: {message[:90]}")
 
     client = TestClient(create_app(AppModule))  # no lifespan: singletons are built lazily
     first = client.get("/snap/", headers={"x-user-id": "alice"}).json()
     second = client.get("/snap/", headers={"x-user-id": "bob"}).json()
-    for key, label in (("factory", "LEAD-02b"), ("alias", "LEAD-02c")):
+    for key, label in (("factory", "RI-06b"), ("alias", "RI-06c")):
         if second[key] == "alice":
             print(f"RESULT: {label} REPRODUCED - {key} path served alice to bob: {first} then {second}")
         else:

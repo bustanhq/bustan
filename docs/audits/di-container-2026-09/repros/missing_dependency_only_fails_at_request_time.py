@@ -1,4 +1,4 @@
-"""LEAD-12: the container never validates the dependency graph of transient or request-scoped
+"""MG-04: the container never validates the dependency graph of transient or request-scoped
 providers or of controllers at bootstrap. An unresolvable dependency starts fine and becomes a 500
 on the first request that touches it.
 """
@@ -42,12 +42,12 @@ def main() -> None:
         with TestClient(app) as client:
             status = client.get("/x/").status_code
     except Exception as exc:  # noqa: BLE001 - any bootstrap-time failure means the gap is closed
-        print(f"RESULT: LEAD-12 FIXED - bootstrap rejected the graph: {type(exc).__name__}")
+        print(f"RESULT: MG-04 FIXED - bootstrap rejected the graph: {type(exc).__name__}")
         return
     if status == 500:
-        print("RESULT: LEAD-12 REPRODUCED - app started; unresolvable controller dependency became HTTP 500")
+        print("RESULT: MG-04 REPRODUCED - app started; unresolvable controller dependency became HTTP 500")
     else:
-        print(f"RESULT: LEAD-12 FIXED - request returned {status}")
+        print(f"RESULT: MG-04 FIXED - request returned {status}")
 
 
 if __name__ == "__main__":
