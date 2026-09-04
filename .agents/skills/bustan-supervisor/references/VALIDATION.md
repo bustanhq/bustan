@@ -99,3 +99,33 @@ If a ticket's acceptance depends on a probe suite, commit the validated suite to
 ticket's base branch before dispatching, so the agent runs the gate in its own working
 tree and never has to reach into another branch to be graded. Mark it read-only for the
 ticket: an agent that can edit its own gate does not have one.
+
+## A comparison probe must vary only the thing being compared
+
+The point of probing two spellings of one dependency, or two shapes of one composition, is
+to show that the framework treats them differently. That only follows if everything else
+was held still. A probe where one arm has a parameter default and the other does not, or
+where one resolves from a module that can see the token and the other from a module that
+cannot, produces a difference that says nothing about the spelling.
+
+Write the arms as one function taking the varying part as an argument, and print the
+matrix. If the two arms are separate functions, the difference between them is whatever
+you happened to type twice, and a supervisor's table can end up recording a divergence
+that runs the other way from the one that exists.
+
+Two corollaries, both learned the expensive way:
+
+- **A refusal is not evidence of the fix you were looking for.** Read what raised it. A
+  composition rejected by the route scanner for an unrelated reason is not a composition
+  the scope algebra refused, and a shape refused with the hook present says nothing about
+  the shape without it.
+- **A finding is not closed until the shape the audit actually documented is refused.**
+  Run the evidence script. It is the arm you did not write yourself.
+
+## Name a package, not only a module, when a ticket adds tests in a new directory
+
+`Owns` is matched against the paths a pull request touches, and a new test module in a
+directory the repository has not used before needs an `__init__.py` beside it. A ticket
+that lists `tests/unit/thing/test_thing.py` and nothing else makes its own acceptance
+unreachable inside `Owns`: the agent must create a file the ticket forbids. List the
+directory.

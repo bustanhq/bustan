@@ -21,6 +21,7 @@ import fnmatch
 import json
 import os
 import re
+import ssl
 import sys
 import urllib.error
 import urllib.request
@@ -47,6 +48,27 @@ def _token() -> str:
     return token
 
 
+def _tls_context() -> ssl.SSLContext:
+    """Build the context used to reach the API, trusting the environment's CA bundle.
+
+    A session that reaches the internet through a proxy is given that proxy's CA, and
+    such a CA is often issued without a key-usage extension. Python 3.13 verifies
+    strictly by default and rejects it, which reads as a certificate failure rather
+    than as a configuration difference. Certificates are still verified and hostnames
+    still checked; only the extension audit is relaxed.
+    """
+
+    bundle = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
+    for candidate in (bundle, "/root/.ccr/ca-bundle.crt"):
+        if candidate and os.path.exists(candidate):
+            context = ssl.create_default_context(cafile=candidate)
+            break
+    else:
+        context = ssl.create_default_context()
+    context.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    return context
+
+
 def _get(path: str) -> object:
     request = urllib.request.Request(  # noqa: S310 - the scheme is fixed by API_ROOT
         f"{API_ROOT}{path}",
@@ -57,7 +79,9 @@ def _get(path: str) -> object:
         },
     )
     try:
-        with urllib.request.urlopen(request) as response:  # noqa: S310 - as above
+        with urllib.request.urlopen(  # noqa: S310 - as above
+            request, context=_tls_context()
+        ) as response:
             return json.load(response)
     except urllib.error.HTTPError as error:
         raise GitHubError(f"GET {path} returned {error.code}: {error.reason}") from error
