@@ -5,12 +5,23 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, cast
 
+import anyio
 import pytest
 from starlette.requests import Request
 
-from bustan import Controller, Get, Global, Injectable, Module
+from bustan import (
+    Controller,
+    DynamicModule,
+    Get,
+    Global,
+    Injectable,
+    InjectionToken,
+    Module,
+    Scope,
+)
 from bustan.core.errors import InvalidModuleError, ProviderResolutionError
 from bustan.core.ioc.container import build_container
+from bustan.core.lifecycle.manager import LifecycleManager
 from bustan.core.module.graph import ModuleGraph, ModuleNode, build_module_graph
 from bustan.core.module.metadata import ModuleMetadata
 
@@ -579,3 +590,261 @@ def test_a_true_token_and_a_one_token_are_two_providers() -> None:
 
     assert container.resolve(1, module=BoolModule) == "int-one"
     assert container.resolve(True, module=BoolModule) == "bool-true"
+
+
+def test_an_override_reaches_a_singleton_that_holds_the_token_two_hops_away() -> None:
+    # The whole point of the rule: a test that swaps a database must not leave every
+    # singleton built on top of it still holding the real one.
+    @Injectable
+    class Clock:
+        def now(self) -> str:
+            return "real"
+
+    @Injectable
+    class Stamper:
+        def __init__(self, clock: Clock) -> None:
+            self.clock = clock
+
+    @Injectable
+    class ReportService:
+        def __init__(self, stamper: Stamper) -> None:
+            self.stamper = stamper
+
+    @Module(providers=[Clock, Stamper, ReportService])
+    class AppModule:
+        pass
+
+    class FakeClock:
+        def now(self) -> str:
+            return "fake"
+
+    container = build_container(build_module_graph(AppModule))
+
+    def stamped() -> str:
+        report = cast(ReportService, container.resolve(ReportService, module=AppModule))
+        return report.stamper.clock.now()
+
+    # Built first, so the singletons hold the real clock before the override exists.
+    assert stamped() == "real"
+
+    container.override(Clock, FakeClock())
+    assert stamped() == "fake"
+
+    container.clear_override(Clock)
+    assert stamped() == "real"
+
+
+def test_a_singleton_first_built_during_an_override_does_not_outlive_it() -> None:
+    @Injectable
+    class Clock:
+        def now(self) -> str:
+            return "real"
+
+    @Injectable
+    class ReportService:
+        def __init__(self, clock: Clock) -> None:
+            self.clock = clock
+
+    @Module(providers=[Clock, ReportService])
+    class AppModule:
+        pass
+
+    class FakeClock:
+        def now(self) -> str:
+            return "fake"
+
+    container = build_container(build_module_graph(AppModule))
+
+    def stamped() -> str:
+        report = cast(ReportService, container.resolve(ReportService, module=AppModule))
+        return report.clock.now()
+
+    container.override(Clock, FakeClock())
+    assert stamped() == "fake"
+
+    container.clear_override(Clock)
+
+    assert stamped() == "real"
+
+
+def test_an_override_of_a_factory_binding_reaches_what_the_factory_injects() -> None:
+    # A factory names its dependencies in an inject list rather than a constructor, so
+    # the reach of an override has to be read from the binding as well as from the plan.
+    @Module(
+        providers=[
+            {"provide": "dsn", "use_value": "postgres://real"},
+            {
+                "provide": "connection",
+                "use_factory": lambda dsn: f"connected:{dsn}",
+                "inject": ["dsn"],
+            },
+        ]
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    assert container.resolve("connection", module=AppModule) == "connected:postgres://real"
+
+    container.override("dsn", "sqlite://fake")
+
+    assert container.resolve("connection", module=AppModule) == "connected:sqlite://fake"
+
+
+def test_an_override_of_a_singleton_is_the_instance_the_lifecycle_initializes() -> None:
+    events: list[str] = []
+
+    @Injectable
+    class Database:
+        def on_module_init(self) -> None:
+            events.append("real:init")
+
+    class FakeDatabase:
+        def on_module_init(self) -> None:
+            events.append("fake:init")
+
+        def on_module_destroy(self) -> None:
+            events.append("fake:destroy")
+
+    @Module(providers=[Database])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+    lifecycle = LifecycleManager(graph, container)
+    container.override(Database, FakeDatabase())
+
+    anyio.run(lifecycle.startup)
+    anyio.run(lifecycle.shutdown)
+
+    assert events == ["fake:init", "fake:destroy"]
+
+
+def test_an_override_registered_after_startup_is_refused_by_name() -> None:
+    @Injectable
+    class Clock:
+        pass
+
+    @Module(providers=[Clock])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    container.override_manager.mark_started()
+
+    with pytest.raises(ProviderResolutionError) as raised:
+        container.override(Clock, object())
+
+    message = str(raised.value)
+    assert "Clock" in message
+    assert "before startup" in message
+
+
+def test_a_provider_a_dynamic_module_declares_is_overridden_through_its_class() -> None:
+    # A dynamic registration is keyed by an instance key no caller outside the container
+    # holds, so writing the module class has to reach it.
+    CONFIG = InjectionToken("CONFIG")
+
+    @Module()
+    class ConfigModule:
+        pass
+
+    @Module(
+        imports=[
+            DynamicModule(
+                module=ConfigModule,
+                providers=({"provide": CONFIG, "use_value": "prod"},),
+                exports=(CONFIG,),
+            )
+        ]
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    container.override(CONFIG, "fake", module=ConfigModule)
+
+    assert container.has_override(CONFIG, module=ConfigModule) is True
+    assert container.resolve(CONFIG, module=AppModule) == "fake"
+
+
+def test_an_override_of_a_request_scoped_provider_serves_one_object_to_every_request(
+    build_request: RequestFactory,
+) -> None:
+    # An override is one object, whatever lifetime the provider it replaces declared, so
+    # a replaced request-scoped provider stops being per-request. It also stops needing
+    # a request at all, because there is no longer anything to build.
+    @Injectable(scope=Scope.REQUEST)
+    class RequestContext:
+        pass
+
+    @Module(providers=[RequestContext])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    replacement = object()
+    container.override(RequestContext, replacement)
+
+    assert container.resolve(RequestContext, module=AppModule) is replacement
+    assert (
+        container.resolve(RequestContext, module=AppModule, request=build_request()) is replacement
+    )
+    assert (
+        container.resolve(RequestContext, module=AppModule, request=build_request()) is replacement
+    )
+
+
+def test_an_override_reaches_a_dependent_that_holds_the_token_through_an_alias() -> None:
+    # An alias keeps nothing of its own, so what has to be evicted is whatever was
+    # built through it, which is only visible by following the alias to its target.
+    @Injectable
+    class Clock:
+        def now(self) -> str:
+            return "real"
+
+    class FakeClock:
+        def now(self) -> str:
+            return "fake"
+
+    @Module(
+        providers=[
+            Clock,
+            {"provide": "clock-alias", "use_existing": Clock},
+            {
+                "provide": "stamp",
+                "use_factory": lambda clock: clock.now(),
+                "inject": ["clock-alias"],
+            },
+        ]
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    assert container.resolve("stamp", module=AppModule) == "real"
+
+    container.override(Clock, FakeClock())
+
+    assert container.resolve("stamp", module=AppModule) == "fake"
+
+
+def test_an_override_survives_a_graph_naming_a_token_nothing_can_hash() -> None:
+    # A factory may name anything in its inject list, and a token nothing can hash is
+    # refused when it is resolved. Reading the graph to evict must not be what turns
+    # that mistake into a failure in an unrelated place.
+    @Module(
+        providers=[
+            {"provide": "config", "use_value": "real"},
+            {"provide": "broken", "use_factory": lambda value: value, "inject": [["unhashable"]]},
+        ]
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    container.override("config", "fake")
+
+    assert container.resolve("config", module=AppModule) == "fake"

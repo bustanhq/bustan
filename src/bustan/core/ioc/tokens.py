@@ -4,7 +4,13 @@ from __future__ import annotations
 
 
 class InjectionToken[T]:
-    """A typed token representing a dependency for injection."""
+    """A typed token representing a dependency for injection.
+
+    A token is its own identity: two tokens are the same token only when they are the
+    same object, so build each one once at module level and import it wherever it is
+    declared, injected or overridden. The name is what the token is called in errors;
+    the container never matches two tokens by comparing names.
+    """
 
     def __init__(self, name: str):
         self.name = name

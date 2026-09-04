@@ -148,17 +148,39 @@ class Container:
         return await self.kernel.call_factory_async(factory, inject, module=module, request=request)
 
     def override(self, token: object, value: object, *, module: ModuleKey | None = None) -> None:
-        """Register a replacement object for a provider."""
-        self.override_manager.override(token, value, module=module)
-        self.scope_manager.clear_controller_singletons()
+        """Register a replacement object for a provider, before the application starts.
+
+        The replacement reaches every consumer of the token and not only the ones built
+        after it: whatever was already built from the binding, or from a binding that
+        transitively depends on it, is dropped and built again against the replacement.
+        An override is refused once the application is running, because replacing a
+        provider under a request that is holding it is not something it can survive.
+
+        ``module`` names the module that declares the provider and is needed only when
+        more than one declares the token. A module class names every dynamic
+        registration of it, so a provider a dynamic module declares is targeted by
+        writing the class.
+        """
+        self.override_manager.override(
+            token, value, module=module, plan=self.plan, scopes=self.scope_manager
+        )
 
     def clear_override(self, token: object, *, module: ModuleKey | None = None) -> None:
-        """Remove any override registered for a provider."""
-        self.override_manager.clear_override(token, module=module)
-        self.scope_manager.clear_controller_singletons()
+        """Remove any override registered for a provider, before the application starts.
+
+        Everything built while the replacement stood is dropped with it, so a singleton
+        first built against a replacement does not outlive the override that installed it.
+        """
+        self.override_manager.clear_override(
+            token, module=module, plan=self.plan, scopes=self.scope_manager
+        )
 
     def has_override(self, token: object, *, module: ModuleKey | None = None) -> bool:
-        """Report whether a replacement object is registered for a provider."""
+        """Report whether a replacement object is registered for a provider.
+
+        A token no module declares, or one several declare without ``module`` saying
+        which, has no single binding to answer for and so reports no override.
+        """
         return self.override_manager.has_override(token, module=module)
 
     def get_override(self, token: object, *, module: ModuleKey | None = None) -> object | None:

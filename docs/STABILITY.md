@@ -18,6 +18,20 @@ Code samples, docs, examples, and changelog guidance should treat those modules 
 
 Import supported symbols from `bustan`, `bustan.errors`, or `bustan.testing`, not from the internal module shown as the implementation source.
 
+## Injection Token Identity
+
+A provider is registered under a token, and resolution, visibility and overrides all have to agree on when two tokens are the same token. The rule is one sentence: **two tokens are the same token when they have the same type and compare equal.**
+
+That has three consequences you can rely on:
+
+- **`InjectionToken` is identity-based.** It defines no `__eq__`, so two tokens are the same only when they are the same object. `InjectionToken("CONFIG")` written twice is two unrelated tokens, and a provider declared under one cannot be resolved, overridden or exported through the other, however identical the two look in an error message. Build each token once, at module level, and import it.
+- **A class is a token, and only itself.** A subclass is a different token from its base class, and two classes with the same name in different modules are two tokens.
+- **An equal value of another type is a different token.** `"db"` and a `StrEnum` member whose value is `"db"` compare equal to each other, but they are two tokens: each keeps its own binding, and overriding one never reaches the other. Equal values of the *same* type are one token, so a token computed at runtime resolves and overrides the binding declared with the literal it equals.
+
+What a caller may rely on: the token you write is the token the container matches. The framework never falls back to matching by name, by string value or by class hierarchy, and it never merges two tokens because they happen to compare equal.
+
+Token names carry no meaning to the container. They exist so that errors and the generated API reference can name the dependency, and changing one changes no behaviour.
+
 ## Internal Modules
 
 Everything outside the three stable modules is internal for compatibility purposes. That includes namespaces such as:

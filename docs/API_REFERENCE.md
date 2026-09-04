@@ -110,6 +110,11 @@ Defined in `bustan.core.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
+A token is its own identity: two tokens are the same token only when they are the
+same object, so build each one once at module level and import it wherever it is
+declared, injected or overridden. The name is what the token is called in errors;
+the container never matches two tokens by comparing names.
+
 Current value: `InjectionToken('APPLICATION')`
 
 #### `APP_FILTER`
@@ -117,6 +122,11 @@ Current value: `InjectionToken('APPLICATION')`
 Defined in `bustan.core.ioc.tokens`.
 
 A typed token representing a dependency for injection.
+
+A token is its own identity: two tokens are the same token only when they are the
+same object, so build each one once at module level and import it wherever it is
+declared, injected or overridden. The name is what the token is called in errors;
+the container never matches two tokens by comparing names.
 
 Current value: `InjectionToken('APP_FILTER')`
 
@@ -126,6 +136,11 @@ Defined in `bustan.core.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
+A token is its own identity: two tokens are the same token only when they are the
+same object, so build each one once at module level and import it wherever it is
+declared, injected or overridden. The name is what the token is called in errors;
+the container never matches two tokens by comparing names.
+
 Current value: `InjectionToken('APP_GUARD')`
 
 #### `APP_INTERCEPTOR`
@@ -134,6 +149,11 @@ Defined in `bustan.core.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
+A token is its own identity: two tokens are the same token only when they are the
+same object, so build each one once at module level and import it wherever it is
+declared, injected or overridden. The name is what the token is called in errors;
+the container never matches two tokens by comparing names.
+
 Current value: `InjectionToken('APP_INTERCEPTOR')`
 
 #### `APP_PIPE`
@@ -141,6 +161,11 @@ Current value: `InjectionToken('APP_INTERCEPTOR')`
 Defined in `bustan.core.ioc.tokens`.
 
 A typed token representing a dependency for injection.
+
+A token is its own identity: two tokens are the same token only when they are the
+same object, so build each one once at module level and import it wherever it is
+declared, injected or overridden. The name is what the token is called in errors;
+the container never matches two tokens by comparing names.
 
 Current value: `InjectionToken('APP_PIPE')`
 
@@ -707,6 +732,11 @@ Defined in `bustan.core.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
+A token is its own identity: two tokens are the same token only when they are the
+same object, so build each one once at module level and import it wherever it is
+declared, injected or overridden. The name is what the token is called in errors;
+the container never matches two tokens by comparing names.
+
 Current value: `InjectionToken('INQUIRER')`
 
 #### `InjectionToken`
@@ -718,6 +748,11 @@ class InjectionToken(Generic)
 Defined in `bustan.core.ioc.tokens`.
 
 A typed token representing a dependency for injection.
+
+A token is its own identity: two tokens are the same token only when they are the
+same object, so build each one once at module level and import it wherever it is
+declared, injected or overridden. The name is what the token is called in errors;
+the container never matches two tokens by comparing names.
 
 #### `Interceptor`
 
@@ -1194,6 +1229,11 @@ Defined in `bustan.core.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
+A token is its own identity: two tokens are the same token only when they are the
+same object, so build each one once at module level and import it wherever it is
+declared, injected or overridden. The name is what the token is called in errors;
+the container never matches two tokens by comparing names.
+
 Current value: `InjectionToken('REQUEST')`
 
 #### `RESPONSE`
@@ -1201,6 +1241,11 @@ Current value: `InjectionToken('REQUEST')`
 Defined in `bustan.core.ioc.tokens`.
 
 A typed token representing a dependency for injection.
+
+A token is its own identity: two tokens are the same token only when they are the
+same object, so build each one once at module level and import it wherever it is
+declared, injected or overridden. The name is what the token is called in errors;
+the container never matches two tokens by comparing names.
 
 Current value: `InjectionToken('RESPONSE')`
 
