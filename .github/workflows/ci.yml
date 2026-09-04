@@ -136,8 +136,15 @@ jobs:
           python -c "import bustan; print(bustan.__version__)"
           bustan --help
           cli_smoke_root="$(mktemp -d)"
-          bustan create smoke-app --directory "$cli_smoke_root"
-          test -f "$cli_smoke_root/smoke-app/pyproject.toml"
-          test -f "$cli_smoke_root/smoke-app/README.md"
-          test -f "$cli_smoke_root/smoke-app/src/smoke_app/app.py"
-          test -f "$cli_smoke_root/smoke-app/tests/test_app.py"
+          cd "$cli_smoke_root"
+          printf '[project]\nname = "smoke-app"\nversion = "0.1.0"\nrequires-python = ">=3.13"\ndependencies = []\n\n[build-system]\nrequires = ["uv_build"]\nbuild-backend = "uv_build"\n' > pyproject.toml
+          bustan init
+          test -f "$cli_smoke_root/src/smoke_app/__init__.py"
+          test -f "$cli_smoke_root/src/smoke_app/app_module.py"
+          test -f "$cli_smoke_root/src/smoke_app/app_controller.py"
+          test -f "$cli_smoke_root/src/smoke_app/app_service.py"
+          test -f "$cli_smoke_root/tests/smoke_app/test_app_controller.py"
+          test -f "$cli_smoke_root/tests/smoke_app/test_app_service.py"
+          test -f "$cli_smoke_root/tests/smoke_app/test_app_module.py"
+          grep -q 'start = "smoke_app:main"' "$cli_smoke_root/pyproject.toml"
+          grep -q 'dev = "smoke_app:dev"' "$cli_smoke_root/pyproject.toml"
