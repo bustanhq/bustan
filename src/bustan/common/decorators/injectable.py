@@ -7,8 +7,41 @@ from dataclasses import dataclass
 from typing import overload
 
 from ...core.errors import InvalidProviderError
+from ...core.utils import _get_metadata
 from ..constants import BUSTAN_PROVIDER_ATTR
 from ..types import ClassT, ProviderScope
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderMetadata:
+    """Static metadata captured from an @Injectable declaration.
+
+    The declaration carries the lifetime and nothing else: a provider's token and the
+    class it constructs are the decorated class itself, so there is no second copy of
+    that identity to disagree with the class or to be rewritten after the fact.
+    """
+
+    scope: ProviderScope = ProviderScope.SINGLETON
+
+
+def set_provider_metadata(provider_cls: ClassT, metadata: ProviderMetadata) -> ClassT:
+    """Attach provider metadata to a class."""
+
+    setattr(provider_cls, BUSTAN_PROVIDER_ATTR, metadata)
+    return provider_cls
+
+
+def get_provider_metadata(
+    provider_cls: type[object], *, inherit: bool = False
+) -> ProviderMetadata | None:
+    """Retrieve provider metadata written on a class.
+
+    Metadata describes the class the decorator was written on. A subclass has none of
+    its own until it is decorated, so by default it is not read from a base class.
+    """
+
+    metadata = _get_metadata(provider_cls, BUSTAN_PROVIDER_ATTR, inherit=inherit)
+    return metadata if isinstance(metadata, ProviderMetadata) else None
 
 
 @overload
@@ -40,16 +73,7 @@ def Injectable(
     def decorate(provider_cls: ClassT) -> ClassT:
         if not isinstance(provider_cls, type):
             raise InvalidProviderError("@Injectable can only decorate classes")
-        setattr(
-            provider_cls,
-            BUSTAN_PROVIDER_ATTR,
-            {
-                "scope": resolved_scope,
-                "token": provider_cls,
-                "use_class": provider_cls,
-            },
-        )
-        return provider_cls
+        return set_provider_metadata(provider_cls, ProviderMetadata(scope=resolved_scope))
 
     if target is None:
         return decorate

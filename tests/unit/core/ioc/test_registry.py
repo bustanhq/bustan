@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from enum import StrEnum
 from typing import cast
 
 import pytest
 
+from bustan import Injectable
+from bustan.common.constants import BUSTAN_PROVIDER_ATTR
 from bustan.common.types import ProviderScope
 from bustan.core.errors import InvalidProviderError
-from bustan.core.ioc.registry import Binding, Registry, normalize_provider
+from bustan.core.ioc.registry import Binding, Registry, normalize_provider, token_identity
 
 
 class AppModule:
@@ -72,10 +76,6 @@ def test_normalize_provider_covers_class_factory_value_and_existing_forms() -> N
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="an explicit scope on a use_value provider is dropped instead of refused",
-)
 def test_normalize_provider_refuses_a_scope_it_cannot_honour() -> None:
     # A provider definition is a contract, so every key in it is either honoured or
     # refused. A value binding is inherently one shared object, so the only honest
@@ -89,10 +89,6 @@ def test_normalize_provider_refuses_a_scope_it_cannot_honour() -> None:
     assert "value" in message
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="malformed provider definitions escape as a bare TypeError",
-)
 def test_normalize_provider_reports_malformed_definitions_as_provider_errors() -> None:
     # Every rejection at this boundary is a Bustan error naming the module that
     # declared the provider and the key at fault, because the author's next action
@@ -130,3 +126,227 @@ def _rejection(definition: object) -> Exception | None:
     except Exception as rejected:
         return rejected
     return None
+
+
+class Service:
+    pass
+
+
+class DurableByInstanceMethod:
+    def get_durable_context_key(self, request: object) -> str:
+        return "tenant"
+
+
+class DurableByClassMethod:
+    @classmethod
+    def get_durable_context_key(cls, request: object) -> str:
+        return "tenant"
+
+
+class DurableByStaticMethod:
+    @staticmethod
+    def get_durable_context_key(request: object) -> str:
+        return "tenant"
+
+
+def _factory() -> str:
+    return "built"
+
+
+_USE_ENTRIES: dict[str, object] = {
+    "use_class": Service,
+    "use_factory": _factory,
+    "use_value": 1,
+    "use_existing": Service,
+}
+
+
+def test_normalize_provider_binds_an_undecorated_subclass_under_its_own_identity() -> None:
+    # Metadata written on a base class describes that class. Reading it through the
+    # subclass bound the parent under the parent's token, so the subclass was never
+    # constructed and the name it was registered under could not be resolved.
+    @Injectable(scope=ProviderScope.REQUEST)
+    class Base:
+        pass
+
+    class Derived(Base):
+        pass
+
+    assert normalize_provider(Base, AppModule) == Binding(
+        token=Base,
+        declaring_module=AppModule,
+        resolver_kind="class",
+        target=Base,
+        scope=ProviderScope.REQUEST,
+    )
+    assert normalize_provider(Derived, AppModule) == Binding(
+        token=Derived,
+        declaring_module=AppModule,
+        resolver_kind="class",
+        target=Derived,
+        scope=ProviderScope.SINGLETON,
+    )
+
+
+def test_normalize_provider_refuses_a_class_carrying_foreign_provider_metadata() -> None:
+    class Handwritten:
+        pass
+
+    setattr(Handwritten, BUSTAN_PROVIDER_ATTR, {"token": Service, "use_class": Service})
+
+    with pytest.raises(InvalidProviderError, match="@Injectable"):
+        normalize_provider(Handwritten, AppModule)
+
+
+def test_normalize_provider_reads_a_single_token_inject_as_a_mistake() -> None:
+    # A string is a sequence of characters, so "dep" used to normalize to three tokens
+    # named 'd', 'e' and 'p' and only failed much later, at resolution.
+    with pytest.raises(InvalidProviderError, match="inject") as refusal:
+        normalize_provider(
+            {"provide": "f", "use_factory": _factory, "inject": "dep"},
+            AppModule,
+        )
+
+    assert "AppModule" in str(refusal.value)
+
+
+def test_normalize_provider_refuses_a_durable_lifetime_it_cannot_partition() -> None:
+    # A durable instance is selected by a key derived before any instance exists, so the
+    # hook has to be reachable on the class itself and only a class binding can carry it.
+    assert (
+        normalize_provider(
+            {"provide": "tenant", "use_class": DurableByClassMethod, "scope": "durable"},
+            AppModule,
+        ).scope
+        is ProviderScope.DURABLE
+    )
+    assert (
+        normalize_provider(
+            {"provide": "tenant", "use_class": DurableByStaticMethod, "scope": "durable"},
+            AppModule,
+        ).scope
+        is ProviderScope.DURABLE
+    )
+
+    with pytest.raises(InvalidProviderError, match="classmethod or a staticmethod"):
+        normalize_provider(
+            {"provide": "tenant", "use_class": DurableByInstanceMethod, "scope": "durable"},
+            AppModule,
+        )
+
+    with pytest.raises(InvalidProviderError, match="only a class can carry"):
+        normalize_provider(
+            {"provide": "tenant", "use_factory": _factory, "scope": "durable"},
+            AppModule,
+        )
+
+    with pytest.raises(InvalidProviderError, match="scope"):
+        normalize_provider(
+            {"provide": "tenant", "use_value": {"tenant": "a"}, "scope": "durable"},
+            AppModule,
+        )
+
+
+def test_injectable_durable_class_needs_an_unbound_context_key_hook() -> None:
+    decorated = Injectable(scope=ProviderScope.DURABLE)(
+        type("DurableService", (DurableByInstanceMethod,), {})
+    )
+
+    with pytest.raises(InvalidProviderError, match="classmethod or a staticmethod"):
+        normalize_provider(decorated, AppModule)
+
+
+def test_token_identity_separates_equal_tokens_of_different_types() -> None:
+    class Tokens(StrEnum):
+        DB = "db"
+
+    assert Tokens.DB == "db"
+    assert hash(Tokens.DB) == hash("db")
+    assert token_identity(Tokens.DB) != token_identity("db")
+    assert token_identity(True) != token_identity(1)
+    assert token_identity("db") == token_identity("db")
+
+
+def test_every_valid_dict_provider_shape_is_accepted() -> None:
+    accepted = (
+        {"provide": "t", "use_class": Service},
+        {"provide": "t", "use_class": Service, "scope": "request"},
+        {"provide": "t", "use_class": Service, "scope": ProviderScope.TRANSIENT},
+        {"provide": "t", "use_factory": _factory},
+        {"provide": "t", "use_factory": _factory, "inject": ()},
+        {"provide": "t", "use_factory": _factory, "inject": ["dep", Service]},
+        {"provide": "t", "use_factory": Service, "scope": "transient"},
+        {"provide": "t", "use_value": None},
+        {"provide": "t", "use_existing": Service},
+        {"provide": Service, "use_existing": "other"},
+    )
+
+    for definition in accepted:
+        assert normalize_provider(definition, AppModule).declaring_module is AppModule
+
+
+def test_every_invalid_dict_provider_shape_is_refused_naming_the_module_and_key() -> None:
+    # The breadth is the point: a validator that only rejects the shapes someone thought
+    # to write down is how 'inject' beside 'use_class' stayed silent for a whole release.
+    shapes = tuple(_invalid_dict_provider_shapes())
+    assert len(shapes) > 60
+
+    unreported: list[str] = []
+    for definition, expected_key in shapes:
+        try:
+            normalize_provider(definition, AppModule)
+        except InvalidProviderError as refusal:
+            message = str(refusal)
+            if "AppModule" not in message or expected_key not in message:
+                unreported.append(f"{definition!r} -> {message}")
+        except Exception as escaped:  # noqa: BLE001
+            unreported.append(f"{definition!r} -> escaped as {type(escaped).__name__}: {escaped}")
+        else:
+            unreported.append(f"{definition!r} -> accepted")
+
+    assert unreported == []
+
+
+def _invalid_dict_provider_shapes() -> Iterator[tuple[dict[str, object], str]]:
+    """Generate malformed provider definitions paired with the key each must name."""
+
+    for use_key, target in _USE_ENTRIES.items():
+        yield {use_key: target}, "provide"
+
+        for unknown in ("useClass", "provider", "Scope", "inject_tokens", "1"):
+            yield {"provide": "t", use_key: target, unknown: 1}, unknown
+
+        for other_key, other_target in _USE_ENTRIES.items():
+            if other_key != use_key:
+                yield {"provide": "t", use_key: target, other_key: other_target}, other_key
+
+        if use_key != "use_factory":
+            yield {"provide": "t", use_key: target, "inject": ["dep"]}, "inject"
+
+        if use_key not in ("use_class", "use_factory"):
+            for scope in ProviderScope:
+                yield {"provide": "t", use_key: target, "scope": scope.value}, "scope"
+        else:
+            for scope in ("Request", "bogus", "", None, 1, ["request"], {"scope": 1}):
+                yield {"provide": "t", use_key: target, "scope": scope}, "scope"
+
+    for empty in ({}, {"scope": "request"}, {"provide": "t"}, {"provide": "t", "inject": ()}):
+        yield dict(empty), "provide" if "provide" not in empty else "use_value"
+
+    for unhashable in ({"name": "x"}, ["x"], bytearray(b"x"), {1: {2: 3}}):
+        yield {"provide": unhashable, "use_value": 1}, "provide"
+
+    for not_a_class in (Service(), _factory, 42, None, "Service", (Service,)):
+        yield {"provide": "t", "use_class": not_a_class}, "use_class"
+
+    for not_callable in (42, None, "factory", (), Service()):
+        yield {"provide": "t", "use_factory": not_callable}, "use_factory"
+
+    for bad_inject in ("dep", b"dep", 42, None, Service()):
+        yield {"provide": "t", "use_factory": _factory, "inject": bad_inject}, "inject"
+
+    yield (
+        {"provide": "t", "use_class": DurableByInstanceMethod, "scope": "durable"},
+        "get_durable_context_key",
+    )
+    yield {"provide": "t", "use_factory": _factory, "scope": "durable"}, "use_factory"
