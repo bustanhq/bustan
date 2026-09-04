@@ -5,31 +5,38 @@
 
 ## [1.1.1](https://github.com/bustanhq/bustan/compare/v1.1.0...v1.1.1) (2026-09-04)
 
-Security patch for the `1.1` line. See `SECURITY.md` for the advisory and the list of
-vulnerable shapes to check for in an application running `1.1.0`.
+Security patch for the `1.1` line. Every issue below was demonstrated against the
+released `1.1.0` by driving a second caller through the running application and watching
+it receive the first caller's identity. See `SECURITY.md` for the advisory and the list
+of vulnerable shapes to check for in an application running `1.1.0`.
+
+Applications relying on any of these shapes will now fail to start rather than leak. That
+is the fix, and `SECURITY.md` names each shape and how to correct it.
 
 
 ### Security
 
-* **ioc:** refuse a controller or provider that would outlive the request-scoped state it holds, instead of serving the first caller's identity to every later caller
-* **ioc:** reject durable-scoped dependencies of singleton owners, so a singleton can no longer capture and share one tenant's partition
-* **ioc:** reject `Request` injection into durable providers, which retained the first caller's headers for the life of the partition
-* **ioc:** default a `use_class` provider dict's scope from the target class, and refuse a dict scope wider than the one the class declares
-* **http:** reject `@Controller(scope=Scope.DURABLE)` explicitly rather than treating it as a singleton shared across every partition
-* **ioc:** follow transient providers and `use_existing` aliases to the narrowest scope they reach, so neither can carry request-local state into a longer-lived owner
-* **ioc:** apply the scope guard to `use_factory` providers, whose `inject` tokens were never checked against the scope their result is cached under
-* **ioc:** bound the durable instance store with least-recently-used eviction and release each partition's construction lock when construction finishes, so an unauthenticated caller cannot grow either by rotating a header
+* **ioc:** refuse a controller or provider that would outlive the request-scoped state it holds, instead of serving the first caller's identity to every later caller ([600c01b](https://github.com/bustanhq/bustan/commit/600c01b7d7b84976821c212c82611ee58a7d8dfe))
+* **ioc:** reject durable-scoped dependencies of singleton owners, so a singleton can no longer capture and share one tenant's partition ([600c01b](https://github.com/bustanhq/bustan/commit/600c01b7d7b84976821c212c82611ee58a7d8dfe))
+* **ioc:** reject `Request` injection into durable providers, which retained the first caller's headers for the life of the partition ([600c01b](https://github.com/bustanhq/bustan/commit/600c01b7d7b84976821c212c82611ee58a7d8dfe))
+* **ioc:** default a `use_class` provider dict's scope from the target class, and refuse a dict scope wider than the one the class declares ([600c01b](https://github.com/bustanhq/bustan/commit/600c01b7d7b84976821c212c82611ee58a7d8dfe))
+* **http:** reject `@Controller(scope=Scope.DURABLE)` explicitly rather than treating it as a singleton shared across every partition ([600c01b](https://github.com/bustanhq/bustan/commit/600c01b7d7b84976821c212c82611ee58a7d8dfe))
+* **ioc:** bound the durable instance store with least-recently-used eviction and release each partition's construction lock when construction finishes, so an unauthenticated caller cannot grow either by rotating a header ([600c01b](https://github.com/bustanhq/bustan/commit/600c01b7d7b84976821c212c82611ee58a7d8dfe))
+* **ioc:** follow transient providers and `use_existing` aliases through to the narrowest scope they reach, so neither can carry request-local state into a longer-lived owner ([aeb0071](https://github.com/bustanhq/bustan/commit/aeb007103c36935aa874d5d975d7944bdadaec15))
+* **ioc:** apply the scope guard to `use_factory` providers, whose `inject` tokens were never checked against the scope their result is cached under ([aeb0071](https://github.com/bustanhq/bustan/commit/aeb007103c36935aa874d5d975d7944bdadaec15))
 
 
 ### Bug Fixes
 
-* **ioc:** compute a durable partition key once per resolution and reject an unhashable one
+* **ioc:** compute a durable partition key once per resolution and reject an unhashable one ([600c01b](https://github.com/bustanhq/bustan/commit/600c01b7d7b84976821c212c82611ee58a7d8dfe))
 
 
 ### Documentation
 
-* **request scope:** state the containment rules, and stop recommending the pattern that leaks
-* **troubleshooting:** map each scope-containment error to its fix
+* **request scope:** state the containment rules, and stop recommending the pattern that leaks ([600c01b](https://github.com/bustanhq/bustan/commit/600c01b7d7b84976821c212c82611ee58a7d8dfe))
+* **troubleshooting:** map each scope-containment error to its fix ([aeb0071](https://github.com/bustanhq/bustan/commit/aeb007103c36935aa874d5d975d7944bdadaec15))
+* **security:** add the 1.1 line repro harness for the security patch ([b0b01d8](https://github.com/bustanhq/bustan/commit/b0b01d829d3d803510503e926b475ed12cab2d8c))
+* **security:** stop the RI-02 probe contradicting the fix it demands ([6da6016](https://github.com/bustanhq/bustan/commit/6da60160ed37c1ab4ae6283ea42442b500cf9000))
 
 ## [1.1.0](https://github.com/bustanhq/bustan/compare/v1.0.1...v1.1.0) (2026-05-07)
 
