@@ -7,6 +7,7 @@ from starlette.applications import Starlette
 
 from bustan import Controller, Get, Guard, Injectable, Module
 from bustan.core.module.metadata import ModuleMetadata, get_module_metadata
+from bustan.errors import LifecycleError, ProviderResolutionError
 from bustan.testing import (
     CompiledTestingModule,
     PipelineOverrideRegistry,
@@ -16,6 +17,12 @@ from bustan.testing import (
     create_testing_module,
     override_provider,
 )
+from bustan.testing.builder import _require_lifecycle_manager
+
+
+@Injectable
+class AuditTrail:
+    """A provider declared at module scope so a nested fake can annotate it."""
 
 
 def test_create_test_module_builds_module_metadata_from_arguments() -> None:
@@ -98,10 +105,6 @@ def test_create_testing_module_returns_builder() -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.xfail(
-    strict=True,
-    reason="close() skips the pre-shutdown stage",
-)
 async def test_compiled_testing_module_close_runs_the_whole_teardown_sequence() -> None:
     # Tearing down a compiled testing module runs the same stages in the same order
     # as tearing down an application, because a test that never reaches the
@@ -289,5 +292,416 @@ async def test_testing_module_builder_exposes_client_and_pipeline_override_build
         assert builder._pipeline_overrides.pipes[DefaultPipe] is not None
         assert builder._pipeline_overrides.interceptors[DefaultInterceptor] is not None
         assert builder._pipeline_overrides.filters[DefaultFilter] is not None
+    finally:
+        await compiled.close()
+
+
+@pytest.mark.anyio
+async def test_compile_starts_a_graph_whose_singleton_factory_is_async() -> None:
+    # The testing surface runs the application's own startup, so a graph a served
+    # application can warm is a graph a test can compile.
+    async def build_connection() -> str:
+        return "conn"
+
+    @Module(
+        providers=[{"provide": "CONN", "use_factory": build_connection}],
+        exports=["CONN"],
+    )
+    class DbModule:
+        pass
+
+    @Module(imports=[DbModule])
+    class AppModule:
+        pass
+
+    compiled = await create_testing_module(AppModule).compile()
+    try:
+        assert compiled.get("CONN") == "conn"
+    finally:
+        await compiled.close()
+
+
+@pytest.mark.anyio
+async def test_second_close_runs_no_teardown_hook_again() -> None:
+    events: list[str] = []
+
+    @Module()
+    class AppModule:
+        def on_application_shutdown(self, signal: str | None) -> None:
+            events.append("shutdown")
+
+        def on_module_destroy(self) -> None:
+            events.append("destroy")
+
+    compiled = await create_testing_module(AppModule).compile()
+    await compiled.close()
+    await compiled.close()
+
+    assert events == ["shutdown", "destroy"]
+
+
+@pytest.mark.anyio
+async def test_close_reports_every_failing_teardown_hook_not_only_the_first() -> None:
+    @Module()
+    class FirstFailingModule:
+        def on_application_shutdown(self, signal: str | None) -> None:
+            raise RuntimeError("shutdown failed")
+
+    @Module()
+    class SecondFailingModule:
+        def on_module_destroy(self) -> None:
+            raise RuntimeError("destroy failed")
+
+    @Module(imports=[FirstFailingModule, SecondFailingModule])
+    class AppModule:
+        pass
+
+    compiled = await create_testing_module(AppModule).compile()
+
+    with pytest.raises(LifecycleError) as failure:
+        await compiled.close()
+
+    # Both stages ran to completion and both failures survive: teardown raises a group
+    # whose members name the hooks that failed, not a summary that keeps only the first.
+    assert isinstance(failure.value, ExceptionGroup)
+    reported = [str(error) for error in failure.value.exceptions]
+    assert any("shutdown failed" in message for message in reported)
+    assert any("destroy failed" in message for message in reported)
+
+
+@pytest.mark.anyio
+async def test_compiled_application_shares_lifecycle_state_with_the_testing_module() -> None:
+    # compile() drives the application's own manager, so the application agrees about
+    # what has already run: initializing an already-started application does nothing,
+    # closing it tears down once, and a second close is a no-op. Starting it again
+    # after that begins a new cycle over instances the closed one no longer holds.
+    events: list[str] = []
+    built: list[object] = []
+
+    @Module()
+    class AppModule:
+        def on_module_init(self) -> None:
+            events.append("init")
+            built.append(self)
+
+        def on_application_shutdown(self, signal: str | None) -> None:
+            events.append("shutdown")
+
+    compiled = await create_testing_module(AppModule).compile()
+
+    assert events == ["init"]
+
+    await compiled.application.init()
+    assert events == ["init"]
+
+    await compiled.application.close()
+    assert events == ["init", "shutdown"]
+
+    await compiled.close()
+    assert events == ["init", "shutdown"]
+
+    await compiled.application.init()
+    assert events == ["init", "shutdown", "init"]
+    assert built[1] is not built[0]
+
+    await compiled.close()
+    assert events == ["init", "shutdown", "init", "shutdown"]
+
+
+@pytest.mark.anyio
+async def test_class_replacement_sees_the_replaced_provider_module_dependencies() -> None:
+    # A replacement stands in for the provider it replaces, so it is built with that
+    # provider's visibility. Db is deliberately not exported.
+    @Injectable
+    class Db:
+        pass
+
+    @Injectable
+    class UserService:
+        def __init__(self, db: Db) -> None:
+            self.db = db
+
+    class FakeUserService:
+        def __init__(self, db: Db) -> None:
+            self.db = db
+
+    @Module(providers=[Db, UserService], exports=[UserService])
+    class UsersModule:
+        pass
+
+    @Module(imports=[UsersModule])
+    class AppModule:
+        pass
+
+    compiled = await (
+        create_testing_module(AppModule)
+        .override_provider(UserService)
+        .use_class(FakeUserService)
+        .compile()
+    )
+    try:
+        resolved = compiled.get(UserService)
+        assert isinstance(resolved, FakeUserService)
+        assert isinstance(resolved.db, Db)
+    finally:
+        await compiled.close()
+
+
+@pytest.mark.anyio
+async def test_factory_replacement_sees_the_replaced_provider_module_dependencies() -> None:
+    @Injectable
+    class Db:
+        pass
+
+    @Injectable
+    class UserService:
+        def __init__(self, db: Db) -> None:
+            self.db = db
+
+    class FakeUserService:
+        def __init__(self, db: Db) -> None:
+            self.db = db
+
+    @Module(providers=[Db, UserService], exports=[UserService])
+    class UsersModule:
+        pass
+
+    @Module(imports=[UsersModule])
+    class AppModule:
+        pass
+
+    compiled = await (
+        create_testing_module(AppModule)
+        .override_provider(UserService)
+        .use_factory(FakeUserService, inject=(Db,))
+        .compile()
+    )
+    try:
+        resolved = compiled.get(UserService)
+        assert isinstance(resolved, FakeUserService)
+        assert isinstance(resolved.db, Db)
+    finally:
+        await compiled.close()
+
+
+@pytest.mark.anyio
+async def test_async_factory_replacement_is_awaited() -> None:
+    @Injectable
+    class GreetingService:
+        def greet(self) -> str:
+            return "production"
+
+    class FakeGreetingService:
+        def greet(self) -> str:
+            return "test"
+
+    async def build_greeting() -> object:
+        return FakeGreetingService()
+
+    @Module(providers=[GreetingService], exports=[GreetingService])
+    class AppModule:
+        pass
+
+    compiled = await (
+        create_testing_module(AppModule)
+        .override_provider(GreetingService)
+        .use_factory(build_greeting)
+        .compile()
+    )
+    try:
+        assert compiled.get(GreetingService).greet() == "test"
+    finally:
+        await compiled.close()
+
+
+@pytest.mark.anyio
+async def test_unresolvable_replacement_names_the_module_that_actually_failed() -> None:
+    # AuditTrail is bound, but by a module the declaring module of UserService cannot
+    # see, so the failure must name that declaring module and not the root.
+    @Injectable
+    class UserService:
+        pass
+
+    class FakeUserService:
+        def __init__(self, trail: AuditTrail) -> None:
+            self.trail = trail
+
+    @Module(providers=[AuditTrail])
+    class InfrastructureModule:
+        pass
+
+    @Module(providers=[UserService], exports=[UserService])
+    class UsersModule:
+        pass
+
+    @Module(imports=[InfrastructureModule, UsersModule])
+    class AppModule:
+        pass
+
+    builder = create_testing_module(AppModule)
+    builder.override_provider(UserService).use_class(FakeUserService)
+
+    with pytest.raises(ProviderResolutionError) as failure:
+        await builder.compile()
+
+    assert "which UsersModule cannot see" in str(failure.value)
+    assert "AppModule" not in str(failure.value)
+
+
+@pytest.mark.anyio
+async def test_value_override_is_visible_to_a_class_replacement() -> None:
+    @Injectable
+    class Clock:
+        def now(self) -> str:
+            return "production"
+
+    @Injectable
+    class ReportService:
+        def __init__(self, clock: Clock) -> None:
+            self.clock = clock
+
+    class FrozenClock:
+        def now(self) -> str:
+            return "frozen"
+
+    class FakeReportService:
+        def __init__(self, clock: Clock) -> None:
+            self.clock = clock
+
+    @Module(providers=[Clock, ReportService], exports=[Clock, ReportService])
+    class AppModule:
+        pass
+
+    compiled = await (
+        create_testing_module(AppModule)
+        .override_provider(ReportService)
+        .use_class(FakeReportService)
+        .override_provider(Clock)
+        .use_value(FrozenClock())
+        .compile()
+    )
+    try:
+        assert compiled.get(ReportService).clock.now() == "frozen"
+    finally:
+        await compiled.close()
+
+
+@pytest.mark.anyio
+async def test_compiled_module_exposes_the_module_instances_startup_built() -> None:
+    @Module()
+    class AppModule:
+        def on_module_init(self) -> None:
+            pass
+
+    compiled = await create_testing_module(AppModule).compile()
+    try:
+        instances = compiled.module_instances
+        assert list(instances) == [AppModule]
+        assert isinstance(instances[AppModule], AppModule)
+    finally:
+        await compiled.close()
+
+
+def test_an_application_without_a_lifecycle_manager_is_refused() -> None:
+    @Module()
+    class AppModule:
+        pass
+
+    application = create_test_app(AppModule)
+    application._lifecycle_manager = None
+
+    with pytest.raises(LifecycleError, match="without a lifecycle manager"):
+        _require_lifecycle_manager(application)
+
+
+@pytest.mark.anyio
+async def test_replacing_a_token_no_module_declares_is_refused_by_the_container() -> None:
+    # A token no module binds has no declaring module to build the replacement from,
+    # so the container's own rule about unknown overrides is what answers.
+    class FakeService:
+        pass
+
+    @Module()
+    class AppModule:
+        pass
+
+    builder = create_testing_module(AppModule)
+    builder.override_provider("MISSING").use_class(FakeService)
+
+    with pytest.raises(ProviderResolutionError, match="is not registered in the container"):
+        await builder.compile()
+
+
+@pytest.mark.anyio
+async def test_a_non_class_token_finds_its_declaring_module() -> None:
+    # A string token built while the test runs is a different object from the one the
+    # module registered, so the declaring module has to be found by the token's
+    # identity rather than by object identity. Dep is deliberately not exported.
+    registered_token = "CONFIG"
+    lookup_token = "".join(("CON", "FIG"))
+    assert lookup_token == registered_token
+    assert lookup_token is not registered_token
+
+    @Injectable
+    class Dep:
+        def where(self) -> str:
+            return "declaring module"
+
+    @Injectable
+    class RealConfig:
+        def __init__(self, dep: Dep) -> None:
+            self.dep = dep
+
+    class FakeConfig:
+        def __init__(self, dep: Dep) -> None:
+            self.dep = dep
+
+    @Module(
+        providers=[Dep, {"provide": registered_token, "use_class": RealConfig}],
+        exports=[registered_token],
+    )
+    class ConfigModule:
+        pass
+
+    @Module(imports=[ConfigModule])
+    class AppModule:
+        pass
+
+    compiled = await (
+        create_testing_module(AppModule)
+        .override_provider(lookup_token)
+        .use_class(FakeConfig)
+        .compile()
+    )
+    try:
+        resolved = compiled.get(registered_token)
+        assert isinstance(resolved, FakeConfig)
+        assert resolved.dep.where() == "declaring module"
+    finally:
+        await compiled.close()
+
+
+@pytest.mark.anyio
+async def test_a_value_override_reaches_a_non_class_token_built_at_runtime() -> None:
+    registered_token = "GREETING"
+    lookup_token = "".join(("GREET", "ING"))
+    assert lookup_token is not registered_token
+
+    @Module(
+        providers=[{"provide": registered_token, "use_value": "production"}],
+        exports=[registered_token],
+    )
+    class GreetingModule:
+        pass
+
+    @Module(imports=[GreetingModule])
+    class AppModule:
+        pass
+
+    compiled = await (
+        create_testing_module(AppModule).override_provider(lookup_token).use_value("test").compile()
+    )
+    try:
+        assert compiled.get(registered_token) == "test"
     finally:
         await compiled.close()

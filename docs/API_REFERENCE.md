@@ -1544,12 +1544,24 @@ Compiled application and container wrapper for tests.
 
 ##### Methods
 
+- `(property) module_instances`
+  The module instances the startup sequence built, keyed by module.
 - `get(self, token: object) -> Any`
+  Resolve a provider from the root module context.
 - `resolve(self, token: object) -> Any`
+  Alias for get().
 - `snapshot_routes(self) -> tuple[dict[str, object], ...]`
+  Return a deterministic snapshot of the compiled application routes.
 - `diff_routes(self, previous_snapshot: Iterable[Mapping[str, object]]) -> tuple[dict[str, object], ...]`
+  Compare a previous route snapshot against the current application routes.
 - `create_client(self)`
+  Return a Starlette test client bound to the compiled application.
 - `close(self) -> None`
+  Tear the compiled application down through its own lifecycle.
+
+Teardown belongs to the application's lifecycle manager, so the stages run in
+the order a served application runs them, a second call does nothing, and
+every failing hook is reported rather than only the first one.
 
 #### `PipelineOverrideRegistry`
 
@@ -1579,11 +1591,21 @@ Fluent builder for testing applications and container overrides.
 ##### Methods
 
 - `override_provider(self, token: object) -> _ProviderOverrideChain`
+  Begin replacing the provider bound to a token.
 - `override_guard(self, original: object) -> _PipelineOverrideChain`
+  Begin replacing a guard class wherever the application declares it.
 - `override_pipe(self, original: object) -> _PipelineOverrideChain`
+  Begin replacing a pipe class wherever the application declares it.
 - `override_interceptor(self, original: object) -> _PipelineOverrideChain`
+  Begin replacing an interceptor class wherever the application declares it.
 - `override_filter(self, original: object) -> _PipelineOverrideChain`
+  Begin replacing a filter class wherever the application declares it.
 - `compile(self) -> CompiledTestingModule`
+  Build the application, apply every override, and run its startup sequence.
+
+Startup is the application's own, so a graph a served application can start is
+a graph a test can start: async singleton factories are warmed before any hook
+runs, and the lifecycle manager knows afterwards that startup has happened.
 
 #### `create_test_app`
 
