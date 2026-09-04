@@ -43,6 +43,10 @@ class SingletonService:
 class DurableTenant:
     """A provider cached per partition."""
 
+    @classmethod
+    def get_durable_context_key(cls, request: Request | None) -> str:
+        return request.headers.get("x-tenant", "none") if request is not None else "none"
+
 
 class RequestIdentity:
     """A provider cached for one request, built from that request."""
@@ -58,6 +62,10 @@ class TransientBridge:
 
 class Owner:
     """The class every owner-scope binding in the matrix is built from."""
+
+    @classmethod
+    def get_durable_context_key(cls, request: Request | None) -> str:
+        return "none"
 
 
 def make_snapshot(identity: RequestIdentity) -> dict[str, str]:

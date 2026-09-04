@@ -7,6 +7,7 @@ from bustan.core.errors import (
     InvalidModuleError,
     ModuleCycleError,
 )
+from bustan.core.ioc.container import build_container
 from bustan.core.module.dynamic import DynamicModule, ModuleInstanceKey
 from bustan.core.module.graph import build_module_graph
 
@@ -99,8 +100,10 @@ def test_dynamic_module_singleton_isolation() -> None:
     class AppModule:
         pass
 
-    dynamic1 = DynamicModule(SharedModule)
-    dynamic2 = DynamicModule(SharedModule)
+    # Two registrations that declare different things are two modules, each with its
+    # own singletons.
+    dynamic1 = DynamicModule(SharedModule, providers=({"provide": "label", "use_value": "one"},))
+    dynamic2 = DynamicModule(SharedModule, providers=({"provide": "label", "use_value": "two"},))
 
     # Use intermediate modules to avoid provider ambiguity in AppModule
     @Module(imports=[dynamic1])
@@ -121,6 +124,46 @@ def test_dynamic_module_singleton_isolation() -> None:
     inst1.count += 1
     assert inst1.count == 1
     assert inst2.count == 0
+
+
+def test_equal_dynamic_registrations_are_one_module_with_one_set_of_singletons() -> None:
+    # A registration is described by its values, so declaring the same one twice
+    # describes one module. Building two would give the application two copies of
+    # every provider inside it, and a caller reaching one copy would never see what
+    # the other recorded.
+    @Injectable
+    class Counter:
+        def __init__(self) -> None:
+            self.count = 0
+
+    @Module(providers=[Counter], exports=[Counter])
+    class SharedModule:
+        pass
+
+    first = DynamicModule(SharedModule, providers=({"provide": "label", "use_value": "same"},))
+    second = DynamicModule(SharedModule, providers=({"provide": "label", "use_value": "same"},))
+
+    assert first is second
+
+    @Module(imports=[first])
+    class M1:
+        pass
+
+    @Module(imports=[second])
+    class M2:
+        pass
+
+    @Module(imports=[M1, M2])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+
+    shared_nodes = [node.key for node in graph.nodes if node.module is SharedModule]
+
+    assert len(shared_nodes) == 1
+    assert container.resolve(Counter, module=M1) is container.resolve(Counter, module=M2)
 
 
 def test_dynamic_module_circular_dependency() -> None:
@@ -244,3 +287,17 @@ def test_dynamic_module_export_merging() -> None:
 
     assert S1 in exports
     assert S2 in exports
+
+
+def test_registrations_holding_a_value_nothing_can_hash_stay_apart() -> None:
+    # A declaration is matched by its values, and a value nothing can hash cannot be
+    # compared to another. Standing for itself is the strictest answer available, so
+    # two such declarations are never merged by mistake.
+    @Module(providers=[], exports=[])
+    class SharedModule:
+        pass
+
+    first = DynamicModule(SharedModule, providers=({"provide": "tags", "use_value": {"a", "b"}},))
+    second = DynamicModule(SharedModule, providers=({"provide": "tags", "use_value": {"a", "b"}},))
+
+    assert first is not second

@@ -145,9 +145,11 @@ def test_container_resolves_request_scoped_providers_once_per_request(
     assert third_instance.request is third_request
 
 
-def test_container_rejects_request_scoped_dependencies_from_singleton_providers(
-    build_request: RequestFactory,
-) -> None:
+def test_container_rejects_request_scoped_dependencies_from_singleton_providers() -> None:
+    # A singleton is built once and kept for the process, so a request-scoped
+    # dependency inside it pins the first caller's state and answers it to everyone
+    # after. The composition is refused while the graph is planned, before any
+    # request exists to observe it.
     @Injectable(scope="request")
     class RequestState:
         def __init__(self, request: Request) -> None:
@@ -162,10 +164,8 @@ def test_container_rejects_request_scoped_dependencies_from_singleton_providers(
     class AppModule:
         pass
 
-    container = build_container(build_module_graph(AppModule))
-
     with pytest.raises(ProviderResolutionError, match="request-scoped provider"):
-        container.resolve(SingletonService, module=AppModule, request=build_request(path="/scope"))
+        build_container(build_module_graph(AppModule))
 
 
 def test_container_rejects_missing_constructor_annotations() -> None:
@@ -178,10 +178,8 @@ def test_container_rejects_missing_constructor_annotations() -> None:
     class AppModule:
         pass
 
-    container = build_container(build_module_graph(AppModule))
-
-    with pytest.raises(ProviderResolutionError, match="missing a type annotation"):
-        container.resolve(BrokenService, module=AppModule)
+    with pytest.raises(ProviderResolutionError, match="has no type annotation"):
+        build_container(build_module_graph(AppModule))
 
 
 def test_container_rejects_unresolved_provider_dependencies() -> None:
@@ -198,10 +196,8 @@ def test_container_rejects_unresolved_provider_dependencies() -> None:
     class AppModule:
         pass
 
-    container = build_container(build_module_graph(AppModule))
-
     with pytest.raises(ProviderResolutionError, match="MissingService"):
-        container.resolve(ConsumerService, module=AppModule)
+        build_container(build_module_graph(AppModule))
 
 
 def test_container_rejects_circular_provider_dependencies() -> None:
@@ -240,10 +236,8 @@ def test_container_separates_framework_owned_injections_from_provider_di() -> No
     class AppModule:
         pass
 
-    container = build_container(build_module_graph(AppModule))
-
     with pytest.raises(ProviderResolutionError, match="framework-owned type Request"):
-        container.resolve(RequestAwareService, module=AppModule)
+        build_container(build_module_graph(AppModule))
 
 
 def test_container_resolves_value_provider_def() -> None:

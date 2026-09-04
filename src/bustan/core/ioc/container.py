@@ -2,27 +2,33 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
-from starlette.requests import Request
+from typing import TYPE_CHECKING
 
 from ..errors import InvalidModuleError
-from ..module.dynamic import ModuleKey
-from ..module.graph import ModuleGraph
 from ..utils import _display_name, _qualname
 from .overrides import OverrideManager
+from .planning.container_plan import plan_container
 from .registry import Registry
-from .resolver import Resolver
+from .runtime.kernel import ResolutionKernel
 from .scopes import ScopeManager
-from .tokens import InjectionToken
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from starlette.requests import Request
+
+    from ..module.dynamic import ModuleKey
+    from ..module.graph import ModuleGraph
+    from .tokens import InjectionToken
 
 
 class Container:
     """Resolve providers and controllers against a validated module graph.
 
-    This class acts as a high-level orchestrator for the dependency injection
-    system, delegating specialized tasks to the Registry, ScopeManager,
-    Resolver, and OverrideManager.
+    Building one is the whole of the framework's bootstrap-time reasoning about
+    dependencies: every class the graph can build is planned here, and a graph whose
+    plan cannot be completed is refused now, naming every reason at once, rather than
+    on whichever request first happens to touch the mistake.
     """
 
     def __init__(self, module_graph: ModuleGraph) -> None:
@@ -30,9 +36,16 @@ class Container:
         self.registry = Registry()
         self.scope_manager = ScopeManager()
         self.override_manager = OverrideManager(self.registry)
-        self.resolver = Resolver(self.registry, self.scope_manager, self.override_manager)
 
         self._build_bindings()
+        self.plan = plan_container(
+            bindings=self.registry.bindings,
+            visibility=self.registry.module_visibility,
+            controllers=self.registry.controller_modules,
+        )
+        self.kernel = ResolutionKernel(
+            self.registry, self.scope_manager, self.override_manager, self.plan
+        )
 
     def _build_bindings(self) -> None:
         """Populate the registry and visibility rules from the module graph."""
@@ -74,10 +87,12 @@ class Container:
     ) -> object:
         """Resolve a provider visible from the given module.
 
-        The resolver honors overrides against the token's declaring module,
-        so overriding an exported provider also applies to importing modules.
+        Passing no request resolves as though none were in flight, so an imperative
+        resolution never captures a request that merely happens to be active further
+        out. Overrides are honoured against the token's declaring module, so
+        overriding an exported provider also applies to importing modules.
         """
-        return self.resolver.resolve(token, module=module, request=request)
+        return self.kernel.resolve(token, module=module, request=request)
 
     async def resolve_async(
         self,
@@ -88,7 +103,7 @@ class Container:
     ) -> object:
         """Resolve a provider, awaiting async factories when required."""
 
-        return await self.resolver.resolve_async(token, module=module, request=request)
+        return await self.kernel.resolve_async(token, module=module, request=request)
 
     def instantiate_class(
         self,
@@ -97,8 +112,18 @@ class Container:
         module: ModuleKey,
         request: Request | None = None,
     ) -> object:
-        """Resolve a fresh controller or class instance."""
-        return self.resolver.instantiate_class(cls, module=module, request=request)
+        """Build one fresh instance of a class, such as a controller or a test double."""
+        return self.kernel.instantiate_class(cls, module=module, request=request)
+
+    async def instantiate_class_async(
+        self,
+        cls: type[object],
+        *,
+        module: ModuleKey,
+        request: Request | None = None,
+    ) -> object:
+        """Build one fresh instance of a class, awaiting async dependencies."""
+        return await self.kernel.instantiate_class_async(cls, module=module, request=request)
 
     def call_factory(
         self,
@@ -108,8 +133,19 @@ class Container:
         module: ModuleKey,
         request: Request | None = None,
     ) -> object:
-        """Resolve parameters and call the factory."""
-        return self.resolver.call_factory(factory, inject, module=module, request=request)
+        """Resolve the tokens a factory declares and call it."""
+        return self.kernel.call_factory(factory, inject, module=module, request=request)
+
+    async def call_factory_async(
+        self,
+        factory: Callable[..., object],
+        inject: tuple[object, ...],
+        *,
+        module: ModuleKey,
+        request: Request | None = None,
+    ) -> object:
+        """Resolve the tokens a factory declares and call it, awaiting an async factory."""
+        return await self.kernel.call_factory_async(factory, inject, module=module, request=request)
 
     def override(self, token: object, value: object, *, module: ModuleKey | None = None) -> None:
         """Register a replacement object for a provider."""
@@ -122,9 +158,11 @@ class Container:
         self.scope_manager.clear_controller_singletons()
 
     def has_override(self, token: object, *, module: ModuleKey | None = None) -> bool:
+        """Report whether a replacement object is registered for a provider."""
         return self.override_manager.has_override(token, module=module)
 
     def get_override(self, token: object, *, module: ModuleKey | None = None) -> object | None:
+        """Return the replacement object registered for a provider, if there is one."""
         return self.override_manager.get_override(token, module=module)
 
     def get_global_pipeline_providers(self, token: InjectionToken[object]) -> tuple[object, ...]:

@@ -82,7 +82,14 @@ def main() -> None:
                 f"{message[:90]}"
             )
 
-    client = TestClient(create_app(AppModule))  # no lifespan: singletons are built lazily
+    try:
+        # no lifespan: singletons used to be built lazily, and the leak only showed there
+        client = TestClient(create_app(AppModule))
+    except ProviderResolutionError:
+        for label in ("RI-06b", "RI-06c"):
+            print(f"RESULT: {label} FIXED - the shape is refused before any request is served")
+        return
+
     first = client.get("/snap/", headers={"x-user-id": "alice"}).json()
     second = client.get("/snap/", headers={"x-user-id": "bob"}).json()
     for key, label in (("factory", "RI-06b"), ("alias", "RI-06c")):

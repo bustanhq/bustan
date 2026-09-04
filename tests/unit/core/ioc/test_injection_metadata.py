@@ -60,17 +60,23 @@ def test_optional_dependency_returns_none_only_when_marked_optional() -> None:
         def __init__(self, maybe: Annotated[object, Inject(MISSING_TOKEN)]) -> None:
             self.maybe = maybe
 
-    @Module(providers=[OptionalConsumer, RequiredConsumer])
-    class AppModule:
+    @Module(providers=[OptionalConsumer])
+    class OptionalModule:
         pass
 
-    container = build_container(build_module_graph(AppModule))
-    optional_consumer = cast(Any, container.resolve(OptionalConsumer, module=AppModule))
+    @Module(providers=[RequiredConsumer])
+    class RequiredModule:
+        pass
+
+    container = build_container(build_module_graph(OptionalModule))
+    optional_consumer = cast(Any, container.resolve(OptionalConsumer, module=OptionalModule))
 
     assert optional_consumer.maybe is None
 
+    # The same token without the marker is a dependency nothing can supply, and a
+    # graph containing one is refused where it is declared rather than where it is used.
     with pytest.raises(ProviderResolutionError, match="MISSING"):
-        container.resolve(RequiredConsumer, module=AppModule)
+        build_container(build_module_graph(RequiredModule))
 
 
 def test_special_request_token_is_rejected_outside_request_scope() -> None:
@@ -83,10 +89,8 @@ def test_special_request_token_is_rejected_outside_request_scope() -> None:
     class AppModule:
         pass
 
-    container = build_container(build_module_graph(AppModule))
-
     with pytest.raises(ProviderResolutionError, match="REQUEST"):
-        container.resolve(RequestAwareService, module=AppModule)
+        build_container(build_module_graph(AppModule))
 
 
 def test_special_request_token_resolves_within_request_scope(build_request: RequestFactory) -> None:
