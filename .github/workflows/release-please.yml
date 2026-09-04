@@ -3,7 +3,9 @@ name: Release Please
 on:
   push:
     branches:
-      - main
+      # This file lives on the 1.1 maintenance branch, which releases itself.
+      # It is deliberately not the same as the copy on the development line.
+      - release/1.1.1
 
 permissions:
   contents: write
@@ -24,6 +26,9 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release/config.json
           manifest-file: release/manifest.json
+          # Without this the action would propose a release from the default
+          # branch rather than from the branch that triggered it.
+          target-branch: release/1.1.1
 
       - name: Check out repository
         if: ${{ steps.release.outputs.releases_created }}
