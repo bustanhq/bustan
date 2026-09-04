@@ -24,7 +24,7 @@ from ....common.constants import BUSTAN_CONTROLLER_ATTR
 from ....common.types import ControllerMetadata, ProviderScope
 from ...errors import ProviderResolutionError
 from ...utils import _display_name, _get_metadata, _qualname
-from ..registry import Binding
+from ..registry import Binding, BindingTable
 from .annotations import ConstructorDependency, plan_constructor_dependencies
 from .plan import (
     CONTAINER_TOKEN_SOURCES,
@@ -220,9 +220,13 @@ def _scope_bindings(
     A controller is cached exactly the way a provider of the same scope is cached, so
     the scope rules have to reach it. It is keyed by its own class, which no module
     declares as a token, so it can never shadow a real binding.
+
+    The merged table keys tokens the way the binding table does, so two equal tokens of
+    different types stay two bindings here as well.
     """
 
-    merged: dict[BindingKey, Binding] = dict(bindings)
+    merged = BindingTable()
+    merged.update(bindings)
     for controller, module in controllers.items():
         key = (module, controller)
         merged.setdefault(

@@ -5,15 +5,20 @@ from __future__ import annotations
 from ..errors import ProviderResolutionError
 from ..module.dynamic import ModuleKey
 from ..utils import _display_name, _qualname
-from .registry import Registry
+from .registry import Registry, TokenKey, token_identity
 
 
 class OverrideManager:
-    """Manages replacement objects for registered providers."""
+    """Manages replacement objects for registered providers.
+
+    An override is keyed by the module that declares the token and by the token's own
+    identity, so overriding a token never reaches a different token that merely compares
+    equal to it, such as the bare string a string enum member equals.
+    """
 
     def __init__(self, registry: Registry) -> None:
         self.registry = registry
-        self._overrides: dict[tuple[ModuleKey, object], object] = {}
+        self._overrides: dict[tuple[ModuleKey, TokenKey], object] = {}
 
     def override(self, token: object, value: object, *, module: ModuleKey | None = None) -> None:
         """Register a replacement object for a provider."""
@@ -43,19 +48,26 @@ class OverrideManager:
         self,
         token: object,
         module_key: ModuleKey | None,
-    ) -> tuple[ModuleKey, object]:
+    ) -> tuple[ModuleKey, TokenKey]:
+        """Return the key an override is stored under, or refuse a token nothing declares.
+
+        The token is matched by its identity rather than by equality, so a token equal to
+        a declared one but of another type is an unregistered token here, not a second
+        way to spell the one that is registered.
+        """
+
         if module_key is not None:
-            override_key = (module_key, token)
-            if override_key not in self.registry.bindings:
+            if (module_key, token) not in self.registry.bindings:
                 raise ProviderResolutionError(
                     f"{_display_name(token)} is not registered in {_display_name(module_key)}"
                 )
-            return override_key
+            return module_key, token_identity(token)
 
+        identity = token_identity(token)
         declaring_modules = [
             registered_module
             for registered_module, registered_token in self.registry.bindings
-            if registered_token is token
+            if token_identity(registered_token) == identity
         ]
 
         if not declaring_modules:
@@ -70,4 +82,4 @@ class OverrideManager:
                 "specify module_key when overriding it"
             )
 
-        return declaring_modules[0], token
+        return declaring_modules[0], identity

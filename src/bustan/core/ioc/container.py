@@ -56,7 +56,7 @@ class Container:
             # Visibility is computed once, by the graph. Copying it here rather than
             # recomputing the rule is what keeps the documented graph view and the
             # resolvable set the same set.
-            self.registry.set_visibility(node.key, dict(node.visibility))
+            self.registry.set_visibility(node.key, node.visibility)
 
             for controller_cls in node.controllers:
                 self.registry.register_controller(controller_cls, node.key)

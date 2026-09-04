@@ -8,6 +8,7 @@ them at once.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import pytest
@@ -28,6 +29,12 @@ if TYPE_CHECKING:
 
 CONFIG = InjectionToken("CONFIG")
 SNAPSHOT = InjectionToken("SNAPSHOT")
+
+
+class DsnTokens(StrEnum):
+    """A token declared as a string enum, which equals the bare string it is written as."""
+
+    DB = "db"
 
 
 class NotRegistered:
@@ -407,3 +414,28 @@ def test_a_keyword_only_dependency_is_passed_by_keyword() -> None:
     assert plan is not None
     assert plan.arguments[0].positional is False
     assert isinstance(cast(Any, container.resolve(Consumer, module=AppModule)).service, Service)
+
+
+def test_a_factory_injecting_equal_tokens_of_different_types_is_given_both() -> None:
+    # Planning reads the same visibility the resolver does, so a factory may inject a
+    # string enum member and the bare string it equals and be handed both bindings.
+    def combine(enum_dsn: str, string_dsn: str) -> str:
+        return f"{enum_dsn}|{string_dsn}"
+
+    @Module(providers=[{"provide": DsnTokens.DB, "use_value": "enum-db"}], exports=[DsnTokens.DB])
+    class SharedModule:
+        pass
+
+    @Module(
+        imports=[SharedModule],
+        providers=[
+            {"provide": "db", "use_value": "string-db"},
+            {"provide": "dsn", "use_factory": combine, "inject": [DsnTokens.DB, "db"]},
+        ],
+    )
+    class FeatureModule:
+        pass
+
+    container = build_container(build_module_graph(FeatureModule))
+
+    assert container.resolve("dsn", module=FeatureModule) == "enum-db|string-db"

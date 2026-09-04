@@ -1,5 +1,6 @@
 """Unit tests for module graph discovery and validation."""
 
+from enum import StrEnum
 from typing import cast
 
 import pytest
@@ -418,3 +419,49 @@ def test_build_module_graph_rejects_importing_an_undecorated_class() -> None:
 
     with pytest.raises(InvalidModuleError, match="is not a decorated module"):
         build_module_graph(AppModule)
+
+
+def test_a_local_provider_does_not_shadow_an_import_of_an_equal_token_of_another_type() -> None:
+    # A string enum member equals the bare string it is written as, so a module binding
+    # the string used to take an imported export of the enum with it. They are two
+    # tokens, and each one keeps its own declaring module.
+    class Tokens(StrEnum):
+        DB = "db"
+
+    @Module(providers=[{"provide": Tokens.DB, "use_value": "enum-db"}], exports=[Tokens.DB])
+    class SharedModule:
+        pass
+
+    @Module(
+        imports=[SharedModule],
+        providers=[{"provide": "db", "use_value": "string-db"}],
+    )
+    class FeatureModule:
+        pass
+
+    visibility = build_module_graph(FeatureModule).get_node(FeatureModule).visibility
+
+    assert visibility[Tokens.DB] is SharedModule
+    assert visibility["db"] is FeatureModule
+    assert len(visibility) == 2
+
+
+def test_a_global_export_and_an_equal_local_token_of_another_type_stay_apart() -> None:
+    # True equals 1 and hashes the same, so the global layer used to collapse the two
+    # onto whichever module was walked last.
+    @Module(providers=[{"provide": 1, "use_value": "int-one"}], exports=[1], is_global=True)
+    class IntModule:
+        pass
+
+    @Module(providers=[{"provide": True, "use_value": "bool-true"}])
+    class BoolModule:
+        pass
+
+    @Module(imports=[IntModule, BoolModule])
+    class AppModule:
+        pass
+
+    visibility = build_module_graph(AppModule).get_node(BoolModule).visibility
+
+    assert visibility[1] is IntModule
+    assert visibility[True] is BoolModule
