@@ -7,7 +7,7 @@ import pytest
 from bustan import Controller, Get, Module
 from bustan.core.errors import InvalidControllerError, RouteDefinitionError
 from bustan.core.module.graph import build_module_graph
-from bustan.platform.http.scanner import ControllerScanner
+from bustan.platform.http.scanner import FRAMEWORK_HOOK_NAMES, ControllerScanner
 
 
 def test_controller_scanner_rejects_non_controller_classes() -> None:
@@ -87,3 +87,48 @@ def test_controller_scanner_preserves_module_ownership_and_deterministic_order()
         (UsersModule, "UsersController", "list_users", "/users"),
         (UsersModule, "UsersController", "read_user", "/users/{user_id}"),
     ]
+
+
+@pytest.mark.parametrize("hook_name", sorted(FRAMEWORK_HOOK_NAMES))
+def test_controller_scanner_skips_every_framework_hook_name(hook_name: str) -> None:
+    @Controller("/tenants")
+    class TenantsController:
+        @Get("/health")
+        def health(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    def hook(self: object, *arguments: object) -> str:
+        return "tenant"
+
+    setattr(TenantsController, hook_name, hook)
+
+    @Module()
+    class AppModule:
+        pass
+
+    scanner = ControllerScanner(build_module_graph(AppModule))
+    scanned = scanner.scan_controller(AppModule, TenantsController)
+
+    assert [route.handler_name for route in scanned.routes] == ["health"]
+
+
+def test_controller_scanner_still_rejects_an_undecorated_method_beside_a_hook() -> None:
+    @Controller("/tenants")
+    class TenantsController:
+        def on_module_init(self) -> None:
+            return None
+
+        def list_tenants(self) -> list[dict[str, str]]:
+            return [{"name": "Ada"}]
+
+    @Module(controllers=[TenantsController])
+    class AppModule:
+        pass
+
+    scanner = ControllerScanner(build_module_graph(AppModule))
+
+    with pytest.raises(
+        RouteDefinitionError,
+        match="TenantsController.list_tenants.*missing an HTTP route decorator",
+    ):
+        scanner.scan()
