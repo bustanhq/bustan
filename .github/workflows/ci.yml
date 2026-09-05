@@ -87,6 +87,66 @@ jobs:
       - name: Pytest with coverage of the injection kernel
         run: uv run pytest --cov=bustan.core --cov-report=term-missing --cov-fail-under=85
 
+  layering:
+    name: Package layering (advisory)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      # Advisory only, and only until the violations it already reports are fixed. The check
+      # passes on a tree that respects the layer table; this tree does not yet, and the imports
+      # it names are defects to close rather than entries to add to the table. Delete
+      # `continue-on-error` the moment the report is empty: an advisory layering check that
+      # stays advisory is a layering check nobody reads.
+      - name: Check package layering
+        id: layering
+        continue-on-error: true
+        run: |
+          status=0
+          uv run python scripts/check_layering.py --check > layering-report.txt || status=$?
+          cat layering-report.txt
+          exit "$status"
+
+      # The report belongs on the run summary rather than only inside a step log, because a
+      # step whose failure does not stop the job is a step nobody opens. The job is green
+      # whether the report is empty or not, so nothing in the checks list can announce the day
+      # it empties; the summary says so instead, on the first run where it becomes true.
+      - name: Summarise the layering report
+        env:
+          LAYERING_OUTCOME: ${{ steps.layering.outcome }}
+        run: |
+          if [ "$LAYERING_OUTCOME" = "failure" ]; then
+            {
+              echo '### Package layering: advisory failure'
+              echo
+              echo 'These imports cross a boundary declared in `scripts/check_layering.py`.'
+              echo
+              echo '```'
+              cat layering-report.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo '### Package layering: clean'
+              echo
+              echo 'The report is empty. Delete `continue-on-error` from the step above so this'
+              echo 'job blocks a change that reintroduces a violation.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   audit-repros:
     name: Audit repro harness (advisory)
     runs-on: ubuntu-latest
