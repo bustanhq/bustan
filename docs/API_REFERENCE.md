@@ -640,7 +640,7 @@ HTTP-specific view over a generic arguments host.
 class HttpFormData(Protocol)
 ```
 
-Defined in `bustan.platform.http.abstractions`.
+Defined in `bustan.contracts.requests`.
 
 Minimal form-data surface used by parameter binding.
 
@@ -655,7 +655,7 @@ Minimal form-data surface used by parameter binding.
 class HttpQueryParams(Protocol)
 ```
 
-Defined in `bustan.platform.http.abstractions`.
+Defined in `bustan.contracts.requests`.
 
 Minimal multi-value query parameter surface used by parameter binding.
 
@@ -669,7 +669,7 @@ Minimal multi-value query parameter surface used by parameter binding.
 class HttpRequest(Protocol)
 ```
 
-Defined in `bustan.platform.http.abstractions`.
+Defined in `bustan.contracts.requests`.
 
 Adapter-neutral request surface used by framework runtime code.
 
@@ -696,16 +696,20 @@ Adapter-neutral request surface used by framework runtime code.
 class HttpResponse
 ```
 
-Defined in `bustan.platform.http.abstractions`.
+Defined in `bustan.contracts.responses`.
 
 Adapter-neutral mutable HTTP response container.
 
 ##### Methods
 
 - `set_body(self, body: bytes | str) -> None`
+  Replace the body, encoding text as UTF-8.
 - `send(self, body: bytes | str) -> None`
+  Replace the body from an awaiting caller; the response is written later.
 - `empty(cls, *, status_code: int = 204) -> HttpResponse`
+  Return a response with no body, defaulting to ``204 No Content``.
 - `json(cls, payload: object, *, status_code: int = 200, headers: Mapping[str, str] | None = None) -> HttpResponse`
+  Return a JSON response serialised without insignificant whitespace.
 
 #### `HttpUrl`
 
@@ -713,7 +717,7 @@ Adapter-neutral mutable HTTP response container.
 class HttpUrl(Protocol)
 ```
 
-Defined in `bustan.platform.http.abstractions`.
+Defined in `bustan.contracts.requests`.
 
 Minimal URL surface required by the framework runtime.
 
