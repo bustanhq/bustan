@@ -207,8 +207,17 @@ because a test that asserts an observable response does not have to live near th
 produces it.
 
 So when a ticket changes something a caller can see - a status, a header, a message, a
-payload shape - grep the entire test tree for the current wording before writing `Owns`, and
-add every file that asserts it. The grep is the check; reading the modules the ticket edits
+payload shape - grep the entire **repository** for the current wording before writing `Owns`,
+and add every file that asserts or teaches it. Not the test tree, and not a list of
+directories: `git grep` from the root, with no path argument at all.
+
+That distinction cost a second round on the very next ticket. A ticket retiring a documented
+testing pattern had its `Owns` widened after a sweep of `docs/`, `src/`, `tests/` and
+`examples/` - which found two guides and a whole example project, and missed the
+repository-root `README.md`, where the same recipe was taught to every first-time reader. The
+agent delivered correctly, the criterion "no documentation still shows the retired pattern"
+was still unmet, and the file had to be granted a second time. A directory list is a guess
+about where the repository keeps things; the root is not a directory anyone remembers to name. The grep is the check; reading the modules the ticket edits
 is not a substitute, and neither is running the suite, which passes right up until the fix
 exists.
 
