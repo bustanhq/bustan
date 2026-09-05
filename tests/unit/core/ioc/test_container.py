@@ -26,7 +26,7 @@ from bustan.core.module.graph import ModuleGraph, ModuleNode, build_module_graph
 from bustan.core.module.metadata import ModuleMetadata
 
 if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+    from tests.conftest import HttpRequestFactory
 
 
 def test_container_resolves_singleton_providers_and_transient_controllers() -> None:
@@ -125,7 +125,7 @@ def test_container_resolves_controller_dependencies_from_imported_exports() -> N
 
 
 def test_container_resolves_request_scoped_providers_once_per_request(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Injectable(scope="request")
     class RequestState:
@@ -141,20 +141,21 @@ def test_container_resolves_request_scoped_providers_once_per_request(
     with pytest.raises(ProviderResolutionError, match="requires an active request"):
         container.resolve(RequestState, module=AppModule)
 
-    first_request = build_request(path="/requests/one")
+    first_request = build_http_request(path="/requests/one")
     first_instance = cast(
         Any, container.resolve(RequestState, module=AppModule, request=first_request)
     )
     second_instance = container.resolve(RequestState, module=AppModule, request=first_request)
-    third_request = build_request(path="/requests/one")
+    third_request = build_http_request(path="/requests/one")
     third_instance = cast(
         Any, container.resolve(RequestState, module=AppModule, request=third_request)
     )
 
     assert first_instance is second_instance
     assert first_instance is not third_instance
-    assert first_instance.request is first_request
-    assert third_instance.request is third_request
+    # The parameter named the transport's own request type, so that is what it holds.
+    assert first_instance.request is first_request.native_request
+    assert third_instance.request is third_request.native_request
 
 
 def test_container_rejects_request_scoped_dependencies_from_singleton_providers() -> None:
@@ -248,7 +249,7 @@ def test_container_separates_framework_owned_injections_from_provider_di() -> No
     class AppModule:
         pass
 
-    with pytest.raises(ProviderResolutionError, match="framework-owned type Request"):
+    with pytest.raises(ProviderResolutionError, match="the transport's own request object"):
         build_container(build_module_graph(AppModule))
 
 
@@ -770,7 +771,7 @@ def test_a_provider_a_dynamic_module_declares_is_overridden_through_its_class() 
 
 
 def test_an_override_of_a_request_scoped_provider_serves_one_object_to_every_request(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     # An override is one object, whatever lifetime the provider it replaces declared, so
     # a replaced request-scoped provider stops being per-request. It also stops needing
@@ -789,10 +790,12 @@ def test_an_override_of_a_request_scoped_provider_serves_one_object_to_every_req
 
     assert container.resolve(RequestContext, module=AppModule) is replacement
     assert (
-        container.resolve(RequestContext, module=AppModule, request=build_request()) is replacement
+        container.resolve(RequestContext, module=AppModule, request=build_http_request())
+        is replacement
     )
     assert (
-        container.resolve(RequestContext, module=AppModule, request=build_request()) is replacement
+        container.resolve(RequestContext, module=AppModule, request=build_http_request())
+        is replacement
     )
 
 

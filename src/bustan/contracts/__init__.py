@@ -27,9 +27,11 @@ from .requests import (
     HttpRequest,
     HttpRequestState,
     HttpUrl,
+    NativeHttpRequest,
     RateLimitDecision,
     RequestSlots,
     as_http_request,
+    names_native_request,
     request_slots,
 )
 from .responses import HttpFileResponse, HttpResponse, HttpStreamResponse, NativeHttpResponse
@@ -50,6 +52,7 @@ __all__ = (
     "HttpResponseValue",
     "HttpStreamResponse",
     "HttpUrl",
+    "NativeHttpRequest",
     "NativeHttpResponse",
     "QueryParams",
     "RateLimitDecision",
@@ -58,5 +61,6 @@ __all__ = (
     "RouteHandler",
     "Url",
     "as_http_request",
+    "names_native_request",
     "request_slots",
 )

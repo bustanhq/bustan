@@ -21,7 +21,7 @@ from bustan.core.lifecycle.runner import (
 from bustan.core.module.graph import build_module_graph
 
 if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+    from tests.conftest import HttpRequestFactory
 
 
 class HookRecorder:
@@ -196,7 +196,7 @@ async def test_a_durable_provider_with_an_application_partition_is_warmed_and_to
 
 @pytest.mark.anyio
 async def test_a_durable_partition_created_while_serving_takes_part_in_teardown(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     events: list[str] = []
 
@@ -223,7 +223,7 @@ async def test_a_durable_partition_created_while_serving_takes_part_in_teardown(
     # belonging to the application, so warm-up built nothing.
     assert events == []
 
-    request = build_request(path="/items", headers=[(b"x-tenant-id", b"tenant-a")])
+    request = build_http_request(path="/items", headers=[(b"x-tenant-id", b"tenant-a")])
     container.resolve(TenantPool, module=AppModule, request=request)
     await manager.shutdown()
 

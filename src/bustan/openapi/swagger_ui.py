@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from starlette.responses import HTMLResponse, JSONResponse
-from starlette.routing import Route
-
-from ..platform.http.adapter import CompiledAdapterRoute
+from ..contracts import AdapterRoute, HttpRequest, HttpResponse
 from .schema_builder import generate_schema
 
 
@@ -24,31 +21,28 @@ class SwaggerModule:
         json_path = path
         ui_path = swagger_ui_path or f"{path}/docs"
 
-        async def openapi_json(_request):
-            return JSONResponse(schema)
+        async def openapi_json(_request: HttpRequest) -> HttpResponse:
+            return HttpResponse.json(schema)
 
-        async def swagger_html(_request):
-            return HTMLResponse(_swagger_html_template(json_path))
+        async def swagger_html(_request: HttpRequest) -> HttpResponse:
+            return HttpResponse(
+                body=_swagger_html_template(json_path).encode("utf-8"),
+                media_type="text/html",
+            )
 
         app.get_http_adapter().register_routes(
             [
-                CompiledAdapterRoute(
-                    registration=Route(
-                        json_path, endpoint=openapi_json, methods=["GET"], name="openapi_json"
-                    ),
-                    contracts=(),
+                AdapterRoute(
                     path=json_path,
                     methods=("GET",),
                     name="openapi_json",
+                    handler=openapi_json,
                 ),
-                CompiledAdapterRoute(
-                    registration=Route(
-                        ui_path, endpoint=swagger_html, methods=["GET"], name="swagger_ui"
-                    ),
-                    contracts=(),
+                AdapterRoute(
                     path=ui_path,
                     methods=("GET",),
                     name="swagger_ui",
+                    handler=swagger_html,
                 ),
             ]
         )

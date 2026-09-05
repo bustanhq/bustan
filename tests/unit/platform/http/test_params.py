@@ -29,7 +29,6 @@ from bustan import (
     UploadedFiles,
     create_param_decorator,
 )
-from bustan.adapters.starlette import StarletteHttpRequest
 from bustan.contracts import HttpRequest
 from bustan.core.errors import ParameterBindingError
 from bustan.pipeline.context import ExecutionContext
@@ -59,7 +58,7 @@ from bustan.platform.http.params import (
 )
 
 if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+    from tests.conftest import HttpRequestFactory
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +88,7 @@ UnitCurrentRequestPath = create_param_decorator(
 
 
 def test_bind_handler_arguments_injects_request_and_converts_path_and_query_values(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users")
     class UsersController:
@@ -105,7 +104,7 @@ def test_bind_handler_arguments_injects_request_and_converts_path_and_query_valu
 
     route_definition = iter_controller_routes(UsersController)[0]
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
-    request = build_request(
+    request = build_http_request(
         method="GET",
         path="/users/41",
         path_params={"user_id": "41"},
@@ -117,12 +116,13 @@ def test_bind_handler_arguments_injects_request_and_converts_path_and_query_valu
     )
 
     assert keyword_arguments == {}
-    assert positional_arguments[0] is request
+    # The parameter named the transport's own request type, so that is what it got.
+    assert positional_arguments[0] is request.native_request
     assert positional_arguments[1:] == (41, True, 2)
 
 
 def test_bind_handler_arguments_supports_adapter_neutral_http_request_annotations(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users")
     class UsersController:
@@ -132,7 +132,7 @@ def test_bind_handler_arguments_supports_adapter_neutral_http_request_annotation
 
     route_definition = iter_controller_routes(UsersController)[0]
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
-    request = StarletteHttpRequest(build_request(method="GET", path="/users"))
+    request = build_http_request(method="GET", path="/users")
 
     positional_arguments, keyword_arguments = anyio.run(
         bind_handler_arguments, request, binding_plan
@@ -143,7 +143,7 @@ def test_bind_handler_arguments_supports_adapter_neutral_http_request_annotation
 
 
 def test_bind_handler_arguments_binds_json_body_to_a_dataclass(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users")
     class UsersController:
@@ -153,7 +153,7 @@ def test_bind_handler_arguments_binds_json_body_to_a_dataclass(
 
     route_definition = iter_controller_routes(UsersController)[0]
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
-    request = build_request(
+    request = build_http_request(
         method="POST",
         path="/users",
         json_body={"name": "Ada", "admin": True},
@@ -167,7 +167,9 @@ def test_bind_handler_arguments_binds_json_body_to_a_dataclass(
     assert positional_arguments == (CreateUserPayload(name="Ada", admin=True),)
 
 
-def test_bind_handler_arguments_rejects_invalid_query_values(build_request: RequestFactory) -> None:
+def test_bind_handler_arguments_rejects_invalid_query_values(
+    build_http_request: HttpRequestFactory,
+) -> None:
     @Controller("/users")
     class UsersController:
         @Get("/")
@@ -176,7 +178,7 @@ def test_bind_handler_arguments_rejects_invalid_query_values(build_request: Requ
 
     route_definition = iter_controller_routes(UsersController)[0]
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
-    request = build_request(
+    request = build_http_request(
         method="GET",
         path="/users",
         query_params={"page": "not-a-number"},
@@ -187,7 +189,7 @@ def test_bind_handler_arguments_rejects_invalid_query_values(build_request: Requ
 
 
 def test_bind_handler_arguments_supports_list_query_values_and_keyword_only_parameters(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users")
     class UsersController:
@@ -197,7 +199,7 @@ def test_bind_handler_arguments_supports_list_query_values_and_keyword_only_para
 
     route_definition = iter_controller_routes(UsersController)[0]
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
-    request = build_request(
+    request = build_http_request(
         method="GET",
         path="/users",
         query_params={"page": "2", "tags": ["1", "3", "5"]},
@@ -212,7 +214,7 @@ def test_bind_handler_arguments_supports_list_query_values_and_keyword_only_para
 
 
 def test_bind_handler_arguments_uses_scalar_request_bodies_for_single_parameters(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/counters")
     class CountersController:
@@ -222,7 +224,7 @@ def test_bind_handler_arguments_uses_scalar_request_bodies_for_single_parameters
 
     route_definition = iter_controller_routes(CountersController)[0]
     binding_plan = compile_parameter_bindings(CountersController, route_definition)
-    request = build_request(method="POST", path="/counters", json_body=5)
+    request = build_http_request(method="POST", path="/counters", json_body=5)
 
     positional_arguments, keyword_arguments = anyio.run(
         bind_handler_arguments, request, binding_plan
@@ -233,7 +235,7 @@ def test_bind_handler_arguments_uses_scalar_request_bodies_for_single_parameters
 
 
 def test_bind_handler_arguments_allows_null_for_optional_body_parameters(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/counters")
     class CountersController:
@@ -243,7 +245,7 @@ def test_bind_handler_arguments_allows_null_for_optional_body_parameters(
 
     route_definition = iter_controller_routes(CountersController)[0]
     binding_plan = compile_parameter_bindings(CountersController, route_definition)
-    request = build_request(method="POST", path="/counters", raw_body=b"null")
+    request = build_http_request(method="POST", path="/counters", raw_body=b"null")
 
     positional_arguments, keyword_arguments = anyio.run(
         bind_handler_arguments, request, binding_plan
@@ -254,7 +256,7 @@ def test_bind_handler_arguments_allows_null_for_optional_body_parameters(
 
 
 def test_bind_handler_arguments_requires_json_objects_for_multiple_body_fields(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users")
     class UsersController:
@@ -264,14 +266,14 @@ def test_bind_handler_arguments_requires_json_objects_for_multiple_body_fields(
 
     route_definition = iter_controller_routes(UsersController)[0]
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
-    request = build_request(method="POST", path="/users", raw_body=b'"Ada"')
+    request = build_http_request(method="POST", path="/users", raw_body=b'"Ada"')
 
     with pytest.raises(ParameterBindingError, match="requires a JSON object"):
         anyio.run(bind_handler_arguments, request, binding_plan)
 
 
 def test_bind_handler_arguments_uses_defaults_when_request_data_is_missing(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users")
     class UsersController:
@@ -281,7 +283,7 @@ def test_bind_handler_arguments_uses_defaults_when_request_data_is_missing(
 
     route_definition = iter_controller_routes(UsersController)[0]
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
-    request = build_request(method="GET", path="/users")
+    request = build_http_request(method="GET", path="/users")
 
     positional_arguments, keyword_arguments = anyio.run(
         bind_handler_arguments, request, binding_plan
@@ -292,7 +294,7 @@ def test_bind_handler_arguments_uses_defaults_when_request_data_is_missing(
 
 
 def test_bind_handler_arguments_reports_invalid_json_request_bodies(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users")
     class UsersController:
@@ -302,14 +304,14 @@ def test_bind_handler_arguments_reports_invalid_json_request_bodies(
 
     route_definition = iter_controller_routes(UsersController)[0]
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
-    request = build_request(method="POST", path="/users", raw_body=b"{not-json}")
+    request = build_http_request(method="POST", path="/users", raw_body=b"{not-json}")
 
     with pytest.raises(ParameterBindingError, match="Request body must contain valid JSON"):
         anyio.run(bind_handler_arguments, request, binding_plan)
 
 
 def test_bind_handler_arguments_rejects_boolean_json_values_for_int_parameters(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/counters")
     class CountersController:
@@ -319,7 +321,7 @@ def test_bind_handler_arguments_rejects_boolean_json_values_for_int_parameters(
 
     route_definition = iter_controller_routes(CountersController)[0]
     binding_plan = compile_parameter_bindings(CountersController, route_definition)
-    request = build_request(method="POST", path="/counters", json_body=True)
+    request = build_http_request(method="POST", path="/counters", json_body=True)
 
     with pytest.raises(ParameterBindingError, match="request body 'count' to int"):
         anyio.run(bind_handler_arguments, request, binding_plan)
@@ -357,7 +359,7 @@ def test_compile_parameter_bindings_rejects_unresolvable_parameter_annotations()
 
 
 def test_bind_handler_arguments_supports_explicit_annotated_markers(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users")
     class UsersController:
@@ -383,7 +385,7 @@ def test_bind_handler_arguments_supports_explicit_annotated_markers(
     assert param_bindings["token"].alias == "X-API-Token"
     assert param_bindings["payload"].source == ParameterSource.BODY
 
-    request = build_request(
+    request = build_http_request(
         method="POST",
         path="/users/42",
         path_params={"user_id": "42"},
@@ -398,7 +400,7 @@ def test_bind_handler_arguments_supports_explicit_annotated_markers(
 
 
 def test_bind_handler_arguments_supports_header_underscore_to_hyphen_conversion(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/")
     class TestController:
@@ -408,7 +410,7 @@ def test_bind_handler_arguments_supports_header_underscore_to_hyphen_conversion(
 
     route_definition = iter_controller_routes(TestController)[0]
     binding_plan = compile_parameter_bindings(TestController, route_definition)
-    request = build_request(
+    request = build_http_request(
         method="GET",
         path="/",
         headers=[(b"x-request-id", b"id-123")],
@@ -419,7 +421,7 @@ def test_bind_handler_arguments_supports_header_underscore_to_hyphen_conversion(
 
 
 def test_bind_handler_arguments_supports_execution_context_backed_custom_param_decorators(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/")
     class TestController:
@@ -441,7 +443,7 @@ def test_bind_handler_arguments_supports_execution_context_backed_custom_param_d
     assert request_id_binding.source is ParameterSource.CUSTOM
     assert request_id_binding.custom_data == "x-request-id"
 
-    request = build_request(
+    request = build_http_request(
         method="GET",
         path="/",
         headers=[(b"x-request-id", b"id-123")],
@@ -455,7 +457,7 @@ def test_bind_handler_arguments_supports_execution_context_backed_custom_param_d
 
 
 def test_bind_handler_arguments_requires_execution_context_for_custom_param_decorators(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/")
     class TestController:
@@ -465,14 +467,14 @@ def test_bind_handler_arguments_requires_execution_context_for_custom_param_deco
 
     route_definition = iter_controller_routes(TestController)[0]
     binding_plan = compile_parameter_bindings(TestController, route_definition)
-    request = build_request(method="GET", path="/")
+    request = build_http_request(method="GET", path="/")
 
     with pytest.raises(ParameterBindingError, match="execution context"):
         anyio.run(bind_handler_arguments, request, binding_plan)
 
 
 def test_bind_handler_arguments_supports_cookie_ip_and_host_markers(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/")
     class TestController:
@@ -487,7 +489,7 @@ def test_bind_handler_arguments_supports_cookie_ip_and_host_markers(
 
     route_definition = iter_controller_routes(TestController)[0]
     binding_plan = compile_parameter_bindings(TestController, route_definition)
-    request = build_request(
+    request = build_http_request(
         method="GET",
         path="/",
         headers=[
@@ -503,7 +505,7 @@ def test_bind_handler_arguments_supports_cookie_ip_and_host_markers(
 
 
 def test_bind_handler_arguments_host_param_honors_alias_header(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/")
     class TestController:
@@ -516,7 +518,7 @@ def test_bind_handler_arguments_host_param_honors_alias_header(
 
     route_definition = iter_controller_routes(TestController)[0]
     binding_plan = compile_parameter_bindings(TestController, route_definition)
-    request = build_request(
+    request = build_http_request(
         method="GET",
         path="/",
         headers=[(b"x-forwarded-host", b"real.example.com")],
@@ -528,7 +530,7 @@ def test_bind_handler_arguments_host_param_honors_alias_header(
 
 
 def test_bind_handler_arguments_cookie_mapping_annotation_returns_all_cookies(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/")
     class TestController:
@@ -542,7 +544,7 @@ def test_bind_handler_arguments_cookie_mapping_annotation_returns_all_cookies(
 
     route_definition = iter_controller_routes(TestController)[0]
     binding_plan = compile_parameter_bindings(TestController, route_definition)
-    request = build_request(
+    request = build_http_request(
         method="GET",
         path="/",
         headers=[(b"cookie", b"a=1; b=2")],
@@ -554,7 +556,7 @@ def test_bind_handler_arguments_cookie_mapping_annotation_returns_all_cookies(
 
 
 def test_bind_handler_arguments_reports_missing_required_path_parameters(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users")
     class UsersController:
@@ -564,7 +566,7 @@ def test_bind_handler_arguments_reports_missing_required_path_parameters(
 
     route_definition = iter_controller_routes(UsersController)[0]
     binding_plan = compile_parameter_bindings(UsersController, route_definition)
-    request = build_request(method="GET", path="/users")
+    request = build_http_request(method="GET", path="/users")
 
     with pytest.raises(ParameterBindingError, match="Missing required path parameter") as exc_info:
         anyio.run(bind_handler_arguments, request, binding_plan)
@@ -603,7 +605,7 @@ def test_bind_parameter_prefers_query_values_over_body_for_inferred_bindings() -
 
 
 def test_bind_handler_arguments_reports_missing_required_headers(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/")
     class TestController:
@@ -613,7 +615,7 @@ def test_bind_handler_arguments_reports_missing_required_headers(
 
     route_definition = iter_controller_routes(TestController)[0]
     binding_plan = compile_parameter_bindings(TestController, route_definition)
-    request = build_request(method="GET", path="/")
+    request = build_http_request(method="GET", path="/")
 
     with pytest.raises(ParameterBindingError, match="Missing required header") as exc_info:
         anyio.run(bind_handler_arguments, request, binding_plan)
@@ -623,7 +625,7 @@ def test_bind_handler_arguments_reports_missing_required_headers(
 
 
 def test_bind_handler_arguments_never_binds_header_parameters_from_query_or_body(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/")
     class TestController:
@@ -634,7 +636,7 @@ def test_bind_handler_arguments_never_binds_header_parameters_from_query_or_body
     route_definition = iter_controller_routes(TestController)[0]
     binding_plan = compile_parameter_bindings(TestController, route_definition)
 
-    spoofed_request = build_request(
+    spoofed_request = build_http_request(
         method="GET",
         path="/",
         query_params={"token": "SPOOFED"},
@@ -645,7 +647,7 @@ def test_bind_handler_arguments_never_binds_header_parameters_from_query_or_body
     assert "SPOOFED" not in bound.values()
     assert "REAL" in bound.values()
 
-    missing_header_request = build_request(
+    missing_header_request = build_http_request(
         method="GET",
         path="/",
         query_params={"token": "SPOOFED"},
@@ -655,7 +657,7 @@ def test_bind_handler_arguments_never_binds_header_parameters_from_query_or_body
 
 
 def test_bind_handler_arguments_binds_headers_alongside_inferred_body_parameters(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/")
     class TestController:
@@ -669,7 +671,7 @@ def test_bind_handler_arguments_binds_headers_alongside_inferred_body_parameters
 
     route_definition = iter_controller_routes(TestController)[0]
     binding_plan = compile_parameter_bindings(TestController, route_definition)
-    request = build_request(
+    request = build_http_request(
         method="POST",
         path="/",
         headers=[(b"x-api-key", b"secret")],
@@ -1238,7 +1240,7 @@ def _binding_plan(
 
 
 def _execution_context(
-    request: Request,
+    request: HttpRequest,
     controller_cls: type[object],
     route_definition: ControllerRouteDefinition,
 ) -> ExecutionContext:

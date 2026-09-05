@@ -23,8 +23,10 @@ from bustan import (
     durable_context_id,
     request_context_id,
 )
+from bustan.adapters.starlette.requests import from_starlette_request
 from bustan.addons.discovery import _resolve_application_context, _resolve_module_node
 from bustan.addons.module_ref import _resolve_application, _resolve_module_key
+from bustan.contracts import HttpRequest
 from bustan.errors import ProviderResolutionError
 
 
@@ -80,11 +82,11 @@ def test_context_ids_are_deterministic_and_scope_safe() -> None:
     async def receive() -> dict[str, object]:
         return {"type": "http.request", "body": b"", "more_body": False}
 
-    request = Request(scope, receive)
+    request = from_starlette_request(Request(scope, receive))
 
     class DurableKeyProvider:
         @classmethod
-        def get_durable_context_key(cls, request: Request | None) -> str:
+        def get_durable_context_key(cls, request: HttpRequest | None) -> str:
             return "users"
 
     application_id = application_context_id(type("AppModule", (), {}))

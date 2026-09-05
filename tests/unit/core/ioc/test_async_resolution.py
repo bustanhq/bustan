@@ -20,7 +20,7 @@ from bustan.core.module.graph import build_module_graph
 from bustan.errors import ProviderResolutionError
 
 if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+    from tests.conftest import HttpRequestFactory
 
 CONNECTION = "connection"
 
@@ -148,7 +148,7 @@ def test_an_awaited_failure_still_names_the_owner_and_the_path() -> None:
 
 
 def test_a_request_scoped_provider_resolves_asynchronously_for_its_own_request(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Injectable(scope=Scope.REQUEST)
     class Identity:
@@ -160,7 +160,7 @@ def test_a_request_scoped_provider_resolves_asynchronously_for_its_own_request(
         pass
 
     container = build_container(build_module_graph(AppModule))
-    request = build_request(path="/me", headers=[(b"x-user-id", b"alice")])
+    request = build_http_request(path="/me", headers=[(b"x-user-id", b"alice")])
 
     async def resolve() -> tuple[object, object]:
         return (

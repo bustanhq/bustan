@@ -28,10 +28,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
-from starlette.requests import Request
-from starlette.responses import Response
-
 from ....common.types import ProviderScope
+from ....contracts import HttpRequest, HttpResponse, names_native_request
 from ...module.dynamic import ModuleKey
 from ...utils import _qualname
 from ..registry import Binding
@@ -57,11 +55,16 @@ _CACHE_WIDTH: dict[ProviderScope, int] = {
 # error uses to name each. They are compared by identity, because a dependency
 # token is arbitrary and need not be hashable.
 _REQUEST_DERIVED_TOKENS: tuple[tuple[object, str], ...] = (
-    (Request, "framework-owned type Request"),
-    (Response, "framework-owned type Response"),
+    (HttpRequest, "framework-owned type HttpRequest"),
+    (HttpResponse, "framework-owned type HttpResponse"),
     (REQUEST, "the REQUEST token"),
     (RESPONSE, "the RESPONSE token"),
 )
+
+# What an error calls a parameter that named its transport's own request type. That
+# object lives for one request exactly as the contract wrapped around it does, so an
+# owner outliving a request may not hold it under either spelling.
+_NATIVE_REQUEST_DESCRIPTION = "the transport's own request object"
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,8 +138,8 @@ def plan_scopes(
 
 @contextmanager
 def entered_request_scope(
-    active_request: ContextVar[Request | None],
-    request: Request | None,
+    active_request: ContextVar[HttpRequest | None],
+    request: HttpRequest | None,
 ) -> Iterator[None]:
     """Bind the request a resolution runs under, clearing it when there is none.
 
@@ -341,6 +344,8 @@ def _request_description(token: object) -> str | None:
     for derived, description in _REQUEST_DERIVED_TOKENS:
         if token is derived:
             return description
+    if names_native_request(token):
+        return _NATIVE_REQUEST_DESCRIPTION
     return None
 
 

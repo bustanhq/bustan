@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from starlette.requests import Request
+
 from bustan.addons.context import (
     ContextId,
     application_context_id,
@@ -19,9 +21,8 @@ from bustan.addons.context import (
 )
 
 if TYPE_CHECKING:
-    from starlette.requests import Request
-
-    from tests.conftest import RequestFactory
+    from bustan.contracts import HttpRequest
+    from tests.conftest import HttpRequestFactory
 
 REQUESTS = 200
 
@@ -34,19 +35,19 @@ class TenantContext:
     """A stand-in durable provider for the durable identifier under test."""
 
     @classmethod
-    def get_durable_context_key(cls, request: Request | None) -> str:
+    def get_durable_context_key(cls, request: HttpRequest | None) -> str:
         return "tenant-a"
 
 
 def test_sequential_requests_are_never_handed_the_same_identifier(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     # Each request is released before the next is built, which is the condition under
     # which addresses are reused: the audit measured 200 sequential requests producing
     # 37 distinct values, one of them serving five different callers.
     seen: list[str] = []
     for index in range(REQUESTS):
-        request = build_request(path=f"/items/{index}")
+        request = build_http_request(path=f"/items/{index}")
         seen.append(request_context_id(request).value)
         del request
 
@@ -54,9 +55,9 @@ def test_sequential_requests_are_never_handed_the_same_identifier(
 
 
 def test_one_request_keeps_the_identifier_it_was_first_given(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
-    request = build_request(path="/items")
+    request = build_http_request(path="/items")
 
     first = request_context_id(request)
 
@@ -65,15 +66,17 @@ def test_one_request_keeps_the_identifier_it_was_first_given(
 
 
 def test_two_readings_of_one_request_share_its_identifier(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     # A request read twice is one request. The identifier is kept on the state the ASGI
     # scope carries, so the second reading answers what the first minted rather than
     # naming the same caller twice over.
-    from starlette.requests import Request as StarletteRequest
+    from bustan.adapters.starlette.requests import StarletteHttpRequest
 
-    request = build_request(path="/items")
-    same_request_again = StarletteRequest(request.scope, request.receive)
+    request = build_http_request(path="/items")
+    native = request.native_request
+    assert isinstance(native, Request)
+    same_request_again = StarletteHttpRequest(Request(native.scope, native.receive))
 
     assert request_context_id(same_request_again) == request_context_id(request)
 
@@ -83,9 +86,9 @@ def test_no_request_is_named_as_no_request() -> None:
 
 
 def test_the_application_and_durable_identifiers_name_what_they_are_derived_from(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
-    request = build_request(path="/items")
+    request = build_http_request(path="/items")
 
     application = application_context_id(AppModule)
     durable = durable_context_id(TenantContext, request)

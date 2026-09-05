@@ -15,8 +15,7 @@ from .scopes import ScopeManager
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from starlette.requests import Request
-
+    from ...contracts import HttpRequest
     from ..module.dynamic import ModuleKey
     from ..module.graph import ModuleGraph
     from .tokens import InjectionToken
@@ -83,7 +82,7 @@ class Container:
         token: object,
         *,
         module: ModuleKey,
-        request: Request | None = None,
+        request: HttpRequest | None = None,
     ) -> object:
         """Resolve a provider visible from the given module.
 
@@ -99,7 +98,7 @@ class Container:
         token: object,
         *,
         module: ModuleKey,
-        request: Request | None = None,
+        request: HttpRequest | None = None,
     ) -> object:
         """Resolve a provider, awaiting async factories when required."""
 
@@ -110,7 +109,7 @@ class Container:
         cls: type[object],
         *,
         module: ModuleKey,
-        request: Request | None = None,
+        request: HttpRequest | None = None,
     ) -> object:
         """Build one fresh instance of a class, such as a controller or a test double."""
         return self.kernel.instantiate_class(cls, module=module, request=request)
@@ -120,7 +119,7 @@ class Container:
         cls: type[object],
         *,
         module: ModuleKey,
-        request: Request | None = None,
+        request: HttpRequest | None = None,
     ) -> object:
         """Build one fresh instance of a class, awaiting async dependencies."""
         return await self.kernel.instantiate_class_async(cls, module=module, request=request)
@@ -131,7 +130,7 @@ class Container:
         inject: tuple[object, ...],
         *,
         module: ModuleKey,
-        request: Request | None = None,
+        request: HttpRequest | None = None,
     ) -> object:
         """Resolve the tokens a factory declares and call it."""
         return self.kernel.call_factory(factory, inject, module=module, request=request)
@@ -142,7 +141,7 @@ class Container:
         inject: tuple[object, ...],
         *,
         module: ModuleKey,
-        request: Request | None = None,
+        request: HttpRequest | None = None,
     ) -> object:
         """Resolve the tokens a factory declares and call it, awaiting an async factory."""
         return await self.kernel.call_factory_async(factory, inject, module=module, request=request)

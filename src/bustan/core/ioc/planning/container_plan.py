@@ -16,19 +16,15 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.responses import Response
-
 from ....common.constants import BUSTAN_CONTROLLER_ATTR
 from ....common.types import ControllerMetadata, ProviderScope
+from ....contracts import HttpRequest, HttpResponse, names_native_request
 from ...errors import ProviderResolutionError
 from ...utils import _display_name, _get_metadata, _qualname
 from ..registry import Binding, BindingTable
 from .annotations import ConstructorDependency, plan_constructor_dependencies
 from .plan import (
     CONTAINER_TOKEN_SOURCES,
-    ActiveApplication,
     ActiveRequest,
     ActiveResponse,
     ArgumentSource,
@@ -49,12 +45,11 @@ if TYPE_CHECKING:
 __all__ = ["controller_scope", "plan_container", "plan_target"]
 
 # A parameter may name the state the container owns either by token or by the
-# framework type standing for it, and both spellings plan to the same argument.
+# contract type standing for it, and both spellings plan to the same argument.
 _CONTAINER_SOURCES: tuple[tuple[object, ArgumentSource], ...] = (
     *CONTAINER_TOKEN_SOURCES,
-    (Request, ActiveRequest()),
-    (Response, ActiveResponse()),
-    (Starlette, ActiveApplication()),
+    (HttpRequest, ActiveRequest()),
+    (HttpResponse, ActiveResponse()),
 )
 
 
@@ -186,9 +181,13 @@ def _source_for(
 
     The token returned beside the source is the one the parameter is charged with for
     the scope rules, which is the spelling the author actually wrote: an error about a
-    parameter declared ``Inject(REQUEST)`` names REQUEST and not Starlette's Request.
-    A parameter with no Inject marker is charged with its annotation, because the
-    planner reports the evaluated annotation as the token in that case.
+    parameter declared ``Inject(REQUEST)`` names REQUEST and not ``HttpRequest``. A
+    parameter with no Inject marker is charged with its annotation, because the planner
+    reports the evaluated annotation as the token in that case.
+
+    A parameter naming the transport's own request type is settled after the binding
+    table rather than before it, so a provider registered under such a class is still
+    resolved from the table and only a class nothing declares is read as that request.
     """
 
     for candidate, source in _CONTAINER_SOURCES:
@@ -196,6 +195,8 @@ def _source_for(
             return dependency.token, source
     if _is_visible(dependency.token, visible):
         return dependency.token, ProvidedToken(dependency.token)
+    if names_native_request(dependency.token):
+        return dependency.token, ActiveRequest(native=True)
     if dependency.optional:
         # The planner sees no binding and there can be no override for a token nothing
         # declares, so the parameter is settled here rather than probed on every build.

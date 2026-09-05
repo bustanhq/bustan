@@ -55,7 +55,14 @@ class FixedValue:
 
 @dataclass(frozen=True, slots=True)
 class ActiveRequest:
-    """The request currently being served."""
+    """The request currently being served.
+
+    ``native`` is set for a parameter that named its transport's own request type
+    rather than the neutral contract, and the transport's object is handed over
+    instead of the contract wrapped around it, so that spelling stays true.
+    """
+
+    native: bool = False
 
 
 @dataclass(frozen=True, slots=True)

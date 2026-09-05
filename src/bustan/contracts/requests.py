@@ -8,7 +8,7 @@ on the framework's critical path.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, cast, runtime_checkable
 
@@ -198,6 +198,44 @@ class HttpRequest(Protocol):
         raise NotImplementedError
 
 
+@runtime_checkable
+class NativeHttpRequest(Protocol):
+    """One request object as the transport that received it built it.
+
+    An application may still write its transport's own request type on a parameter,
+    and the framework has to recognise that spelling without naming a transport. It is
+    recognised by the shape every such object has and no neutral one does: the body is
+    reachable as a stream, as bytes, and as parsed JSON. What is handed to a parameter
+    spelled this way is :attr:`HttpRequest.native_request`, the transport's object
+    itself, so the annotation stays true.
+
+    Membership is decided with ``issubclass`` against the annotation, so only the
+    method names matter; the signatures declared here describe the shape rather than
+    constrain it.
+    """
+
+    def stream(self) -> AsyncIterator[bytes]:
+        raise NotImplementedError
+
+    async def body(self) -> bytes:
+        raise NotImplementedError
+
+    async def json(self) -> Any:
+        raise NotImplementedError
+
+
+def names_native_request(annotation: object) -> bool:
+    """Return whether an annotation names the transport's own request object.
+
+    Only a class can, and only one carrying the whole of :class:`NativeHttpRequest`.
+    The neutral contract is not one: it is answered before this is asked, and it
+    declares no way to stream a body, so a caller that asked in the wrong order would
+    still not mistake the two.
+    """
+
+    return isinstance(annotation, type) and issubclass(annotation, NativeHttpRequest)
+
+
 def as_http_request(request: HttpRequest | object) -> HttpRequest:
     """Return *request* as the neutral request contract.
 
@@ -217,8 +255,10 @@ __all__ = (
     "HttpRequest",
     "HttpRequestState",
     "HttpUrl",
+    "NativeHttpRequest",
     "RateLimitDecision",
     "RequestSlots",
     "as_http_request",
+    "names_native_request",
     "request_slots",
 )

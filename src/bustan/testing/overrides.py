@@ -6,8 +6,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from starlette.applications import Starlette
-
 from ..app.application import Application
 from ..core.ioc.container import Container
 from ..pipeline.metadata import PipelineMetadata
@@ -15,13 +13,18 @@ from ..pipeline.metadata import PipelineMetadata
 
 @contextmanager
 def override_provider(
-    target: Starlette | Application | Container,
+    target: object,
     token: object,
     replacement: object,
     *,
     module_cls: type[object] | None = None,
 ) -> Iterator[None]:
-    """Temporarily replace a provider for the duration of a context block."""
+    """Temporarily replace a provider for the duration of a context block.
+
+    ``target`` is the container to override in, the ``Application`` holding it, or the
+    server object it was assembled with, which carries the container on its own state
+    namespace. Anything else raises ``TypeError``.
+    """
 
     container = _resolve_container(target)
     had_override = container.has_override(token, module=module_cls)
@@ -39,13 +42,15 @@ def override_provider(
             container.clear_override(token, module=module_cls)
 
 
-def _resolve_container(target: Starlette | Application | Container) -> Container:
+def _resolve_container(target: object) -> Container:
     if isinstance(target, Container):
         return target
     if isinstance(target, Application):
         return target._container
 
-    container = getattr(target.state, "bustan_container", None)
+    # A server object carries the container it was assembled with on its own state
+    # namespace, which is how one is recognised without knowing whose server it is.
+    container = getattr(getattr(target, "state", None), "bustan_container", None)
     if isinstance(container, Container):
         return container
     raise TypeError("override_provider target does not expose a Bustan container")

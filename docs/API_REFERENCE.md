@@ -441,7 +441,7 @@ Protocol for providers that derive a durable cache key from the request.
 
 ##### Methods
 
-- `get_durable_context_key(cls, request: Request | None) -> Hashable`
+- `get_durable_context_key(cls, request: HttpRequest | None) -> Hashable`
 
 #### `DynamicModule`
 
@@ -1367,7 +1367,7 @@ No user-facing documentation provided.
 #### `durable_context_id`
 
 ```python
-def durable_context_id(provider: type[DurableProvider], request: Request | None) -> ContextId
+def durable_context_id(provider: type[DurableProvider], request: HttpRequest | None) -> ContextId
 ```
 
 Defined in `bustan.addons.context`.
@@ -1386,7 +1386,7 @@ Current value: `Ip`
 #### `request_context_id`
 
 ```python
-def request_context_id(request: Request | None) -> ContextId
+def request_context_id(request: HttpRequest | None) -> ContextId
 ```
 
 Defined in `bustan.addons.context`.
@@ -1722,12 +1722,16 @@ Create a testing-module builder for the supplied root module.
 #### `override_provider`
 
 ```python
-def override_provider(target: Starlette | Application | Container, token: object, replacement: object, *, module_cls: type[object] | None = None) -> Iterator[None]
+def override_provider(target: object, token: object, replacement: object, *, module_cls: type[object] | None = None) -> Iterator[None]
 ```
 
 Defined in `bustan.testing.overrides`.
 
 Temporarily replace a provider for the duration of a context block.
+
+``target`` is the container to override in, the ``Application`` holding it, or the
+server object it was assembled with, which carries the container on its own state
+namespace. Anything else raises ``TypeError``.
 
 ## `bustan.errors`
 
