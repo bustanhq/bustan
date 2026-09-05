@@ -34,16 +34,24 @@ class ModuleNode:
     module: type[object]
     metadata: ModuleMetadata
     exported_providers: frozenset[object]
+    # The tokens of visibility gathered into a set, always derived from that table and
+    # never computed a second way. A set of tokens keys by equality, so it cannot carry
+    # the distinction the table carries: a string enum member and the bare string it
+    # equals are two declarations there and one member here, and the member does not say
+    # which of the two it stands for. A caller may rely on membership, and only as a
+    # question about equality: a token is in this set when some visible declaration has a
+    # token equal to it, whichever spelling either side was written as, and absent when
+    # none does. Size and iteration under-report such a pair, so a caller that must tell
+    # two declarations apart, count them, or name the module behind one reads visibility,
+    # which keys by token identity.
     available_providers: frozenset[object]
     bindings: tuple[Binding, ...]
     imported_exports: Mapping[ModuleKey, frozenset[object]] = field(repr=False)
     # Every token this module can resolve, mapped to the module that declares it. The
     # module named is always the one holding the binding, never a module that merely
     # passed the token on, so a re-export resolves to its origin. This is the only
-    # visibility computation in the framework, and the container copies it verbatim.
-    # available_providers is this table's keys gathered into a frozenset, which keys by
-    # equality alone: two equal tokens of different types are two entries here and one
-    # member there, and resolution reads this table rather than that set.
+    # visibility computation in the framework, the container copies it verbatim, and
+    # resolution reads it rather than available_providers.
     visibility: Mapping[object, ModuleKey] = field(repr=False)
 
     @property
@@ -82,6 +90,10 @@ class ModuleGraph:
         return self.get_node(key).controllers
 
     def available_providers_for(self, key: ModuleKey) -> frozenset[object]:
+        # A set of tokens keys by equality, so membership answers whether an equal token
+        # is visible, never which declaration answers for it: two equal tokens of
+        # different types are one member. A caller that must tell them apart reads the
+        # node's visibility table instead.
         return self.get_node(key).available_providers
 
     @property
