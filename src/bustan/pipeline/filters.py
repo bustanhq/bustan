@@ -8,8 +8,8 @@ from collections.abc import Awaitable
 from dataclasses import asdict, dataclass
 from typing import cast
 
+from ..contracts import HttpResponse
 from ..core.errors import BadRequestException, GuardRejectedError, ParameterBindingError
-from ..platform.http.abstractions import HttpResponse
 from .context import ExecutionContext
 
 _LOGGER = logging.getLogger(__name__)
@@ -167,7 +167,8 @@ def _problem_status(exc: Exception, context: ExecutionContext) -> tuple[int, str
     if isinstance(exc, (BadRequestException, ParameterBindingError)):
         return 400, "Bad Request"
     if isinstance(exc, GuardRejectedError):
-        if getattr(getattr(request, "state", object()), "rate_limit_exceeded", False):
+        rate_limit = request.slots.rate_limit if request is not None else None
+        if rate_limit is not None and rate_limit.exceeded:
             return 429, "Too Many Requests"
         return 403, "Forbidden"
     return 500, "Internal Server Error"

@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
-from starlette.responses import PlainTextResponse, Response
+from starlette.responses import PlainTextResponse
 
-from bustan.platform.http.abstractions import HttpResponse, to_starlette_response
+from bustan.contracts import HttpResponse
 from bustan.platform.http.responses import coerce_response
 
 
-def test_coerce_response_passes_through_response_instances() -> None:
+def test_coerce_response_passes_a_transport_built_response_through_untouched() -> None:
     response = PlainTextResponse("ok", status_code=201)
 
     assert coerce_response(response) is response
@@ -45,16 +45,6 @@ def test_coerce_response_converts_none_to_no_content() -> None:
     assert isinstance(response, HttpResponse)
     assert response.status_code == 204
     assert response.body == b""
-
-
-def test_to_starlette_response_converts_http_response_instances() -> None:
-    response = HttpResponse.json({"status": "ok"}, status_code=201)
-
-    adapted = to_starlette_response(response)
-
-    assert isinstance(adapted, Response)
-    assert adapted.status_code == 201
-    assert adapted.body == b'{"status":"ok"}'
 
 
 def test_coerce_response_rejects_unsupported_values() -> None:

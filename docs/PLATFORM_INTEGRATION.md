@@ -2,6 +2,8 @@
 
 `Bustan` adds application structure on top of a platform adapter. The default adapter is Starlette, but the framework is designed so application code can stay mostly platform-neutral while still exposing the underlying engine when you need it.
 
+The seam between the two is the adapter port in `bustan.contracts`. The framework compiles routes, resolves providers and executes handlers; an adapter converts one request into the neutral `HttpRequest` (`from_native_request`), converts the result back into what its transport writes (`to_native_response`), registers the routes it was handed, and starts and stops a server (`start`, `stop`, `create_test_client`). It is never handed the dependency injection container. Everything an adapter needs to implement is declared in `bustan.contracts` and nowhere else, which is what makes a second adapter a matter of writing those five methods.
+
 ## The Public `Application` Wrapper
 
 `create_app()` returns an `Application`, not a raw Starlette app. The wrapper gives you both high-level runtime helpers and access to the underlying adapter.
@@ -18,7 +20,7 @@ Key public accessors:
 
 ## Request Access
 
-Handlers can depend on either the native Starlette request or the adapter-neutral `HttpRequest` wrapper.
+Handlers can depend on either the native Starlette request or the adapter-neutral `HttpRequest`. The neutral one returns neutral values throughout: `request.url` is a `bustan.contracts.Url`, `request.query_params` a `QueryParams`, `request.headers` a case-insensitive `Headers`, and `request.state` an open per-request namespace. `request.native_request` is the declared way back to the transport's own object when you decide you want it.
 
 Native Starlette request:
 
@@ -96,6 +98,8 @@ previous = create_app(PreviousModule).snapshot_routes()
 current = create_app(CurrentModule)
 diff = current.diff_routes(previous)
 ```
+
+The framework also keeps its own typed per-request slots on `request.slots`, which is where a stage that writes something for a later stage to read puts it. `slots.rate_limit` carries the throttler's decision for the response writer and the exception filter to read back.
 
 Starlette server state also carries public runtime artifacts:
 

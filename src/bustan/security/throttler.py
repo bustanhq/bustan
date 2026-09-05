@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 from ..common.decorators.injectable import Injectable
+from ..contracts import RateLimitDecision
 from ..core.ioc.tokens import APP_GUARD, InjectionToken
 from ..core.module.decorators import Module
 from ..core.module.dynamic import DynamicModule
@@ -95,10 +96,12 @@ class ThrottlerGuard(Guard):
 
         key = self.key_resolver(context)
         count = self.storage.increment(key, self.ttl)
-        request.state.rate_limit_limit = self.limit
-        request.state.rate_limit_remaining = max(0, self.limit - count)
-        request.state.rate_limit_reset = self.storage.get_ttl(key)
-        request.state.rate_limit_exceeded = count > self.limit
+        request.slots.rate_limit = RateLimitDecision(
+            limit=self.limit,
+            remaining=max(0, self.limit - count),
+            reset=self.storage.get_ttl(key),
+            exceeded=count > self.limit,
+        )
         return count <= self.limit
 
 

@@ -1,52 +1,20 @@
-"""Unit tests for adapter-neutral HTTP request and response abstractions."""
+"""The request contract must be satisfiable without any transport at all."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import anyio
-from starlette.responses import Response
 
-from bustan.platform.http.abstractions import (
-    HttpRequest,
-    HttpResponse,
-    StarletteHttpRequest,
-    to_starlette_response,
-)
-
-if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+from bustan.contracts import HttpRequest, HttpResponse, RequestSlots
 
 
-def test_starlette_http_request_exposes_stable_request_fields(
-    build_request: RequestFactory,
-) -> None:
-    request = build_request(method="POST", path="/users?active=true", raw_body=b'{"name":"Ada"}')
-    wrapped = StarletteHttpRequest(request)
-
-    assert wrapped.method == "POST"
-    assert wrapped.path == "/users"
-    assert wrapped.headers["host"] == "testserver"
-    assert wrapped.query_params["active"] == "true"
-    assert anyio.run(wrapped.body) == b'{"name":"Ada"}'
-
-
-def test_http_response_mutates_status_headers_and_body_through_the_abstract_api() -> None:
+def test_a_neutral_response_carries_status_headers_and_body() -> None:
     response = HttpResponse.json({"status": "ok"}, status_code=201)
     response.headers["x-test"] = "present"
     response.set_body("updated")
 
-    adapted = to_starlette_response(response)
-
-    assert adapted.status_code == 201
-    assert adapted.headers["x-test"] == "present"
-    assert adapted.body == b"updated"
-
-
-def test_to_starlette_response_passes_through_native_response_instances() -> None:
-    response = Response(content=b"native", status_code=202)
-
-    assert to_starlette_response(response) is response
+    assert response.status_code == 201
+    assert response.headers["x-test"] == "present"
+    assert response.body == b"updated"
 
 
 def test_http_request_protocol_accepts_non_starlette_url_query_and_form_shapes() -> None:
@@ -96,6 +64,7 @@ class _AdapterNeutralRequest:
     path_params: dict[str, str] = {}
     cookies: dict[str, str] = {}
     state = object()
+    slots = RequestSlots()
     client = None
     app = object()
 

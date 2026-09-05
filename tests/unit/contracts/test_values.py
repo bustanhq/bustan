@@ -1,8 +1,17 @@
-"""Neutral URL and query parameter values behave the same without a server present."""
+"""Neutral request values behave the same without a server present."""
 
 from __future__ import annotations
 
-from bustan.contracts import HttpQueryParams, HttpUrl, QueryParams, Url
+import pytest
+
+from bustan.contracts import (
+    Headers,
+    HttpQueryParams,
+    HttpUrl,
+    QueryParams,
+    RequestState,
+    Url,
+)
 
 
 def test_url_reports_only_what_arrived() -> None:
@@ -108,3 +117,66 @@ def test_neutral_values_hold_plain_data_and_nothing_from_a_server_library() -> N
         type(key) is str and all(type(value) is str for value in params.getlist(key))
         for key in params
     )
+
+
+def test_headers_are_looked_up_without_regard_to_case() -> None:
+    headers = Headers([("Host", "testserver"), ("Content-Type", "application/json")])
+
+    assert headers["host"] == "testserver"
+    assert headers["CONTENT-TYPE"] == "application/json"
+    assert "Host" in headers
+    assert "missing" not in headers
+    assert 42 not in headers
+
+
+def test_a_repeated_header_keeps_every_value_and_joins_them_on_lookup() -> None:
+    headers = Headers([("Accept", "text/html"), ("accept", "application/json")])
+
+    assert headers.getlist("accept") == ["text/html", "application/json"]
+    assert headers["accept"] == "text/html, application/json"
+    assert headers.getlist("missing") == []
+
+
+def test_headers_iterate_in_the_order_and_spelling_they_arrived() -> None:
+    headers = Headers([("Host", "a"), ("X-Trace", "b"), ("host", "c")])
+
+    assert list(headers) == ["Host", "X-Trace"]
+    assert len(headers) == 2
+
+
+def test_headers_compare_and_hash_by_their_folded_contents() -> None:
+    first = Headers([("Host", "a")])
+    second = Headers([("host", "a")])
+
+    assert first == second
+    assert hash(first) == hash(second)
+    assert first != Headers([("Host", "b")])
+    assert first.__eq__(object()) is NotImplemented
+    assert repr(first).startswith("Headers(")
+
+
+def test_request_state_reads_writes_and_deletes_attributes() -> None:
+    state = RequestState()
+
+    with pytest.raises(AttributeError):
+        _ = state.principal
+
+    state.principal = "ada"
+    assert state.principal == "ada"
+    assert repr(state) == "RequestState(['principal'])"
+
+    del state.principal
+    assert not hasattr(state, "principal")
+
+    with pytest.raises(AttributeError):
+        del state.principal
+
+
+def test_request_state_shares_the_mapping_it_was_given() -> None:
+    backing: dict[str, object] = {}
+    state = RequestState(backing)
+
+    state.principal = "ada"
+
+    assert backing == {"principal": "ada"}
+    assert RequestState(backing).principal == "ada"

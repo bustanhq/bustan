@@ -8,7 +8,7 @@ from typing import Any, cast
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Module, SkipThrottle, create_app
-from bustan.platform.http.abstractions import HttpRequest
+from bustan.contracts import HttpRequest
 from bustan.security import AUTHENTICATOR_REGISTRY, Auth, Public, RateLimit, Roles
 
 
@@ -43,7 +43,7 @@ def test_create_app_attaches_compiled_policy_plans_to_routes() -> None:
         pass
 
     application = create_app(AppModule)
-    starlette_app = application.get_http_adapter().get_instance()
+    starlette_app = cast(Any, application.get_http_adapter().get_instance())
     route = next(
         route for route in starlette_app.routes if getattr(route, "path", None) == "/secure"
     )

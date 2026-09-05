@@ -9,7 +9,7 @@ from typing import cast
 import pytest
 from starlette.responses import Response
 
-from bustan.platform.http.abstractions import HttpFileResponse, HttpResponse, HttpStreamResponse
+from bustan.contracts import HttpFileResponse, HttpResponse, HttpStreamResponse
 from bustan.platform.http.compiler import DeclaredResponse, ResponsePlan, ResponseStrategy
 from bustan.platform.http.responses import ResponseHandler
 

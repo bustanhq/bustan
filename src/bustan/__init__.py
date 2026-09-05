@@ -39,6 +39,13 @@ from .common.decorators.parameter import (
 from .common.decorators.route import Delete, Get, Patch, Post, Put
 from .common.types import ProviderScope as Scope
 from .config import ConfigModule, ConfigService
+from .contracts import (
+    HttpFormData,
+    HttpQueryParams,
+    HttpRequest,
+    HttpResponse,
+    HttpUrl,
+)
 
 # Core Errors
 from .core.errors import (
@@ -120,13 +127,6 @@ from .pipeline import (
 )
 from .pipeline.decorators import UseFilters, UseGuards, UseInterceptors, UsePipes
 from .pipeline.middleware import Middleware, MiddlewareConsumer
-from .platform.http.abstractions import (
-    HttpFormData,
-    HttpQueryParams,
-    HttpRequest,
-    HttpResponse,
-    HttpUrl,
-)
 from .platform.http.versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType
 from .security import CorsOptions, SkipThrottle, ThrottlerGuard, ThrottlerModule, ThrottlerStorage
 

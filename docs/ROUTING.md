@@ -30,7 +30,7 @@ By default controllers are singleton-scoped. Bustan reuses the same controller i
 When you do not use explicit binding markers, Bustan infers a source from the parameter shape:
 
 - `starlette.requests.Request` injects the native Starlette request object.
-- `bustan.HttpRequest` injects the adapter-neutral request wrapper.
+- `bustan.HttpRequest` injects the adapter-neutral request. Every value it returns - the URL, the query parameters, the headers, the per-request state - is one of the framework's own types, so a handler written against it does not depend on the transport serving it.
 - Path parameters bind by name from the route pattern.
 - Query parameters bind by name for inferred scalar and list values.
 - A single structured parameter such as a dataclass or Pydantic model binds from the JSON request body.
@@ -42,8 +42,7 @@ Example:
 ```python
 from dataclasses import dataclass
 
-from bustan import Controller, Get, Post
-from bustan.platform.http.abstractions import HttpRequest
+from bustan import Controller, Get, HttpRequest, Post
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,8 +142,7 @@ from collections.abc import Iterator
 
 from starlette.responses import PlainTextResponse
 
-from bustan import Controller, Get
-from bustan.platform.http.abstractions import HttpResponse
+from bustan import Controller, Get, HttpResponse
 
 
 @Controller("/responses")

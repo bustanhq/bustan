@@ -12,7 +12,7 @@ from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Injectable, Module, Post, Scope, create_app
-from bustan.platform.http.abstractions import HttpRequest, HttpResponse
+from bustan.contracts import HttpRequest, HttpResponse
 
 
 @dataclass(frozen=True, slots=True)

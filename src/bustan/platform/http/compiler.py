@@ -289,7 +289,7 @@ def _compile_response_strategy(declared_type: object | None) -> ResponseStrategy
 
     from starlette.responses import Response
 
-    from .abstractions import HttpResponse
+    from ...contracts import HttpResponse
 
     if declared_type in {None, NoneType}:
         return ResponseStrategy.STANDARD

@@ -26,9 +26,9 @@ from ...common.decorators.parameter import (
     _UploadedFileMarker,
     _UploadedFilesMarker,
 )
+from ...contracts import HttpRequest, as_http_request
 from ...core.errors import ParameterBindingError
 from ...core.utils import _qualname
-from .abstractions import HttpRequest, as_http_request
 from .metadata import ControllerRouteDefinition, get_controller_metadata
 
 if TYPE_CHECKING:

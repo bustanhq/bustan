@@ -8,23 +8,28 @@ from os import PathLike
 from pathlib import Path
 from typing import Protocol, cast
 
-from starlette.responses import Response
-
-from .abstractions import HttpFileResponse, HttpResponse, HttpStreamResponse
+from ...contracts import (
+    HttpFileResponse,
+    HttpResponse,
+    HttpStreamResponse,
+    NativeHttpResponse,
+)
 from .compiler import ResponsePlan, ResponseStrategy
+
+CoercedResponse = HttpResponse | HttpStreamResponse | HttpFileResponse | NativeHttpResponse
 
 
 class ResponseSerializer(Protocol):
     """Serializer contract used by the response handler."""
 
-    def serialize(self, value: object) -> HttpResponse | Response:
+    def serialize(self, value: object) -> HttpResponse | NativeHttpResponse:
         pass
 
 
 class DefaultResponseSerializer:
     """Serialize common Python values into adapter-neutral HTTP responses."""
 
-    def serialize(self, value: object) -> HttpResponse | Response:
+    def serialize(self, value: object) -> HttpResponse | NativeHttpResponse:
         return coerce_response(value)
 
 
@@ -39,7 +44,7 @@ class ResponseHandler:
         *,
         result: object,
         response_plan: ResponsePlan,
-    ) -> HttpResponse | HttpStreamResponse | HttpFileResponse | Response:
+    ) -> CoercedResponse:
         if response_plan.strategy is ResponseStrategy.RAW:
             response = _coerce_raw_response(result)
         elif response_plan.strategy is ResponseStrategy.STREAM:
@@ -52,11 +57,8 @@ class ResponseHandler:
         return _apply_response_plan(response, response_plan)
 
 
-def coerce_response(value: object) -> HttpResponse | Response:
+def coerce_response(value: object) -> HttpResponse | NativeHttpResponse:
     """Convert common handler return values into abstract HTTP responses."""
-
-    if isinstance(value, Response):
-        return value
 
     if isinstance(value, HttpResponse):
         return value
@@ -70,50 +72,49 @@ def coerce_response(value: object) -> HttpResponse | Response:
     if isinstance(value, (dict, list)):
         return HttpResponse.json(value)
 
+    if isinstance(value, NativeHttpResponse):
+        return value
+
     raise TypeError(f"Unsupported handler return type: {type(value).__name__}")
 
 
-def _coerce_raw_response(
-    value: object,
-) -> HttpResponse | HttpStreamResponse | HttpFileResponse | Response:
-    if isinstance(value, (Response, HttpResponse, HttpStreamResponse, HttpFileResponse)):
+def _coerce_raw_response(value: object) -> CoercedResponse:
+    if isinstance(value, (HttpResponse, HttpStreamResponse, HttpFileResponse)):
+        return value
+    if isinstance(value, NativeHttpResponse):
         return value
     raise TypeError(f"Unsupported raw response type: {type(value).__name__}")
 
 
-def _coerce_stream_response(value: object) -> HttpStreamResponse | Response:
-    if isinstance(value, Response):
-        return value
+def _coerce_stream_response(value: object) -> HttpStreamResponse | NativeHttpResponse:
     if isinstance(value, HttpStreamResponse):
         return value
     if isinstance(value, (bytes, str, dict, list)):
         raise TypeError(f"Unsupported stream response type: {type(value).__name__}")
+    if isinstance(value, NativeHttpResponse):
+        return value
     if isinstance(value, Iterable | AsyncIterable):
         return HttpStreamResponse(body=cast(Iterable[bytes] | AsyncIterable[bytes], value))
     raise TypeError(f"Unsupported stream response type: {type(value).__name__}")
 
 
-def _coerce_file_response(value: object) -> HttpFileResponse | Response:
-    if isinstance(value, Response):
-        return value
+def _coerce_file_response(value: object) -> HttpFileResponse | NativeHttpResponse:
     if isinstance(value, HttpFileResponse):
         return value
     if isinstance(value, (str, PathLike, Path)):
         return HttpFileResponse(path=cast(str | PathLike[str], value))
+    if isinstance(value, NativeHttpResponse):
+        return value
     raise TypeError(f"Unsupported file response type: {type(value).__name__}")
 
 
 def _apply_response_plan(
-    response: HttpResponse | HttpStreamResponse | HttpFileResponse | Response,
+    response: CoercedResponse,
     response_plan: ResponsePlan,
-) -> HttpResponse | HttpStreamResponse | HttpFileResponse | Response:
-    if isinstance(response, Response):
-        if response.status_code == 200:
-            response.status_code = response_plan.default_status_code
-        for header_name, header_value in response_plan.headers:
-            response.headers.setdefault(header_name, header_value)
-        return response
-
+) -> CoercedResponse:
+    # Every response the framework writes carries a status and headers, whether the
+    # framework built it or a handler returned its transport's own, so the plan is
+    # applied the same way to both.
     if response.status_code == 200:
         response.status_code = response_plan.default_status_code
     for header_name, header_value in response_plan.headers:
@@ -122,6 +123,7 @@ def _apply_response_plan(
 
 
 __all__ = [
+    "CoercedResponse",
     "DefaultResponseSerializer",
     "ResponseHandler",
     "ResponseSerializer",

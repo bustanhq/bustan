@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from .abstractions import HttpRequest, as_http_request
+from ...contracts import HttpRequest, as_http_request
 
 
 class VersioningType(StrEnum):

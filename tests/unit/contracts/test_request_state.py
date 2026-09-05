@@ -4,27 +4,26 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from bustan.adapters.starlette import StarletteHttpRequest
 from bustan.addons.context import REQUEST_CONTEXT_ID_ATTR
 from bustan.contracts import HttpRequest, HttpRequestState
+from bustan.contracts.requests import REQUEST_SLOTS_ATTR
 from bustan.core.ioc.scopes import REQUEST_SCOPE_CACHE_ATTR, REQUEST_SCOPE_CONTROLLER_CACHE_ATTR
-from bustan.platform.http.abstractions import StarletteHttpRequest
 
 if TYPE_CHECKING:
     from tests.conftest import RequestFactory
 
-# Everything the framework itself keeps on request state today. The provider and
-# controller caches and the context identifier are written through their constants;
-# the principal is written by the authenticating guard and the rate limit counters by
-# the throttler for the response writer to read back.
+# Everything the framework itself keeps on the open request state namespace today. The
+# provider and controller caches and the context identifier are written through their
+# constants, the principal is written by the authenticating guard, and the typed slots
+# are kept under one reserved name. What a throttler decided is no longer four loose
+# attributes here: it is one declared slot, which is what ``REQUEST_SLOTS_ATTR`` holds.
 FRAMEWORK_STATE_ATTRIBUTES = (
     REQUEST_SCOPE_CACHE_ATTR,
     REQUEST_SCOPE_CONTROLLER_CACHE_ATTR,
     REQUEST_CONTEXT_ID_ATTR,
+    REQUEST_SLOTS_ATTR,
     "principal",
-    "rate_limit_limit",
-    "rate_limit_remaining",
-    "rate_limit_reset",
-    "rate_limit_exceeded",
 )
 
 

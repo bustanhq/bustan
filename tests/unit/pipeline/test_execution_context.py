@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from bustan.adapters.starlette import StarletteHttpRequest
 from bustan.common.types import RouteMetadata
 from bustan.core.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.context import (
@@ -98,7 +99,7 @@ def test_context_helpers_cover_remaining_http_and_metadata_accessors(
         route=RouteMetadata(method="GET", path="/", name="list_users"),
     )
     request_context = RequestContext(
-        request=request,
+        request=StarletteHttpRequest(request),
         module=ModuleInstanceKey(module=UsersController, instance_id="test"),
         controller_type=UsersController,
         controller=controller,

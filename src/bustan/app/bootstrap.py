@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..adapters.starlette import StarletteAdapter
 from ..core.ioc.container import build_container
 from ..core.lifecycle.manager import LifecycleManager
 from ..core.module.dynamic import DynamicModule
 from ..core.module.graph import build_module_graph
 from ..pipeline.middleware import compile_middleware_registry
 from ..platform.http.adapter import AbstractHttpAdapter, compile_adapter_routes
-from ..platform.http.adapters.starlette_adapter import StarletteAdapter
 from ..platform.http.compiler import compile_route_contracts
 from ..platform.http.execution import compile_execution_plans
 from .application import Application, ApplicationContext
