@@ -121,19 +121,31 @@ jobs:
           exit "$status"
 
       # The report belongs on the run summary rather than only inside a step log, because a
-      # step whose failure does not stop the job is a step nobody opens.
+      # step whose failure does not stop the job is a step nobody opens. The job is green
+      # whether the report is empty or not, so nothing in the checks list can announce the day
+      # it empties; the summary says so instead, on the first run where it becomes true.
       - name: Summarise the layering report
-        if: steps.layering.outcome == 'failure'
+        env:
+          LAYERING_OUTCOME: ${{ steps.layering.outcome }}
         run: |
-          {
-            echo '### Package layering: advisory failure'
-            echo
-            echo 'These imports cross a boundary declared in `scripts/check_layering.py`.'
-            echo
-            echo '```'
-            cat layering-report.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$LAYERING_OUTCOME" = "failure" ]; then
+            {
+              echo '### Package layering: advisory failure'
+              echo
+              echo 'These imports cross a boundary declared in `scripts/check_layering.py`.'
+              echo
+              echo '```'
+              cat layering-report.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo '### Package layering: clean'
+              echo
+              echo 'The report is empty. Delete `continue-on-error` from the step above so this'
+              echo 'job blocks a change that reintroduces a violation.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   audit-repros:
     name: Audit repro harness (advisory)
