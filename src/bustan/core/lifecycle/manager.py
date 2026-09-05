@@ -36,7 +36,8 @@ class LifecycleState:
 
     ``closed`` records that a startup was undone by a completed teardown. It is not
     a terminal state: startup may run again, and doing so begins a new cycle with
-    every cache empty.
+    every cache empty. While it stands the container refuses to resolve anything,
+    because every instance it held has been destroyed.
     """
 
     initialized: bool = False
@@ -75,6 +76,9 @@ class LifecycleManager:
         # Recorded before the first provider is built: from here on teardown reads
         # what has been built out of this state and the container's caches.
         self._state = LifecycleState(module_instances=module_instances)
+        # A cycle has begun, so the refusal the previous shutdown installed is lifted
+        # here rather than on success: the stages below resolve what they initialize.
+        self._container.mark_startup_begun()
 
         try:
             await run_init_stage(self._module_graph, self._container, module_instances)
@@ -140,7 +144,9 @@ class LifecycleManager:
         scope_manager.singletons.clear()
         scope_manager.durable_instances.clear()
         scope_manager.clear_controller_singletons()
-        # No instance built from a provider survives here, so the next startup builds
-        # the application afresh and may be given a different set of overrides.
+        # Nothing built from a provider survives here, so resolution is refused until
+        # the next startup builds the application afresh, and the window for registering
+        # an override is open again because that startup builds from what it is given.
+        self._container.mark_shut_down()
         self._container.override_manager.mark_stopped()
         self._state = LifecycleState(initialized=False, closed=True)

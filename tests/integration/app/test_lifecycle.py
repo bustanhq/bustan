@@ -5,8 +5,8 @@ from typing import Any, cast
 import pytest
 from starlette.testclient import TestClient
 
-from bustan import Injectable, InjectionToken, Module, create_app
-from bustan.errors import LifecycleError
+from bustan import Injectable, InjectionToken, Module, create_app, create_app_context
+from bustan.errors import LifecycleError, ProviderResolutionError
 
 
 def test_create_app_runs_lifecycle_hooks_in_startup_and_shutdown_order() -> None:
@@ -198,3 +198,73 @@ def test_a_value_provider_takes_no_part_in_the_lifecycle() -> None:
 
     with TestClient(cast(Any, create_app(AppModule))) as client:
         assert client is not None
+
+
+@pytest.mark.anyio
+async def test_a_closed_context_refuses_to_resolve_until_it_is_started_again() -> None:
+    @Injectable
+    class Pool:
+        def __init__(self) -> None:
+            self.opened = False
+
+        async def on_module_init(self) -> None:
+            self.opened = True
+
+        async def on_module_destroy(self) -> None:
+            self.opened = False
+
+    @Module(providers=[Pool], exports=[Pool])
+    class AppModule:
+        pass
+
+    context = create_app_context(AppModule)
+    await context.init()
+    first = context.get(Pool)
+    assert first.opened is True
+
+    await context.close()
+    assert first.opened is False
+
+    with pytest.raises(ProviderResolutionError) as raised:
+        context.get(Pool)
+    assert "Pool" in str(raised.value)
+    assert "Start the application again" in str(raised.value)
+
+    await context.init()
+    second = context.get(Pool)
+
+    assert second is not first
+    assert second.opened is True
+
+    await context.close()
+
+
+def test_an_http_application_refuses_to_resolve_between_two_client_blocks() -> None:
+    @Injectable
+    class Pool:
+        def __init__(self) -> None:
+            self.opened = False
+
+        def on_application_bootstrap(self) -> None:
+            self.opened = True
+
+        def on_module_destroy(self) -> None:
+            self.opened = False
+
+    @Module(providers=[Pool], exports=[Pool])
+    class AppModule:
+        pass
+
+    app = create_app(AppModule)
+
+    with TestClient(cast(Any, app)):
+        first = app.get(Pool)
+        assert first.opened is True
+
+    with pytest.raises(ProviderResolutionError, match="has been shut down"):
+        app.get(Pool)
+
+    with TestClient(cast(Any, app)):
+        second = app.get(Pool)
+        assert second is not first
+        assert second.opened is True
