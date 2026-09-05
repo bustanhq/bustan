@@ -66,12 +66,20 @@ class LifespanRunner:
         await self._app(dict(_LIFESPAN_SCOPE), self._to_app.get, self._from_app.put)
 
     async def _exchange(self, request: str) -> None:
-        """Send one lifespan message and raise whatever failure the answer reports."""
+        """Send one lifespan message and raise whatever failure the answer reports.
+
+        The protocol defines exactly two answers to each message, so anything else is
+        refused rather than read as success: an application that answered with something
+        of its own has not said it started, whatever the message was called.
+        """
 
         await self._to_app.put({"type": request})
         answer = await self._await_answer()
-        if answer["type"].endswith(".failed"):
+        if answer["type"] == f"{request}.complete":
+            return
+        if answer["type"] == f"{request}.failed":
             raise LifespanFailed(cast(str, answer.get("message", "")) or answer["type"])
+        raise LifespanFailed(f"The application answered {request} with {answer['type']!r}")
 
     async def _await_answer(self) -> Message:
         """Return the application's next lifespan message, or what killed it trying.

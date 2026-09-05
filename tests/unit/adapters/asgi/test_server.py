@@ -156,6 +156,36 @@ async def test_a_content_length_that_is_not_a_number_is_refused() -> None:
 
 
 @pytest.mark.anyio
+async def test_two_content_lengths_that_disagree_are_refused_rather_than_answered() -> None:
+    running = await _start()
+
+    answer = await _speak(
+        running.port,
+        b"POST /echo HTTP/1.1\r\nhost: localhost\r\n"
+        b"content-length: 4\r\ncontent-length: 8\r\n\r\nabcdefgh",
+    )
+    await _stop(running)
+
+    assert answer.startswith(b"HTTP/1.1 400 Bad Request\r\n")
+    assert answer.endswith(b"Conflicting Content-Length headers")
+
+
+@pytest.mark.anyio
+async def test_two_content_lengths_that_agree_say_one_thing_twice() -> None:
+    running = await _start()
+
+    answer = await _speak(
+        running.port,
+        b"POST /echo HTTP/1.1\r\nhost: localhost\r\n"
+        b"content-length: 4\r\ncontent-length: 4\r\n\r\nbody",
+    )
+    await _stop(running)
+
+    assert answer.startswith(b"HTTP/1.1 200 OK\r\n")
+    assert b'"body":"body"' in answer
+
+
+@pytest.mark.anyio
 async def test_a_body_beyond_the_limit_is_refused_before_it_is_read() -> None:
     running = await _start(max_body_bytes=8)
 

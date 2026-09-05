@@ -107,10 +107,9 @@ async def _read_request(
 
     method, target, version = _parse_request_line(await _read_line(reader))
     headers = await _read_headers(reader)
-    lookup = {name.lower(): value for name, value in headers}
-    if b"transfer-encoding" in lookup:
+    if any(name == b"transfer-encoding" for name, _value in headers):
         raise HttpParseError(HTTPStatus.NOT_IMPLEMENTED, "Transfer-Encoding is not supported")
-    body = await _read_body(reader, lookup.get(b"content-length"), max_body_bytes)
+    body = await _read_body(reader, _content_length(headers), max_body_bytes)
     path, _, query = target.partition(b"?")
     return {
         "type": "http",
@@ -163,6 +162,24 @@ async def _read_headers(reader: asyncio.StreamReader) -> list[tuple[bytes, bytes
         if not separator:
             raise HttpParseError(HTTPStatus.BAD_REQUEST, "Malformed header line")
         headers.append((name.strip().lower(), value.strip()))
+
+
+def _content_length(headers: list[tuple[bytes, bytes]]) -> bytes | None:
+    """Return the one body length the request declared, refusing a disagreement.
+
+    Two ``Content-Length`` fields that disagree leave the length of the body ambiguous,
+    and a server that picks one of them can be made to disagree with a proxy in front of
+    it that picked the other. There is no safe choice between them, so the request is
+    refused rather than answered. Repeats that agree say one thing twice and are read as
+    the one thing they say.
+    """
+
+    declared = {value for name, value in headers if name == b"content-length"}
+    if not declared:
+        return None
+    if len(declared) > 1:
+        raise HttpParseError(HTTPStatus.BAD_REQUEST, "Conflicting Content-Length headers")
+    return declared.pop()
 
 
 async def _read_body(

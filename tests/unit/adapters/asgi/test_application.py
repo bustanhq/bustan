@@ -262,3 +262,15 @@ async def test_an_application_that_ends_its_lifespan_in_silence_is_reported() ->
 
     with pytest.raises(LifespanFailed, match="without answering"):
         await runner.startup()
+
+
+@pytest.mark.anyio
+async def test_an_application_answering_the_lifespan_with_anything_else_is_refused() -> None:
+    async def app(_scope: Scope, receive: Receive, send: Send) -> None:
+        await receive()
+        await send({"type": "http.response.start", "status": 200})
+
+    runner = LifespanRunner(app)
+
+    with pytest.raises(LifespanFailed, match="answered lifespan.startup with"):
+        await runner.startup()
