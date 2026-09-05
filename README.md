@@ -196,15 +196,24 @@ application = create_test_app(
 )
 ```
 
-Use `override_provider()` when you want a scoped override that is restored automatically:
+Use `create_testing_module()` when you want the test to assemble and start the application itself:
 
 ```python
-from bustan.testing import override_provider
+from bustan.testing import create_testing_module
 
 
-with override_provider(application, GreetingService, FakeGreetingService()):
-    ...
+compiled = await (
+    create_testing_module(AppModule)
+    .override_provider(GreetingService)
+    .use_value(FakeGreetingService())
+    .compile()
+)
+
+with compiled.create_client() as client:
+    response = client.get("/greetings")
 ```
+
+Both register the replacement before the application starts, which is the only point at which an override is honoured in full. An override does not stand beside the provider it replaces; it replaces it for the whole application, including the singletons already built from it. A running application therefore refuses one and says so, rather than swapping a dependency that everything already holding it would keep.
 
 Use `create_test_module()` when you want a temporary module class for an isolated test instead of declaring one manually.
 
