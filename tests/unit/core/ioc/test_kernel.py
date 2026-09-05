@@ -10,14 +10,24 @@ from __future__ import annotations
 import functools
 import inspect
 import threading
-from typing import TYPE_CHECKING, Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast
 from unittest import mock
 
 import anyio
 import pytest
 from starlette.requests import Request
+from starlette.testclient import TestClient
 
-from bustan import Injectable, Module, Scope, create_app_context
+from bustan import (
+    Controller,
+    Get,
+    Injectable,
+    Module,
+    Scope,
+    create_app,
+    create_app_context,
+)
+from bustan.app.application import ApplicationContext
 from bustan.common.decorators.injectable import Inject
 from bustan.core.errors import ProviderResolutionError
 from bustan.core.ioc.container import build_container
@@ -376,10 +386,12 @@ def test_the_application_is_refused_when_none_is_running() -> None:
         container.resolve(NeedsApplication, module=AppModule)
 
 
-def test_the_application_is_read_off_the_request_when_one_is_in_flight(
+def test_the_application_is_refused_when_the_container_belongs_to_no_application(
     build_http_request: HttpRequestFactory,
     build_app: AppFactory,
 ) -> None:
+    """A request arriving from a foreign server does not make one an application."""
+
     @Injectable(scope=Scope.TRANSIENT)
     class NeedsApplication:
         def __init__(self, application: Annotated[object, Inject(APPLICATION)]) -> None:
@@ -390,11 +402,87 @@ def test_the_application_is_read_off_the_request_when_one_is_in_flight(
         pass
 
     container = build_container(build_module_graph(AppModule))
-    application = build_app()
-    request = build_http_request(path="/runtime", app=application)
-    resolved = cast(Any, container.resolve(NeedsApplication, module=AppModule, request=request))
+    request = build_http_request(path="/runtime", app=build_app())
 
-    assert resolved.application is application
+    with pytest.raises(ProviderResolutionError, match="was built outside one"):
+        container.resolve(NeedsApplication, module=AppModule, request=request)
+
+
+@Injectable(scope=Scope.TRANSIENT)
+class ApplicationProbe:
+    """A provider that reports the application it was built inside."""
+
+    def __init__(self, application: Annotated[object, Inject(APPLICATION)]) -> None:
+        self.application = application
+
+
+@Controller("/probe", scope=Scope.REQUEST)
+class ProbeController:
+    """A controller that answers with the application its provider was handed."""
+
+    seen: ClassVar[list[object]] = []
+
+    def __init__(self, probe: ApplicationProbe) -> None:
+        ProbeController.seen.append(probe.application)
+
+    @Get("/")
+    def read(self) -> dict[str, str]:
+        return {"status": "ok"}
+
+
+@Module(controllers=[ProbeController], providers=[ApplicationProbe], exports=[ApplicationProbe])
+class ProbeModule:
+    """The application every entry point below asks the same question of."""
+
+
+def test_the_application_token_answers_with_the_context_through_create_app_context() -> None:
+    context = create_app_context(ProbeModule)
+
+    resolved = cast(ApplicationProbe, context.get(ApplicationProbe)).application
+
+    assert type(resolved) is ApplicationContext
+    assert resolved is context
+
+
+def test_the_application_token_answers_with_the_context_through_create_app() -> None:
+    application = create_app(ProbeModule)
+
+    resolved = cast(ApplicationProbe, application.get(ApplicationProbe)).application
+
+    # An application that serves HTTP is a context and a server wrapper around one
+    # container; the token names the context, so the HTTP wrapper is not the answer.
+    assert type(resolved) is ApplicationContext
+    assert resolved.container is application.container
+
+
+def test_the_application_token_answers_with_the_context_on_a_request_being_served() -> None:
+    application = create_app(ProbeModule)
+    ProbeController.seen.clear()
+
+    with TestClient(cast(Any, application)) as client:
+        assert client.get("/probe/").status_code == 200
+
+    served = ProbeController.seen[-1]
+
+    assert type(served) is ApplicationContext
+    assert served is cast(ApplicationProbe, application.get(ApplicationProbe)).application
+
+
+def test_the_application_token_answers_with_the_context_when_entered_with_a_request(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    application = create_app(ProbeModule)
+    request = build_http_request(path="/probe/", app=application.get_http_server())
+
+    resolved = cast(
+        ApplicationProbe,
+        application.container.resolve(ApplicationProbe, module=ProbeModule, request=request),
+    ).application
+
+    # Entering the container with a request and nothing pushed used to answer with the
+    # transport's own server object, which is not an application at all.
+    assert type(resolved) is ApplicationContext
+    assert resolved is cast(ApplicationProbe, application.get(ApplicationProbe)).application
 
 
 def test_inquirer_is_refused_when_nothing_is_being_built_for_anyone() -> None:

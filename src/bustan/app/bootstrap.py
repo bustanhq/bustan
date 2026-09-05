@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from weakref import WeakKeyDictionary
 
 from ..adapters.starlette import StarletteAdapter
 from ..core.ioc.container import build_container
@@ -17,9 +18,28 @@ from .application import Application, ApplicationContext
 from .lifespan import build_lifespan
 
 if TYPE_CHECKING:
+    from ..core.ioc.container import Container
     from ..openapi import SwaggerOptions
     from ..platform.http.versioning import VersioningOptions
     from ..testing.overrides import PipelineOverrideRegistry
+
+
+# The HTTP application assembled around an application context, when there is one.
+# ``APPLICATION`` names the context, which describes a container rather than a
+# transport, so an application that serves HTTP is recorded here, where the two are
+# assembled together, instead of being carried on every context whether or not one
+# exists. The keys are weak, so the association lives exactly as long as the context.
+_HTTP_APPLICATIONS: WeakKeyDictionary[ApplicationContext, Application] = WeakKeyDictionary()
+
+
+def http_application_for(context: ApplicationContext) -> Application | None:
+    """Return the HTTP application assembled around an application context.
+
+    A context created on its own answers no HTTP request and has no application here,
+    which is how a caller tells the two apart without inspecting either.
+    """
+
+    return _HTTP_APPLICATIONS.get(context)
 
 
 def create_app(
@@ -59,6 +79,11 @@ def _create_app(
     container = build_container(module_graph)
     lifecycle_manager = LifecycleManager(module_graph, container)
 
+    # The context is seated before anything is compiled, because compilation resolves
+    # providers and a provider that injects APPLICATION must be answered the same way
+    # here as it is on the request that reaches it later.
+    application_context = _seat_application_context(container, lifecycle_manager)
+
     # 2. Build lifecyle and routing configuration
     lifespan = None if no_lifespan else build_lifespan(lifecycle_manager)
     route_contracts = compile_route_contracts(module_graph, container)
@@ -89,6 +114,7 @@ def _create_app(
         route_contracts=route_contracts,
         execution_plans=execution_plans,
     )
+    _HTTP_APPLICATIONS[application_context] = application
     _attach_runtime_artifacts(
         application,
         module_graph,
@@ -110,7 +136,24 @@ def create_app_context(root_module: type[object] | DynamicModule) -> Application
     module_graph = build_module_graph(root_module)
     container = build_container(module_graph)
     lifecycle_manager = LifecycleManager(module_graph, container)
-    return ApplicationContext(container, lifecycle_manager)
+    return _seat_application_context(container, lifecycle_manager)
+
+
+def _seat_application_context(
+    container: Container, lifecycle_manager: LifecycleManager
+) -> ApplicationContext:
+    """Build the application context a container is resolved against, and seat it.
+
+    One context is built per container, whether or not the application it belongs to
+    also serves HTTP, and the container is told about it here. That is what makes
+    `APPLICATION` one type: every entry point into the container - the application
+    itself, a request being served, an imperative resolution - answers with this
+    object rather than with whatever the caller happened to arrive holding.
+    """
+
+    context = ApplicationContext(container, lifecycle_manager)
+    container.kernel.belongs_to(context)
+    return context
 
 
 def _attach_runtime_artifacts(

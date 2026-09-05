@@ -4,23 +4,23 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from ..app.application import Application, ApplicationContext
+from ..app.application import ApplicationContext
+from ..app.bootstrap import http_application_for
 from ..common.decorators.injectable import Inject, Injectable
 from ..common.types import ProviderScope
-from ..core.errors import ProviderResolutionError
 from ..core.ioc.tokens import APPLICATION
 from ..core.module.decorators import Module
 from ..core.module.dynamic import ModuleKey
 from ..core.utils import _display_name
-from .module_ref import ModuleRef
+from .module_ref import ModuleRef, _application_context
 
 
 @Injectable(scope=ProviderScope.TRANSIENT)
 class DiscoveryService:
     """Read-only inspection surface for compiled modules, providers, and routes."""
 
-    def __init__(self, application: Annotated[object, Inject(APPLICATION)]) -> None:
-        self._application = _resolve_application_context(application)
+    def __init__(self, application: Annotated[ApplicationContext, Inject(APPLICATION)]) -> None:
+        self._application = _application_context(application, "DiscoveryService")
 
     def modules(self) -> tuple[dict[str, object], ...]:
         entries: list[dict[str, object]] = []
@@ -73,9 +73,10 @@ class DiscoveryService:
         A standalone application context serves no routes, so there are none to report
         rather than an error to raise.
         """
-        if isinstance(self._application, Application):
-            return self._application.snapshot_routes()
-        return ()
+        application = http_application_for(self._application)
+        if application is None:
+            return ()
+        return application.snapshot_routes()
 
 
 @Module(providers=[DiscoveryService, ModuleRef], exports=[DiscoveryService, ModuleRef])
@@ -83,22 +84,6 @@ class DiscoveryModule:
     """Addon module that exposes the read-only DiscoveryService."""
 
     pass
-
-
-def _resolve_application_context(application: object) -> ApplicationContext:
-    """Return the application context behind whatever ``APPLICATION`` resolved to."""
-
-    if isinstance(application, ApplicationContext):
-        return application
-    # A server object carries the application it serves on its own state namespace,
-    # which is how one is recognised without knowing whose server it is.
-    runtime = getattr(getattr(application, "state", None), "bustan_application", None)
-    if isinstance(runtime, ApplicationContext):
-        return runtime
-    raise ProviderResolutionError(
-        "DiscoveryService requires an application context; APPLICATION resolved to "
-        f"{type(application).__name__}"
-    )
 
 
 def _resolve_module_node(

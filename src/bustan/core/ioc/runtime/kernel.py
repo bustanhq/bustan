@@ -67,6 +67,9 @@ class ResolutionKernel:
         self.override_manager = override_manager
         self.plan = plan
         self._unplanned: dict[TargetKey, ConstructionPlan] = {}
+        # The application this container was built for, named once while it is
+        # assembled. APPLICATION answers with it however the resolution was entered.
+        self._owning_application: object | None = None
         self.resolution_stack: ContextVar[tuple[ResolutionFrame, ...]] = ContextVar(
             "bustan_resolution_stack", default=()
         )
@@ -75,6 +78,19 @@ class ResolutionKernel:
         self.construction_stack: ContextVar[tuple[type[object], ...]] = ContextVar(
             "bustan_construction_stack", default=()
         )
+
+    def belongs_to(self, application: object) -> None:
+        """Name the application this container was built for.
+
+        An application says this once, while it is being assembled, and the
+        `APPLICATION` token then answers with that object however the resolution was
+        entered: through the application itself, through a request being served, or
+        through the container directly. Reading the application off the entry point
+        instead is what let one caller be handed the application, another the context
+        beside it and a third the transport's own server object.
+        """
+
+        self._owning_application = application
 
     def resolve(
         self, token: object, *, module: ModuleKey, request: HttpRequest | None = None
@@ -347,16 +363,24 @@ class ResolutionKernel:
         return self._inquirer(asked_at)
 
     def _application(self, asked_at: str) -> object:
-        application = self.scope_manager.active_application.get()
-        if application is not None:
-            return application
-        request = self.scope_manager.active_request.get()
-        if request is not None:
-            return request.app
-        raise ProviderResolutionError(
-            f"{asked_at} asks for the running application, which is only available once one is "
-            "running"
+        """Return the application this container was built for, once one is running."""
+
+        running = (
+            self.scope_manager.active_application.get() is not None
+            or self.scope_manager.active_request.get() is not None
         )
+        if not running:
+            raise ProviderResolutionError(
+                f"{asked_at} asks for the running application, which is only available once one "
+                "is running"
+            )
+        if self._owning_application is None:
+            raise ProviderResolutionError(
+                f"{asked_at} asks for the running application, and this container was built "
+                "outside one. Build the application with 'create_app' or 'create_app_context' so "
+                "the container knows which application it belongs to"
+            )
+        return self._owning_application
 
     def _inquirer(self, asked_at: str) -> object:
         stack = self.construction_stack.get()
