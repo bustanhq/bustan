@@ -1,6 +1,8 @@
 # Testing Overrides Example
 
-This example shows the two supported testing override patterns: create-time overrides with `create_test_app()` and scoped overrides with `override_provider()`.
+This example shows the two supported testing override patterns: create-time overrides with `create_test_app()` and assembled overrides with `create_testing_module()`.
+
+Both register the replacement before the application starts, which is the only point at which an override is honoured in full: an override replaces a provider for the whole application, including every instance already built from it, so a running application refuses one rather than swapping a dependency that everything already holding it would keep.
 
 ## Layout
 
@@ -32,5 +34,6 @@ uv run python -m testing_overrides.app
 ## What It Demonstrates
 
 - replacing providers while building a test application
-- temporarily overriding providers on an existing test application
+- replacing providers in an application a test assembles and starts for itself
+- serving requests against the replacement through the compiled module's own client
 - keeping override behavior inside `bustan.testing`

@@ -173,8 +173,11 @@ while routes are compiled. Three things follow:
   provider.
 - A global component may be built by an asynchronous factory, because the request path
   awaits every provider it builds.
-- An override registered against the token takes effect on the next request, so
-  `override_provider(app, APP_GUARD, AllowAllGuard())` really does replace the guard.
+- A global component registered under a token that an override replaces is built from
+  the replacement, because the token is read on the request rather than captured while
+  routes are compiled. The override still belongs to bootstrap: register it before the
+  application starts, through `bustan.testing`, and every request the application then
+  serves runs the replacement.
 
 Bind a list to register more than one component under one token. They run in the order
 the list was written, and the components of every declaring module run in the order the
