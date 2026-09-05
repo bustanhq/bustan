@@ -1727,11 +1727,20 @@ def override_provider(target: object, token: object, replacement: object, *, mod
 
 Defined in `bustan.testing.overrides`.
 
-Temporarily replace a provider for the duration of a context block.
+Temporarily replace a provider, before the application it belongs to starts.
 
 ``target`` is the container to override in, the ``Application`` holding it, or the
 server object it was assembled with, which carries the container on its own state
 namespace. Anything else raises ``TypeError``.
+
+An override belongs to bootstrap. It does not stand beside the provider it
+replaces for the length of the block; it replaces it for the whole application,
+including every instance already built from it. Against an application that has
+started, that is refused rather than half honoured: the singletons startup built
+from the real provider are the ones still being served, so a block that appeared
+to swap a dependency would have swapped nothing. Assemble the application with the
+replacement instead, with
+``await create_testing_module(RootModule).override_provider(token).use_value(...).compile()``.
 
 ## `bustan.errors`
 

@@ -185,14 +185,25 @@ application = create_test_app(
 )
 ```
 
-Scoped replacement against an existing application:
+Replacement in an application a test assembles for itself:
 
 ```python
-from bustan.testing import override_provider
+from bustan.testing import create_testing_module
 
 
-with override_provider(application, AppService, FakeAppService()):
-    ...
+compiled = await (
+    create_testing_module(AppModule)
+    .override_provider(AppService)
+    .use_value(FakeAppService())
+    .compile()
+)
+```
+
+Both replace the provider before the application starts, which is the only point at which a replacement is honoured in full. An override does not stand beside the provider it replaces; it replaces it for the whole application, including the singletons already built from it. A running application therefore refuses one and says so, rather than swapping a dependency that everything already holding it would keep. To serve requests against the replacement, build a client from the compiled module:
+
+```python
+with compiled.create_client() as client:
+    response = client.get("/")
 ```
 
 ## What This Flow Teaches

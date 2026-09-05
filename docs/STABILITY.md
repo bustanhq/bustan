@@ -32,6 +32,15 @@ What a caller may rely on: the token you write is the token the container matche
 
 Token names carry no meaning to the container. They exist so that errors and the generated API reference can name the dependency, and changing one changes no behaviour.
 
+## When A Provider May Be Overridden
+
+An override belongs to bootstrap. It does not stand beside the provider it replaces; it replaces it for the whole application, including every instance already built from it, which is safe only while no request is in flight. The window therefore closes when the application starts, and every later attempt is refused with an error naming the token rather than half honoured.
+
+What that means for the supported testing surface:
+
+- **Register overrides before startup.** `create_test_app()`, `create_testing_module(...).override_provider(...).compile()` and `override_provider()` against an application that has not started all do. A shutdown reopens the window, so an application started, stopped and started again takes a fresh set of overrides on each cycle.
+- **`override_provider()` against a running application is refused.** Replacing a provider under a started application cannot reach the singletons startup already built from it, so a block that appeared to swap a dependency would have swapped nothing. The refusal names `create_testing_module(...).override_provider(...)` as the way to write the same test.
+
 ## Internal Modules
 
 Everything outside the three stable modules is internal for compatibility purposes. That includes namespaces such as:
