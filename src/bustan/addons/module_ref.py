@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from starlette.applications import Starlette
-from starlette.requests import Request
-
 from ..app.application import ApplicationContext
 from ..common.decorators.injectable import Inject, Injectable
 from ..common.types import ProviderScope
+from ..contracts import HttpRequest
 from ..core.errors import ProviderResolutionError
 from ..core.ioc.tokens import APPLICATION
 from ..core.module.dynamic import ModuleKey
@@ -71,7 +69,7 @@ class ModuleRef:
             cls, module=self._module_key, request=self._active_request()
         )
 
-    def _active_request(self) -> Request | None:
+    def _active_request(self) -> HttpRequest | None:
         """Return the request currently being served, or ``None`` outside one."""
 
         return self._application.container.scope_manager.active_request.get()
@@ -82,10 +80,11 @@ def _resolve_application(application: object) -> ApplicationContext:
 
     if isinstance(application, ApplicationContext):
         return application
-    if isinstance(application, Starlette):
-        runtime = getattr(application.state, "bustan_application", None)
-        if isinstance(runtime, ApplicationContext):
-            return runtime
+    # A server object carries the application it serves on its own state namespace,
+    # which is how one is recognised without knowing whose server it is.
+    runtime = getattr(getattr(application, "state", None), "bustan_application", None)
+    if isinstance(runtime, ApplicationContext):
+        return runtime
     raise ProviderResolutionError(
         "ModuleRef requires an application context; APPLICATION resolved to "
         f"{type(application).__name__}"

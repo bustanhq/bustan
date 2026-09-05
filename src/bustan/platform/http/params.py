@@ -10,8 +10,6 @@ from enum import StrEnum
 from types import NoneType, UnionType
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin, get_type_hints
 
-from starlette.requests import Request
-
 from ...common.decorators.parameter import (
     _BodyMarker,
     _CookiesMarker,
@@ -26,7 +24,7 @@ from ...common.decorators.parameter import (
     _UploadedFileMarker,
     _UploadedFilesMarker,
 )
-from ...contracts import HttpRequest, as_http_request
+from ...contracts import HttpRequest, as_http_request, names_native_request
 from ...core.errors import ParameterBindingError
 from ...core.utils import _qualname
 from .metadata import ControllerRouteDefinition, get_controller_metadata
@@ -206,7 +204,7 @@ def compile_parameter_bindings(
 
 
 async def bind_handler_arguments(
-    request: HttpRequest | Request,
+    request: HttpRequest | object,
     binding_plan: HandlerBindingPlan,
     context: ExecutionContext | None = None,
 ) -> tuple[tuple[object, ...], dict[str, object]]:
@@ -216,7 +214,7 @@ async def bind_handler_arguments(
 
 
 async def bind_handler_parameters(
-    request: HttpRequest | Request,
+    request: HttpRequest | object,
     binding_plan: HandlerBindingPlan,
     context: ExecutionContext | None = None,
 ) -> tuple[BoundParameter, ...]:
@@ -268,9 +266,10 @@ async def _bind_parameter(
     context: ExecutionContext | None = None,
 ) -> tuple[object, object]:
     if binding.source is ParameterSource.REQUEST:
-        if binding.annotation is Request:
-            native_request = getattr(request, "native_request", request)
-            return native_request, request_body
+        if names_native_request(binding.annotation):
+            # The parameter named the transport's own request type, so it is handed
+            # that object rather than the contract wrapped around it.
+            return request.native_request, request_body
         return request, request_body
 
     if binding.source is ParameterSource.CUSTOM:
@@ -660,7 +659,8 @@ def _has_explicit_source(
     real_annotation, marker = _extract_marker(annotation)
     return (
         marker is not None
-        or real_annotation in (Request, HttpRequest)
+        or real_annotation is HttpRequest
+        or names_native_request(real_annotation)
         or parameter.name in path_parameter_names
     )
 
@@ -681,7 +681,7 @@ def _compile_parameter_source(
     if explicit_source is not None:
         return explicit_source, False
 
-    if annotation in (Request, HttpRequest):
+    if annotation is HttpRequest or names_native_request(annotation):
         return ParameterSource.REQUEST, False
     if parameter.name in path_parameter_names:
         return ParameterSource.PATH, False
@@ -1024,7 +1024,6 @@ def _resolve_handler_parameter_annotations(
     )
     local_namespace = {
         controller_cls.__name__: controller_cls,
-        Request.__name__: Request,
         HttpRequest.__name__: HttpRequest,
     }
 

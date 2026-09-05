@@ -21,7 +21,7 @@ from bustan.core.ioc.scopes import (
 )
 
 if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+    from tests.conftest import HttpRequestFactory
 
 
 class AppModule:
@@ -208,10 +208,10 @@ def test_ambient_state_is_restored_exactly_as_it_was_found() -> None:
 
 
 def test_the_active_request_is_restored_exactly_as_it_was_found(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     manager = ScopeManager()
-    request = build_request(path="/items")
+    request = build_http_request(path="/items")
 
     assert manager.push_request(None) is None
 
@@ -226,10 +226,10 @@ def test_the_active_request_is_restored_exactly_as_it_was_found(
 
 
 def test_a_request_carries_one_cache_which_is_dropped_when_the_request_ends(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     manager = ScopeManager()
-    request = build_request(path="/items")
+    request = build_http_request(path="/items")
 
     assert manager.get_request_cache(request) is manager.get_request_cache(request)
     assert manager.get_request_controller_cache(request) is manager.get_request_controller_cache(

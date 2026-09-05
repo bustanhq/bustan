@@ -21,7 +21,7 @@ from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
 
 if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+    from tests.conftest import HttpRequestFactory
 
 CONFIG_TOKEN = InjectionToken[str]("CONFIG")
 MISSING_TOKEN = InjectionToken[object]("MISSING")
@@ -93,7 +93,9 @@ def test_special_request_token_is_rejected_outside_request_scope() -> None:
         build_container(build_module_graph(AppModule))
 
 
-def test_special_request_token_resolves_within_request_scope(build_request: RequestFactory) -> None:
+def test_special_request_token_resolves_within_request_scope(
+    build_http_request: HttpRequestFactory,
+) -> None:
     @Injectable(scope="request")
     class RequestAwareService:
         def __init__(self, request: Annotated[object, Inject(REQUEST)]) -> None:
@@ -104,7 +106,7 @@ def test_special_request_token_resolves_within_request_scope(build_request: Requ
         pass
 
     container = build_container(build_module_graph(AppModule))
-    request = build_request(path="/request-aware")
+    request = build_http_request(path="/request-aware")
 
     service = cast(Any, container.resolve(RequestAwareService, module=AppModule, request=request))
 

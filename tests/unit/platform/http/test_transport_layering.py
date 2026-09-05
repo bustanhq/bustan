@@ -23,23 +23,10 @@ TEMPLATE_ROOT = PACKAGE_ROOT / "cli" / "templates"
 # a debt this test makes visible rather than lets pass silently.
 KNOWN_TRANSPORT_IMPORTERS = frozenset(
     {
-        "addons/context.py",
-        "addons/discovery.py",
-        "addons/module_ref.py",
         "app/application.py",
-        "app/lifespan.py",
-        "core/ioc/container.py",
-        "core/ioc/planning/container_plan.py",
-        "core/ioc/planning/scopes.py",
-        "core/ioc/runtime/kernel.py",
-        "core/ioc/scopes.py",
-        "openapi/swagger_ui.py",
         "platform/http/compiler.py",
         "platform/http/conformance.py",
-        "platform/http/controller_factory.py",
-        "platform/http/params.py",
         "testing/builder.py",
-        "testing/overrides.py",
     }
 )
 
@@ -84,6 +71,12 @@ def test_every_module_on_the_request_path_is_free_of_a_transport() -> None:
 
 def test_the_contracts_package_never_reaches_for_a_transport() -> None:
     assert not any(name.startswith("contracts/") for name in _transport_importers())
+
+
+def test_the_injection_kernel_never_reaches_for_a_transport() -> None:
+    """The container decides what a request means, so it may not know what serves one."""
+
+    assert not any(name.startswith("core/") for name in _transport_importers())
 
 
 def test_the_known_debt_list_names_only_modules_that_still_exist() -> None:

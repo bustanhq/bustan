@@ -92,6 +92,7 @@ def test_the_contracts_package_declares_the_names_it_defines() -> None:
         "HttpResponseValue",
         "HttpStreamResponse",
         "HttpUrl",
+        "NativeHttpRequest",
         "NativeHttpResponse",
         "QueryParams",
         "RateLimitDecision",
@@ -100,5 +101,6 @@ def test_the_contracts_package_declares_the_names_it_defines() -> None:
         "RouteHandler",
         "Url",
         "as_http_request",
+        "names_native_request",
         "request_slots",
     )

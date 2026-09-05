@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from starlette.applications import Starlette
-
 from ..app.application import Application, ApplicationContext
 from ..common.decorators.injectable import Inject, Injectable
 from ..common.types import ProviderScope
@@ -92,10 +90,11 @@ def _resolve_application_context(application: object) -> ApplicationContext:
 
     if isinstance(application, ApplicationContext):
         return application
-    if isinstance(application, Starlette):
-        runtime = getattr(application.state, "bustan_application", None)
-        if isinstance(runtime, ApplicationContext):
-            return runtime
+    # A server object carries the application it serves on its own state namespace,
+    # which is how one is recognised without knowing whose server it is.
+    runtime = getattr(getattr(application, "state", None), "bustan_application", None)
+    if isinstance(runtime, ApplicationContext):
+        return runtime
     raise ProviderResolutionError(
         "DiscoveryService requires an application context; APPLICATION resolved to "
         f"{type(application).__name__}"

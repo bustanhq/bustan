@@ -31,8 +31,7 @@ from .steps import NO_CACHE, Guarded, InstanceCache, Invoke, Machine, Resolve, S
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from starlette.requests import Request
-
+    from ....contracts import HttpRequest
     from ...module.dynamic import ModuleKey
     from ..overrides import OverrideManager
     from ..registry import Binding, Registry
@@ -78,7 +77,7 @@ class ResolutionKernel:
         )
 
     def resolve(
-        self, token: object, *, module: ModuleKey, request: Request | None = None
+        self, token: object, *, module: ModuleKey, request: HttpRequest | None = None
     ) -> object:
         """Resolve a provider visible from the given module."""
 
@@ -86,7 +85,7 @@ class ResolutionKernel:
             return self._run(self._resolve_steps(token, module))
 
     async def resolve_async(
-        self, token: object, *, module: ModuleKey, request: Request | None = None
+        self, token: object, *, module: ModuleKey, request: HttpRequest | None = None
     ) -> object:
         """Resolve a provider, awaiting async factories when required."""
 
@@ -94,7 +93,7 @@ class ResolutionKernel:
             return await self._run_async(self._resolve_steps(token, module))
 
     def instantiate_class(
-        self, cls: type[object], *, module: ModuleKey, request: Request | None = None
+        self, cls: type[object], *, module: ModuleKey, request: HttpRequest | None = None
     ) -> object:
         """Build one fresh instance of a class, resolving its constructor dependencies."""
 
@@ -102,7 +101,7 @@ class ResolutionKernel:
             return self._run(self._build_steps(self._plan_for(cls, module)))
 
     async def instantiate_class_async(
-        self, cls: type[object], *, module: ModuleKey, request: Request | None = None
+        self, cls: type[object], *, module: ModuleKey, request: HttpRequest | None = None
     ) -> object:
         """Build one fresh instance of a class, awaiting async dependencies."""
 
@@ -115,7 +114,7 @@ class ResolutionKernel:
         inject: tuple[object, ...],
         *,
         module: ModuleKey,
-        request: Request | None = None,
+        request: HttpRequest | None = None,
     ) -> object:
         """Resolve a factory's declared tokens and call it."""
 
@@ -128,7 +127,7 @@ class ResolutionKernel:
         inject: tuple[object, ...],
         *,
         module: ModuleKey,
-        request: Request | None = None,
+        request: HttpRequest | None = None,
     ) -> object:
         """Resolve a factory's declared tokens and call it, awaiting an async factory."""
 
@@ -329,7 +328,10 @@ class ResolutionKernel:
         if isinstance(source, ActiveRequest):
             request = self.scope_manager.active_request.get()
             if request is not None:
-                return request
+                # A parameter that named its transport's own request type is handed
+                # that object rather than the contract wrapped around it, so what
+                # arrives is what the annotation says.
+                return request.native_request if source.native else request
             raise ProviderResolutionError(
                 f"{asked_at} asks for the request being served, and no request is being served"
             )
@@ -349,7 +351,7 @@ class ResolutionKernel:
         if application is not None:
             return application
         request = self.scope_manager.active_request.get()
-        if request is not None and hasattr(request, "app"):
+        if request is not None:
             return request.app
         raise ProviderResolutionError(
             f"{asked_at} asks for the running application, which is only available once one is "

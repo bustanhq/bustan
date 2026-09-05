@@ -132,7 +132,6 @@ def create_route_handler(
             factory=factory,
             execution_plan=execution_plan,
             request=request,
-            native_request=request.native_request,
         )
         return result.response
 
@@ -143,14 +142,12 @@ def create_route_handler(
             factory=factory,
             execution_plan=execution_plan,
             request=request,
-            native_request=request.native_request,
             error=error,
         )
         return result.response
 
     async def handle(request: HttpRequest) -> RuntimeResponse:
-        native_request = cast(Any, request.native_request)
-        request_token = container.scope_manager.push_request(native_request)
+        request_token = container.scope_manager.push_request(request)
         application_token = container.scope_manager.push_application(
             _application_runtime(request.app)
         )
@@ -165,7 +162,7 @@ def create_route_handler(
         finally:
             # The request is over only once the outermost middleware has returned, so
             # what was scoped to it is released here rather than inside the route.
-            container.scope_manager.clear_request_state(native_request)
+            container.scope_manager.clear_request_state(request)
             container.scope_manager.pop_application(application_token)
             container.scope_manager.pop_request(request_token)
 
@@ -198,7 +195,7 @@ async def run_middleware_chain(
                     (middleware_ref,),
                     Middleware,
                     module=entry.declaring_module,
-                    request=cast(Any, current_request.native_request),
+                    request=current_request,
                     kind="middleware",
                 )[0]
                 return cast(RuntimeResponse, await middleware.use(current_request, call_next))
@@ -222,14 +219,13 @@ async def execute_http_route(
     factory: ControllerFactory,
     execution_plan: ExecutionPlan,
     request: HttpRequest,
-    native_request: object,
 ) -> HttpExecutionResult:
     """Execute one compiled HTTP route through the shared runtime pipeline."""
 
     # The request is bound for the whole execution, not merely for the duration of one
     # resolve call, so anything running inside the route - a handler, a guard, an
     # interceptor - can reach the request being served and the providers scoped to it.
-    request_token = container.scope_manager.push_request(cast(Any, native_request))
+    request_token = container.scope_manager.push_request(request)
     application_token = container.scope_manager.push_application(
         _application_runtime(application_runtime)
     )
@@ -245,7 +241,7 @@ async def execute_http_route(
         controller_instance = await factory.instantiate_async(
             execution_plan.controller_cls,
             module=execution_plan.module_key,
-            request=cast(Any, native_request),
+            request=request,
         )
         handler = getattr(controller_instance, execution_plan.handler_name)
         context = ExecutionContext.create_http(
@@ -263,7 +259,7 @@ async def execute_http_route(
         resolved_pipeline = await factory.resolve_pipeline_async(
             execution_plan.pipeline_plan,
             module=execution_plan.module_key,
-            request=cast(Any, native_request),
+            request=request,
         )
         observation = observability.start_request(context)
 
@@ -336,7 +332,6 @@ async def execute_http_exception(
     factory: ControllerFactory,
     execution_plan: ExecutionPlan,
     request: HttpRequest,
-    native_request: object,
     error: Exception,
 ) -> HttpExecutionResult:
     """Render an exception through the route's compiled filter chain.
@@ -347,7 +342,7 @@ async def execute_http_exception(
     failure never reaches the caller as a traceback.
     """
 
-    request_token = container.scope_manager.push_request(cast(Any, native_request))
+    request_token = container.scope_manager.push_request(request)
     application_token = container.scope_manager.push_application(
         _application_runtime(application_runtime)
     )
@@ -363,7 +358,7 @@ async def execute_http_exception(
         controller_instance = await factory.instantiate_async(
             execution_plan.controller_cls,
             module=execution_plan.module_key,
-            request=cast(Any, native_request),
+            request=request,
         )
         context = ExecutionContext.create_http(
             request=request,
@@ -380,7 +375,7 @@ async def execute_http_exception(
         resolved_pipeline = await factory.resolve_pipeline_async(
             execution_plan.pipeline_plan,
             module=execution_plan.module_key,
-            request=cast(Any, native_request),
+            request=request,
         )
         observation = observability.start_request(context)
         filtered_result = await handle_exception(context, error, resolved_pipeline.filters)

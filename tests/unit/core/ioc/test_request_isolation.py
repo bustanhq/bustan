@@ -16,10 +16,9 @@ from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import pytest
 from starlette.requests import Request
-from starlette.responses import Response
 from starlette.testclient import TestClient
 
-from bustan import Controller, Get, Injectable, Module, Scope, create_app
+from bustan import Controller, Get, HttpResponse, Injectable, Module, Scope, create_app
 from bustan.common.decorators.injectable import Inject
 from bustan.core.ioc.tokens import REQUEST, RESPONSE, InjectionToken
 from bustan.errors import ProviderResolutionError
@@ -43,7 +42,7 @@ class Identity:
 
 
 class HoldsRequestType:
-    """An owner that asks for the request by its framework type."""
+    """An owner that asks for the request by the transport's own type for it."""
 
     def __init__(self, dependency: Request) -> None:
         self.held: object = dependency
@@ -59,7 +58,7 @@ class HoldsRequestToken:
 class HoldsResponseType:
     """An owner that asks for the response by its framework type."""
 
-    def __init__(self, dependency: Response) -> None:
+    def __init__(self, dependency: HttpResponse) -> None:
         self.held: object = dependency
 
 
@@ -78,9 +77,9 @@ class HoldsRequestScopedProvider:
 
 
 HOLDERS: dict[str, type[object]] = {
-    "starlette request": HoldsRequestType,
+    "native request": HoldsRequestType,
     "request token": HoldsRequestToken,
-    "starlette response": HoldsResponseType,
+    "neutral response": HoldsResponseType,
     "response token": HoldsResponseToken,
     "request-scoped provider": HoldsRequestScopedProvider,
 }

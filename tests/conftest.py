@@ -1,10 +1,11 @@
 """Fixtures shared by the whole test suite.
 
-Two factories live here. ``build_request`` constructs a Starlette ``Request`` from
-the parts a test actually cares about, and ``build_app`` constructs the Starlette
-application a request is occasionally attached to. Both are exposed as fixtures
-returning a callable rather than a built object, because a single test frequently
-needs two or three requests that differ in one field.
+Three factories live here. ``build_request`` constructs a Starlette ``Request`` from
+the parts a test actually cares about, ``build_http_request`` wraps one in the neutral
+request contract the way a transport adapter does at the edge, and ``build_app``
+constructs the Starlette application a request is occasionally attached to. All are
+exposed as fixtures returning a callable rather than a built object, because a single
+test frequently needs two or three requests that differ in one field.
 
 Every parameter is keyword-only and has a default, so ``build_request()`` with no
 arguments yields a bare ``GET /`` and each call site names only what it varies.
@@ -20,10 +21,14 @@ import pytest
 from starlette.applications import Starlette
 from starlette.requests import Request
 
+from bustan.adapters.starlette.requests import from_starlette_request
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from starlette.routing import BaseRoute
+
+    from bustan.contracts import HttpRequest
 
 _DEFAULT_HOST = (b"host", b"testserver")
 _JSON_CONTENT_TYPE = "application/json"
@@ -46,6 +51,26 @@ class RequestFactory(Protocol):
         content_type: str | None = None,
         app: Starlette | None = None,
     ) -> Request:
+        raise NotImplementedError
+
+
+class HttpRequestFactory(Protocol):
+    """Builds a neutral request; the parameters are ``build_request``'s exactly."""
+
+    def __call__(
+        self,
+        *,
+        method: str = "GET",
+        path: str = "/",
+        path_params: dict[str, object] | None = None,
+        query_params: dict[str, object] | None = None,
+        headers: list[tuple[bytes, bytes]] | None = None,
+        cookies: dict[str, str] | None = None,
+        json_body: object | None = None,
+        raw_body: bytes | None = None,
+        content_type: str | None = None,
+        app: Starlette | None = None,
+    ) -> HttpRequest:
         raise NotImplementedError
 
 
@@ -151,6 +176,46 @@ def build_request() -> RequestFactory:
             return {"type": "http.request", "body": body, "more_body": False}
 
         return Request(scope, receive)
+
+    return factory
+
+
+@pytest.fixture
+def build_http_request(build_request: RequestFactory) -> HttpRequestFactory:
+    """Return a factory for requests seen through the neutral request contract.
+
+    The framework holds an ``HttpRequest`` everywhere; a transport request reaches it
+    only through the adapter that wraps one. This builds a request the same way, so a
+    test drives the code under test with what a served request would give it.
+    """
+
+    def factory(
+        *,
+        method: str = "GET",
+        path: str = "/",
+        path_params: dict[str, object] | None = None,
+        query_params: dict[str, object] | None = None,
+        headers: list[tuple[bytes, bytes]] | None = None,
+        cookies: dict[str, str] | None = None,
+        json_body: object | None = None,
+        raw_body: bytes | None = None,
+        content_type: str | None = None,
+        app: Starlette | None = None,
+    ) -> HttpRequest:
+        return from_starlette_request(
+            build_request(
+                method=method,
+                path=path,
+                path_params=path_params,
+                query_params=query_params,
+                headers=headers,
+                cookies=cookies,
+                json_body=json_body,
+                raw_body=raw_body,
+                content_type=content_type,
+                app=app,
+            )
+        )
 
     return factory
 

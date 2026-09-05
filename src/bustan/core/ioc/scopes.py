@@ -10,8 +10,8 @@ from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING, Any, Final, Protocol, cast, runtime_checkable
 
 import anyio
-from starlette.requests import Request
 
+from ...contracts import HttpRequest
 from ..module.dynamic import ModuleKey
 
 if TYPE_CHECKING:
@@ -172,7 +172,7 @@ class DurableProvider(Protocol):
     """Protocol for providers that derive a durable cache key from the request."""
 
     @classmethod
-    def get_durable_context_key(cls, request: Request | None) -> Hashable: ...
+    def get_durable_context_key(cls, request: HttpRequest | None) -> Hashable: ...
 
 
 class ScopeManager:
@@ -188,7 +188,7 @@ class ScopeManager:
         )
         self.async_construction_locks: ConstructionLocks[anyio.Lock] = ConstructionLocks(anyio.Lock)
         self._lock_table_guard = threading.Lock()
-        self.active_request: ContextVar[Request | None] = ContextVar(
+        self.active_request: ContextVar[HttpRequest | None] = ContextVar(
             "bustan_active_request", default=None
         )
         self.active_response: ContextVar[object | None] = ContextVar(
@@ -245,12 +245,12 @@ class ScopeManager:
 
         return _held_async(self.async_construction_locks, key)
 
-    def push_request(self, request: Request | None) -> Token[Request | None] | None:
+    def push_request(self, request: HttpRequest | None) -> Token[HttpRequest | None] | None:
         if request is None:
             return None
         return self.active_request.set(request)
 
-    def pop_request(self, token: Token[Request | None] | None) -> None:
+    def pop_request(self, token: Token[HttpRequest | None] | None) -> None:
         if token is not None:
             self.active_request.reset(token)
 
@@ -272,7 +272,7 @@ class ScopeManager:
         if token is not None:
             self.active_application.reset(token)
 
-    def get_request_cache(self, request: Request) -> dict[tuple[ModuleKey, object], object]:
+    def get_request_cache(self, request: HttpRequest) -> dict[tuple[ModuleKey, object], object]:
         """Return the instance cache associated with the current request."""
         request_scope_cache = getattr(request.state, REQUEST_SCOPE_CACHE_ATTR, None)
         if request_scope_cache is None:
@@ -281,7 +281,7 @@ class ScopeManager:
         return cast(dict[tuple[ModuleKey, object], object], request_scope_cache)
 
     def get_request_controller_cache(
-        self, request: Request
+        self, request: HttpRequest
     ) -> dict[tuple[ModuleKey, type[object]], object]:
         """Return the controller cache associated with the current request."""
         request_scope_cache = getattr(request.state, REQUEST_SCOPE_CONTROLLER_CACHE_ATTR, None)
@@ -290,14 +290,11 @@ class ScopeManager:
             setattr(request.state, REQUEST_SCOPE_CONTROLLER_CACHE_ATTR, request_scope_cache)
         return cast(dict[tuple[ModuleKey, type[object]], object], request_scope_cache)
 
-    def clear_request_state(self, request: Request | None) -> None:
+    def clear_request_state(self, request: HttpRequest | None) -> None:
         if request is None:
             return
 
-        state = getattr(request, "state", None)
-        if state is None:
-            return
-
+        state = request.state
         for attribute in (REQUEST_SCOPE_CACHE_ATTR, REQUEST_SCOPE_CONTROLLER_CACHE_ATTR):
             if hasattr(state, attribute):
                 delattr(state, attribute)
