@@ -163,17 +163,18 @@ class AsgiRouter:
 def build_asgi_routes(routes: Sequence[AdapterRoute]) -> list[AsgiRoute]:
     """Turn neutral adapter routes into the routes this adapter serves.
 
-    A route the framework already built in another transport's terms cannot be served
-    here, because reading it would mean importing that transport; such a route is
-    refused by name rather than dropped silently.
+    Every route must carry a handler. A plan may instead carry a registration another
+    transport already built, and one of those cannot be served here because reading it
+    would mean importing that transport; such a route is refused by name rather than
+    dropped silently.
     """
 
     built: list[AsgiRoute] = []
     for route in routes:
         if route.handler is None:
             raise ValueError(
-                f"Route {route.path} carries a registration built for another transport; "
-                "the ASGI adapter can only register a route that carries a handler"
+                f"Route {route.path} carries no handler; the ASGI adapter can only register "
+                "a route written against the port, not one built in another transport's terms"
             )
         built_route = AsgiRoute(route.path, route.methods, route.handler, route.name)
         for attribute, value in route.attributes:

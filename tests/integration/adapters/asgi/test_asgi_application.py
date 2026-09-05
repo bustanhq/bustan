@@ -18,6 +18,8 @@ import pytest
 from bustan import Controller, Get, Injectable, Module, Post, Scope, create_app
 from bustan.adapters.asgi import AsgiAdapter, AsgiTestClient
 from bustan.contracts import HttpRequest
+from bustan.openapi import SwaggerOptions
+from bustan.openapi.document_builder import DocumentBuilder
 
 if TYPE_CHECKING:
     from bustan.app.application import Application
@@ -29,7 +31,9 @@ class CreateUserPayload:
     admin: bool
 
 
-def _build(root_module: type[object]) -> tuple[Application, AsgiTestClient]:
+def _build(
+    root_module: type[object], *, swagger: SwaggerOptions | None = None
+) -> tuple[Application, AsgiTestClient]:
     """Build an application on the ASGI adapter, with its lifecycle on the lifespan.
 
     The framework hands its own lifespan to the adapter it builds itself; an adapter
@@ -48,7 +52,7 @@ def _build(root_module: type[object]) -> tuple[Application, AsgiTestClient]:
             await built["application"].close()
 
     adapter = AsgiAdapter(lifespan=lifespan)
-    application = create_app(root_module, adapter=adapter)
+    application = create_app(root_module, adapter=adapter, swagger=swagger)
     built["application"] = application
     return application, adapter.create_test_client()
 
@@ -184,7 +188,7 @@ def test_a_binding_failure_is_answered_by_the_frameworks_error_model() -> None:
     assert response.json()["detail"].startswith("Could not bind path parameter 'user_id'")
 
 
-def test_a_route_that_arrives_built_for_another_transport_is_refused_by_name() -> None:
+def test_the_openapi_document_and_its_viewer_serve_through_this_adapter() -> None:
     @Controller("/health")
     class HealthController:
         @Get("/")
@@ -195,17 +199,23 @@ def test_a_route_that_arrives_built_for_another_transport_is_refused_by_name() -
     class AppModule:
         pass
 
-    from bustan.openapi import SwaggerOptions
-    from bustan.openapi.document_builder import DocumentBuilder
-
-    adapter = AsgiAdapter()
+    # The OpenAPI routes are the framework's own, registered through the adapter port
+    # rather than compiled from a controller, so serving them proves the port carries a
+    # route the framework built as well as one a controller declared.
     swagger = SwaggerOptions(path="/openapi.json", document_builder=DocumentBuilder())
+    _application, client = _build(AppModule, swagger=swagger)
 
-    # The OpenAPI viewer is registered as a route the framework already built in
-    # Starlette's own terms, which no other transport can serve; refusing it by name is
-    # what tells a reader which feature is unavailable here and why.
-    with pytest.raises(ValueError, match="built for another transport"):
-        create_app(AppModule, adapter=adapter, swagger=swagger)
+    with client:
+        document = client.get("/openapi.json")
+        viewer = client.get("/openapi.json/docs")
+        health = client.get("/health")
+
+    assert document.status_code == 200
+    assert document.json()["openapi"].startswith("3.")
+    assert viewer.status_code == 200
+    assert viewer.headers["content-type"] == "text/html; charset=utf-8"
+    assert "swagger-ui" in viewer.text
+    assert health.json() == {"status": "ok"}
 
 
 def test_the_adapter_answers_a_request_no_route_matched() -> None:

@@ -138,8 +138,11 @@ def test_a_compiled_plan_becomes_routes_carrying_what_the_framework_named_on_the
     assert vars(built[0])["bustan_route_contract"] == "contract"
 
 
-def test_a_route_built_for_another_transport_is_refused_by_name() -> None:
+def test_a_route_carrying_no_handler_is_refused_by_name() -> None:
+    # The port lets a plan carry a registration another transport already built instead
+    # of a handler. Nothing in the framework builds one any more, but the port still
+    # allows it, so this adapter still has to answer for one arriving.
     plan = AdapterRoute(path="/openapi.json", methods=("GET",), registration=object())
 
-    with pytest.raises(ValueError, match="/openapi.json carries a registration"):
+    with pytest.raises(ValueError, match="/openapi.json carries no handler"):
         build_asgi_routes([plan])
