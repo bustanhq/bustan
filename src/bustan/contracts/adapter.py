@@ -18,15 +18,13 @@ from dataclasses import dataclass
 from .requests import HttpRequest
 from .responses import HttpFileResponse, HttpResponse, HttpStreamResponse
 
+# Any response the framework produces for a transport to write.
 HttpResponseValue = HttpResponse | HttpStreamResponse | HttpFileResponse
-"""Any response the framework produces for a transport to write."""
 
+# The framework's entry point for one route: given the neutral request, it returns
+# either an HttpResponseValue or a response object the transport itself produced,
+# which an adapter writes unchanged.
 RouteHandler = Callable[[HttpRequest], Awaitable[object]]
-"""The framework's entry point for one route.
-
-It is given the neutral request and returns either an :data:`HttpResponseValue` or a
-response object the transport itself produced, which an adapter writes unchanged.
-"""
 
 
 @dataclass(frozen=True, slots=True)

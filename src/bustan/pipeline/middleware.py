@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from ..core.module.graph import ModuleGraph
     from ..platform.http.compiler import RouteContract
 
+# Continue the chain: pass the request on and await whatever answers it.
 CallNext = Callable[[HttpRequest], Awaitable[object]]
-"""Continue the chain: pass the request on and await whatever answers it."""
 
 
 class RequestMethod(StrEnum):
