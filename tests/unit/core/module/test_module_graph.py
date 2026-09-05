@@ -175,6 +175,42 @@ def test_visibility_names_the_declaring_module_through_a_re_export() -> None:
     assert Repository in graph.available_providers_for(AppModule)
 
 
+def test_available_providers_merges_equal_tokens_that_visibility_holds_apart() -> None:
+    # A string enum member equals the bare string it is written as, so the two
+    # declarations below are one member of available_providers and two entries in the
+    # visibility table AppModule sees. This pins the contract stated where the field is
+    # defined: membership still answers for either spelling, and only the visibility
+    # table says how many declarations there are and which module holds each.
+    class Tokens(StrEnum):
+        DB = "db"
+
+    @Module(providers=[{"provide": Tokens.DB, "use_value": "enum-db"}], exports=[Tokens.DB])
+    class EnumModule:
+        pass
+
+    @Module(providers=[{"provide": "db", "use_value": "string-db"}], exports=["db"])
+    class StringModule:
+        pass
+
+    @Module(imports=[EnumModule, StringModule])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    node = graph.get_node(AppModule)
+
+    assert len(node.visibility) == 2
+    assert {type(token) for token in node.visibility} == {Tokens, str}
+    assert node.visibility[Tokens.DB] is EnumModule
+    assert node.visibility["db"] is StringModule
+
+    available = graph.available_providers_for(AppModule)
+    assert available is node.available_providers
+    assert len(available) == 1
+    assert Tokens.DB in available
+    assert "db" in available
+
+
 def test_available_providers_include_global_exports() -> None:
     @Injectable
     class GlobalService:
