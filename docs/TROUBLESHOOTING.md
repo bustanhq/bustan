@@ -190,7 +190,17 @@ Fix: correct the request. Like `ParameterBindingError`, it carries `field`, `sou
 
 Cause: a guard returned a falsey value or raised `GuardRejectedError` during request execution. The built-in guards raise it as `Authentication required`, `Policy denied: missing roles ...`, `Policy denied: missing permissions ...`, or `Unknown authenticator ...` when a strategy name has no registered authenticator.
 
-Fix: inspect the request state or headers the guard expects, or add an exception filter if you want a structured rejection payload instead of the default `403` response.
+**The caller is not shown any of that.** The rejection renders as a `403` whose `detail` is the fixed string `Forbidden`, or a `429` whose `detail` is `Too Many Requests` when the request was refused for exceeding a rate limit. The message would otherwise hand an unauthenticated caller the dotted class path of the guard that refused it, the identifier of the authentication strategy the route expects, or the roles and permissions it does not hold, none of which it can act on and each of which narrows the search for someone probing the application.
+
+The message is written to the log instead, at `WARNING` on the `bustan.pipeline.guards` logger, in this shape:
+
+```
+Request rejected [correlation_id=1f9c0b1e4c1d4c8f9a2b6d7e8f0a1b2c]: Guard app.security.guards.InternalOnlyGuard blocked the request
+```
+
+The identifier is the request's own, the same value `request_context_id(request).value` returns anywhere else in that request, so a rejection in the log can be joined to everything else recorded for the request that caused it. A guard rejection is the only thing that mints it when nothing else has, so it is always present on this line.
+
+Fix: read the log line for the reason, then inspect the request state or headers the guard expects. Add an exception filter for `GuardRejectedError` if you want a rejection payload of your own shape; a filter sees the full message, so decide deliberately what of it you put in the response.
 
 ## `LifecycleError`
 

@@ -132,6 +132,64 @@ async def test_handle_exception_falls_back_after_reentered_filter_failures() -> 
     assert payload["detail"] == "Internal server error"
 
 
+@pytest.mark.anyio
+async def test_a_guard_rejection_body_carries_a_fixed_reason() -> None:
+    disclosing_reasons = (
+        "Guard app.security.guards.InternalOnlyGuard blocked the request",
+        "Unknown authenticator registry for strategy 'acme-hmac-v2'",
+    )
+
+    for reason in disclosing_reasons:
+        result = await handle_exception(
+            _request_context("/secret"),
+            GuardRejectedError(reason),
+            (),
+        )
+
+        assert isinstance(result, HttpResponse)
+        assert result.status_code == 403
+        assert json.loads(result.body) == {
+            "type": "about:blank",
+            "title": "Forbidden",
+            "status": 403,
+            "detail": "Forbidden",
+            "instance": "/secret",
+        }
+        assert reason not in result.body.decode("utf-8")
+
+
+@pytest.mark.anyio
+async def test_a_throttled_request_is_told_the_status_and_not_the_guard() -> None:
+    context = _request_context("/secret")
+    context.request.slots.rate_limit = RateLimitDecision(
+        limit=1, remaining=0, reset=30, exceeded=True
+    )
+
+    result = await handle_exception(
+        context,
+        GuardRejectedError("Guard bustan.security.throttler.ThrottlerGuard blocked the request"),
+        (),
+    )
+
+    assert isinstance(result, HttpResponse)
+    assert result.status_code == 429
+    assert json.loads(result.body)["detail"] == "Too Many Requests"
+    assert "ThrottlerGuard" not in result.body.decode("utf-8")
+
+
+@pytest.mark.anyio
+async def test_a_validation_message_still_reaches_the_caller_that_caused_it() -> None:
+    result = await handle_exception(
+        _request_context("/users/not-a-number"),
+        BadRequestException("Validation failed (integer expected)", field="user_id"),
+        (),
+    )
+
+    assert isinstance(result, HttpResponse)
+    assert result.status_code == 400
+    assert json.loads(result.body)["detail"] == "Validation failed (integer expected)"
+
+
 def test_filter_matching_and_problem_helpers_cover_remaining_branches() -> None:
     class ValueErrorFilter(ExceptionFilter):
         exception_types = (ValueError,)

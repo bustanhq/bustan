@@ -164,7 +164,7 @@ def test_request_pipeline_short_circuits_when_a_guard_rejects_the_request() -> N
         response = client.get("/secret")
 
     assert response.status_code == 403
-    assert response.json()["detail"].endswith("DenyGuard blocked the request")
+    assert response.json()["detail"] == "Forbidden"
     assert events == ["guard"]
 
 
