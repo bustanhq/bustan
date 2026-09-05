@@ -23,6 +23,7 @@ CONTRACTS_ROOT = Path(__file__).resolve().parents[3] / "src" / "bustan" / "contr
 ALLOWED_ROOTS = frozenset(
     {
         "__future__",
+        "abc",
         "collections",
         "dataclasses",
         "json",

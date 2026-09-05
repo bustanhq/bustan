@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from bustan import VERSION_NEUTRAL, Controller, Get, Module, VersioningOptions, VersioningType
+from bustan.adapters.starlette import StarletteAdapter
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
 from bustan.platform.http.adapter import CompiledAdapterRoute, compile_adapter_routes
-from bustan.platform.http.adapters.starlette_adapter import StarletteAdapter
 from bustan.platform.http.compiler import compile_route_contracts
 from bustan.platform.http.execution import ExecutionPlan
 
@@ -70,7 +70,7 @@ def test_adapter_compiler_preserves_deterministic_order() -> None:
     assert [compiled_route.path for compiled_route in compiled_routes] == ["/zeta", "/alpha"]
 
 
-def test_adapter_compiler_keeps_adapter_registration_data_behind_the_boundary() -> None:
+def test_the_plan_hands_an_adapter_a_neutral_handler_and_no_transport_object() -> None:
     @Controller("/users", version=VERSION_NEUTRAL)
     class UsersController:
         @Get("/")
@@ -90,5 +90,6 @@ def test_adapter_compiler_keeps_adapter_registration_data_behind_the_boundary() 
         versioning=VersioningOptions(type=VersioningType.HEADER),
     )
 
-    assert compiled_routes[0].registration is not None
+    assert compiled_routes[0].handler is not None
+    assert compiled_routes[0].registration is None
     assert compiled_routes[0].contracts[0].controller_cls is UsersController

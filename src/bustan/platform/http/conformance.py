@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, cast
 
+from ...adapters.starlette import StarletteAdapter
 from ...app.bootstrap import create_app
 from ...common.decorators.controller import Controller
 from ...common.decorators.route import Get, Post
 from ...core.module.decorators import Module
 from .adapter import AbstractHttpAdapter, AdapterCapabilities
-from .adapters.starlette_adapter import StarletteAdapter
 
 
 @dataclass(frozen=True, slots=True)

@@ -11,6 +11,22 @@ import json
 from collections.abc import AsyncIterable, Iterable, Mapping, MutableMapping
 from dataclasses import dataclass, field
 from os import PathLike
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class NativeHttpResponse(Protocol):
+    """A response a transport built for itself, which the framework passes through.
+
+    A handler is allowed to return its transport's own response object when it needs
+    something the neutral types do not carry. The framework never inspects such a
+    response beyond the status it reports and the headers it lets the framework add,
+    and hands it back to the adapter to write unchanged. The neutral response types
+    satisfy this shape too, so code that distinguishes them tests for those first.
+    """
+
+    status_code: int
+    headers: MutableMapping[str, str]
 
 
 @dataclass(slots=True)
@@ -81,4 +97,5 @@ __all__ = (
     "HttpFileResponse",
     "HttpResponse",
     "HttpStreamResponse",
+    "NativeHttpResponse",
 )

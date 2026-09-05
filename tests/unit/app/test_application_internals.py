@@ -7,10 +7,10 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 
 from bustan import Module
+from bustan.adapters.starlette import StarletteAdapter
 from bustan.app.application import Application
 from bustan.core.ioc.container import Container
 from bustan.core.module.graph import build_module_graph
-from bustan.platform.http.adapters.starlette_adapter import StarletteAdapter
 
 
 @pytest.fixture

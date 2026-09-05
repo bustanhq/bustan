@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
+
+# Reserved on the state namespace for the typed slots, so that the same request always
+# yields the same ``RequestSlots`` however many request wrappers are built around it.
+REQUEST_SLOTS_ATTR = "bustan_request_slots"
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +91,51 @@ class HttpRequestState(Protocol):
         raise NotImplementedError
 
 
+@dataclass(frozen=True, slots=True)
+class RateLimitDecision:
+    """What a throttler decided about one request.
+
+    A guard writes this once it has counted the request; the response writer reads it
+    back to emit the ``X-RateLimit-*`` headers, and the exception filter reads
+    ``exceeded`` to tell a request refused for rate limiting apart from one refused for
+    any other reason. ``reset`` is the seconds remaining until the window the count was
+    taken in ends.
+    """
+
+    limit: int
+    remaining: int
+    reset: int
+    exceeded: bool
+
+
+@dataclass(slots=True)
+class RequestSlots:
+    """The typed values the framework carries from one stage of a request to a later one.
+
+    Unlike the open state namespace, every slot here is declared and typed, so a stage
+    that writes one and a stage that reads it are checked against the same declaration
+    rather than agreeing on an attribute name by convention. A slot is ``None`` until
+    the stage that owns it has run.
+    """
+
+    rate_limit: RateLimitDecision | None = None
+
+
+def request_slots(state: HttpRequestState) -> RequestSlots:
+    """Return the typed slots belonging to the request that owns *state*.
+
+    The slots are created on first use and kept on the state namespace, so every
+    request wrapper built around one request sees the same object and a write made
+    through one is visible through the next.
+    """
+
+    slots = getattr(state, REQUEST_SLOTS_ATTR, None)
+    if slots is None:
+        slots = RequestSlots()
+        setattr(state, REQUEST_SLOTS_ATTR, slots)
+    return cast(RequestSlots, slots)
+
+
 @runtime_checkable
 class HttpRequest(Protocol):
     """Adapter-neutral request surface used by framework runtime code."""
@@ -128,6 +177,10 @@ class HttpRequest(Protocol):
         raise NotImplementedError
 
     @property
+    def slots(self) -> RequestSlots:
+        raise NotImplementedError
+
+    @property
     def client(self) -> HttpClientInfo | None:
         raise NotImplementedError
 
@@ -145,6 +198,18 @@ class HttpRequest(Protocol):
         raise NotImplementedError
 
 
+def as_http_request(request: HttpRequest | object) -> HttpRequest:
+    """Return *request* as the neutral request contract.
+
+    A transport adapter converts its own request object exactly once, at the edge, so
+    everything downstream of that conversion already holds an :class:`HttpRequest`.
+    This narrows the loosely typed argument the older entry points still accept; it
+    performs no conversion and reaches for no transport.
+    """
+
+    return cast(HttpRequest, request)
+
+
 __all__ = (
     "HttpClientInfo",
     "HttpFormData",
@@ -152,4 +217,8 @@ __all__ = (
     "HttpRequest",
     "HttpRequestState",
     "HttpUrl",
+    "RateLimitDecision",
+    "RequestSlots",
+    "as_http_request",
+    "request_slots",
 )

@@ -684,6 +684,7 @@ Adapter-neutral request surface used by framework runtime code.
 - `(property) path_params`
 - `(property) cookies`
 - `(property) state`
+- `(property) slots`
 - `(property) client`
 - `(property) app`
 - `body(self) -> bytes`
@@ -889,9 +890,15 @@ Defined in `bustan.pipeline.middleware`.
 
 Base class for request middleware.
 
+``use`` is given the request and a callable that continues the chain. Returning
+what ``call_next`` returned passes the response through untouched; returning a
+response of your own answers the request without the handler ever running. Both
+the request and the response are the framework's own types, so a middleware is
+written, and unit tested, without a web server anywhere in sight.
+
 ##### Methods
 
-- `use(self, request: Request, call_next: CallNext) -> Response`
+- `use(self, request: HttpRequest, call_next: CallNext) -> object`
 
 #### `MiddlewareConsumer`
 

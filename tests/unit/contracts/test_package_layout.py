@@ -24,7 +24,7 @@ PACKAGES_WITHOUT_A_TOP_LEVEL_SURFACE = (
     "cli/commands",
     "cli/templates",
     "cli/templates/app",
-    "platform/http/adapters",
+    "adapters",
 )
 
 
@@ -78,6 +78,10 @@ def test_packages_with_no_top_level_surface_still_declare_one() -> None:
 
 def test_the_contracts_package_declares_the_names_it_defines() -> None:
     assert _declared_all(PACKAGE_ROOT / "contracts" / "__init__.py") == (
+        "AbstractHttpAdapter",
+        "AdapterCapabilities",
+        "AdapterRoute",
+        "Headers",
         "HttpClientInfo",
         "HttpFileResponse",
         "HttpFormData",
@@ -85,8 +89,16 @@ def test_the_contracts_package_declares_the_names_it_defines() -> None:
         "HttpRequest",
         "HttpRequestState",
         "HttpResponse",
+        "HttpResponseValue",
         "HttpStreamResponse",
         "HttpUrl",
+        "NativeHttpResponse",
         "QueryParams",
+        "RateLimitDecision",
+        "RequestSlots",
+        "RequestState",
+        "RouteHandler",
         "Url",
+        "as_http_request",
+        "request_slots",
     )

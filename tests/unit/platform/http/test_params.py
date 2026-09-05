@@ -29,9 +29,10 @@ from bustan import (
     UploadedFiles,
     create_param_decorator,
 )
+from bustan.adapters.starlette import StarletteHttpRequest
+from bustan.contracts import HttpRequest
 from bustan.core.errors import ParameterBindingError
 from bustan.pipeline.context import ExecutionContext
-from bustan.platform.http.abstractions import HttpRequest, StarletteHttpRequest
 from bustan.platform.http.metadata import ControllerRouteDefinition, iter_controller_routes
 from bustan.platform.http.params import (
     _MISSING,

@@ -1,15 +1,16 @@
 """Neutral value types for the parts of a request that used to leak native objects.
 
-``url`` and ``query_params`` are the two places where a transport's own datastructures
-reached framework code, so the framework could not be exercised without that transport
-installed. These types carry the same information as plain data and hold no reference
-to whatever produced them.
+``url``, ``query_params``, ``headers`` and ``state`` are the places where a transport's
+own datastructures reached framework code, so the framework could not be exercised
+without that transport installed. These types carry the same information as plain data
+and hold no reference to whatever produced them.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import parse_qsl
 
 
@@ -117,7 +118,96 @@ class QueryParams:
         return f"{type(self).__name__}({list(self.multi_items())!r})"
 
 
+class Headers(Mapping[str, str]):
+    """Immutable, case-insensitive view of the headers one request arrived with.
+
+    HTTP header names are case-insensitive, so lookups are folded to lower case while
+    iteration reports the names as they arrived. A name may be sent more than once;
+    subscripting joins the repeats with ``, `` the way HTTP defines it, and
+    :meth:`getlist` returns them separately.
+    """
+
+    __slots__ = ("_order", "_values")
+
+    def __init__(self, items: Iterable[tuple[str, str]] = ()) -> None:
+        grouped: dict[str, list[str]] = {}
+        order: dict[str, str] = {}
+        for name, value in items:
+            folded = name.lower()
+            grouped.setdefault(folded, []).append(value)
+            order.setdefault(folded, name)
+        self._values: dict[str, tuple[str, ...]] = {
+            name: tuple(values) for name, values in grouped.items()
+        }
+        self._order: dict[str, str] = order
+
+    def getlist(self, key: str) -> list[str]:
+        """Return every value sent under *key*, in arrival order."""
+
+        return list(self._values.get(key.lower(), ()))
+
+    def __getitem__(self, key: str) -> str:
+        return ", ".join(self._values[key.lower()])
+
+    def __contains__(self, key: object) -> bool:
+        return isinstance(key, str) and key.lower() in self._values
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._order.values())
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Headers):
+            return NotImplemented
+        return self._values == other._values
+
+    def __hash__(self) -> int:
+        return hash(tuple(self._values.items()))
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({list(self.items())!r})"
+
+
+class RequestState:
+    """Mutable attribute namespace that lives exactly as long as one request.
+
+    Attributes are read and written as ordinary attributes and kept in a mapping the
+    caller may supply, so a transport that already owns per-request storage hands that
+    mapping over and the two views stay the same data rather than two copies that
+    drift. Reading an attribute that was never written raises ``AttributeError``, which
+    is what lets ``getattr(state, name, default)`` tell "not set yet" apart from "set
+    to ``None``".
+    """
+
+    __slots__ = ("_values",)
+
+    def __init__(self, values: MutableMapping[str, Any] | None = None) -> None:
+        object.__setattr__(self, "_values", {} if values is None else values)
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self._values[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __setattr__(self, name: str, value: object) -> None:
+        self._values[name] = value
+
+    def __delattr__(self, name: str) -> None:
+        try:
+            del self._values[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({sorted(self._values)!r})"
+
+
 __all__ = (
+    "Headers",
     "QueryParams",
+    "RequestState",
     "Url",
 )

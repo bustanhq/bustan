@@ -1,13 +1,15 @@
-"""Unit tests for adapter capability validation."""
+"""Unit tests for adapter capability validation and the port's own surface."""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from bustan import Controller, Get, Module, Post
+from bustan.adapters.starlette import StarletteAdapter
+from bustan.contracts import HttpRequest
 from bustan.core.errors import RouteDefinitionError
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
@@ -16,8 +18,12 @@ from bustan.platform.http.adapter import (
     AdapterCapabilities,
     compile_adapter_routes,
 )
-from bustan.platform.http.adapters.starlette_adapter import StarletteAdapter
 from bustan.platform.http.compiler import ResponseStrategy, compile_route_contracts
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from bustan.contracts import AdapterRoute
 
 
 class BodylessStarletteAdapter(StarletteAdapter):
@@ -38,39 +44,41 @@ class StreamlessStarletteAdapter(StarletteAdapter):
     )
 
 
-class SuperDelegatingAdapter(AbstractHttpAdapter):
-    name = "super-delegating"
-    capabilities = AdapterCapabilities()
+class MinimalAdapter(AbstractHttpAdapter):
+    """The smallest adapter the port admits, written without naming a transport."""
 
-    def get_instance(self):
-        return super().get_instance()
+    name = "minimal"
+    capabilities = AdapterCapabilities(supports_raw_body=True)
 
-    def register_routes(self, routes):
-        return super().register_routes(routes)
+    def __init__(self) -> None:
+        self.registered: tuple[AdapterRoute, ...] = ()
+        self.stopped = False
 
-    def compile_routes(
-        self,
-        route_contracts,
-        container,
-        *,
-        execution_plans=None,
-        pipeline_override_registry=None,
-        versioning=None,
-        middleware_registry=None,
-    ):
-        return ()
+    def from_native_request(self, native_request: object) -> HttpRequest:
+        return cast(HttpRequest, native_request)
 
-    def add_middleware(self, middleware_class: type, **options):
-        return super().add_middleware(middleware_class, **options)
+    def to_native_response(self, response: object) -> object:
+        return response
 
-    async def listen(self, port: int, host: str = "127.0.0.1", reload: bool = False, **kwargs):
-        return await super().listen(port, host=host, reload=reload, **kwargs)
+    def register_routes(self, routes: Sequence[AdapterRoute]) -> None:
+        self.registered = tuple(routes)
 
-    async def close(self):
-        return await super().close()
+    async def start(
+        self, port: int, host: str = "127.0.0.1", reload: bool = False, **options: object
+    ) -> None:
+        return None
 
-    async def __call__(self, scope: dict, receive, send):
-        return await super().__call__(scope, receive, send)
+    async def stop(self) -> None:
+        self.stopped = True
+
+    def create_test_client(self) -> object:
+        return object()
+
+    def get_instance(self) -> object:
+        return self
+
+    def add_middleware(self, middleware_class: type, **options: object) -> None:
+        return None
 
 
 def test_unsupported_raw_body_capability_fails_during_startup_compilation() -> None:
@@ -152,60 +160,58 @@ def test_host_routing_and_streaming_capabilities_fail_when_unsupported() -> None
         compile_adapter_routes(StreamlessStarletteAdapter(), (stream_contract,), container)
 
 
-@pytest.mark.anyio
-async def test_abstract_http_adapter_base_methods_can_be_delegated_to_super() -> None:
-    adapter = SuperDelegatingAdapter()
-
-    assert adapter.get_instance() is None
-    assert adapter.register_routes([]) is None
-    assert adapter.add_middleware(type("Middleware", (), {})) is None
-    assert await adapter.listen(8000) is None
-    assert await adapter.close() is None
-    assert await adapter({}, lambda: None, lambda message=None: None) is None
-
-
-def test_compile_adapter_routes_delegates_to_adapter_compile_hook() -> None:
-    sentinel = object()
-    calls: dict[str, object] = {}
-
-    class RecordingAdapter(SuperDelegatingAdapter):
-        def compile_routes(
-            self,
-            route_contracts,
-            container,
-            *,
-            execution_plans=None,
-            pipeline_override_registry=None,
-            versioning=None,
-            middleware_registry=None,
-        ):
-            calls["route_contracts"] = route_contracts
-            calls["container"] = container
-            calls["execution_plans"] = execution_plans
-            calls["pipeline_override_registry"] = pipeline_override_registry
-            calls["versioning"] = versioning
-            calls["middleware_registry"] = middleware_registry
-            return ()
-
-    route_contracts: tuple[object, ...] = ()
-
-    assert (
-        compile_adapter_routes(
-            RecordingAdapter(),
-            route_contracts,
-            container=sentinel,
-            execution_plans=(),
-            pipeline_override_registry=sentinel,
-            versioning=sentinel,
-            middleware_registry=cast(Any, sentinel),
-        )
-        == ()
-    )
-    assert calls == {
-        "route_contracts": route_contracts,
-        "container": sentinel,
-        "execution_plans": (),
-        "pipeline_override_registry": sentinel,
-        "versioning": sentinel,
-        "middleware_registry": sentinel,
+def test_the_port_declares_the_conversions_and_lifecycle_an_adapter_owes() -> None:
+    assert AbstractHttpAdapter.__abstractmethods__ >= {
+        "from_native_request",
+        "to_native_response",
+        "start",
+        "stop",
+        "create_test_client",
     }
+
+
+def test_no_port_method_asks_for_a_container_or_names_an_asgi_argument() -> None:
+    import inspect
+
+    forbidden = {"scope", "receive", "send", "container"}
+    for name in dir(AbstractHttpAdapter):
+        member = getattr(AbstractHttpAdapter, name)
+        if not callable(member) or name.startswith("__") and name != "__call__":
+            continue
+        parameters = set(inspect.signature(member).parameters)
+        assert not parameters & forbidden, f"{name} takes {parameters & forbidden}"
+
+
+@pytest.mark.anyio
+async def test_an_adapter_written_only_against_the_port_serves_the_plan() -> None:
+    @Controller("/users")
+    class UsersController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+    adapter = MinimalAdapter()
+
+    routes = compile_adapter_routes(adapter, compile_route_contracts(graph, container), container)
+    adapter.register_routes(list(routes))
+
+    assert [route.path for route in adapter.registered] == ["/users"]
+    assert adapter.registered[0].handler is not None
+    assert adapter.registered[0].registration is None
+    assert await adapter.start(0) is None
+    await adapter.stop()
+    assert adapter.stopped
+
+
+@pytest.mark.anyio
+async def test_the_ports_default_serve_entry_point_refuses_rather_than_pretending() -> None:
+    adapter = MinimalAdapter()
+
+    with pytest.raises(NotImplementedError, match="start"):
+        await adapter({}, None, None)

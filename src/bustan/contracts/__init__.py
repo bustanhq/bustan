@@ -5,10 +5,21 @@ imports nothing from the rest of ``bustan`` and nothing from any web framework. 
 one-way dependency is the point: framework code and adapter code can both be read,
 tested and type checked against these declarations without either one reaching for the
 other, and installing ``bustan`` does not require a server library to be present.
+
+The adapter port lives here for the same reason. It is the one declaration both sides
+must agree on, so putting it anywhere else would mean an adapter importing framework
+code to learn what it is expected to implement.
 """
 
 from __future__ import annotations
 
+from .adapter import (
+    AbstractHttpAdapter,
+    AdapterCapabilities,
+    AdapterRoute,
+    HttpResponseValue,
+    RouteHandler,
+)
 from .requests import (
     HttpClientInfo,
     HttpFormData,
@@ -16,11 +27,19 @@ from .requests import (
     HttpRequest,
     HttpRequestState,
     HttpUrl,
+    RateLimitDecision,
+    RequestSlots,
+    as_http_request,
+    request_slots,
 )
-from .responses import HttpFileResponse, HttpResponse, HttpStreamResponse
-from .values import QueryParams, Url
+from .responses import HttpFileResponse, HttpResponse, HttpStreamResponse, NativeHttpResponse
+from .values import Headers, QueryParams, RequestState, Url
 
 __all__ = (
+    "AbstractHttpAdapter",
+    "AdapterCapabilities",
+    "AdapterRoute",
+    "Headers",
     "HttpClientInfo",
     "HttpFileResponse",
     "HttpFormData",
@@ -28,8 +47,16 @@ __all__ = (
     "HttpRequest",
     "HttpRequestState",
     "HttpResponse",
+    "HttpResponseValue",
     "HttpStreamResponse",
     "HttpUrl",
+    "NativeHttpResponse",
     "QueryParams",
+    "RateLimitDecision",
+    "RequestSlots",
+    "RequestState",
+    "RouteHandler",
     "Url",
+    "as_http_request",
+    "request_slots",
 )

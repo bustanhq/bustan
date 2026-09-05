@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
 from inspect import iscoroutinefunction
-from typing import cast
+from typing import TYPE_CHECKING, Any, cast
 
 from anyio import to_thread
-from starlette.requests import Request
-from starlette.responses import Response
 
+from ...contracts import HttpRequest, HttpResponse, RouteHandler
 from ...core.ioc.container import Container
 from ...core.module.dynamic import ModuleKey
 from ...logger.observability import ObservabilityHooks
@@ -19,8 +20,8 @@ from ...pipeline.context import ExecutionContext
 from ...pipeline.filters import handle_exception
 from ...pipeline.guards import run_guards
 from ...pipeline.interceptors import call_with_interceptors
+from ...pipeline.middleware import Middleware, ResolvedRouteMiddleware
 from ...pipeline.pipes import Pipe, run_pipes
-from .abstractions import HttpFileResponse, HttpRequest, HttpResponse, HttpStreamResponse
 from .compiler import PipelinePlan, PolicyPlan, ResponsePlan, RouteContract
 from .controller_factory import ControllerFactory, ResolvedPipeline
 from .metadata import ControllerRouteDefinition
@@ -31,9 +32,13 @@ from .params import (
     bind_handler_parameters,
     separate_bound_parameters,
 )
-from .responses import ResponseHandler
+from .responses import CoercedResponse, ResponseHandler
 
-RuntimeResponse = HttpResponse | HttpStreamResponse | HttpFileResponse | Response
+if TYPE_CHECKING:
+    from ...testing.overrides import PipelineOverrideRegistry
+
+RuntimeResponse = CoercedResponse
+RouteExceptionHandler = Callable[[HttpRequest, Exception], Awaitable[RuntimeResponse]]
 _EXCEPTION_RESPONSE_PLAN = ResponsePlan(declared_type=None, default_status_code=200)
 _LOGGER = logging.getLogger(__name__)
 _INTERNAL_SERVER_ERROR_DETAIL = "Internal server error"
@@ -99,6 +104,117 @@ def compile_execution_plans(
     return tuple(compile_execution_plan(route_contract) for route_contract in route_contracts)
 
 
+def create_route_handler(
+    container: Container,
+    execution_plan: ExecutionPlan,
+    middleware_chain: tuple[ResolvedRouteMiddleware, ...] = (),
+    pipeline_override_registry: PipelineOverrideRegistry | None = None,
+) -> RouteHandler:
+    """Build the framework's entry point for one compiled route.
+
+    The returned handler is what a transport adapter calls once it has converted a
+    request, and it owns the whole request: the scopes are pushed before the first
+    middleware runs and released only after the last one has returned. That is what
+    lets a middleware resolving a request-scoped provider after ``call_next`` see the
+    instance the handler saw, rather than a second one built once the scope had
+    already closed underneath it.
+    """
+
+    factory = ControllerFactory(
+        container,
+        pipeline_override_registry=pipeline_override_registry,
+    )
+
+    async def run_route(request: HttpRequest) -> RuntimeResponse:
+        result = await execute_http_route(
+            application_runtime=request.app,
+            container=container,
+            factory=factory,
+            execution_plan=execution_plan,
+            request=request,
+            native_request=request.native_request,
+        )
+        return result.response
+
+    async def render_error(request: HttpRequest, error: Exception) -> RuntimeResponse:
+        result = await execute_http_exception(
+            application_runtime=request.app,
+            container=container,
+            factory=factory,
+            execution_plan=execution_plan,
+            request=request,
+            native_request=request.native_request,
+            error=error,
+        )
+        return result.response
+
+    async def handle(request: HttpRequest) -> RuntimeResponse:
+        native_request = cast(Any, request.native_request)
+        request_token = container.scope_manager.push_request(native_request)
+        application_token = container.scope_manager.push_application(
+            _application_runtime(request.app)
+        )
+        try:
+            return await run_middleware_chain(
+                request,
+                middleware_chain,
+                factory,
+                run_route,
+                exception_handler=render_error,
+            )
+        finally:
+            # The request is over only once the outermost middleware has returned, so
+            # what was scoped to it is released here rather than inside the route.
+            container.scope_manager.clear_request_state(native_request)
+            container.scope_manager.pop_application(application_token)
+            container.scope_manager.pop_request(request_token)
+
+    return handle
+
+
+async def run_middleware_chain(
+    request: HttpRequest,
+    middleware_chain: tuple[ResolvedRouteMiddleware, ...],
+    factory: ControllerFactory,
+    terminal_handler: RouteHandler,
+    *,
+    exception_handler: RouteExceptionHandler | None = None,
+) -> RuntimeResponse:
+    """Run the route's middleware chain, ending in *terminal_handler*."""
+
+    async def invoke(index: int, current_request: HttpRequest) -> RuntimeResponse:
+        try:
+            if index >= len(middleware_chain):
+                return cast(RuntimeResponse, await terminal_handler(current_request))
+
+            entry = middleware_chain[index]
+
+            async def call_next(next_request: HttpRequest) -> RuntimeResponse:
+                return await invoke(index + 1, next_request)
+
+            middleware_ref = entry.middleware
+            if isinstance(middleware_ref, type | Middleware):
+                middleware = factory.resolve_components(
+                    (middleware_ref,),
+                    Middleware,
+                    module=entry.declaring_module,
+                    request=cast(Any, current_request.native_request),
+                    kind="middleware",
+                )[0]
+                return cast(RuntimeResponse, await middleware.use(current_request, call_next))
+
+            result = cast(Any, middleware_ref)(current_request, call_next)
+            if inspect.isawaitable(result):
+                return cast(RuntimeResponse, await cast(Any, result))
+            return cast(RuntimeResponse, result)
+        except Exception as exc:
+            if exception_handler is None:
+                raise
+            return await exception_handler(current_request, exc)
+
+    return await invoke(0, request)
+
+
 async def execute_http_route(
     *,
     application_runtime: object,
@@ -110,15 +226,14 @@ async def execute_http_route(
 ) -> HttpExecutionResult:
     """Execute one compiled HTTP route through the shared runtime pipeline."""
 
-    native_http_request = cast(Request, native_request)
     # The request is bound for the whole execution, not merely for the duration of one
     # resolve call, so anything running inside the route - a handler, a guard, an
     # interceptor - can reach the request being served and the providers scoped to it.
-    request_token = container.scope_manager.push_request(native_http_request)
+    request_token = container.scope_manager.push_request(cast(Any, native_request))
     application_token = container.scope_manager.push_application(
         _application_runtime(application_runtime)
     )
-    response_context = Response()
+    response_context = HttpResponse()
     response_token = container.scope_manager.push_response(response_context)
     response_handler = ResponseHandler()
     observability = ObservabilityHooks.current()
@@ -130,7 +245,7 @@ async def execute_http_route(
         controller_instance = await factory.instantiate_async(
             execution_plan.controller_cls,
             module=execution_plan.module_key,
-            request=native_http_request,
+            request=cast(Any, native_request),
         )
         handler = getattr(controller_instance, execution_plan.handler_name)
         context = ExecutionContext.create_http(
@@ -148,7 +263,7 @@ async def execute_http_route(
         resolved_pipeline = await factory.resolve_pipeline_async(
             execution_plan.pipeline_plan,
             module=execution_plan.module_key,
-            request=native_http_request,
+            request=cast(Any, native_request),
         )
         observation = observability.start_request(context)
 
@@ -193,23 +308,14 @@ async def execute_http_route(
             )
         return HttpExecutionResult(response=response, context=context)
     except Exception as exc:
-        if context is not None and resolved_pipeline is not None:
-            filtered_result = await handle_exception(context, exc, resolved_pipeline.filters)
-            response = response_handler.write(
-                result=filtered_result,
-                response_plan=_EXCEPTION_RESPONSE_PLAN,
-            )
-        else:
-            _LOGGER.exception("Unhandled exception during request setup", exc_info=exc)
-            response = HttpResponse.json({"detail": _INTERNAL_SERVER_ERROR_DETAIL}, status_code=500)
-
-        response = _merge_response_context(
-            response_context,
-            response,
-            default_status_code=_EXCEPTION_RESPONSE_PLAN.default_status_code,
+        response = await _render_failure(
+            exc,
+            context=context,
+            resolved_pipeline=resolved_pipeline,
+            response_handler=response_handler,
+            response_context=response_context,
+            request=request,
         )
-
-        _apply_rate_limit_headers(request, response)
         if observation is not None:
             observability.finish_request(
                 observation,
@@ -219,7 +325,6 @@ async def execute_http_route(
         return HttpExecutionResult(response=response, context=context, error=exc)
     finally:
         container.scope_manager.pop_response(response_token)
-        container.scope_manager.clear_request_state(native_http_request)
         container.scope_manager.pop_application(application_token)
         container.scope_manager.pop_request(request_token)
 
@@ -234,25 +339,31 @@ async def execute_http_exception(
     native_request: object,
     error: Exception,
 ) -> HttpExecutionResult:
-    """Render an exception through the route's compiled filter chain."""
+    """Render an exception through the route's compiled filter chain.
 
-    native_http_request = cast(Request, native_request)
-    request_token = container.scope_manager.push_request(native_http_request)
+    A failure while assembling that chain is rendered exactly as the main path renders
+    one, so a request that failed in a middleware is answered with the same document,
+    in the same content type, as one that failed inside its handler, and a resolution
+    failure never reaches the caller as a traceback.
+    """
+
+    request_token = container.scope_manager.push_request(cast(Any, native_request))
     application_token = container.scope_manager.push_application(
         _application_runtime(application_runtime)
     )
-    response_context = Response()
+    response_context = HttpResponse()
     response_token = container.scope_manager.push_response(response_context)
     response_handler = ResponseHandler()
     observability = ObservabilityHooks.current()
     observation = None
     context: ExecutionContext | None = None
+    resolved_pipeline: ResolvedPipeline | None = None
 
     try:
         controller_instance = await factory.instantiate_async(
             execution_plan.controller_cls,
             module=execution_plan.module_key,
-            request=native_http_request,
+            request=cast(Any, native_request),
         )
         context = ExecutionContext.create_http(
             request=request,
@@ -269,7 +380,7 @@ async def execute_http_exception(
         resolved_pipeline = await factory.resolve_pipeline_async(
             execution_plan.pipeline_plan,
             module=execution_plan.module_key,
-            request=native_http_request,
+            request=cast(Any, native_request),
         )
         observation = observability.start_request(context)
         filtered_result = await handle_exception(context, error, resolved_pipeline.filters)
@@ -289,11 +400,61 @@ async def execute_http_exception(
             error=error,
         )
         return HttpExecutionResult(response=response, context=context, error=error)
+    except Exception as exc:
+        response = await _render_failure(
+            exc,
+            context=context,
+            resolved_pipeline=resolved_pipeline,
+            response_handler=response_handler,
+            response_context=response_context,
+            request=request,
+        )
+        if observation is not None:
+            observability.finish_request(
+                observation,
+                status_code=_response_status_code(response),
+                error=exc,
+            )
+        return HttpExecutionResult(response=response, context=context, error=error)
     finally:
         container.scope_manager.pop_response(response_token)
-        container.scope_manager.clear_request_state(native_http_request)
         container.scope_manager.pop_application(application_token)
         container.scope_manager.pop_request(request_token)
+
+
+async def _render_failure(
+    exc: Exception,
+    *,
+    context: ExecutionContext | None,
+    resolved_pipeline: ResolvedPipeline | None,
+    response_handler: ResponseHandler,
+    response_context: HttpResponse,
+    request: HttpRequest,
+) -> RuntimeResponse:
+    """Turn an exception the route could not handle itself into a client response.
+
+    Once the route's filters have been resolved they are given the exception; before
+    that they do not exist, so the failure is logged where an operator can read it and
+    answered with an opaque 500 that says nothing about the framework's internals.
+    """
+
+    if context is not None and resolved_pipeline is not None:
+        filtered_result = await handle_exception(context, exc, resolved_pipeline.filters)
+        response = response_handler.write(
+            result=filtered_result,
+            response_plan=_EXCEPTION_RESPONSE_PLAN,
+        )
+    else:
+        _LOGGER.exception("Unhandled exception during request setup", exc_info=exc)
+        response = HttpResponse.json({"detail": _INTERNAL_SERVER_ERROR_DETAIL}, status_code=500)
+
+    response = _merge_response_context(
+        response_context,
+        response,
+        default_status_code=_EXCEPTION_RESPONSE_PLAN.default_status_code,
+    )
+    _apply_rate_limit_headers(request, response)
+    return response
 
 
 def _application_runtime(application_runtime: object) -> object:
@@ -351,33 +512,29 @@ async def _apply_pipes(
 
 
 def _apply_rate_limit_headers(request: HttpRequest, response: RuntimeResponse) -> None:
-    if not hasattr(request.state, "rate_limit_limit") or not hasattr(response, "headers"):
+    rate_limit = request.slots.rate_limit
+    if rate_limit is None:
         return
 
-    response.headers["X-RateLimit-Limit"] = str(request.state.rate_limit_limit)
-    response.headers["X-RateLimit-Remaining"] = str(request.state.rate_limit_remaining)
-    response.headers["X-RateLimit-Reset"] = str(request.state.rate_limit_reset)
+    response.headers["X-RateLimit-Limit"] = str(rate_limit.limit)
+    response.headers["X-RateLimit-Remaining"] = str(rate_limit.remaining)
+    response.headers["X-RateLimit-Reset"] = str(rate_limit.reset)
 
 
 def _response_status_code(response: RuntimeResponse) -> int:
-    return int(getattr(response, "status_code", 200))
+    return int(response.status_code)
 
 
 def _merge_response_context(
-    response_context: Response,
+    response_context: HttpResponse,
     response: RuntimeResponse,
     *,
     default_status_code: int,
 ) -> RuntimeResponse:
-    if hasattr(response, "headers"):
-        for header_name, header_value in response_context.headers.items():
-            # content-length is derived from the final response body; the
-            # placeholder context response reports 0 for its own empty body.
-            if header_name.lower() == "content-length":
-                continue
-            response.headers[header_name] = header_value
+    for header_name, header_value in response_context.headers.items():
+        response.headers[header_name] = header_value
 
-    if response_context.status_code != 200 and getattr(response, "status_code", 200) in {
+    if response_context.status_code != 200 and response.status_code in {
         200,
         default_status_code,
     }:
@@ -389,8 +546,12 @@ def _merge_response_context(
 __all__ = [
     "ExecutionPlan",
     "HttpExecutionResult",
-    "execute_http_exception",
+    "RouteExceptionHandler",
+    "RuntimeResponse",
     "compile_execution_plan",
     "compile_execution_plans",
+    "create_route_handler",
+    "execute_http_exception",
     "execute_http_route",
+    "run_middleware_chain",
 ]

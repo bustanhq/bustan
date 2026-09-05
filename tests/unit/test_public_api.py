@@ -67,6 +67,11 @@ from bustan.common.decorators.route import (
 from bustan.common.types import ProviderScope
 from bustan.config import ConfigModule as InternalConfigModule
 from bustan.config import ConfigService as InternalConfigService
+from bustan.contracts import HttpFormData as InternalHttpFormData
+from bustan.contracts import HttpQueryParams as InternalHttpQueryParams
+from bustan.contracts import HttpRequest as InternalHttpRequest
+from bustan.contracts import HttpResponse as InternalHttpResponse
+from bustan.contracts import HttpUrl as InternalHttpUrl
 from bustan.core.errors import (
     BadRequestException,
     BustanError,
@@ -180,11 +185,6 @@ from bustan.pipeline.middleware import (
 from bustan.pipeline.middleware import (
     MiddlewareConsumer as InternalMiddlewareConsumer,
 )
-from bustan.platform.http.abstractions import HttpFormData as InternalHttpFormData
-from bustan.platform.http.abstractions import HttpQueryParams as InternalHttpQueryParams
-from bustan.platform.http.abstractions import HttpRequest as InternalHttpRequest
-from bustan.platform.http.abstractions import HttpResponse as InternalHttpResponse
-from bustan.platform.http.abstractions import HttpUrl as InternalHttpUrl
 from bustan.platform.http.versioning import (
     VERSION_NEUTRAL as InternalVersionNeutral,
 )

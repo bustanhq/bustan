@@ -1,96 +1,23 @@
-"""Abstract base class for HTTP framework adapters."""
+"""The adapter port, and the framework side of driving one.
+
+The port itself is declared in ``bustan.contracts`` so that an adapter can be written
+against it without importing framework code; it is re-exported here because this is
+where the framework's own callers have always reached for it. What is defined here is
+the framework's half: compiling the route plan and refusing, before a server starts, a
+route the chosen adapter cannot serve.
+"""
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from collections.abc import Callable
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+from ...contracts import AbstractHttpAdapter, AdapterCapabilities, AdapterRoute
+from .routing import CompiledAdapterRoute, compile_route_plan
 
 if TYPE_CHECKING:
     from ...pipeline.middleware import MiddlewareRegistry
     from .compiler import RouteContract
     from .execution import ExecutionPlan
-
-
-@dataclass(frozen=True, slots=True)
-class CompiledAdapterRoute:
-    """Concrete adapter registration produced from compiled route contracts."""
-
-    registration: object
-    contracts: tuple[RouteContract, ...]
-    path: str
-    methods: tuple[str, ...]
-    name: str | None = None
-    execution_plans: tuple[ExecutionPlan, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class AdapterCapabilities:
-    """Explicit capabilities supported by one HTTP adapter."""
-
-    supports_host_routing: bool = False
-    supports_raw_body: bool = False
-    supports_streaming_responses: bool = True
-    supports_websocket_upgrade: bool = False
-
-
-class AbstractHttpAdapter(ABC):
-    """Base class for decoupling Bustan from specific web frameworks.
-
-    Adapters are responsible for wrapping the underlying framework instance
-    (e.g., Starlette, FastAPI) and handling route registration and
-    server initialization.
-    """
-
-    name: str
-    capabilities: AdapterCapabilities
-
-    @abstractmethod
-    def get_instance(self) -> Any:
-        """Return the underlying framework instance (e.g., Starlette App)."""
-        pass
-
-    @abstractmethod
-    def register_routes(self, routes: list[CompiledAdapterRoute]) -> None:
-        """Register compiled routes into the underlying engine."""
-        pass
-
-    @abstractmethod
-    def compile_routes(
-        self,
-        route_contracts: tuple[RouteContract, ...],
-        container: Any,
-        *,
-        execution_plans: tuple[ExecutionPlan, ...] | None = None,
-        pipeline_override_registry: Any | None = None,
-        versioning: Any | None = None,
-        middleware_registry: MiddlewareRegistry | None = None,
-    ) -> tuple[CompiledAdapterRoute, ...]:
-        """Compile route contracts into adapter-specific registrations."""
-        pass
-
-    @abstractmethod
-    def add_middleware(self, middleware_class: type, **options: Any) -> None:
-        """Register a framework middleware around the underlying engine."""
-        pass
-
-    @abstractmethod
-    async def listen(
-        self, port: int, host: str = "127.0.0.1", reload: bool = False, **kwargs: Any
-    ) -> None:
-        """Start the ASGI server asynchronously."""
-        pass
-
-    @abstractmethod
-    async def close(self) -> None:
-        """Shutdown the underlying server/engine."""
-        pass
-
-    @abstractmethod
-    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
-        """All Bustan HTTP adapters must be valid ASGI callables."""
-        pass
 
 
 def compile_adapter_routes(
@@ -103,10 +30,14 @@ def compile_adapter_routes(
     versioning: Any | None = None,
     middleware_registry: MiddlewareRegistry | None = None,
 ) -> tuple[CompiledAdapterRoute, ...]:
-    """Compile route contracts into adapter registrations."""
+    """Compile route contracts into the plan *adapter* will be asked to register.
 
-    _validate_adapter_capabilities(adapter, route_contracts)
-    return adapter.compile_routes(
+    The plan is the framework's work and does not depend on which adapter was chosen;
+    the adapter is consulted only to reject a route needing a capability it lacks,
+    which happens here rather than at the first request that would have needed it.
+    """
+
+    route_plan = compile_route_plan(
         route_contracts,
         container,
         execution_plans=execution_plans,
@@ -114,60 +45,43 @@ def compile_adapter_routes(
         versioning=versioning,
         middleware_registry=middleware_registry,
     )
+    _validate_adapter_capabilities(adapter, route_plan)
+    return route_plan
 
 
 def _validate_adapter_capabilities(
     adapter: AbstractHttpAdapter,
-    route_contracts: tuple[RouteContract, ...],
+    route_plan: tuple[CompiledAdapterRoute, ...],
 ) -> None:
     from ...core.errors import RouteDefinitionError
 
     capabilities = getattr(adapter, "capabilities", AdapterCapabilities())
 
-    for route_contract in route_contracts:
-        if getattr(route_contract, "hosts", ()) and not capabilities.supports_host_routing:
+    for route in route_plan:
+        methods = "/".join(route.methods)
+
+        if route.hosts and not capabilities.supports_host_routing:
             raise RouteDefinitionError(
-                f"{type(adapter).__name__} does not support host routing for "
-                f"{route_contract.method} {route_contract.path}"
+                f"{type(adapter).__name__} does not support host routing for {methods} {route.path}"
             )
 
-        if not capabilities.supports_raw_body and _requires_raw_body(route_contract):
+        if route.requires_raw_body and not capabilities.supports_raw_body:
             raise RouteDefinitionError(
                 f"{type(adapter).__name__} does not support raw body access required by "
-                f"{route_contract.method} {route_contract.path}"
+                f"{methods} {route.path}"
             )
 
-        if not capabilities.supports_streaming_responses and _requires_streaming(route_contract):
+        if route.requires_streaming and not capabilities.supports_streaming_responses:
             raise RouteDefinitionError(
                 f"{type(adapter).__name__} does not support streaming responses required by "
-                f"{route_contract.method} {route_contract.path}"
+                f"{methods} {route.path}"
             )
-
-
-def _requires_raw_body(route_contract: RouteContract) -> bool:
-    from .params import ParameterSource
-
-    binding_plan = route_contract.binding_plan
-    for binding in binding_plan.parameters:
-        if binding.source in {
-            ParameterSource.BODY,
-            ParameterSource.FILE,
-            ParameterSource.FILES,
-            ParameterSource.INFERRED,
-        }:
-            return True
-    return False
-
-
-def _requires_streaming(route_contract: RouteContract) -> bool:
-    from .compiler import ResponseStrategy
-
-    return route_contract.response_plan.strategy is ResponseStrategy.STREAM
 
 
 __all__ = (
     "AbstractHttpAdapter",
     "AdapterCapabilities",
+    "AdapterRoute",
     "CompiledAdapterRoute",
     "compile_adapter_routes",
 )

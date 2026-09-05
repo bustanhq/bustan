@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 import fnmatch
-import inspect
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import Response
-
+from ..contracts import HttpRequest
 from ..core.lifecycle.runner import build_module_instance
 from ..core.module.dynamic import ModuleKey
 
@@ -21,7 +17,8 @@ if TYPE_CHECKING:
     from ..core.module.graph import ModuleGraph
     from ..platform.http.compiler import RouteContract
 
-CallNext = Callable[[Request], Awaitable[Response]]
+CallNext = Callable[[HttpRequest], Awaitable[object]]
+"""Continue the chain: pass the request on and await whatever answers it."""
 
 
 class RequestMethod(StrEnum):
@@ -47,13 +44,22 @@ class RouteInfo:
 
 
 class MiddlewareHandler(Protocol):
-    def __call__(self, request: Request, call_next: CallNext) -> Awaitable[Response] | Response: ...
+    """A plain callable used as middleware, in place of a :class:`Middleware` subclass."""
+
+    def __call__(self, request: HttpRequest, call_next: CallNext) -> Awaitable[object] | object: ...
 
 
 class Middleware:
-    """Base class for request middleware."""
+    """Base class for request middleware.
 
-    async def use(self, request: Request, call_next: CallNext) -> Response:
+    ``use`` is given the request and a callable that continues the chain. Returning
+    what ``call_next`` returned passes the response through untouched; returning a
+    response of your own answers the request without the handler ever running. Both
+    the request and the response are the framework's own types, so a middleware is
+    written, and unit tested, without a web server anywhere in sight.
+    """
+
+    async def use(self, request: HttpRequest, call_next: CallNext) -> object:
         return await call_next(request)
 
 
@@ -266,35 +272,3 @@ def _controller_owner_map(module_graph: ModuleGraph) -> dict[type[object], tuple
 
 def _normalize_host_pattern(value: str) -> str:
     return re.sub(r":[A-Za-z_][A-Za-z0-9_]*", "*", value)
-
-
-class ConditionalMiddleware(BaseHTTPMiddleware):
-    """Starlette adapter that conditionally runs a Bustan middleware."""
-
-    def __init__(
-        self,
-        app,
-        *,
-        handler: object,
-        include: tuple[str, ...] = (),
-        exclude: tuple[str, ...] = (),
-    ) -> None:
-        super().__init__(app)
-        self._handler = handler
-        self._include = list(include)
-        self._exclude = list(exclude)
-
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if not path_matches(request.url.path, self._include):
-            return await call_next(request)
-        if self._exclude and path_matches(request.url.path, self._exclude):
-            return await call_next(request)
-
-        if hasattr(self._handler, "use"):
-            result = cast(Middleware, self._handler).use(request, call_next)
-        else:
-            result = cast(MiddlewareHandler, self._handler)(request, call_next)
-
-        if inspect.isawaitable(result):
-            return await cast(Awaitable[Response], result)
-        return result

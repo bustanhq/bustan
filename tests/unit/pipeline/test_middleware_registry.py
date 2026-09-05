@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from starlette.requests import Request
-from starlette.responses import Response
 
 from bustan import Controller, Get, Module, Post
+from bustan.adapters.starlette import StarletteHttpRequest
+from bustan.contracts import HttpRequest, HttpResponse
 from bustan.core.ioc.container import build_container
 from bustan.core.module.graph import build_module_graph
 from bustan.pipeline.middleware import (
-    ConditionalMiddleware,
     Middleware,
     MiddlewareRouteTarget,
     RequestMethod,
@@ -147,56 +147,45 @@ def test_middleware_helpers_cover_path_matching_host_patterns_and_invalid_target
 
 
 @pytest.mark.anyio
-async def test_conditional_middleware_dispatch_covers_sync_and_bypass_paths(
+async def test_the_middleware_base_class_passes_the_request_on_untouched(
     build_request: RequestFactory,
 ) -> None:
-    events: list[str] = []
+    async def call_next(current_request: HttpRequest) -> HttpResponse:
+        return HttpResponse(status_code=200, body=b"next")
 
-    def sync_handler(request: Request, call_next) -> Response:
-        events.append("handled")
-        return Response(content=b"handled", status_code=201)
+    request = StarletteHttpRequest(build_request(path="/users/skip"))
+    response = await Middleware().use(request, call_next)
 
-    middleware = ConditionalMiddleware(
-        lambda scope, receive, send: None,
-        handler=sync_handler,
-        include=("/users/*",),
-    )
+    assert isinstance(response, HttpResponse)
+    assert response.status_code == 200
 
-    async def call_next(current_request: Request) -> Response:
-        events.append("next")
-        return Response(content=b"next", status_code=200)
 
-    handled_response = await middleware.dispatch(build_request(path="/users/123"), call_next)
-    bypass_response = await middleware.dispatch(build_request(path="/health"), call_next)
+def test_the_public_middleware_base_class_needs_no_web_server_to_subclass() -> None:
+    import sys
 
-    assert handled_response.status_code == 201
-    assert bypass_response.status_code == 200
-    assert events == ["handled", "next"]
+    module = sys.modules[Middleware.__module__]
+    source = Path(module.__file__ or "").read_text()
+
+    assert "starlette" not in source.lower()
 
 
 @pytest.mark.anyio
-async def test_middleware_base_use_and_exclude_paths_are_supported(
+async def test_a_middleware_may_answer_the_request_itself(
     build_request: RequestFactory,
 ) -> None:
-    async def call_next(current_request: Request) -> Response:
-        return Response(content=b"next", status_code=200)
+    class ShortCircuit(Middleware):
+        async def use(self, request: HttpRequest, call_next) -> HttpResponse:
+            return HttpResponse.json({"path": request.path}, status_code=202)
 
-    request = build_request(path="/users/skip")
-    assert (await Middleware().use(request, call_next)).status_code == 200
+    called = False
 
-    class AsyncMiddleware(Middleware):
-        async def use(self, request: Request, call_next) -> Response:
-            return Response(content=b"middleware", status_code=202)
+    async def call_next(current_request: HttpRequest) -> HttpResponse:
+        nonlocal called
+        called = True
+        return HttpResponse()
 
-    middleware = ConditionalMiddleware(
-        lambda scope, receive, send: None,
-        handler=AsyncMiddleware(),
-        include=("/users/*",),
-        exclude=("/users/skip",),
-    )
+    response = await ShortCircuit().use(StarletteHttpRequest(build_request(path="/x")), call_next)
 
-    excluded_response = await middleware.dispatch(request, call_next)
-    handled_response = await middleware.dispatch(build_request(path="/users/run"), call_next)
-
-    assert excluded_response.status_code == 200
-    assert handled_response.status_code == 202
+    assert isinstance(response, HttpResponse)
+    assert response.status_code == 202
+    assert not called

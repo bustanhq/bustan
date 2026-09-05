@@ -8,7 +8,9 @@ from typing import Any, cast
 import pytest
 from starlette.requests import Request
 
+from bustan.adapters.starlette import StarletteHttpRequest
 from bustan.common.types import RouteMetadata
+from bustan.contracts import HttpResponse, RateLimitDecision
 from bustan.core.errors import BadRequestException, GuardRejectedError, ParameterBindingError
 from bustan.core.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.context import ExecutionContext, RequestContext
@@ -20,7 +22,6 @@ from bustan.pipeline.filters import (
     _problem_status,
     handle_exception,
 )
-from bustan.platform.http.abstractions import HttpResponse
 from bustan.platform.http.metadata import ControllerRouteDefinition
 
 
@@ -141,7 +142,9 @@ def test_filter_matching_and_problem_helpers_cover_remaining_branches() -> None:
     catch_all_filter = CatchAllFilter()
     value_error_filter = ValueErrorFilter()
     context = _request_context("/fails")
-    context.request.state.rate_limit_exceeded = True
+    context.request.slots.rate_limit = RateLimitDecision(
+        limit=1, remaining=0, reset=30, exceeded=True
+    )
 
     assert _matching_filters(RuntimeError("boom"), (value_error_filter,)) == ()
     assert _matching_filters(
@@ -183,7 +186,7 @@ def _request_context(path: str) -> RequestContext:
         receive,
     )
     return RequestContext(
-        request=request,
+        request=StarletteHttpRequest(request),
         module=ModuleInstanceKey(module=object, instance_id="test"),
         controller_type=object,
         controller=object(),

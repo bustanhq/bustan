@@ -8,8 +8,8 @@ from typing import Any, cast
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Module, Post, create_app
+from bustan.adapters.starlette import StarletteAdapter
 from bustan.platform.http.adapter import AbstractHttpAdapter, AdapterCapabilities
-from bustan.platform.http.adapters.starlette_adapter import StarletteAdapter
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,15 +1,17 @@
 """Integration tests for application bootstrap state."""
 
+from collections.abc import Sequence
 from typing import Any, cast
 
 import pytest
 from starlette.applications import Starlette
 
 from bustan import Controller, Get, Injectable, Module, create_app
+from bustan.adapters.starlette import StarletteAdapter
 from bustan.app.application import Application
+from bustan.contracts import AdapterRoute
 from bustan.errors import RouteDefinitionError
 from bustan.platform.http.adapter import CompiledAdapterRoute
-from bustan.platform.http.adapters.starlette_adapter import StarletteAdapter
 
 
 def test_create_app_returns_a_starlette_application_with_module_graph_state() -> None:
@@ -71,9 +73,9 @@ def test_create_app_registers_compiled_adapter_routes_in_deterministic_order() -
     class RecordingStarletteAdapter(StarletteAdapter):
         def __init__(self) -> None:
             super().__init__()
-            self.registered_routes: list[CompiledAdapterRoute] = []
+            self.registered_routes: list[AdapterRoute] = []
 
-        def register_routes(self, routes: list[CompiledAdapterRoute]) -> None:
+        def register_routes(self, routes: Sequence[AdapterRoute]) -> None:
             self.registered_routes = list(routes)
             super().register_routes(routes)
 

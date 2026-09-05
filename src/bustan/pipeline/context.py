@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal
 
-from ..platform.http.abstractions import HttpRequest, as_http_request
+from ..contracts import HttpRequest, as_http_request
 from ..platform.http.metadata import ControllerRouteDefinition
 
 if TYPE_CHECKING:
