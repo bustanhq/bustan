@@ -1,4 +1,10 @@
-"""Unit tests for the controller lifetimes route compilation will accept."""
+"""Unit tests for the controller lifetimes route compilation will accept.
+
+Every test here builds the module graph and then compiles it, which is the sequence a
+served application runs. The lifetime refusal itself belongs to the graph, so that a
+context and an application read one declaration the same way; these assert that the
+composed path an application takes still ends in the same verdict.
+"""
 
 from __future__ import annotations
 

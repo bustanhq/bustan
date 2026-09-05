@@ -9,15 +9,12 @@ from enum import StrEnum
 from types import NoneType
 from typing import get_origin, get_type_hints
 
-from ...common.types import ControllerMetadata, ProviderScope
-from ...core.errors import InvalidControllerError, RouteDefinitionError
+from ...common.types import ControllerMetadata
+from ...core.errors import RouteDefinitionError
 from ...core.ioc.container import Container
-from ...core.ioc.registry import DURABLE_CONTEXT_KEY_HOOK
-from ...core.ioc.scopes import DurableProvider
 from ...core.ioc.tokens import APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, InjectionToken
 from ...core.module.dynamic import ModuleKey
 from ...core.module.graph import ModuleGraph
-from ...core.utils import _qualname
 from ...pipeline.guards import PolicyGuard
 from ...pipeline.metadata import (
     PipelineMetadata,
@@ -29,7 +26,7 @@ from ...pipeline.metadata import (
     merge_pipeline_metadata,
     merge_policy_metadata,
 )
-from .metadata import ControllerRouteDefinition, get_controller_metadata
+from .metadata import ControllerRouteDefinition
 from .params import HandlerBindingPlan, compile_parameter_bindings
 from .scanner import ControllerScanner, ScannedHandler
 from .versioning import normalize_versions
@@ -156,7 +153,6 @@ class RouteCompiler:
         self._container = container
 
     def compile(self) -> tuple[RouteContract, ...]:
-        _refuse_unservable_controller_lifetimes(self._module_graph)
         scan_result = ControllerScanner(self._module_graph).scan()
         global_pipeline = PipelineMetadata(
             guards=self._global_providers(APP_GUARD),
@@ -346,43 +342,6 @@ def _resolve_annotation_string(
         localns=dict(localns),
         include_extras=True,
     )["value"]
-
-
-def _refuse_unservable_controller_lifetimes(module_graph: ModuleGraph) -> None:
-    """Refuse every controller whose declared lifetime the runtime cannot serve.
-
-    A durable lifetime is a cache partitioned by a key the class derives from the
-    request. Controllers are held per module rather than per key, so a durable
-    controller would be built once and handed to every caller together with whatever
-    the previous caller left on it. No request makes that work, so the declaration is
-    refused while the application is built rather than served to the first tenant.
-
-    This runs before handlers are scanned so that the refusal names the lifetime the
-    author declared, rather than reporting the context key hook as a route method that
-    is missing its decorator.
-    """
-
-    for node in module_graph.nodes:
-        for controller_cls in node.controllers:
-            # The module graph has already refused any controller carrying no metadata.
-            metadata = get_controller_metadata(controller_cls)
-            label = _qualname(controller_cls)
-
-            if metadata is not None and metadata.scope is ProviderScope.DURABLE:
-                raise InvalidControllerError(
-                    f"{label} declares scope {metadata.scope.value!r}, which a controller "
-                    "cannot have; a durable instance is cached per context key and a "
-                    "controller is not partitioned that way, so declare a singleton, request "
-                    "or transient controller and keep the per-key state in a durable provider"
-                )
-
-            if isinstance(controller_cls, DurableProvider):
-                raise InvalidControllerError(
-                    f"{label} declares '{DURABLE_CONTEXT_KEY_HOOK}', the hook that partitions "
-                    "a durable provider across requests; a controller cannot have a durable "
-                    "lifetime, so the hook is never called, and it belongs on the durable "
-                    "provider that keeps the per-key state"
-                )
 
 
 def _declares_access_requirements(policy: PolicyMetadata) -> bool:

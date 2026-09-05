@@ -21,7 +21,7 @@ from starlette.testclient import TestClient
 from bustan import Controller, Get, HttpResponse, Injectable, Module, Scope, create_app
 from bustan.common.decorators.injectable import Inject
 from bustan.core.ioc.tokens import REQUEST, RESPONSE, InjectionToken
-from bustan.errors import ProviderResolutionError
+from bustan.errors import InvalidControllerError, ProviderResolutionError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -184,6 +184,15 @@ def test_a_provider_outliving_the_request_is_refused_request_lifetime_state(
 def test_a_controller_outliving_the_request_is_refused_request_lifetime_state(
     dependency: str, scope: Scope
 ) -> None:
+    # A durable controller is refused for the declaration rather than for the
+    # parameter. No controller can hold that lifetime, so no edit to the constructor
+    # would make this graph build, and a message naming a parameter would send its
+    # author to the one line they cannot fix it on.
+    if scope is Scope.DURABLE:
+        with pytest.raises(InvalidControllerError, match="declares scope 'durable'"):
+            controller_app(HOLDERS[dependency], scope)
+        return
+
     with pytest.raises(ProviderResolutionError):
         controller_app(HOLDERS[dependency], scope)
 
