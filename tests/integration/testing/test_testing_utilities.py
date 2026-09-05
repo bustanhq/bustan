@@ -5,7 +5,16 @@ from typing import Annotated, Any, cast
 import pytest
 from starlette.testclient import TestClient
 
-from bustan import Controller, Get, Inject, Injectable, Module, create_app
+from bustan import (
+    Controller,
+    Get,
+    Inject,
+    Injectable,
+    Module,
+    create_app,
+    create_app_context,
+)
+from bustan.errors import ProviderResolutionError
 from bustan.testing import create_test_app, create_testing_module, override_provider
 
 
@@ -46,7 +55,8 @@ def test_create_test_app_applies_provider_overrides() -> None:
     assert response.json() == {"message": "test"}
 
 
-def test_override_provider_is_scoped_and_does_not_leak_between_apps() -> None:
+@pytest.mark.anyio
+async def test_an_override_does_not_leak_between_applications() -> None:
     @Injectable
     class GreetingService:
         def greet(self) -> str:
@@ -71,22 +81,95 @@ def test_override_provider_is_scoped_and_does_not_leak_between_apps() -> None:
     class AppModule:
         pass
 
-    first_application = create_app(AppModule)
-    second_application = create_app(AppModule)
+    overridden = await (
+        create_testing_module(AppModule)
+        .override_provider(GreetingService)
+        .use_value(FakeGreetingService())
+        .compile()
+    )
+    untouched = await create_testing_module(AppModule).compile()
 
-    with (
-        TestClient(cast(Any, first_application)) as first_client,
-        TestClient(cast(Any, second_application)) as second_client,
-    ):
-        assert first_client.get("/greetings").json() == {"message": "production"}
-        assert second_client.get("/greetings").json() == {"message": "production"}
+    try:
+        with (
+            overridden.create_client() as overridden_client,
+            untouched.create_client() as untouched_client,
+        ):
+            assert overridden_client.get("/greetings").json() == {"message": "test"}
+            assert untouched_client.get("/greetings").json() == {"message": "production"}
+    finally:
+        await untouched.close()
+        await overridden.close()
 
-        with override_provider(first_application, GreetingService, FakeGreetingService()):
-            assert first_client.get("/greetings").json() == {"message": "test"}
-            assert second_client.get("/greetings").json() == {"message": "production"}
 
-        assert first_client.get("/greetings").json() == {"message": "production"}
-        assert second_client.get("/greetings").json() == {"message": "production"}
+@pytest.mark.anyio
+async def test_an_override_is_refused_once_the_application_has_started() -> None:
+    @Injectable
+    class GreetingService:
+        def greet(self) -> str:
+            return "production"
+
+    @Module(providers=[GreetingService], exports=[GreetingService])
+    class AppModule:
+        pass
+
+    context = await create_app_context(AppModule).init()
+
+    with pytest.raises(ProviderResolutionError) as raised:
+        context.container.override(GreetingService, object())
+
+    assert "GreetingService" in str(raised.value)
+    assert "before startup" in str(raised.value)
+
+    await context.close()
+
+
+def test_an_override_is_refused_while_a_test_client_is_serving() -> None:
+    @Injectable
+    class GreetingService:
+        def greet(self) -> str:
+            return "production"
+
+    @Controller("/greetings")
+    class GreetingController:
+        def __init__(self, greeting_service: GreetingService) -> None:
+            self.greeting_service = greeting_service
+
+        @Get("/")
+        def read_greeting(self) -> dict[str, str]:
+            return {"message": self.greeting_service.greet()}
+
+    @Module(
+        controllers=[GreetingController], providers=[GreetingService], exports=[GreetingService]
+    )
+    class AppModule:
+        pass
+
+    class FakeGreetingService:
+        def greet(self) -> str:
+            return "test"
+
+    application = create_app(AppModule)
+
+    with TestClient(cast(Any, application)) as client:
+        assert client.get("/greetings").json() == {"message": "production"}
+
+        with pytest.raises(ProviderResolutionError) as direct:
+            application.container.override(GreetingService, FakeGreetingService())
+
+        with (
+            pytest.raises(ProviderResolutionError) as helper,
+            override_provider(application, GreetingService, FakeGreetingService()),
+        ):
+            pass  # pragma: no cover - the block body is never reached
+
+        # The application kept serving the provider it started with, which is the
+        # whole reason the replacement was refused rather than half applied.
+        assert client.get("/greetings").json() == {"message": "production"}
+
+    assert "GreetingService" in str(direct.value)
+    assert "before startup" in str(direct.value)
+    assert "create_testing_module" in str(helper.value)
+    assert "before startup" in str(helper.value)
 
 
 @pytest.mark.anyio

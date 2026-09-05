@@ -229,6 +229,54 @@ def test_override_provider_restores_previous_override_and_supports_application_t
     assert application.container.get_override(GreetingService) is original
 
 
+def test_override_provider_registers_and_clears_an_override_before_startup() -> None:
+    @Injectable
+    class GreetingService:
+        def greet(self) -> str:
+            return "production"
+
+    @Module(providers=[GreetingService], exports=[GreetingService])
+    class AppModule:
+        pass
+
+    application = create_test_app(AppModule)
+    replacement = object()
+
+    assert application.container.has_override(GreetingService) is False
+
+    with override_provider(application, GreetingService, replacement):
+        assert application.container.get_override(GreetingService) is replacement
+
+    assert application.container.has_override(GreetingService) is False
+
+
+@pytest.mark.anyio
+async def test_override_provider_names_the_supported_path_once_the_application_starts() -> None:
+    @Injectable
+    class GreetingService:
+        def greet(self) -> str:
+            return "production"
+
+    @Module(providers=[GreetingService], exports=[GreetingService])
+    class AppModule:
+        pass
+
+    compiled = await create_testing_module(AppModule).compile()
+
+    try:
+        with (
+            pytest.raises(ProviderResolutionError) as raised,
+            override_provider(compiled.application, GreetingService, object()),
+        ):
+            pass  # pragma: no cover - the block body is never reached
+    finally:
+        await compiled.close()
+
+    assert "GreetingService" in str(raised.value)
+    assert "before startup" in str(raised.value)
+    assert "create_testing_module(RootModule).override_provider(token)" in str(raised.value)
+
+
 def test_override_provider_rejects_starlette_targets_without_a_bustan_container() -> None:
     starlette = Starlette()
 
