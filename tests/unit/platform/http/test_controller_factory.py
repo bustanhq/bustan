@@ -20,6 +20,35 @@ if TYPE_CHECKING:
 # a string, and a name local to a test function is not in scope by then.
 SESSION = object()
 
+# The lifetimes a controller can be served under. Every other member of the enum
+# partitions instances by a key a controller does not carry.
+SERVABLE_CONTROLLER_SCOPES = frozenset({Scope.SINGLETON, Scope.REQUEST, Scope.TRANSIENT})
+
+
+@Module()
+class EmptyModule:
+    """A module declaring nothing, for a controller no module graph would accept."""
+
+
+def _module_declaring(controller_cls: type[object], scope: Scope) -> type[object]:
+    """Return the module a controller of this lifetime can be reached through.
+
+    The module graph refuses a lifetime no controller can be served under, so such a
+    declaration cannot be reached through a module that declares it. The factory is
+    handed the class directly instead, because its own refusal is what keeps a
+    lifetime the graph has not learned to refuse from falling through to the
+    singleton cache.
+    """
+
+    if scope not in SERVABLE_CONTROLLER_SCOPES:
+        return EmptyModule
+
+    @Module(controllers=[controller_cls])
+    class DeclaringModule:
+        pass
+
+    return DeclaringModule
+
 
 @pytest.mark.anyio
 async def test_controller_factory_reuses_singleton_controllers_by_default(
@@ -131,23 +160,20 @@ async def test_controller_factory_only_serves_the_lifetimes_a_controller_can_hav
         def list_users(self) -> list[str]:
             return ["Ada"]
 
-    @Module(controllers=[UsersController])
-    class AppModule:
-        pass
-
-    container = build_container(build_module_graph(AppModule))
+    module = _module_declaring(UsersController, scope)
+    container = build_container(build_module_graph(module))
     factory = ControllerFactory(container)
     request = build_http_request(path="/users")
 
-    if scope in {Scope.SINGLETON, Scope.REQUEST, Scope.TRANSIENT}:
+    if scope in SERVABLE_CONTROLLER_SCOPES:
         assert isinstance(
-            await factory.instantiate_async(UsersController, module=AppModule, request=request),
+            await factory.instantiate_async(UsersController, module=module, request=request),
             UsersController,
         )
         return
 
     with pytest.raises(InvalidControllerError):
-        await factory.instantiate_async(UsersController, module=AppModule, request=request)
+        await factory.instantiate_async(UsersController, module=module, request=request)
 
 
 @pytest.mark.anyio
@@ -160,16 +186,13 @@ async def test_controller_factory_never_caches_a_durable_controller_as_a_singlet
         def list_tenants(self) -> list[str]:
             return ["acme"]
 
-    @Module(controllers=[TenantsController])
-    class AppModule:
-        pass
-
-    container = build_container(build_module_graph(AppModule))
+    module = _module_declaring(TenantsController, Scope.DURABLE)
+    container = build_container(build_module_graph(module))
     factory = ControllerFactory(container)
 
     with pytest.raises(InvalidControllerError):
         await factory.instantiate_async(
-            TenantsController, module=AppModule, request=build_http_request(path="/tenants")
+            TenantsController, module=module, request=build_http_request(path="/tenants")
         )
 
     assert container.scope_manager.controller_singletons == {}

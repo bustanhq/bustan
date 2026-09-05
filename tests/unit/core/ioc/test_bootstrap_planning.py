@@ -22,7 +22,7 @@ from bustan.core.ioc.planning.container_plan import controller_scope
 from bustan.core.ioc.planning.plan import FixedValue, ProvidedToken
 from bustan.core.ioc.tokens import APPLICATION, REQUEST, RESPONSE, InjectionToken
 from bustan.core.module.graph import build_module_graph
-from bustan.errors import ProviderResolutionError
+from bustan.errors import InvalidControllerError, ProviderResolutionError
 
 if TYPE_CHECKING:
     from tests.conftest import RequestFactory
@@ -392,6 +392,28 @@ def test_a_controller_with_no_declared_scope_is_cached_for_the_process() -> None
         pass
 
     assert controller_scope(Undecorated) is Scope.SINGLETON
+
+
+@pytest.mark.parametrize("scope", [Scope.SINGLETON, Scope.REQUEST, Scope.TRANSIENT])
+def test_a_controller_is_planned_under_the_lifetime_it_declares(scope: Scope) -> None:
+    @Controller("/tenants", scope=scope)
+    class TenantsController:
+        pass
+
+    assert controller_scope(TenantsController) is scope
+
+
+def test_a_durable_controller_is_never_planned_as_a_durable_owner() -> None:
+    # A durable owner is judged by durable rules, and every one of them is about a
+    # lifetime no controller can hold. Handing the scope table this declaration is
+    # what once reported the defect against a constructor parameter instead of the
+    # decorator that carries it.
+    @Controller("/tenants", scope=Scope.DURABLE)
+    class TenantsController:
+        pass
+
+    with pytest.raises(InvalidControllerError, match="declares scope 'durable'"):
+        controller_scope(TenantsController)
 
 
 def test_a_keyword_only_dependency_is_passed_by_keyword() -> None:

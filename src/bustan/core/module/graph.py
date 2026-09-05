@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
+from ...common.types import ProviderScope
 from ...platform.http.metadata import (
     get_controller_metadata,
     iter_controller_routes,
@@ -17,7 +18,8 @@ from ..errors import (
     ModuleCycleError,
     RouteDefinitionError,
 )
-from ..ioc.registry import Binding, TokenKey, TokenMap, token_identity
+from ..ioc.registry import DURABLE_CONTEXT_KEY_HOOK, Binding, TokenKey, TokenMap, token_identity
+from ..ioc.scopes import DurableProvider
 from ..utils import _display_name, _join_paths, _qualname
 from .compiler import CompiledModuleDef, expand_module_input, validate_module_compiled
 from .dynamic import DynamicModule, ModuleKey
@@ -32,16 +34,24 @@ class ModuleNode:
     module: type[object]
     metadata: ModuleMetadata
     exported_providers: frozenset[object]
+    # The tokens of visibility gathered into a set, always derived from that table and
+    # never computed a second way. A set of tokens keys by equality, so it cannot carry
+    # the distinction the table carries: a string enum member and the bare string it
+    # equals are two declarations there and one member here, and the member does not say
+    # which of the two it stands for. A caller may rely on membership, and only as a
+    # question about equality: a token is in this set when some visible declaration has a
+    # token equal to it, whichever spelling either side was written as, and absent when
+    # none does. Size and iteration under-report such a pair, so a caller that must tell
+    # two declarations apart, count them, or name the module behind one reads visibility,
+    # which keys by token identity.
     available_providers: frozenset[object]
     bindings: tuple[Binding, ...]
     imported_exports: Mapping[ModuleKey, frozenset[object]] = field(repr=False)
     # Every token this module can resolve, mapped to the module that declares it. The
     # module named is always the one holding the binding, never a module that merely
     # passed the token on, so a re-export resolves to its origin. This is the only
-    # visibility computation in the framework, and the container copies it verbatim.
-    # available_providers is this table's keys gathered into a frozenset, which keys by
-    # equality alone: two equal tokens of different types are two entries here and one
-    # member there, and resolution reads this table rather than that set.
+    # visibility computation in the framework, the container copies it verbatim, and
+    # resolution reads it rather than available_providers.
     visibility: Mapping[object, ModuleKey] = field(repr=False)
 
     @property
@@ -80,6 +90,10 @@ class ModuleGraph:
         return self.get_node(key).controllers
 
     def available_providers_for(self, key: ModuleKey) -> frozenset[object]:
+        # A set of tokens keys by equality, so membership answers whether an equal token
+        # is visible, never which declaration answers for it: two equal tokens of
+        # different types are one member. A caller that must tell them apart reads the
+        # node's visibility table instead.
         return self.get_node(key).available_providers
 
     @property
@@ -130,6 +144,7 @@ def build_module_graph(root_module: type[object] | DynamicModule) -> ModuleGraph
         _validate_exports(key, compiled.metadata, visibility)
         for controller_cls in compiled.metadata.controllers:
             _validate_controller_routes(controller_cls)
+            _refuse_unservable_controller_lifetime(controller_cls)
 
         nodes_by_key[key] = ModuleNode(
             key=key,
@@ -399,6 +414,44 @@ def _validate_controller_routes(controller_cls: type[object]) -> None:
                 f"on handlers {previous_handler} and {route_definition.handler_name}"
             )
         seen_routes[route_key] = route_definition.handler_name
+
+
+def _refuse_unservable_controller_lifetime(controller_cls: type[object]) -> None:
+    """Refuse a controller whose declared lifetime the runtime cannot serve.
+
+    A durable lifetime is a cache partitioned by a key the class derives from the
+    request. Controllers are held per module rather than per key, so a durable
+    controller would be built once and handed to every caller together with whatever
+    the previous caller left on it. No request makes that work, so the declaration is
+    refused while the graph is built rather than served to the first tenant.
+
+    Every way of starting an application builds the graph, so the refusal belongs here:
+    a dependency-injection context and a served application read one declaration and
+    must give it one verdict. Building the graph also precedes both the container plan
+    and the handler scan, which is what lets the message name the declaration at fault
+    rather than a constructor parameter that cannot be edited to fix it, or a context
+    key hook reported as a route method missing its decorator.
+    """
+
+    # Route validation runs first and refuses any controller carrying no metadata.
+    metadata = get_controller_metadata(controller_cls)
+    label = _qualname(controller_cls)
+
+    if metadata is not None and metadata.scope is ProviderScope.DURABLE:
+        raise InvalidControllerError(
+            f"{label} declares scope {metadata.scope.value!r}, which a controller "
+            "cannot have; a durable instance is cached per context key and a "
+            "controller is not partitioned that way, so declare a singleton, request "
+            "or transient controller and keep the per-key state in a durable provider"
+        )
+
+    if isinstance(controller_cls, DurableProvider):
+        raise InvalidControllerError(
+            f"{label} declares '{DURABLE_CONTEXT_KEY_HOOK}', the hook that partitions "
+            "a durable provider across requests; a controller cannot have a durable "
+            "lifetime, so the hook is never called, and it belongs on the durable "
+            "provider that keeps the per-key state"
+        )
 
 
 def _input_identity(module_input: type[object] | DynamicModule) -> int | type[object]:

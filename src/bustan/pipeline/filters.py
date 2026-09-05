@@ -15,6 +15,17 @@ from .context import ExecutionContext
 _LOGGER = logging.getLogger(__name__)
 _INTERNAL_SERVER_ERROR_DETAIL = "Internal server error"
 
+# The exceptions whose message is written for the caller rather than about the
+# application: a failed validation names the caller's own field, where it was read from
+# and what was expected there, and none of it is true of anything but the request that
+# was just sent. Every other message is written for whoever operates the application and
+# is replaced by a fixed reason before it leaves the process, so a type added later is
+# masked until it is listed here deliberately.
+_CALLER_FACING_EXCEPTIONS: tuple[type[Exception], ...] = (
+    BadRequestException,
+    ParameterBindingError,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ProblemDetails:
@@ -138,15 +149,12 @@ def _exception_distance(
 def _build_problem_details(exc: Exception, context: ExecutionContext) -> dict[str, object]:
     status_code, title = _problem_status(exc, context)
     request = context.request
-    detail = str(exc) or title
-    if status_code >= 500:
-        detail = _INTERNAL_SERVER_ERROR_DETAIL
     payload = asdict(
         ProblemDetails(
             type="about:blank",
             title=title,
             status=status_code,
-            detail=detail,
+            detail=_client_visible_detail(exc, status_code, title),
             instance=request.path if request is not None else None,
             errors=_problem_errors(exc),
         )
@@ -160,6 +168,25 @@ def _build_problem_details(exc: Exception, context: ExecutionContext) -> dict[st
                 filtered_payload[key] = value
 
     return filtered_payload
+
+
+def _client_visible_detail(exc: Exception, status_code: int, title: str) -> str:
+    """Return the detail the caller may be shown for this exception.
+
+    An exception message is written for whoever operates the application, so it names
+    internal things freely: the dotted path of the guard that refused the request, the
+    identifier of the authentication strategy the route expects, the roles the caller
+    does not hold. A caller learns the application's module layout and authorization
+    vocabulary from any of them and learns nothing it can act on, so only a message
+    written about the caller's own request is passed through; the rest are answered with
+    the status's own reason and kept where they were raised, in the log.
+    """
+
+    if status_code >= 500:
+        return _INTERNAL_SERVER_ERROR_DETAIL
+    if isinstance(exc, _CALLER_FACING_EXCEPTIONS):
+        return str(exc) or title
+    return title
 
 
 def _problem_status(exc: Exception, context: ExecutionContext) -> tuple[int, str]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -9,7 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 from starlette.testclient import TestClient
 
-from bustan import Controller, Get, Injectable, Module, UseGuards, create_app
+from bustan import Controller, Get, Injectable, Module, UseGuards, create_app, request_context_id
 from bustan.core.errors import (
     GuardRejectedError,
     InvalidPipelineError,
@@ -167,6 +168,49 @@ async def test_run_guards_supports_async_and_sync_guards_and_rejections() -> Non
         await run_guards(context, (AsyncAllowGuard(), SyncBlockGuard()))
 
     assert events == ["async", "sync"]
+
+
+@pytest.mark.anyio
+async def test_a_blocking_guard_is_named_in_the_log_under_the_request_correlation_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class DenyGuard(Guard):
+        def can_activate(self, context) -> bool:
+            return False
+
+    context = _context(policy_plan=PolicyPlan())
+
+    with (
+        caplog.at_level(logging.WARNING, logger="bustan.pipeline.guards"),
+        pytest.raises(GuardRejectedError),
+    ):
+        await run_guards(context, (DenyGuard(),))
+
+    (record,) = caplog.records
+    message = record.getMessage()
+    assert f"{DenyGuard.__module__}.{DenyGuard.__qualname__}" in message
+    assert request_context_id(cast(Any, context.request)).value in message
+
+
+@pytest.mark.anyio
+async def test_an_unresolvable_strategy_is_named_in_the_log_under_the_same_identifier(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    context = _context(
+        policy_plan=PolicyPlan(auth=AuthPolicy(strategy="acme-hmac-v2")),
+        should_raise=True,
+    )
+
+    with (
+        caplog.at_level(logging.WARNING, logger="bustan.pipeline.guards"),
+        pytest.raises(GuardRejectedError),
+    ):
+        await PolicyGuard().can_activate(context)
+
+    (record,) = caplog.records
+    message = record.getMessage()
+    assert "acme-hmac-v2" in message
+    assert request_context_id(cast(Any, context.request)).value in message
 
 
 def test_undecorated_subclass_of_an_injectable_guard_is_constructed_and_serves_the_request() -> (

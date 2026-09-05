@@ -7,7 +7,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ..app.application import Application
+from ..core.errors import ProviderResolutionError
 from ..core.ioc.container import Container
+from ..core.utils import _qualname
 from ..pipeline.metadata import PipelineMetadata
 
 
@@ -19,14 +21,24 @@ def override_provider(
     *,
     module_cls: type[object] | None = None,
 ) -> Iterator[None]:
-    """Temporarily replace a provider for the duration of a context block.
+    """Temporarily replace a provider, before the application it belongs to starts.
 
     ``target`` is the container to override in, the ``Application`` holding it, or the
     server object it was assembled with, which carries the container on its own state
     namespace. Anything else raises ``TypeError``.
+
+    An override belongs to bootstrap. It does not stand beside the provider it
+    replaces for the length of the block; it replaces it for the whole application,
+    including every instance already built from it. Against an application that has
+    started, that is refused rather than half honoured: the singletons startup built
+    from the real provider are the ones still being served, so a block that appeared
+    to swap a dependency would have swapped nothing. Assemble the application with the
+    replacement instead, with
+    ``await create_testing_module(RootModule).override_provider(token).use_value(...).compile()``.
     """
 
     container = _resolve_container(target)
+    _refuse_started_application(container, token)
     had_override = container.has_override(token, module=module_cls)
     previous_override: object = None
     if had_override:
@@ -40,6 +52,25 @@ def override_provider(
             container.override(token, previous_override, module=module_cls)
         else:
             container.clear_override(token, module=module_cls)
+
+
+def _refuse_started_application(container: Container, token: object) -> None:
+    """Refuse a scoped override against an application that is already running.
+
+    The refusal names the supported replacement rather than only the rule, because a
+    suite reaching this has a working test that has to be written a different way.
+    """
+
+    if not container.override_manager.started:
+        return
+    raise ProviderResolutionError(
+        f"{_qualname(token)} cannot be overridden while the application is running. "
+        "An override replaces a provider for the whole application, including the "
+        "instances built from it, so every override must be registered before startup. "
+        "Build the application with the replacement instead, through "
+        "create_testing_module(RootModule).override_provider(token).use_value(...) "
+        "and its compile()"
+    )
 
 
 def _resolve_container(target: object) -> Container:

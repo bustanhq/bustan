@@ -7,7 +7,7 @@ from typing import Any, cast
 import pytest
 
 from bustan import Injectable, Module
-from bustan.core.errors import LifecycleError
+from bustan.core.errors import LifecycleError, ProviderResolutionError
 from bustan.core.ioc.container import Container, build_container
 from bustan.core.lifecycle.manager import LifecycleErrorGroup, LifecycleManager
 from bustan.core.module.graph import build_module_graph
@@ -276,3 +276,83 @@ def _manager_for(root_module: type[object]) -> tuple[LifecycleManager, Container
     graph = build_module_graph(cast(Any, root_module))
     container = build_container(graph)
     return LifecycleManager(graph, container), container
+
+
+@pytest.mark.anyio
+async def test_startup_closes_the_window_for_registering_overrides() -> None:
+    @Injectable
+    class Clock:
+        pass
+
+    @Module(providers=[Clock], exports=[Clock])
+    class AppModule:
+        pass
+
+    manager, container = _manager_for(AppModule)
+
+    container.override(Clock, object())
+    await manager.startup()
+
+    with pytest.raises(ProviderResolutionError) as raised:
+        container.override(Clock, object())
+
+    assert "Clock" in str(raised.value)
+    assert "before startup" in str(raised.value)
+
+
+@pytest.mark.anyio
+async def test_a_startup_that_failed_leaves_the_override_window_open() -> None:
+    @Injectable
+    class Pool:
+        def on_application_bootstrap(self) -> None:
+            raise RuntimeError("cannot open the pool")
+
+    @Module(providers=[Pool], exports=[Pool])
+    class AppModule:
+        pass
+
+    manager, container = _manager_for(AppModule)
+
+    with pytest.raises(LifecycleError, match="cannot open the pool"):
+        await manager.startup()
+
+    # Nothing the failed startup built survived it, so the application is still one
+    # an override can be registered against.
+    container.override(Pool, object())
+    assert container.has_override(Pool) is True
+
+
+@pytest.mark.anyio
+async def test_each_startup_of_a_restarted_application_takes_its_own_overrides() -> None:
+    @Injectable
+    class Clock:
+        def now(self) -> str:
+            return "real"
+
+    @Module(providers=[Clock], exports=[Clock])
+    class AppModule:
+        pass
+
+    class FakeClock:
+        def __init__(self, reading: str) -> None:
+            self._reading = reading
+
+        def now(self) -> str:
+            return self._reading
+
+    manager, container = _manager_for(AppModule)
+    root = container.module_graph.root_key
+
+    container.override(Clock, FakeClock("first cycle"))
+    await manager.startup()
+    assert cast(Any, container.resolve(Clock, module=root)).now() == "first cycle"
+    with pytest.raises(ProviderResolutionError, match="before startup"):
+        container.override(Clock, FakeClock("mid-cycle"))
+
+    await manager.shutdown()
+
+    container.override(Clock, FakeClock("second cycle"))
+    await manager.startup()
+    assert cast(Any, container.resolve(Clock, module=root)).now() == "second cycle"
+    with pytest.raises(ProviderResolutionError, match="before startup"):
+        container.override(Clock, FakeClock("mid-cycle"))

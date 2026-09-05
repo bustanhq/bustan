@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -195,3 +196,119 @@ def test_a_tenant_evicted_from_the_durable_store_is_built_again_when_it_returns(
     # An evicted partition is a cache miss, not a wrong answer: the tenant that comes
     # back is served a new instance rather than another tenant's.
     assert resolve(b"tenant-a") is not first
+
+
+def test_a_context_key_that_is_not_hashable_is_refused_by_name(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    # The key is a cache key, so an unhashable one has no partition to name. Refusing
+    # it where it is built means the first resolve names the provider and the hook,
+    # rather than a dict insert failing somewhere below with neither.
+    @Injectable(scope=Scope.DURABLE)
+    class DurableService:
+        @classmethod
+        def get_durable_context_key(cls, request: Request | None) -> Any:
+            assert request is not None
+            return [request.headers["x-tenant-id"]]
+
+    @Module(providers=[DurableService], exports=[DurableService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    request = build_http_request(path="/items", headers=[(b"x-tenant-id", b"tenant-a")])
+
+    with pytest.raises(ProviderResolutionError) as raised:
+        container.resolve(DurableService, module=AppModule, request=request)
+
+    message = str(raised.value)
+    assert "DurableService" in message
+    assert "get_durable_context_key" in message
+    assert "['tenant-a']" in message
+    assert isinstance(raised.value.__cause__, TypeError)
+
+
+def test_a_context_key_holding_an_unhashable_member_is_refused_too(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    # A tuple is hashable by protocol and still raises when a member is not, so the
+    # check has to hash the key rather than ask whether its type claims to be hashable.
+    @Injectable(scope=Scope.DURABLE)
+    class DurableService:
+        @classmethod
+        def get_durable_context_key(cls, request: Request | None) -> Any:
+            assert request is not None
+            return (request.headers["x-tenant-id"], ["europe"])
+
+    @Module(providers=[DurableService], exports=[DurableService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    request = build_http_request(path="/items", headers=[(b"x-tenant-id", b"tenant-a")])
+
+    with pytest.raises(ProviderResolutionError, match="get_durable_context_key"):
+        container.resolve(DurableService, module=AppModule, request=request)
+
+
+def test_a_tuple_context_key_still_partitions_the_durable_cache(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    # The refusal above rejects keys that cannot be hashed, not keys of an unfamiliar
+    # type: a composite key is the ordinary way to partition on more than one field.
+    @Injectable(scope=Scope.DURABLE)
+    class DurableService:
+        @classmethod
+        def get_durable_context_key(cls, request: Request | None) -> tuple[str, str]:
+            assert request is not None
+            return (request.headers["x-tenant-id"], request.headers["x-region"])
+
+    @Module(providers=[DurableService], exports=[DurableService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    def resolve(tenant: bytes, region: bytes) -> object:
+        request = build_http_request(
+            path="/items", headers=[(b"x-tenant-id", tenant), (b"x-region", region)]
+        )
+        return container.resolve(DurableService, module=AppModule, request=request)
+
+    first = resolve(b"tenant-a", b"eu")
+
+    assert resolve(b"tenant-a", b"eu") is first
+    assert resolve(b"tenant-a", b"us") is not first
+
+
+def test_a_frozen_dataclass_context_key_still_partitions_the_durable_cache(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    @dataclass(frozen=True, slots=True)
+    class TenantKey:
+        tenant: str
+        region: str
+
+    @Injectable(scope=Scope.DURABLE)
+    class DurableService:
+        @classmethod
+        def get_durable_context_key(cls, request: Request | None) -> TenantKey:
+            assert request is not None
+            return TenantKey(request.headers["x-tenant-id"], request.headers["x-region"])
+
+    @Module(providers=[DurableService], exports=[DurableService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    def resolve(tenant: bytes, region: bytes) -> object:
+        request = build_http_request(
+            path="/items", headers=[(b"x-tenant-id", tenant), (b"x-region", region)]
+        )
+        return container.resolve(DurableService, module=AppModule, request=request)
+
+    first = resolve(b"tenant-a", b"eu")
+
+    assert resolve(b"tenant-a", b"eu") is first
+    assert resolve(b"tenant-b", b"eu") is not first

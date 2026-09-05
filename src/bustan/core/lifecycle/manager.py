@@ -86,6 +86,9 @@ class LifecycleManager:
             raise
 
         self._state.initialized = True
+        # Startup has built the singletons the application will serve from, so the
+        # window in which a provider may still be replaced is now closed.
+        self._container.override_manager.mark_started()
         return module_instances
 
     async def shutdown(self, *, signal: str | None = None) -> None:
@@ -137,4 +140,7 @@ class LifecycleManager:
         scope_manager.singletons.clear()
         scope_manager.durable_instances.clear()
         scope_manager.clear_controller_singletons()
+        # No instance built from a provider survives here, so the next startup builds
+        # the application afresh and may be given a different set of overrides.
+        self._container.override_manager.mark_stopped()
         self._state = LifecycleState(initialized=False, closed=True)

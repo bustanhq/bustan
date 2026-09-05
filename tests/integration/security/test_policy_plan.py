@@ -165,4 +165,4 @@ def test_create_app_returns_deterministic_policy_denial_responses() -> None:
         response = client.get("/secure")
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Policy denied: missing roles ('admin',)"
+    assert response.json()["detail"] == "Forbidden"
