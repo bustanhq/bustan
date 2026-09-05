@@ -10,13 +10,13 @@ from .requests import DEFAULT_MAX_BODY_BYTES, from_asgi_request
 from .responses import AsgiResponseValue, to_asgi_response
 from .server import AsgiServer
 from .testclient import AsgiTestClient
+from .types import Receive, Scope, Send
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ...contracts import AdapterRoute
     from .application import Lifespan
-    from .types import Receive, Scope, Send
 
 
 class AsgiAdapter(AbstractHttpAdapter):
@@ -122,7 +122,7 @@ class AsgiAdapter(AbstractHttpAdapter):
         """Serve one ASGI connection through the application."""
 
         scope, receive, send = connection
-        await self._app(cast("Scope", scope), cast("Receive", receive), cast("Send", send))
+        await self._app(cast(Scope, scope), cast(Receive, receive), cast(Send, send))
 
 
 __all__ = ("AsgiAdapter",)

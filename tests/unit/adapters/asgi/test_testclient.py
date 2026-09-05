@@ -21,7 +21,7 @@ async def _echo(request: HttpRequest) -> HttpResponse:
         {
             "method": request.method,
             "path": request.path,
-            "query": sorted(cast("QueryParams", request.query_params).multi_items()),
+            "query": sorted(cast(QueryParams, request.query_params).multi_items()),
             "host": request.headers["host"],
             "user_agent": request.headers["user-agent"],
             "cookies": dict(request.cookies),
@@ -109,10 +109,15 @@ def test_a_body_can_be_sent_as_text_or_as_bytes() -> None:
 def test_every_method_the_client_offers_reaches_the_handler() -> None:
     client = _client()
 
-    assert client.get("/echo").json()["method"] == "GET"
-    assert client.delete("/echo").json()["method"] == "DELETE"
-    assert client.options("/echo").json()["method"] == "OPTIONS"
-    assert client.head("/echo").status_code == 200
+    read = client.get("/echo")
+    deleted = client.delete("/echo")
+    offered = client.options("/echo")
+    headed = client.head("/echo")
+
+    assert read.json()["method"] == "GET"
+    assert deleted.json()["method"] == "DELETE"
+    assert offered.json()["method"] == "OPTIONS"
+    assert headed.status_code == 200
 
 
 def test_headers_the_caller_set_override_the_defaults() -> None:
