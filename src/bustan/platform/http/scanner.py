@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 from ...common.types import ControllerMetadata, RouteMetadata
 from ...core.errors import InvalidControllerError, RouteDefinitionError
+from ...core.ioc.registry import DURABLE_CONTEXT_KEY_HOOK
+from ...core.lifecycle.hooks import LIFECYCLE_HOOK_NAMES
 from ...core.module.dynamic import ModuleKey
 from ...core.module.graph import ModuleGraph
 from ...core.utils import _join_paths, _qualname, _unwrap_handler
@@ -15,6 +17,14 @@ from .metadata import (
     get_route_metadata,
     iter_controller_routes,
 )
+
+# The public method names the framework itself defines on a class it builds. A
+# controller may carry any of them and none of them is a route: the framework calls
+# these by name, so demanding an HTTP decorator on one would offer an author two
+# repairs that each break the declaration, since decorating publishes a route nobody
+# asked for and renaming unbinds the hook. Each name is taken from the constant that
+# defines it, so a hook named there later is skipped here with no second edit.
+FRAMEWORK_HOOK_NAMES: frozenset[str] = frozenset({DURABLE_CONTEXT_KEY_HOOK, *LIFECYCLE_HOOK_NAMES})
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,8 +127,19 @@ class ControllerScanner:
         controller_cls: type[object],
         module_key: ModuleKey,
     ) -> None:
+        """Refuse a public method that reads as a route handler but declares no route.
+
+        A method the framework owns is not a route handler and is skipped: it is
+        called by name rather than served, so the author has nothing to decorate.
+        Whether such a hook is refused outright is a question about that one hook and
+        is answered where the hook is declared, not here.
+        """
+
         for member_name, member in controller_cls.__dict__.items():
             if member_name == "__init__" or member_name.startswith("_"):
+                continue
+
+            if member_name in FRAMEWORK_HOOK_NAMES:
                 continue
 
             handler = _unwrap_handler(member)
