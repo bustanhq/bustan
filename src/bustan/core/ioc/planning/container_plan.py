@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from ....common.constants import BUSTAN_CONTROLLER_ATTR
 from ....common.types import ControllerMetadata, ProviderScope
 from ....contracts import HttpRequest, HttpResponse, names_native_request
-from ...errors import ProviderResolutionError
+from ...errors import InvalidControllerError, ProviderResolutionError
 from ...utils import _display_name, _get_metadata, _qualname
 from ..registry import Binding, BindingTable
 from .annotations import ConstructorDependency, plan_constructor_dependencies
@@ -54,12 +54,27 @@ _CONTAINER_SOURCES: tuple[tuple[object, ArgumentSource], ...] = (
 
 
 def controller_scope(controller_cls: type[object]) -> ProviderScope:
-    """Return the lifetime a controller is cached at, which defaults to singleton."""
+    """Return the lifetime a controller is cached at, which defaults to singleton.
+
+    Raises ``InvalidControllerError`` for a lifetime no controller can be served
+    under. A durable instance is selected by a context key, and a controller is
+    cached per module rather than per key, so nothing can hold that lifetime. The
+    module graph refuses such a declaration before any of this runs; returning it
+    here anyway would enter the controller into the scope table as a durable owner
+    and report the defect against a constructor parameter, which is one line below
+    the declaration that is actually wrong and cannot be edited to fix it.
+    """
 
     metadata = _get_metadata(controller_cls, BUSTAN_CONTROLLER_ATTR, inherit=False)
-    if isinstance(metadata, ControllerMetadata):
-        return metadata.scope
-    return ProviderScope.SINGLETON
+    if not isinstance(metadata, ControllerMetadata):
+        return ProviderScope.SINGLETON
+    if metadata.scope is ProviderScope.DURABLE:
+        raise InvalidControllerError(
+            f"{_qualname(controller_cls)} declares scope {metadata.scope.value!r}, which a "
+            "controller cannot have; declare a singleton, request or transient controller "
+            "and keep the per-key state in a durable provider"
+        )
+    return metadata.scope
 
 
 def plan_container(
