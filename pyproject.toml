@@ -72,6 +72,11 @@ testpaths = ["tests"]
 [tool.coverage.run]
 branch = true
 source = ["bustan"]
+# The scaffolder's templates are text, not source: three of them hold a $package_name
+# placeholder and are not parseable Python until it is substituted. They became visible
+# to coverage when the template directories stopped being namespace packages, and a run
+# that prints three parse warnings every time is a run whose warnings stop being read.
+omit = ["src/bustan/cli/templates/*"]
 
 [tool.coverage.report]
 # No fail_under here: the threshold lives on the CI command line so that a targeted
