@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -12,6 +13,7 @@ from bustan import Injectable, Module, Scope
 from bustan.core.errors import InvalidProviderError, ProviderResolutionError
 from bustan.core.ioc.container import build_container
 from bustan.core.ioc.registry import Binding
+from bustan.core.ioc.scopes import CACHE_MISS, ScopeManager
 from bustan.core.module.graph import build_module_graph
 
 if TYPE_CHECKING:
@@ -312,3 +314,61 @@ def test_a_frozen_dataclass_context_key_still_partitions_the_durable_cache(
 
     assert resolve(b"tenant-a", b"eu") is first
     assert resolve(b"tenant-b", b"eu") is not first
+
+
+class DeclaringModule:
+    """A stand-in module key for the durable keys under test."""
+
+
+class Tokens(StrEnum):
+    """A token whose members are equal to the bare strings they carry."""
+
+    DB = "db"
+
+
+def test_two_equal_tokens_of_different_types_keep_separate_durable_partitions() -> None:
+    # A durable key carries the token as well as the partition, so the same collapse
+    # the singleton table had reaches the durable store: one tenant's two providers
+    # would share a partition and the second built would take the first's.
+    manager = ScopeManager()
+    enum_key = (DeclaringModule, Tokens.DB, "tenant-a")
+    str_key = (DeclaringModule, "db", "tenant-a")
+
+    manager.set_durable(enum_key, "from enum")
+    manager.set_durable(str_key, "from str")
+
+    assert manager.get_durable(enum_key) == "from enum"
+    assert manager.get_durable(str_key) == "from str"
+    assert len(manager.durable_instances) == 2
+    assert list(manager.durable_instances) == [enum_key, str_key]
+
+    del manager.durable_instances[enum_key]
+
+    assert manager.get_durable(enum_key) is CACHE_MISS
+    assert manager.get_durable(str_key) == "from str"
+
+
+def test_a_true_token_and_a_one_token_keep_separate_durable_partitions() -> None:
+    manager = ScopeManager()
+    true_key = (DeclaringModule, True, "tenant-a")
+    one_key = (DeclaringModule, 1, "tenant-a")
+
+    manager.set_durable(true_key, "from true")
+    manager.set_durable(one_key, "from one")
+
+    assert manager.get_durable(true_key) == "from true"
+    assert manager.get_durable(one_key) == "from one"
+    assert len(manager.durable_instances) == 2
+
+
+def test_telling_two_equal_tokens_apart_does_not_widen_the_durable_store() -> None:
+    # The store is bounded whatever its keys are made of: the limit counts partitions,
+    # and two tokens that are now told apart are two partitions against that limit.
+    manager = ScopeManager(durable_instance_limit=2)
+
+    manager.set_durable((DeclaringModule, Tokens.DB, "tenant-a"), "a")
+    manager.set_durable((DeclaringModule, "db", "tenant-a"), "b")
+    manager.set_durable((DeclaringModule, "db", "tenant-b"), "c")
+
+    assert len(manager.durable_instances) == 2
+    assert manager.get_durable((DeclaringModule, Tokens.DB, "tenant-a")) is CACHE_MISS

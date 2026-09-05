@@ -13,6 +13,7 @@ import anyio
 
 from ...contracts import HttpRequest
 from ..module.dynamic import ModuleKey
+from .registry import token_identity
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Iterator
@@ -45,6 +46,72 @@ class _CacheMiss:
 CACHE_MISS: Final = _CacheMiss()
 
 
+type CacheKey = tuple[Any, ...]
+
+
+def _cached_under(key: CacheKey) -> CacheKey:
+    """Return the slot a cache key occupies, with the token half keyed by its type.
+
+    Every instance cache key names the module that declared the binding, then the
+    token, and then whatever else partitions that binding's instances. Python maps
+    equal keys onto one entry, so a string enum member and the bare string it equals
+    would otherwise share a slot and whichever binding was built second would take
+    the slot the first is holding. Pairing the token with its type keeps two equal
+    tokens of different types in the separate slots their separate bindings need.
+    """
+
+    module_key, token, *partition = key
+    return (module_key, token_identity(token), *partition)
+
+
+def _cached_key(slot: CacheKey) -> CacheKey:
+    """Return the cache key a slot was written under, as its writer spelled it."""
+
+    module_key, (_token_type, token), *partition = slot
+    return (module_key, token, *partition)
+
+
+class InstanceTable(MutableMapping[tuple[ModuleKey, object], object]):
+    """An unbounded instance cache keyed by declaring module and token identity.
+
+    Keys are read and written as the ``(module, token)`` pair they have always been,
+    and iteration yields those same pairs. The token half is kept apart by type, so
+    two bindings whose tokens are equal but of different types keep one instance
+    each rather than the second overwriting the first.
+    """
+
+    __slots__ = ("_entries",)
+
+    def __init__(self) -> None:
+        self._entries: dict[CacheKey, object] = {}
+
+    def __getitem__(self, key: tuple[ModuleKey, object]) -> object:
+        return self._entries[_cached_under(key)]
+
+    def __setitem__(self, key: tuple[ModuleKey, object], instance: object) -> None:
+        self._entries[_cached_under(key)] = instance
+
+    def __delitem__(self, key: tuple[ModuleKey, object]) -> None:
+        del self._entries[_cached_under(key)]
+
+    def __iter__(self) -> Iterator[tuple[ModuleKey, object]]:
+        return (
+            cast("tuple[ModuleKey, object]", _cached_key(slot)) for slot in tuple(self._entries)
+        )
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def clear(self) -> None:
+        """Forget every cached instance."""
+
+        self._entries.clear()
+
+    def __repr__(self) -> str:
+        shown = ", ".join(f"{key!r}: {instance!r}" for key, instance in self.items())
+        return f"{type(self).__name__}({{{shown}}})"
+
+
 class BoundedInstanceStore(MutableMapping[Any, object]):
     """A cache of at most ``limit`` instances, dropping the least recently used.
 
@@ -52,6 +119,9 @@ class BoundedInstanceStore(MutableMapping[Any, object]):
     when the store is full is whichever has gone longest without either. Every
     operation is taken under one lock, because the store is written from whichever
     threads happen to be serving requests.
+
+    Keys are kept apart by the type of the token they carry as well as its value, so
+    two bindings whose tokens are equal but of different types partition separately.
     """
 
     __slots__ = ("_entries", "_guard", "limit")
@@ -60,31 +130,35 @@ class BoundedInstanceStore(MutableMapping[Any, object]):
         if limit < 1:
             raise ValueError(f"an instance store must be allowed at least one entry, not {limit}")
         self.limit = limit
-        self._entries: OrderedDict[Any, object] = OrderedDict()
+        self._entries: OrderedDict[CacheKey, object] = OrderedDict()
         self._guard = threading.Lock()
 
     def __getitem__(self, key: Any) -> object:
+        slot = _cached_under(key)
         with self._guard:
-            instance = self._entries[key]
-            self._entries.move_to_end(key)
+            instance = self._entries[slot]
+            self._entries.move_to_end(slot)
             return instance
 
     def __setitem__(self, key: Any, instance: object) -> None:
+        slot = _cached_under(key)
         with self._guard:
-            self._entries[key] = instance
-            self._entries.move_to_end(key)
+            self._entries[slot] = instance
+            self._entries.move_to_end(slot)
             while len(self._entries) > self.limit:
                 self._entries.popitem(last=False)
 
     def __delitem__(self, key: Any) -> None:
+        slot = _cached_under(key)
         with self._guard:
-            del self._entries[key]
+            del self._entries[slot]
 
     def __iter__(self) -> Iterator[Any]:
         # A snapshot, because a caller reading the store one key at a time is
         # otherwise walking a table another thread's eviction resizes underneath it.
         with self._guard:
-            return iter(tuple(self._entries))
+            slots = tuple(self._entries)
+        return iter([_cached_key(slot) for slot in slots])
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -179,7 +253,7 @@ class ScopeManager:
     """Manages singleton and request-scoped instance lifetimes."""
 
     def __init__(self, *, durable_instance_limit: int = DURABLE_INSTANCE_LIMIT) -> None:
-        self.singletons: dict[tuple[ModuleKey, object], object] = {}
+        self.singletons = InstanceTable()
         self.controller_singletons: dict[tuple[ModuleKey, type[object]], object] = {}
         self.controller_singleton_locks: dict[tuple[ModuleKey, type[object]], threading.Lock] = {}
         self.durable_instances = BoundedInstanceStore(durable_instance_limit)
@@ -272,13 +346,13 @@ class ScopeManager:
         if token is not None:
             self.active_application.reset(token)
 
-    def get_request_cache(self, request: HttpRequest) -> dict[tuple[ModuleKey, object], object]:
+    def get_request_cache(self, request: HttpRequest) -> InstanceTable:
         """Return the instance cache associated with the current request."""
         request_scope_cache = getattr(request.state, REQUEST_SCOPE_CACHE_ATTR, None)
         if request_scope_cache is None:
-            request_scope_cache = {}
+            request_scope_cache = InstanceTable()
             setattr(request.state, REQUEST_SCOPE_CACHE_ATTR, request_scope_cache)
-        return cast(dict[tuple[ModuleKey, object], object], request_scope_cache)
+        return cast(InstanceTable, request_scope_cache)
 
     def get_request_controller_cache(
         self, request: HttpRequest
