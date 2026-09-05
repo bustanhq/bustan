@@ -181,3 +181,37 @@ Verify by running the parser rather than by reading. Every pattern should resolv
 least one existing file, or be a path the ticket is explicitly creating. A pattern that
 matches nothing and creates nothing is a typo the gate will not catch for you, because a
 pattern matching no file also flags no file as unowned.
+
+## Grep the whole suite for the string a ticket changes, not only the modules it edits
+
+Checking each acceptance criterion against `Owns` catches a criterion with no legal home.
+It does not catch the other half of the same problem: a criterion whose home is correct, and
+which is nonetheless unreachable because a test somewhere else asserts the behaviour being
+removed.
+
+A security ticket asked that a 403 stop naming the guard's class path. Its `Owns` listed the
+two modules that build the message and the two unit-test files covering them, and every
+criterion had a file it could be satisfied in. The agent implemented it correctly and then
+opened a `BLOCKED:` draft, because two integration tests it did not own asserted the exact
+string the ticket exists to delete:
+
+```
+tests/integration/pipeline/test_request_pipeline.py
+    assert response.json()["detail"].endswith("DenyGuard blocked the request")
+tests/integration/security/test_policy_plan.py
+    assert response.json()["detail"] == "Policy denied: missing roles ('admin',)"
+```
+
+Both were right to block on. Neither was visible from reading the ticket's own modules,
+because a test that asserts an observable response does not have to live near the code that
+produces it.
+
+So when a ticket changes something a caller can see - a status, a header, a message, a
+payload shape - grep the entire test tree for the current wording before writing `Owns`, and
+add every file that asserts it. The grep is the check; reading the modules the ticket edits
+is not a substitute, and neither is running the suite, which passes right up until the fix
+exists.
+
+A test asserting the behaviour a ticket removes is a test defending the defect. Granting it
+is correct, and the grant is bounded: name the file, and say that changing the assertion is
+in scope while changing anything else in it is not.
