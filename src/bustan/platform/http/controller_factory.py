@@ -5,10 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar
 
-from starlette.requests import Request
-
 from ...common.decorators.injectable import get_provider_metadata
 from ...common.types import ProviderScope
+from ...contracts import HttpRequest
 from ...core.errors import InvalidControllerError, InvalidPipelineError
 from ...core.ioc.container import Container
 from ...core.module.dynamic import ModuleKey
@@ -44,7 +43,7 @@ class ControllerFactory:
         controller_cls: type[object],
         *,
         module: ModuleKey,
-        request: Request,
+        request: HttpRequest,
     ) -> object:
         """Instantiate a controller for a request, awaiting asynchronous dependencies.
 
@@ -108,7 +107,7 @@ class ControllerFactory:
         metadata: PipelineMetadata,
         *,
         module: ModuleKey,
-        request: Request,
+        request: HttpRequest,
     ) -> ResolvedPipeline:
         """Resolve a route's pipeline for one request, awaiting asynchronous factories."""
         metadata = self._overridden(metadata)
@@ -137,7 +136,7 @@ class ControllerFactory:
         expected_type: type[ComponentT],
         *,
         module: ModuleKey,
-        request: Request,
+        request: HttpRequest,
         kind: str,
     ) -> tuple[ComponentT, ...]:
         """Resolve individual components (instances or classes) into instances."""
@@ -160,7 +159,7 @@ class ControllerFactory:
         expected_type: type[ComponentT],
         *,
         module: ModuleKey,
-        request: Request,
+        request: HttpRequest,
         kind: str,
     ) -> tuple[ComponentT, ...]:
         """Resolve pipeline components for one request, awaiting asynchronous factories."""

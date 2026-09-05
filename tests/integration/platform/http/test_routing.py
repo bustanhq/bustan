@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, Response
+from starlette.responses import PlainTextResponse
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Injectable, Module, Post, Scope, create_app
@@ -130,7 +130,7 @@ def test_create_app_exposes_response_token_during_controller_resolution() -> Non
     # built for one request too.
     @Controller("/responses", scope=Scope.REQUEST)
     class ResponseController:
-        def __init__(self, response: Response) -> None:
+        def __init__(self, response: HttpResponse) -> None:
             self._response = response
 
         @Get("/")
@@ -164,7 +164,7 @@ def test_create_app_reports_content_length_matching_the_response_body() -> None:
 
     @Controller("/mutations", scope=Scope.REQUEST)
     class MutationController:
-        def __init__(self, response: Response) -> None:
+        def __init__(self, response: HttpResponse) -> None:
             self._response = response
 
         @Get("/")

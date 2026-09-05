@@ -15,9 +15,10 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from starlette.requests import Request
-from starlette.responses import Response
 
+from bustan.adapters.starlette.requests import from_starlette_request
 from bustan.common.types import ProviderScope
+from bustan.contracts import HttpRequest, HttpResponse
 from bustan.core.ioc.planning.scopes import (
     ScopeDependency,
     ScopePlan,
@@ -187,8 +188,9 @@ DEPENDENCY_SHAPES: tuple[DependencyShape, ...] = (
     DependencyShape("alias to singleton class", ALIAS_TO_SINGLETON, ProviderScope.SINGLETON),
     DependencyShape("value provider", CONFIG_VALUE, ProviderScope.SINGLETON),
     DependencyShape("request-scoped factory", REQUEST_FACTORY, ProviderScope.REQUEST),
-    DependencyShape("starlette request", Request, ProviderScope.REQUEST, registered=False),
-    DependencyShape("starlette response", Response, ProviderScope.REQUEST, registered=False),
+    DependencyShape("neutral request", HttpRequest, ProviderScope.REQUEST, registered=False),
+    DependencyShape("neutral response", HttpResponse, ProviderScope.REQUEST, registered=False),
+    DependencyShape("native request", Request, ProviderScope.REQUEST, registered=False),
     DependencyShape("request token", REQUEST, ProviderScope.REQUEST, registered=False),
     DependencyShape("response token", RESPONSE, ProviderScope.REQUEST, registered=False),
     DependencyShape("unbound token", UNBOUND, ProviderScope.TRANSIENT, registered=False),
@@ -336,12 +338,13 @@ def test_singleton_owner_of_a_durable_class_is_refused() -> None:
 @pytest.mark.parametrize(
     ("token", "description"),
     (
-        (Request, "framework-owned type Request"),
-        (Response, "framework-owned type Response"),
+        (HttpRequest, "framework-owned type HttpRequest"),
+        (HttpResponse, "framework-owned type HttpResponse"),
+        (Request, "the transport's own request object"),
         (REQUEST, "the REQUEST token"),
         (RESPONSE, "the RESPONSE token"),
     ),
-    ids=("request-type", "response-type", "request-token", "response-token"),
+    ids=("request-type", "response-type", "native-request-type", "request-token", "response-token"),
 )
 def test_request_derived_dependencies_name_themselves(token: object, description: str) -> None:
     """Request-owned state reads as itself rather than as a provider."""
@@ -563,8 +566,10 @@ def test_the_planned_scope_table_cannot_be_written_to() -> None:
 def test_entered_request_scope_clears_an_outer_request() -> None:
     """An entry point given no request must not inherit the one in flight."""
 
-    active_request: ContextVar[Request | None] = ContextVar("active_request", default=None)
-    outer = Request({"type": "http", "method": "GET", "path": "/", "headers": []})
+    active_request: ContextVar[HttpRequest | None] = ContextVar("active_request", default=None)
+    outer = from_starlette_request(
+        Request({"type": "http", "method": "GET", "path": "/", "headers": []})
+    )
 
     with entered_request_scope(active_request, outer):
         assert active_request.get() is outer
@@ -593,7 +598,8 @@ def test_a_transient_holding_the_request_names_the_request_it_reaches() -> None:
     assert result.effective_scopes[(AppModule, RequestHelper)] is ProviderScope.REQUEST
     assert result.violations[0].message == (
         f"{qualified(Owner)}.__init__ {OWNER_SITE} depends on {qualified(RequestHelper)}, which "
-        "keeps no instance of its own and reaches framework-owned type Request. It can only be "
+        "keeps no instance of its own and reaches the transport's own request object. It can "
+        "only be "
         "injected into an owner that lives no longer than that, and a singleton-scoped owner "
         "would capture one caller's state the first time it is built and serve it to every later "
         "caller"

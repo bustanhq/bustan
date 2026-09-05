@@ -24,7 +24,7 @@ from bustan.platform.http.controller_factory import ControllerFactory
 from bustan.security import AUTHENTICATOR_REGISTRY
 
 if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+    from tests.conftest import HttpRequestFactory
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,7 +199,7 @@ def test_undecorated_subclass_of_an_injectable_guard_is_constructed_and_serves_t
 
 
 def test_a_decorated_guard_is_still_resolved_through_the_container(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Injectable()
     class DependencyService:
@@ -225,7 +225,7 @@ def test_a_decorated_guard_is_still_resolved_through_the_container(
 
     container = build_container(build_module_graph(AppModule))
     factory = ControllerFactory(container)
-    request = build_request(path="/reports")
+    request = build_http_request(path="/reports")
 
     (resolved,) = factory.resolve_components(
         (DecoratedGuard,), Guard, module=AppModule, request=request, kind="guard"
@@ -235,7 +235,7 @@ def test_a_decorated_guard_is_still_resolved_through_the_container(
 
 
 def test_an_undeclared_guard_that_needs_arguments_is_still_refused(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     class NeedsArgumentsGuard(Guard):
         def __init__(self, dependency: object) -> None:
@@ -262,6 +262,6 @@ def test_an_undeclared_guard_that_needs_arguments_is_still_refused(
             (NeedsArgumentsGuard,),
             Guard,
             module=AppModule,
-            request=build_request(path="/reports"),
+            request=build_http_request(path="/reports"),
             kind="guard",
         )

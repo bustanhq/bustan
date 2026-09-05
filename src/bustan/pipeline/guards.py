@@ -69,12 +69,11 @@ class PolicyGuard(Guard):
         return True
 
     async def _authenticate(self, context: ExecutionContext, strategy: str) -> Principal | None:
-        request = getattr(context.request, "native_request", None)
         try:
             registry = context.container.resolve(
                 AUTHENTICATOR_REGISTRY,
                 module=context.module,
-                request=request if request is not None else None,
+                request=context.request,
             )
         except ProviderResolutionError as exc:
             raise GuardRejectedError(

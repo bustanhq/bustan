@@ -27,7 +27,7 @@ from bustan.core.ioc.tokens import APPLICATION, INQUIRER, RESPONSE
 from bustan.core.module.graph import build_module_graph
 
 if TYPE_CHECKING:
-    from tests.conftest import AppFactory, RequestFactory
+    from tests.conftest import AppFactory, HttpRequestFactory
 
 
 def test_inquirer_receives_the_dependent_class_during_nested_resolution() -> None:
@@ -128,7 +128,7 @@ def test_same_token_name_in_two_modules_is_not_reported_as_a_cycle() -> None:
 
 
 def test_class_bound_in_two_modules_uses_the_scope_of_the_resolved_binding(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     class Shared:
         def __init__(self, request: Request) -> None:
@@ -150,17 +150,18 @@ def test_class_bound_in_two_modules_uses_the_scope_of_the_resolved_binding(
 
     # Each binding of the class is judged on its own scope, so the singleton one is
     # refused while the graph is planned even though the request-scoped one is legal.
-    with pytest.raises(ProviderResolutionError, match="framework-owned type Request"):
+    with pytest.raises(ProviderResolutionError, match="the transport's own request object"):
         build_container(build_module_graph(AppModule))
 
     container = build_container(build_module_graph(RequestModule))
-    request = build_request(path="/shared")
+    request = build_http_request(path="/shared")
     resolved = cast(
         Any,
         container.resolve("req_scoped", module=RequestModule, request=request),
     )
 
-    assert resolved.request is request
+    # The parameter named the transport's own request type, so that is what it holds.
+    assert resolved.request is request.native_request
 
 
 def test_concurrent_resolution_constructs_a_singleton_exactly_once() -> None:
@@ -376,7 +377,7 @@ def test_the_application_is_refused_when_none_is_running() -> None:
 
 
 def test_the_application_is_read_off_the_request_when_one_is_in_flight(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
     build_app: AppFactory,
 ) -> None:
     @Injectable(scope=Scope.TRANSIENT)
@@ -390,7 +391,7 @@ def test_the_application_is_read_off_the_request_when_one_is_in_flight(
 
     container = build_container(build_module_graph(AppModule))
     application = build_app()
-    request = build_request(path="/runtime", app=application)
+    request = build_http_request(path="/runtime", app=application)
     resolved = cast(Any, container.resolve(NeedsApplication, module=AppModule, request=request))
 
     assert resolved.application is application
@@ -413,7 +414,7 @@ def test_inquirer_is_refused_when_nothing_is_being_built_for_anyone() -> None:
 
 
 def test_an_imperative_resolution_does_not_inherit_a_request_it_was_not_given(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     # An entry point handed no request must resolve as though none were in flight.
     # Leaving the active request untouched lets a provider built this way capture a
@@ -428,7 +429,7 @@ def test_an_imperative_resolution_does_not_inherit_a_request_it_was_not_given(
         pass
 
     container = build_container(build_module_graph(AppModule))
-    request = build_request(path="/me", headers=[(b"x-user-id", b"alice")])
+    request = build_http_request(path="/me", headers=[(b"x-user-id", b"alice")])
 
     inherited: list[Exception] = []
 

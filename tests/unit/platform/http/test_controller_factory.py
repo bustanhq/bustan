@@ -14,7 +14,7 @@ from bustan.platform.http.compiler import GlobalPipelineProvider
 from bustan.platform.http.controller_factory import ControllerFactory
 
 if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+    from tests.conftest import HttpRequestFactory
 
 # Declared at module level because a constructor annotation naming it is read back as
 # a string, and a name local to a test function is not in scope by then.
@@ -23,7 +23,7 @@ SESSION = object()
 
 @pytest.mark.anyio
 async def test_controller_factory_reuses_singleton_controllers_by_default(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Injectable
     class UserService:
@@ -48,13 +48,13 @@ async def test_controller_factory_reuses_singleton_controllers_by_default(
     first = cast(
         Any,
         await factory.instantiate_async(
-            UsersController, module=AppModule, request=build_request(path="/users")
+            UsersController, module=AppModule, request=build_http_request(path="/users")
         ),
     )
     second = cast(
         Any,
         await factory.instantiate_async(
-            UsersController, module=AppModule, request=build_request(path="/users")
+            UsersController, module=AppModule, request=build_http_request(path="/users")
         ),
     )
 
@@ -64,7 +64,7 @@ async def test_controller_factory_reuses_singleton_controllers_by_default(
 
 @pytest.mark.anyio
 async def test_controller_factory_reuses_request_scoped_controllers_per_request(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users", scope=Scope.REQUEST)
     class UsersController:
@@ -78,8 +78,8 @@ async def test_controller_factory_reuses_request_scoped_controllers_per_request(
 
     container = build_container(build_module_graph(AppModule))
     factory = ControllerFactory(container)
-    first_request = build_request(path="/users")
-    second_request = build_request(path="/users")
+    first_request = build_http_request(path="/users")
+    second_request = build_http_request(path="/users")
 
     first = await factory.instantiate_async(
         UsersController, module=AppModule, request=first_request
@@ -97,7 +97,7 @@ async def test_controller_factory_reuses_request_scoped_controllers_per_request(
 
 @pytest.mark.anyio
 async def test_controller_factory_creates_transient_controllers_each_time(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users", scope=Scope.TRANSIENT)
     class UsersController:
@@ -111,7 +111,7 @@ async def test_controller_factory_creates_transient_controllers_each_time(
 
     container = build_container(build_module_graph(AppModule))
     factory = ControllerFactory(container)
-    request = build_request(path="/users")
+    request = build_http_request(path="/users")
 
     first = await factory.instantiate_async(UsersController, module=AppModule, request=request)
     second = await factory.instantiate_async(UsersController, module=AppModule, request=request)
@@ -123,7 +123,7 @@ async def test_controller_factory_creates_transient_controllers_each_time(
 @pytest.mark.anyio
 async def test_controller_factory_only_serves_the_lifetimes_a_controller_can_have(
     scope: Scope,
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/users", scope=scope)
     class UsersController:
@@ -137,7 +137,7 @@ async def test_controller_factory_only_serves_the_lifetimes_a_controller_can_hav
 
     container = build_container(build_module_graph(AppModule))
     factory = ControllerFactory(container)
-    request = build_request(path="/users")
+    request = build_http_request(path="/users")
 
     if scope in {Scope.SINGLETON, Scope.REQUEST, Scope.TRANSIENT}:
         assert isinstance(
@@ -152,7 +152,7 @@ async def test_controller_factory_only_serves_the_lifetimes_a_controller_can_hav
 
 @pytest.mark.anyio
 async def test_controller_factory_never_caches_a_durable_controller_as_a_singleton(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Controller("/tenants", scope=Scope.DURABLE)
     class TenantsController:
@@ -169,14 +169,14 @@ async def test_controller_factory_never_caches_a_durable_controller_as_a_singlet
 
     with pytest.raises(InvalidControllerError):
         await factory.instantiate_async(
-            TenantsController, module=AppModule, request=build_request(path="/tenants")
+            TenantsController, module=AppModule, request=build_http_request(path="/tenants")
         )
 
     assert container.scope_manager.controller_singletons == {}
 
 
 def test_pipeline_components_are_constructed_directly_unless_they_declare_provider_metadata(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Injectable()
     class DecoratedGuard(Guard):
@@ -198,7 +198,7 @@ def test_pipeline_components_are_constructed_directly_unless_they_declare_provid
 
     container = build_container(build_module_graph(AppModule))
     factory = ControllerFactory(container)
-    request = build_request(path="/users")
+    request = build_http_request(path="/users")
 
     (decorated,) = factory.resolve_components(
         (DecoratedGuard,), Guard, module=AppModule, request=request, kind="guard"
@@ -213,7 +213,7 @@ def test_pipeline_components_are_constructed_directly_unless_they_declare_provid
 
 
 def test_a_registered_pipeline_class_is_built_by_the_container_even_undecorated(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Injectable()
     class Policy:
@@ -238,7 +238,7 @@ def test_a_registered_pipeline_class_is_built_by_the_container_even_undecorated(
 
     container = build_container(build_module_graph(AppModule))
     factory = ControllerFactory(container)
-    request = build_request(path="/users")
+    request = build_http_request(path="/users")
 
     (resolved,) = factory.resolve_components(
         (RegisteredGuard,), Guard, module=AppModule, request=request, kind="guard"
@@ -248,7 +248,7 @@ def test_a_registered_pipeline_class_is_built_by_the_container_even_undecorated(
 
 
 def test_an_unregistered_pipeline_class_that_needs_arguments_is_refused(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     class NeedsArguments(Guard):
         def __init__(self, dependency: object) -> None:
@@ -275,13 +275,13 @@ def test_an_unregistered_pipeline_class_that_needs_arguments_is_refused(
             (NeedsArguments,),
             Guard,
             module=AppModule,
-            request=build_request(path="/users"),
+            request=build_http_request(path="/users"),
             kind="guard",
         )
 
 
 def test_a_global_token_bound_to_a_list_resolves_to_every_component_it_names(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     class FirstGuard(Guard):
         def can_activate(self, context: object) -> bool:
@@ -313,7 +313,7 @@ def test_a_global_token_bound_to_a_list_resolves_to_every_component_it_names(
         (GlobalPipelineProvider(APP_GUARD, AppModule, [first, second]),),
         Guard,
         module=AppModule,
-        request=build_request(path="/users"),
+        request=build_http_request(path="/users"),
         kind="guard",
     )
 
@@ -322,7 +322,7 @@ def test_a_global_token_bound_to_a_list_resolves_to_every_component_it_names(
 
 @pytest.mark.anyio
 async def test_the_awaited_driver_builds_a_controller_whose_dependency_is_awaited(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     async def build_session() -> dict[str, str]:
         return {"kind": "async"}
@@ -345,7 +345,7 @@ async def test_the_awaited_driver_builds_a_controller_whose_dependency_is_awaite
 
     container = build_container(build_module_graph(AppModule))
     factory = ControllerFactory(container)
-    request = build_request(path="/users")
+    request = build_http_request(path="/users")
 
     instance = await factory.instantiate_async(UsersController, module=AppModule, request=request)
     again = await factory.instantiate_async(UsersController, module=AppModule, request=request)
@@ -355,7 +355,7 @@ async def test_the_awaited_driver_builds_a_controller_whose_dependency_is_awaite
 
 
 def test_a_component_that_does_not_implement_its_slot_is_refused(
-    build_request: RequestFactory,
+    build_http_request: HttpRequestFactory,
 ) -> None:
     @Injectable()
     class NotAGuard:
@@ -379,6 +379,6 @@ def test_a_component_that_does_not_implement_its_slot_is_refused(
             (NotAGuard,),
             Guard,
             module=AppModule,
-            request=build_request(path="/users"),
+            request=build_http_request(path="/users"),
             kind="guard",
         )
