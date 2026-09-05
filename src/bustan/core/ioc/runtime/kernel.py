@@ -391,7 +391,20 @@ class ResolutionKernel:
         target = binding.target
         if isinstance(target, type) and isinstance(target, DurableProvider):
             request = self.scope_manager.active_request.get()
-            return (key[0], key[1], target.get_durable_context_key(request))
+            context_key = target.get_durable_context_key(request)
+            # Hashability is proven where the key is built, so the first resolve names
+            # the hook at fault. Calling hash() is the only honest test: a tuple holding
+            # a list satisfies the Hashable protocol and still raises, and whichever
+            # cache the key reached would report the failure without naming the hook.
+            try:
+                hash(context_key)
+            except TypeError as exc:
+                raise ProviderResolutionError(
+                    f"Durable provider {_qualname(key[1])} returned {context_key!r} from "
+                    "'get_durable_context_key', which cannot partition the durable cache "
+                    "because it is not hashable"
+                ) from exc
+            return (key[0], key[1], context_key)
         # A durable cache must never be keyed on id(request): CPython reuses object
         # ids, which hands one request's instance to a later, unrelated request.
         raise ProviderResolutionError(
