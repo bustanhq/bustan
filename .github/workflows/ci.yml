@@ -87,6 +87,34 @@ jobs:
       - name: Pytest with coverage of the injection kernel
         run: uv run pytest --cov=bustan.core --cov-report=term-missing --cov-fail-under=85
 
+  layering:
+    name: Package layering (advisory)
+    runs-on: ubuntu-latest
+    # Advisory only, and only until the violations it already reports are fixed. The check
+    # passes on a tree that respects the layer table; this tree does not yet, and the eleven
+    # imports it names are defects to close rather than entries to add to the table. Delete
+    # this line the moment the report is empty: an advisory layering check that stays advisory
+    # is a layering check nobody reads.
+    continue-on-error: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Check package layering
+        run: uv run python scripts/check_layering.py --check
+
   audit-repros:
     name: Audit repro harness (advisory)
     runs-on: ubuntu-latest
