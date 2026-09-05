@@ -132,7 +132,7 @@ Example supported imports:
 ```python
 from bustan import Application, Controller, Get, Injectable, Module, create_app, create_app_context
 from bustan.errors import ProviderResolutionError
-from bustan.testing import create_test_app, override_provider
+from bustan.testing import create_test_app, create_testing_module
 ```
 
 The generated reference for those stable modules lives in [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
