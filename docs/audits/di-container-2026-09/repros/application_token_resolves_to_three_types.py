@@ -52,16 +52,20 @@ def main() -> None:
     kinds["create_app"] = app.get(Probe).kind
     with TestClient(app) as client:
         kinds["http"] = client.get("/p/").json()["kind"]
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "headers": [],
-        "app": app.get_http_server(),
-    }
-    kinds["container.resolve(request=...)"] = app.container.resolve(
-        Probe, module=app.root_key, request=Request(scope)
-    ).kind
+        # Taken inside the lifespan: this probe asks what a container entered with a
+        # request answers, which is only a meaningful question while an application is
+        # running. Outside the block the application has been shut down, and resolving
+        # there is a different finding with its own refusal.
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [],
+            "app": app.get_http_server(),
+        }
+        kinds["container.resolve(request=...)"] = app.container.resolve(
+            Probe, module=app.root_key, request=Request(scope)
+        ).kind
     if len(set(kinds.values())) > 1:
         print(f"RESULT: RF-05 REPRODUCED - APPLICATION resolved to {kinds}")
     else:
