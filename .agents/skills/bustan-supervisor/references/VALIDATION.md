@@ -129,3 +129,30 @@ directory the repository has not used before needs an `__init__.py` beside it. A
 that lists `tests/unit/thing/test_thing.py` and nothing else makes its own acceptance
 unreachable inside `Owns`: the agent must create a file the ticket forbids. List the
 directory.
+
+## Check every acceptance criterion against the Owns list, one by one
+
+The recurring defect in these tickets is not a wrong criterion. It is a criterion that is
+right and unreachable: it describes a state of the repository that no edit inside `Owns`
+can produce. Three in one wave, all mine:
+
+- "importing the package pulls in nothing else" - unsatisfiable for any subpackage,
+  because Python runs the parent's `__init__` first. The agent had to invent a loader
+  that sidesteps the package name to make the criterion mean anything.
+- "every package has an explicit `__all__`" - while `Owns` listed only the seven
+  `__init__.py` files the ticket creates, leaving nine it may not touch.
+- "no module outside the adapters imports the web server" - while `core/**`, which holds
+  seventeen of those imports, was on the same ticket's **Must not touch** list.
+
+Each cost a round of correspondence and made a good delivery read as a partial one.
+
+Before dispatching, take the acceptance criteria one at a time and name the file each one
+would have to change. If that file is not in `Owns`, the ticket is wrong: either widen
+`Owns`, move the criterion to a follow-up, or rewrite it to describe what this ticket can
+actually make true. Do this last, after both lists are written, because it is a check on
+their agreement rather than on either alone.
+
+A criterion that survives this check has a second virtue: it tells the agent where to
+work. One that fails it tells the agent to go somewhere it has been forbidden, and the
+better the agent, the more time it spends discovering that the instruction contradicts
+itself.
