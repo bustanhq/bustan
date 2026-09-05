@@ -156,3 +156,28 @@ A criterion that survives this check has a second virtue: it tells the agent whe
 work. One that fails it tells the agent to go somewhere it has been forbidden, and the
 better the agent, the more time it spends discovering that the instruction contradicts
 itself.
+
+## Keep an Owns section to paths, and put every explanation behind a bold lead-in
+
+The ownership gate reads from the `Owns` heading to the first bold lead-in, markdown
+heading or rule, and pulls every backticked run out of everything in between. So prose
+inside the section is not ignored - it is parsed. A sentence explaining which test
+function changes contributes that function's name as a candidate path, and the gate
+refuses the whole list rather than guess.
+
+That refusal is correct and should not be worked around with `--owns`. Fix the ticket:
+
+- The `Owns` section is a bullet list of literal repository paths, one per line, and
+  nothing else. No trailing prose after an em-dash, no line numbers, no method names.
+- Everything a reader needs about those paths goes underneath, behind a bold lead-in of
+  its own - `**Notes on that list.**` works and terminates the section cleanly.
+- A path the ticket will create is still a path. Write it out.
+
+Two lists in one wave failed this: one named three test functions in trailing prose, and
+one said "the nine `__init__.py` files listed above", which is a cross-reference the gate
+cannot follow. Both parsed only after the prose moved behind a lead-in.
+
+Verify by running the parser rather than by reading. Every pattern should resolve to at
+least one existing file, or be a path the ticket is explicitly creating. A pattern that
+matches nothing and creates nothing is a typo the gate will not catch for you, because a
+pattern matching no file also flags no file as unowned.
