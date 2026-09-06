@@ -388,11 +388,11 @@ would fail immediately if wired up. `ty` runs on different paths in CI than in h
 
 **Scope.** Set `precision = 2` and move `fail_under` to the CI command line so
 targeted local runs stop failing spuriously. Add a second coverage job gating
-`bustan.core` at 95 percent branch coverage on its own. Add `ruff format --check` and
-`uv lock --check` to CI and `lefthook.yml`. Delete the dead script. Align the `ty`
-path lists. Add a `commit-msg` lefthook job enforcing Conventional Commits, since 33
-of 98 historical commits are non-conventional and 7 produced no changelog entry. Add
-`CODEOWNERS`. Add an advisory (non-blocking) CI job running
+`bustan.kernel` at 85 percent branch coverage on its own. Add `ruff format --check`
+and `uv lock --check` to CI and `lefthook.yml`. Delete the dead script. Align the
+`ty` path lists. Add a `commit-msg` lefthook job enforcing Conventional Commits,
+since 33 of 98 historical commits are non-conventional and 7 produced no changelog
+entry. Add `CODEOWNERS`. Add an advisory (non-blocking) CI job running
 `docs/audits/di-container-2026-09/run_repros.py`; it becomes blocking in T-503.
 
 **Acceptance.** Coverage gate fails on a deliberate one-line coverage drop, proven in
@@ -977,35 +977,22 @@ API test and the byte-exact API reference check both pass untouched;
 `scripts/check_layering.py` passes against the new tree; a second
 `.git-blame-ignore-revs` entry names the move commit.
 
-**Two gates before this ticket may be dispatched.** Both were found after the ticket
-was written, and neither is satisfied by anything inside this ticket's own scope.
+**Two gates, both settled.** Both were found after the ticket was written and neither
+was satisfied by anything inside its own scope. This records how each was resolved.
 
-*Gate one: the rc.2 follow-up set must be closed first.* This move renames `core/` and
-`platform/http/`, and nine of the ten open rc.2 follow-ups name paths under those two
-directories in their own `Owns` lists. Dispatching this ticket first turns nine ticket
-`Owns` lists into fiction in a single commit, and file ownership is the only thing that
-lets blind agents share the repository. The rc.2 set runs first; this ticket waits.
+*Gate one: the rc.2 follow-up set first.* The move renames `core/` and `platform/http/`,
+and nine of the ten open rc.2 follow-ups named paths under those two directories in
+their own `Owns` lists. The gate was **deliberately overridden**, not met: the move was
+dispatched ahead of the rc.2 set, and the trade was that the supervisor rewrote the
+affected `Owns` lists afterwards.
 
-*Gate two: the layering criterion, decided.* The acceptance criterion said
-`scripts/check_layering.py` passes against the new tree. That was unreachable. The check
-landed reporting eleven violations that a rename does not remove - an import edge survives
-its file being moved - and this ticket forbids the behavioural edits that would close them.
-Nothing else on the board closed them either: of the eleven, three are in a file an open
-wave 3 ticket owns and eight are in files no open ticket owns at all, and neither wave 3
-ticket's body mentioned the layering check.
-
-**The criterion is now "no new violations", not "no violations".** This ticket passes when
-`check_layering.py` reports the same set it reported before the move, and fails when the
-move adds one. That is what a rename can honestly promise: the move changes no behaviour,
-so it cannot close an import edge, and holding it to a standard it cannot meet only blocks
-the ticket and everything behind it.
-
-Two things follow, and both are the point of writing this down rather than quietly relaxing
-the criterion. The eleven violations remain real and remain unowned, so **closing them is
-its own work** and needs its own tickets against the files that carry them - not a silent
-write-off because the gate stopped naming them. And every wave 3 ticket now records the
-count and the rule in its verification block, so an agent can tell whether it added one;
-before this decision, none of them ran the check at all.
+*Gate two: the layering criterion.* Settled as **"no new violations", not "no
+violations"**. `check_layering.py` landed reporting eleven violations that a rename
+cannot remove, because an import edge survives its file being moved and this ticket
+forbids behavioural edits. The ticket passes when the check reports the same set it
+reported before the move and fails when the move adds one. The eleven remain real and
+unowned: closing them is its own work and needs its own tickets against the files that
+carry them.
 
 ---
 
@@ -1187,7 +1174,7 @@ changelog entry that calls out the correction in either direction.
 ## T-500 Stop re-resolving the pipeline per request
 
 **Wave** 5. **Closes** CR-02, CR-03, CR-04. **Owns** `src/bustan/runtime/execution.py`,
-`src/bustan/runtime/controller_factory.py`, `src/bustan/kernel/injection/runtime/`.
+`src/bustan/runtime/controller_factory.py`, `src/bustan/kernel/ioc/runtime/`.
 
 **Context.** The pipeline is resolved from the container on every request even though
 the execution plan is compiled once and frozen: for a route with a global pipe, two

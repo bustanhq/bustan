@@ -43,17 +43,25 @@ What that means for the supported testing surface:
 
 ## Internal Modules
 
-Everything outside the three stable modules is internal for compatibility purposes. That includes namespaces such as:
+Everything outside the three stable modules is internal for compatibility purposes. That sentence is the rule and it is the authority; the list below is the complete set of internal namespaces the package has today, maintained by hand against the top level of `src/bustan/`:
 
+- `bustan.adapters.*`
+- `bustan.addons.*`
 - `bustan.app.*`
-- `bustan.kernel.*`
-- `bustan.runtime.*`
-- `bustan.pipeline.*`
+- `bustan.cli.*`
+- `bustan.common.*`
 - `bustan.configuration.*`
+- `bustan.contracts.*`
+- `bustan.kernel.*`
+- `bustan.observability.*`
 - `bustan.openapi.*`
+- `bustan.pipeline.*`
+- `bustan.runtime.*`
 - `bustan.security.*`
 
 Those modules may change names, structure, signatures, or behavior between alpha releases without a deprecation window.
+
+`bustan.testing` is the one top-level namespace absent from that list, because it is one of the three stable modules above. If the package tree gains a namespace and this list has not caught up, the rule decides: it is internal.
 
 ## CLI And Scaffold Expectations
 
