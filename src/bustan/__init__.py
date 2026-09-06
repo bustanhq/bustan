@@ -38,7 +38,7 @@ from .common.decorators.parameter import (
 )
 from .common.decorators.route import Delete, Get, Patch, Post, Put
 from .common.types import ProviderScope as Scope
-from .config import ConfigModule, ConfigService
+from .configuration import ConfigModule, ConfigService
 from .contracts import (
     HttpFormData,
     HttpQueryParams,
@@ -48,7 +48,7 @@ from .contracts import (
 )
 
 # Core Errors
-from .core.errors import (
+from .kernel.errors import (
     BadRequestException,
     BustanError,
     ExportViolationError,
@@ -63,10 +63,10 @@ from .core.errors import (
     ProviderResolutionError,
     RouteDefinitionError,
 )
-from .core.ioc.scopes import DurableProvider
+from .kernel.ioc.scopes import DurableProvider
 
 # Core IoC System
-from .core.ioc.tokens import (
+from .kernel.ioc.tokens import (
     APP_FILTER,
     APP_GUARD,
     APP_INTERCEPTOR,
@@ -79,20 +79,20 @@ from .core.ioc.tokens import (
 )
 
 # Lifecycle Protocols
-from .core.lifecycle.hooks import (
+from .kernel.lifecycle.hooks import (
     BeforeApplicationShutdown,
     OnApplicationBootstrap,
     OnApplicationShutdown,
     OnModuleDestroy,
     OnModuleInit,
 )
-from .core.module.builder import ConfigurableModuleBuilder
+from .kernel.module.builder import ConfigurableModuleBuilder
 
 # Core Module System
-from .core.module.decorators import Global, Module
-from .core.module.dynamic import DynamicModule
-from .core.module.graph import ModuleGraph, ModuleNode
-from .logger import Logger, LoggerService, LogLevel
+from .kernel.module.decorators import Global, Module
+from .kernel.module.dynamic import DynamicModule
+from .kernel.module.graph import ModuleGraph, ModuleNode
+from .observability import Logger, LoggerService, LogLevel
 from .openapi import (
     ApiBearerAuth,
     ApiBody,
@@ -127,7 +127,7 @@ from .pipeline import (
 )
 from .pipeline.decorators import UseFilters, UseGuards, UseInterceptors, UsePipes
 from .pipeline.middleware import Middleware, MiddlewareConsumer
-from .platform.http.versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType
+from .runtime.versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType
 from .security import CorsOptions, SkipThrottle, ThrottlerGuard, ThrottlerModule, ThrottlerStorage
 
 __all__ = (

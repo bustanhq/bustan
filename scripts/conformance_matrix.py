@@ -1,6 +1,6 @@
 """Run the adapter conformance suite over every adapter and require identical results.
 
-The suite lives in ``bustan.platform.http.conformance``; this script is what runs it
+The suite lives in ``bustan.runtime.conformance``; this script is what runs it
 against more than one adapter and refuses to pass when two of them answer the same case
 differently. One adapter passing its own suite proves the suite runs. Two adapters
 answering every case identically is what makes the abstraction a fact.
@@ -32,7 +32,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from bustan.platform.http.conformance import (
+from bustan.runtime.conformance import (
     ADAPTER_NAMES,
     AdapterConformanceResult,
     describe_difference,

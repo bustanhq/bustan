@@ -7,8 +7,8 @@ from typing import Annotated, Any, cast
 from pydantic import BaseModel
 
 from bustan import Body, Controller, Get, Module, Param, Post, Query
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 from bustan.openapi import (
     ApiBody,
     ApiOperation,
@@ -19,7 +19,7 @@ from bustan.openapi import (
     DocumentBuilder,
 )
 from bustan.openapi.schema_builder import generate_schema
-from bustan.platform.http.compiler import compile_route_contracts
+from bustan.runtime.compiler import compile_route_contracts
 
 
 class CatDto(BaseModel):

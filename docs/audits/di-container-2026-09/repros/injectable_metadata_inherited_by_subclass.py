@@ -4,8 +4,8 @@ the parent's token. The subclass is never constructed and cannot be resolved.
 """
 
 from bustan import Injectable, Module, create_app_context
-from bustan.core.ioc.registry import normalize_provider
 from bustan.errors import ProviderResolutionError
+from bustan.kernel.ioc.registry import normalize_provider
 
 
 @Injectable()

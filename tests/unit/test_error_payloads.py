@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bustan.core.errors import BadRequestException, ParameterBindingError
+from bustan.kernel.errors import BadRequestException, ParameterBindingError
 
 
 def test_parameter_binding_error_to_payload_includes_optional_fields_when_present() -> None:

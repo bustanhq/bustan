@@ -21,8 +21,8 @@ from bustan import (
     Module,
     Post,
 )
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 from bustan.openapi import DocumentBuilder
 from bustan.openapi.schema_builder import (
     _annotation_to_schema,
@@ -32,8 +32,8 @@ from bustan.openapi.schema_builder import (
     _register_model_schema,
     generate_schema,
 )
-from bustan.platform.http.compiler import DeclaredResponse, ResponsePlan, compile_route_contracts
-from bustan.platform.http.params import (
+from bustan.runtime.compiler import DeclaredResponse, ResponsePlan, compile_route_contracts
+from bustan.runtime.params import (
     HandlerBindingPlan,
     ParameterBinding,
     ParameterBindingMode,

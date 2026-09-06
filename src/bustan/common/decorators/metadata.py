@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TypeVar, cast
 
 from ...common.constants import BUSTAN_METADATA_ATTR_PREFIX
-from ...core.utils import _get_metadata
+from ...kernel.utils import _get_metadata
 
 DecoratedT = TypeVar("DecoratedT", bound=object)
 MetadataT = TypeVar("MetadataT")

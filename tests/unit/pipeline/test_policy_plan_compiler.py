@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 
 from bustan import Controller, Get, Module, SkipThrottle
-from bustan.core.errors import RouteDefinitionError
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
-from bustan.platform.http.compiler import compile_route_contracts
+from bustan.kernel.errors import RouteDefinitionError
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
+from bustan.runtime.compiler import compile_route_contracts
 from bustan.security import (
     Audit,
     Auth,

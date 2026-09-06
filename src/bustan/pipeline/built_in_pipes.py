@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from ..core.errors import BadRequestException
+from ..kernel.errors import BadRequestException
 from .context import ExecutionContext
 from .pipes import Pipe
 

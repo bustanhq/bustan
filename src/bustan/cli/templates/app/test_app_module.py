@@ -1,4 +1,4 @@
-from bustan.core.module.metadata import get_module_metadata
+from bustan.kernel.module.metadata import get_module_metadata
 
 from $package_name.app_module import AppModule
 from $package_name.app_controller import AppController

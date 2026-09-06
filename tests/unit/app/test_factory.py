@@ -12,7 +12,7 @@ from starlette.applications import Starlette
 
 from bustan import Application, Controller, Get, Injectable, Module, create_app
 from bustan.adapters.asgi import AsgiAdapter
-from bustan.platform.http.adapter import AdapterFactory, AdapterRuntime
+from bustan.runtime.adapter import AdapterFactory, AdapterRuntime
 
 
 @Module()

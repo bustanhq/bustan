@@ -9,8 +9,8 @@ from starlette.routing import Route
 from bustan import Module
 from bustan.adapters.starlette import StarletteAdapter
 from bustan.app.application import Application
-from bustan.core.ioc.container import Container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.container import Container
+from bustan.kernel.module.graph import build_module_graph
 
 
 @pytest.fixture
@@ -37,7 +37,7 @@ def test_application_overrides(app_wrapper: Application) -> None:
     class DummyService:
         pass
 
-    from bustan.core.ioc.registry import normalize_provider
+    from bustan.kernel.ioc.registry import normalize_provider
 
     container = app_wrapper._container
     module_key = container.module_graph.root_key

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import FunctionType
 
-from ..core.utils import _get_metadata, _unwrap_handler
+from ..kernel.utils import _get_metadata, _unwrap_handler
 
 CONTROLLER_PIPELINE_ATTR = "__bustan_controller_pipeline_metadata__"
 HANDLER_PIPELINE_ATTR = "__bustan_handler_pipeline_metadata__"

@@ -8,7 +8,7 @@ import pytest
 
 from bustan.adapters.starlette import StarletteHttpRequest
 from bustan.common.types import RouteMetadata
-from bustan.core.module.dynamic import ModuleInstanceKey
+from bustan.kernel.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.context import (
     ArgumentsHost,
     ExecutionContext,
@@ -16,7 +16,7 @@ from bustan.pipeline.context import (
     ParameterContext,
     RequestContext,
 )
-from bustan.platform.http.metadata import ControllerRouteDefinition
+from bustan.runtime.metadata import ControllerRouteDefinition
 
 if TYPE_CHECKING:
     from tests.conftest import RequestFactory

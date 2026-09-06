@@ -11,8 +11,8 @@ from starlette.requests import Request
 from bustan.adapters.starlette import StarletteHttpRequest
 from bustan.common.types import RouteMetadata
 from bustan.contracts import HttpResponse, RateLimitDecision
-from bustan.core.errors import BadRequestException, GuardRejectedError, ParameterBindingError
-from bustan.core.module.dynamic import ModuleInstanceKey
+from bustan.kernel.errors import BadRequestException, GuardRejectedError, ParameterBindingError
+from bustan.kernel.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.context import ExecutionContext, RequestContext
 from bustan.pipeline.filters import (
     ExceptionFilter,
@@ -22,7 +22,7 @@ from bustan.pipeline.filters import (
     _problem_status,
     handle_exception,
 )
-from bustan.platform.http.metadata import ControllerRouteDefinition
+from bustan.runtime.metadata import ControllerRouteDefinition
 
 
 @pytest.mark.anyio

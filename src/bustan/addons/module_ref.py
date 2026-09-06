@@ -8,9 +8,9 @@ from ..app.application import ApplicationContext
 from ..common.decorators.injectable import Inject, Injectable
 from ..common.types import ProviderScope
 from ..contracts import HttpRequest
-from ..core.errors import ProviderResolutionError
-from ..core.ioc.tokens import APPLICATION
-from ..core.module.dynamic import ModuleKey
+from ..kernel.errors import ProviderResolutionError
+from ..kernel.ioc.tokens import APPLICATION
+from ..kernel.module.dynamic import ModuleKey
 
 
 @Injectable(scope=ProviderScope.TRANSIENT)

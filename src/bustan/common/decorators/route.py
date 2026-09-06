@@ -6,8 +6,8 @@ from collections.abc import Callable
 from types import FunctionType
 from typing import TypeVar
 
-from ...core.errors import RouteDefinitionError
-from ...core.utils import _normalize_path, _unwrap_handler
+from ...kernel.errors import RouteDefinitionError
+from ...kernel.utils import _normalize_path, _unwrap_handler
 from ..constants import BUSTAN_ROUTE_ATTR
 from ..types import HostInput, RouteMetadata, normalize_hosts
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TypeVar, cast
 
-from ..core.errors import InvalidPipelineError
-from ..core.utils import _unwrap_handler
+from ..kernel.errors import InvalidPipelineError
+from ..kernel.utils import _unwrap_handler
 from ..pipeline.metadata import (
     AuditPolicy,
     AuthPolicy,

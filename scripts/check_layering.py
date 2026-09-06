@@ -71,11 +71,11 @@ LAYERS: tuple[Layer, ...] = (
     # Protocols and neutral value types.
     Layer(name="contracts", packages=("contracts",)),
     # Injection, modules, lifecycle, and the decorators the kernel reads its metadata from.
-    Layer(name="kernel", packages=("common", "core")),
+    Layer(name="kernel", packages=("common", "kernel")),
     # Neutral request execution, the stages it runs and the observability it emits.
-    # `pipeline` and `platform` import each other at module scope, so neither can be ordered
+    # `pipeline` and `runtime` import each other at module scope, so neither can be ordered
     # below the other until that is untangled.
-    Layer(name="runtime", packages=("logger", "pipeline", "platform")),
+    Layer(name="runtime", packages=("observability", "pipeline", "runtime")),
     # The only layer permitted to import a web server.
     Layer(name="adapters", packages=("adapters",), may_import_web_server=True),
     # Everything assembled on top of the layers below.
@@ -85,7 +85,7 @@ LAYERS: tuple[Layer, ...] = (
             "addons",
             "app",
             "cli",
-            "config",
+            "configuration",
             "openapi",
             "security",
             "testing",

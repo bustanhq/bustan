@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import cast
 
 from ...app.bootstrap import _create_app
-from ...platform.http.registry import diff_route_snapshots
+from ...runtime.registry import diff_route_snapshots
 
 
 def register_routes_commands(

@@ -11,7 +11,7 @@ from bustan.adapters.starlette import StarletteAdapter
 from bustan.app.application import Application
 from bustan.contracts import AdapterRoute
 from bustan.errors import RouteDefinitionError
-from bustan.platform.http.adapter import CompiledAdapterRoute
+from bustan.runtime.adapter import CompiledAdapterRoute
 
 
 def test_create_app_returns_a_starlette_application_with_module_graph_state() -> None:

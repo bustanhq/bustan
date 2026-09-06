@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from ..contracts import HttpRequest
-from ..core.ioc.scopes import DurableProvider
-from ..core.module.dynamic import ModuleKey
-from ..core.utils import _display_name
+from ..kernel.ioc.scopes import DurableProvider
+from ..kernel.module.dynamic import ModuleKey
+from ..kernel.utils import _display_name
 
 # Where a request keeps the identifier minted for it. It lives on the request rather
 # than in a table the framework owns, so it is released exactly when the request is

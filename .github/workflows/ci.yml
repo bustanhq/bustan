@@ -63,7 +63,7 @@ jobs:
           path: coverage.xml
 
   coverage-core:
-    name: Coverage (bustan.core)
+    name: Coverage (bustan.kernel)
     runs-on: ubuntu-latest
 
     steps:
@@ -85,7 +85,7 @@ jobs:
       # kernel hide behind well-tested peripheral code. Branch coverage is on for
       # every run via [tool.coverage.run] in pyproject.toml.
       - name: Pytest with coverage of the injection kernel
-        run: uv run pytest --cov=bustan.core --cov-report=term-missing --cov-fail-under=85
+        run: uv run pytest --cov=bustan.kernel --cov-report=term-missing --cov-fail-under=85
 
   layering:
     name: Package layering (advisory)

@@ -122,7 +122,7 @@ Mainly used for graceful teardown in tests.
 
 #### `APPLICATION`
 
-Defined in `bustan.core.ioc.tokens`.
+Defined in `bustan.kernel.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
@@ -135,7 +135,7 @@ Current value: `InjectionToken('APPLICATION')`
 
 #### `APP_FILTER`
 
-Defined in `bustan.core.ioc.tokens`.
+Defined in `bustan.kernel.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
@@ -148,7 +148,7 @@ Current value: `InjectionToken('APP_FILTER')`
 
 #### `APP_GUARD`
 
-Defined in `bustan.core.ioc.tokens`.
+Defined in `bustan.kernel.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
@@ -161,7 +161,7 @@ Current value: `InjectionToken('APP_GUARD')`
 
 #### `APP_INTERCEPTOR`
 
-Defined in `bustan.core.ioc.tokens`.
+Defined in `bustan.kernel.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
@@ -174,7 +174,7 @@ Current value: `InjectionToken('APP_INTERCEPTOR')`
 
 #### `APP_PIPE`
 
-Defined in `bustan.core.ioc.tokens`.
+Defined in `bustan.kernel.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
@@ -293,7 +293,7 @@ No user-facing documentation provided.
 class BadRequestException(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a request fails explicit validation.
 
@@ -316,7 +316,7 @@ Current value: `Body`
 class BeforeApplicationShutdown(Protocol)
 ```
 
-Defined in `bustan.core.lifecycle.hooks`.
+Defined in `bustan.kernel.lifecycle.hooks`.
 
 Protocol for components that run before application shutdown begins.
 
@@ -376,7 +376,7 @@ Create an ``ExecutionContext``-backed custom parameter decorator.
 class BustanError(Exception)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Base exception for the framework.
 
@@ -447,7 +447,7 @@ rather than an error to raise.
 class DurableProvider(Protocol)
 ```
 
-Defined in `bustan.core.ioc.scopes`.
+Defined in `bustan.kernel.ioc.scopes`.
 
 Protocol for providers that derive a durable cache key from the request.
 
@@ -461,7 +461,7 @@ Protocol for providers that derive a durable cache key from the request.
 class DynamicModule
 ```
 
-Defined in `bustan.core.module.dynamic`.
+Defined in `bustan.kernel.module.dynamic`.
 
 Metadata overlay that compiles into a unique module instance.
 
@@ -563,7 +563,7 @@ handle.
 class ExportViolationError(InvalidModuleError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a module exports a provider it does not declare.
 
@@ -583,7 +583,7 @@ Return a decorator that registers a GET route.
 def Global() -> Callable[[ClassT], ClassT]
 ```
 
-Defined in `bustan.core.module.decorators`.
+Defined in `bustan.kernel.module.decorators`.
 
 Promote an existing module declaration to a global module.
 
@@ -608,7 +608,7 @@ Base class for authorization and policy gates.
 class GuardRejectedError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a guard blocks request execution.
 
@@ -760,7 +760,7 @@ Mark a class as a DI-managed provider with the selected scope.
 
 #### `INQUIRER`
 
-Defined in `bustan.core.ioc.tokens`.
+Defined in `bustan.kernel.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
@@ -777,7 +777,7 @@ Current value: `InjectionToken('INQUIRER')`
 class InjectionToken(Generic)
 ```
 
-Defined in `bustan.core.ioc.tokens`.
+Defined in `bustan.kernel.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
@@ -807,7 +807,7 @@ Base class for around-handler behaviors.
 class InvalidControllerError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a controller declaration is invalid.
 
@@ -817,7 +817,7 @@ Raised when a controller declaration is invalid.
 class InvalidModuleError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when module declarations or imports are invalid.
 
@@ -827,7 +827,7 @@ Raised when module declarations or imports are invalid.
 class InvalidPipelineError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when pipeline decorators or components are invalid.
 
@@ -837,7 +837,7 @@ Raised when pipeline decorators or components are invalid.
 class InvalidProviderError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a provider declaration is invalid.
 
@@ -847,7 +847,7 @@ Raised when a provider declaration is invalid.
 class LifecycleError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when application lifecycle hooks fail.
 
@@ -857,7 +857,7 @@ Raised when application lifecycle hooks fail.
 class LogLevel(IntEnum)
 ```
 
-Defined in `bustan.logger.logger`.
+Defined in `bustan.observability.logger`.
 
 Enum where members are also (and must be) ints
 
@@ -867,7 +867,7 @@ Enum where members are also (and must be) ints
 class Logger
 ```
 
-Defined in `bustan.logger.logger`.
+Defined in `bustan.observability.logger`.
 
 NestJS-style logger with context labels and level filtering.
 
@@ -888,7 +888,7 @@ NestJS-style logger with context labels and level filtering.
 class LoggerService(Logger)
 ```
 
-Defined in `bustan.logger.logger_service`.
+Defined in `bustan.observability.logger_service`.
 
 Injectable wrapper around the framework logger.
 
@@ -961,7 +961,7 @@ to fall back to what the root module can see.
 def Module(*, imports: Iterable[type[object] | DynamicModule] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[object | dict[str, Any]] | None = None, exports: Iterable[object] | None = None, is_global: bool = False) -> Callable[[ClassT], ClassT]
 ```
 
-Defined in `bustan.core.module.decorators`.
+Defined in `bustan.kernel.module.decorators`.
 
 Attach module metadata to a class without performing registration.
 
@@ -971,7 +971,7 @@ Attach module metadata to a class without performing registration.
 class ModuleGraph
 ```
 
-Defined in `bustan.core.module.graph`.
+Defined in `bustan.kernel.module.graph`.
 
 Validated view of the full module import graph.
 
@@ -990,7 +990,7 @@ Validated view of the full module import graph.
 class ModuleNode
 ```
 
-Defined in `bustan.core.module.graph`.
+Defined in `bustan.kernel.module.graph`.
 
 Validated graph node for one decorated module instance.
 
@@ -1008,7 +1008,7 @@ Validated graph node for one decorated module instance.
 class ModuleCycleError(InvalidModuleError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a module import cycle is detected.
 
@@ -1028,7 +1028,7 @@ Mark an ``Annotated`` dependency as optional without shadowing ``typing.Optional
 class OnApplicationBootstrap(Protocol)
 ```
 
-Defined in `bustan.core.lifecycle.hooks`.
+Defined in `bustan.kernel.lifecycle.hooks`.
 
 Protocol for components that run when the application starts.
 
@@ -1042,7 +1042,7 @@ Protocol for components that run when the application starts.
 class OnApplicationShutdown(Protocol)
 ```
 
-Defined in `bustan.core.lifecycle.hooks`.
+Defined in `bustan.kernel.lifecycle.hooks`.
 
 Protocol for components that run during application shutdown.
 
@@ -1056,7 +1056,7 @@ Protocol for components that run during application shutdown.
 class OnModuleDestroy(Protocol)
 ```
 
-Defined in `bustan.core.lifecycle.hooks`.
+Defined in `bustan.kernel.lifecycle.hooks`.
 
 Protocol for components that run when a module is torn down.
 
@@ -1070,7 +1070,7 @@ Protocol for components that run when a module is torn down.
 class OnModuleInit(Protocol)
 ```
 
-Defined in `bustan.core.lifecycle.hooks`.
+Defined in `bustan.kernel.lifecycle.hooks`.
 
 Protocol for components that run during module initialization.
 
@@ -1093,7 +1093,7 @@ Current value: `Param`
 class ParameterBindingError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when request parameters cannot be bound.
 
@@ -1232,7 +1232,7 @@ Return a decorator that registers a POST route.
 class ProviderResolutionError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when dependency resolution fails.
 
@@ -1274,7 +1274,7 @@ Read framework metadata with deterministic precedence rules.
 
 #### `REQUEST`
 
-Defined in `bustan.core.ioc.tokens`.
+Defined in `bustan.kernel.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
@@ -1287,7 +1287,7 @@ Current value: `InjectionToken('REQUEST')`
 
 #### `RESPONSE`
 
-Defined in `bustan.core.ioc.tokens`.
+Defined in `bustan.kernel.ioc.tokens`.
 
 A typed token representing a dependency for injection.
 
@@ -1304,7 +1304,7 @@ Current value: `InjectionToken('RESPONSE')`
 class RouteDefinitionError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when route metadata is malformed or duplicated.
 
@@ -1426,7 +1426,7 @@ Current value: `__VERSION_NEUTRAL__`
 class VersioningOptions
 ```
 
-Defined in `bustan.platform.http.versioning`.
+Defined in `bustan.runtime.versioning`.
 
 VersioningOptions(type: 'VersioningType', prefix: 'str' = 'v', header: 'str' = 'X-API-Version', default_version: 'str | None' = None)
 
@@ -1436,7 +1436,7 @@ VersioningOptions(type: 'VersioningType', prefix: 'str' = 'v', header: 'str' = '
 class VersioningType(StrEnum)
 ```
 
-Defined in `bustan.platform.http.versioning`.
+Defined in `bustan.runtime.versioning`.
 
 Enum where members are also (and must be) strings
 
@@ -1446,7 +1446,7 @@ Enum where members are also (and must be) strings
 class ConfigurableModuleBuilder(Generic)
 ```
 
-Defined in `bustan.core.module.builder`.
+Defined in `bustan.kernel.module.builder`.
 
 Build runtime-generated module classes with for_root-style helpers.
 
@@ -1463,7 +1463,7 @@ Build runtime-generated module classes with for_root-style helpers.
 class ConfigModule
 ```
 
-Defined in `bustan.config.config_module`.
+Defined in `bustan.configuration.config_module`.
 
 Factory helpers for configuration-backed dynamic modules.
 
@@ -1477,7 +1477,7 @@ Factory helpers for configuration-backed dynamic modules.
 class ConfigService
 ```
 
-Defined in `bustan.config.config_service`.
+Defined in `bustan.configuration.config_service`.
 
 Typed access to resolved configuration values.
 
@@ -1834,7 +1834,7 @@ from bustan.errors import ProviderResolutionError, RouteDefinitionError, BustanE
 class ExportViolationError(InvalidModuleError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a module exports a provider it does not declare.
 
@@ -1844,7 +1844,7 @@ Raised when a module exports a provider it does not declare.
 class GuardRejectedError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a guard blocks request execution.
 
@@ -1854,7 +1854,7 @@ Raised when a guard blocks request execution.
 class InvalidControllerError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a controller declaration is invalid.
 
@@ -1864,7 +1864,7 @@ Raised when a controller declaration is invalid.
 class InvalidModuleError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when module declarations or imports are invalid.
 
@@ -1874,7 +1874,7 @@ Raised when module declarations or imports are invalid.
 class InvalidPipelineError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when pipeline decorators or components are invalid.
 
@@ -1884,7 +1884,7 @@ Raised when pipeline decorators or components are invalid.
 class InvalidProviderError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a provider declaration is invalid.
 
@@ -1894,7 +1894,7 @@ Raised when a provider declaration is invalid.
 class LifecycleError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when application lifecycle hooks fail.
 
@@ -1904,7 +1904,7 @@ Raised when application lifecycle hooks fail.
 class ModuleCycleError(InvalidModuleError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a module import cycle is detected.
 
@@ -1914,7 +1914,7 @@ Raised when a module import cycle is detected.
 class BadRequestException(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when a request fails explicit validation.
 
@@ -1928,7 +1928,7 @@ Raised when a request fails explicit validation.
 class ParameterBindingError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when request parameters cannot be bound.
 
@@ -1942,7 +1942,7 @@ Raised when request parameters cannot be bound.
 class ProviderResolutionError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when dependency resolution fails.
 
@@ -1952,7 +1952,7 @@ Raised when dependency resolution fails.
 class RouteDefinitionError(BustanError)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Raised when route metadata is malformed or duplicated.
 
@@ -1962,6 +1962,6 @@ Raised when route metadata is malformed or duplicated.
 class BustanError(Exception)
 ```
 
-Defined in `bustan.core.errors`.
+Defined in `bustan.kernel.errors`.
 
 Base exception for the framework.
