@@ -5,7 +5,7 @@
 # narrower rule would resolve to the same person. Per GOVERNANCE.md, the pull
 # request that adds a maintainer is also the one that splits this file by area -
 # the public surface (src/bustan/__init__.py, errors, testing, docs/API_REFERENCE.md),
-# the injection kernel under src/bustan/core, and the build and release path
+# the injection kernel under src/bustan/kernel, and the build and release path
 # (.github, scripts, release, pyproject.toml, uv.lock, lefthook.yml) are the
 # boundaries to split along.
 

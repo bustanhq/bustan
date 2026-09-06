@@ -4,7 +4,7 @@
 """F-56: class overriding __new__ but keeping object.__init__ bypasses injection."""
 from dataclasses import dataclass
 from bustan import Injectable, Module, create_app_context
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 @Injectable
 class Dep:

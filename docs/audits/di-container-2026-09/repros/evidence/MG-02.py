@@ -5,10 +5,10 @@
 import warnings
 import logging
 from bustan import Module, Global, create_app_context
-from bustan.core.module.graph import build_module_graph
-from bustan.core.ioc.container import build_container
-from bustan.core.ioc.tokens import InjectionToken
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.ioc.tokens import InjectionToken
+from bustan.kernel.errors import ProviderResolutionError
 
 logging.basicConfig(level=logging.DEBUG)
 TOKEN = InjectionToken("CONFIG")

@@ -37,7 +37,7 @@ for s in sorted(sigs):
 flags["helper_duplicated_13x"] = len(out) == 13 and len(sigs) >= 4
 
 # (b) runner duck-types; framework never isinstance-checks lifecycle protocols
-runner_src = (ROOT / "src/bustan/core/lifecycle/runner.py").read_text()
+runner_src = (ROOT / "src/bustan/kernel/lifecycle/runner.py").read_text()
 uses_getattr = "getattr(module_instance, hook_name, None)" in runner_src and "getattr(instance, hook_name, None)" in runner_src
 src_isinstance = subprocess.run(
     ["grep", "-rn", r"isinstance(.*\(OnModuleInit\|OnApplicationBootstrap\|BeforeApplicationShutdown\|OnApplicationShutdown\|OnModuleDestroy\)", str(ROOT / "src")],
@@ -136,7 +136,7 @@ flags["builder_test_asserts_private_dict_only"] = (
 print(f"(c) test_testing_builder.py asserts private _pipeline_overrides dict and never attaches DefaultPipe to a route: {flags['builder_test_asserts_private_dict_only']}")
 
 # (d) weak ordering assertion in test_hooks.py
-hooks_src = (ROOT / "tests/unit/core/lifecycle/test_hooks.py").read_text().splitlines()
+hooks_src = (ROOT / "tests/unit/kernel/lifecycle/test_hooks.py").read_text().splitlines()
 line116 = hooks_src[115].strip()
 print(f"(d) test_hooks.py:116 = {line116!r}")
 # simulate the event list the runner would produce if provider bootstrap ran BEFORE module bootstrap
@@ -152,11 +152,11 @@ print(f"(d) mutated order (provider bootstrap before module bootstrap) still sat
 flags["hooks_test_does_not_pin_bootstrap_order"] = still_passes and line116 == 'assert "service:startup" in events'
 
 # (e) dynamic module cycle needs object.__setattr__ on a frozen dataclass
-from bustan.core.module.dynamic import DynamicModule  # noqa: E402
+from bustan.kernel.module.dynamic import DynamicModule  # noqa: E402
 
 params = dataclasses.fields(DynamicModule)
 frozen = DynamicModule.__dataclass_params__.frozen
-dyn_test = (ROOT / "tests/unit/core/module/test_dynamic_modules.py").read_text()
+dyn_test = (ROOT / "tests/unit/kernel/module/test_dynamic_modules.py").read_text()
 print(f"(e) DynamicModule frozen={frozen}; test uses object.__setattr__: {'object.__setattr__(dynamic_cycle' in dyn_test}")
 flags["cycle_test_uses_object_setattr_on_frozen"] = frozen and "object.__setattr__(dynamic_cycle" in dyn_test
 

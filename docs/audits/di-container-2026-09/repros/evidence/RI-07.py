@@ -11,7 +11,7 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Injectable, Module, create_app
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 APP_HOLDER: dict[str, Any] = {}
 
@@ -69,8 +69,8 @@ dead_under_lifespan = str(c["owner"]).startswith("unavailable")
 
 # Part C: direct container check -- with a request pushed, resolve(request=None)
 # still sees the outer request because push_request(None) is a no-op (scopes.py:101-104).
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 
 container = build_container(build_module_graph(AppModule))
 scope = {"type": "http", "method": "GET", "path": "/", "headers": [(b"x-user-id", b"alice")], "query_string": b""}

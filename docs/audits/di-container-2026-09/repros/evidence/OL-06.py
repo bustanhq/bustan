@@ -21,11 +21,11 @@ import inspect
 import anyio
 
 from bustan import DynamicModule, InjectionToken, Module, create_app_context
-from bustan.core.module.dynamic import ModuleInstanceKey
+from bustan.kernel.module.dynamic import ModuleInstanceKey
 from bustan.errors import ProviderResolutionError
 from bustan.testing import create_testing_module, override_provider
 from bustan.testing.builder import TestingModuleBuilder
-from bustan.core.ioc.container import Container
+from bustan.kernel.ioc.container import Container
 
 CONFIG = InjectionToken("CONFIG")
 

@@ -46,10 +46,10 @@ What that means for the supported testing surface:
 Everything outside the three stable modules is internal for compatibility purposes. That includes namespaces such as:
 
 - `bustan.app.*`
-- `bustan.core.*`
-- `bustan.platform.*`
+- `bustan.kernel.*`
+- `bustan.runtime.*`
 - `bustan.pipeline.*`
-- `bustan.config.*`
+- `bustan.configuration.*`
 - `bustan.openapi.*`
 - `bustan.security.*`
 

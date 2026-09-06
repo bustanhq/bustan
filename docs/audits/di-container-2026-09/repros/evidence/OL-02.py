@@ -10,7 +10,7 @@ from typing import Any, cast
 from starlette.testclient import TestClient
 
 from bustan import APP_GUARD, Controller, Get, Guard, Injectable, Module, create_app
-from bustan.core.errors import InvalidModuleError, ProviderResolutionError
+from bustan.kernel.errors import InvalidModuleError, ProviderResolutionError
 from bustan.pipeline.context import ExecutionContext
 from bustan.testing import create_test_app, override_provider
 

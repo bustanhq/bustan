@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 
 from bustan import Module, create_app_context
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 calls = {"sync_none": 0, "falsy_zero": 0, "async_none": 0, "async_value": 0}
 

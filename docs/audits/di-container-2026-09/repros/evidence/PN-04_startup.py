@@ -6,7 +6,7 @@
 import asyncio, traceback
 from bustan import Module
 from bustan.app.bootstrap import create_app_context
-from bustan.core.errors import BustanError
+from bustan.kernel.errors import BustanError
 
 
 class Svc:

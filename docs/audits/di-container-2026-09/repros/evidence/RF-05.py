@@ -10,7 +10,7 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 from bustan import Controller, Get, Injectable, Module, Inject, create_app, create_app_context
 from bustan.app.application import Application, ApplicationContext
-from bustan.core.ioc.tokens import APPLICATION
+from bustan.kernel.ioc.tokens import APPLICATION
 
 @Injectable(scope="transient")
 class AppProbe:

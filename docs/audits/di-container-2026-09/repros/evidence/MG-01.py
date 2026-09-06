@@ -16,8 +16,8 @@ from __future__ import annotations
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Global, Injectable, Module, create_app
-from bustan.core.errors import ProviderResolutionError
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.errors import ProviderResolutionError
+from bustan.kernel.module.graph import build_module_graph
 
 
 def build_two_hop():

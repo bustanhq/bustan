@@ -7,7 +7,7 @@ from typing import Any, cast
 from starlette.requests import Request
 from starlette.testclient import TestClient
 from bustan import Controller, Get, Injectable, Module, Scope, create_app
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 logging.basicConfig(level=logging.CRITICAL)
 

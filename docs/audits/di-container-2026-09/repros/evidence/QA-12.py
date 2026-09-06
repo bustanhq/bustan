@@ -1,6 +1,11 @@
 # ruff: noqa
 # Evidence script for finding QA-12 (workflow id F-78) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
+# Partly rewritten for the renamed package tree - core to kernel, platform/http to
+# runtime - because the files those names pointed at still exist under the new names.
+# The exception is the read of tests/unit/core/ioc/test_resolver.py below, left naming
+# the tree this script was measured against: that test file was deleted rather than
+# renamed and has no successor at any path, so the script stops there.
 """F-78: do the cited tests assert defective behaviour that the runtime actually exhibits?"""
 import re, anyio
 from pathlib import Path
@@ -13,10 +18,10 @@ def has(path, needle):
 checks = {}
 # (1) test_registry pins scope drop on use_value and raw TypeError
 checks["registry_test_pins_singleton_for_transient_use_value"] = has(
-    "tests/unit/core/ioc/test_registry.py", '{"provide": "value", "use_value": 1, "scope": "transient"}') and has(
-    "tests/unit/core/ioc/test_registry.py", "scope=ProviderScope.SINGLETON,\n    )\n    assert normalize_provider(\n        {\"provide\": \"alias\"")
-checks["registry_test_expects_TypeError"] = has("tests/unit/core/ioc/test_registry.py", 'pytest.raises(TypeError, match="provide")')
-from bustan.core.ioc.registry import normalize_provider
+    "tests/unit/kernel/ioc/test_registry.py", '{"provide": "value", "use_value": 1, "scope": "transient"}') and has(
+    "tests/unit/kernel/ioc/test_registry.py", "scope=ProviderScope.SINGLETON,\n    )\n    assert normalize_provider(\n        {\"provide\": \"alias\"")
+checks["registry_test_expects_TypeError"] = has("tests/unit/kernel/ioc/test_registry.py", 'pytest.raises(TypeError, match="provide")')
+from bustan.kernel.ioc.registry import normalize_provider
 from bustan.common.types import ProviderScope
 b = normalize_provider({"provide": "value", "use_value": 1, "scope": "transient"}, object)
 checks["runtime_drops_explicit_scope_on_use_value"] = b.scope is ProviderScope.SINGLETON
@@ -31,13 +36,13 @@ checks["resolver_test_hands_RESPONSE_to_plain_owner"] = bool(re.search(
     r'token=RESPONSE.*?owner_is_controller=False,\s*is_request_scoped=False,\s*is_durable_scoped=False,\s*\) is response', t, re.S))
 
 # (3) test_exception_filters: REQUEST-scoped provider into default controller, asserts 500 only
-t = (repo / "tests/integration/platform/test_exception_filters.py").read_text()
+t = (repo / "tests/integration/runtime/test_exception_filters.py").read_text()
 checks["filters_test_composes_request_provider_into_singleton_controller"] = (
     "@Injectable(scope=Scope.REQUEST)\n    class FailingService" in t and '@Controller("/fails")\n    class FailingController' in t
     and "assert response.status_code == 500" in t)
 
 # (4) test_dynamic_modules: re-export only checked via available_providers; two same-token dynamic imports no winner assertion
-t = (repo / "tests/unit/core/module/test_dynamic_modules.py").read_text()
+t = (repo / "tests/unit/kernel/module/test_dynamic_modules.py").read_text()
 checks["dynamic_reexport_only_available_providers"] = ("@Module(imports=[mid_dynamic], exports=[DeepService])" in t
     and "assert DeepService in top_node.available_providers" in t and "resolve(DeepService" not in t.split("def test_dynamic_module_nested_expansion")[1].split("def test_")[0])
 seg = t.split("def test_dynamic_module_unique_identities")[1].split("def test_")[0]
@@ -64,9 +69,9 @@ print("close() events:", events)
 checks["runtime_close_skips_before_application_shutdown"] = "before" not in events
 
 # (6) metadata inheritance policy: @Module/@Controller not inherited (tested); @Injectable inherited (untested)
-checks["metadata_test_pins_non_inheritance"] = has("tests/unit/core/module/test_metadata.py", "def test_module_metadata_is_not_inherited_by_default")
+checks["metadata_test_pins_non_inheritance"] = has("tests/unit/kernel/module/test_metadata.py", "def test_module_metadata_is_not_inherited_by_default")
 from bustan import Injectable
-from bustan.core.module.metadata import get_module_metadata
+from bustan.kernel.module.metadata import get_module_metadata
 @Injectable(scope="request")
 class Base: pass
 class Derived(Base): pass
@@ -77,7 +82,7 @@ class BM: pass
 class DM(BM): pass
 checks["runtime_module_metadata_not_inherited"] = get_module_metadata(DM) is None
 import subprocess
-grep = subprocess.run(["grep", "-rn", "Injectable", str(repo / "tests/unit/core/module/test_metadata.py")], capture_output=True, text=True)
+grep = subprocess.run(["grep", "-rn", "Injectable", str(repo / "tests/unit/kernel/module/test_metadata.py")], capture_output=True, text=True)
 checks["no_injectable_inheritance_test_in_test_metadata"] = grep.stdout.strip() == ""
 
 for k, v in checks.items():

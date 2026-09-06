@@ -10,8 +10,8 @@ from typing import Annotated, Any, cast
 import anyio
 
 from bustan import INQUIRER, Inject, Injectable, Module, Scope, create_app_context
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 from bustan.errors import LifecycleError, ProviderResolutionError
 
 

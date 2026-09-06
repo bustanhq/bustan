@@ -4,11 +4,11 @@
 """F-28: DynamicModule identity is id()-based."""
 from bustan import Injectable, Module, create_app
 from bustan.addons.module_ref import ModuleRef
-from bustan.core.module.dynamic import DynamicModule
-from bustan.core.module.graph import build_module_graph
-from bustan.core.ioc.container import build_container
-from bustan.core.ioc.tokens import InjectionToken
-from bustan.core.errors import InvalidModuleError
+from bustan.kernel.module.dynamic import DynamicModule
+from bustan.kernel.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.ioc.tokens import InjectionToken
+from bustan.kernel.errors import InvalidModuleError
 
 TOKEN = InjectionToken("OPTS")
 

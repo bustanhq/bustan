@@ -9,7 +9,7 @@ from __future__ import annotations
 import anyio
 
 from bustan import Injectable, Module, create_app_context
-from bustan.core.errors import LifecycleError, ProviderResolutionError
+from bustan.kernel.errors import LifecycleError, ProviderResolutionError
 from bustan.testing import create_testing_module
 
 checks: dict[str, bool] = {}

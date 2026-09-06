@@ -7,7 +7,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.testclient import TestClient
 from bustan import Controller, Get, Injectable, Module, create_app
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 
 @Injectable(scope="request")

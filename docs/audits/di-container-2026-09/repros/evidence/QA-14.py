@@ -1,6 +1,12 @@
 # ruff: noqa
 # Evidence script for finding QA-14 (workflow id F-80) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
+# Left naming the pre-rename package tree, on purpose. The packages were renamed after
+# this ran - core to kernel, platform/http to runtime, logger to observability, config
+# to configuration - but both files this script measures, tests/unit/core/ioc/test_resolver.py
+# and src/bustan/core/ioc/resolver.py, were deleted rather than renamed and have no
+# successor at any path. Renaming the names around it would not let it run, and would
+# claim it had measured a tree it never saw.
 """F-80: resolver kernel is tested through private seams; several public paths have no coverage.
 
 Part 1: count direct private-method calls in tests/unit/core/ioc/test_resolver.py.

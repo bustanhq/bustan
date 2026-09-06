@@ -13,8 +13,12 @@ They differ from the scripts one directory up:
   execute them.
 - A few generate small helper packages next to themselves at run time
   (`_gen_*` directories); delete those after running.
-- Some use internal modules (`bustan.core.*`, `bustan.app.bootstrap._create_app`)
+- Some use internal modules (`bustan.kernel.*`, `bustan.app.bootstrap._create_app`)
   where the public surface has no equivalent, which is noted in the report.
+- Six of them - `CR-05`, `QA-01`, `QA-02`, `QA-11`, `QA-12`, `QA-14` - still name the
+  package tree as it stood when they ran, because each measures a module or test file
+  that was later deleted rather than renamed. Their header comments say so. Every other
+  script names the current tree.
 
 Run one with:
 

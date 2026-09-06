@@ -5,7 +5,7 @@
 from __future__ import annotations
 from typing import Annotated
 from bustan import Injectable, Module, Inject, OptionalDep, create_app_context
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 class NotProvided:
     pass

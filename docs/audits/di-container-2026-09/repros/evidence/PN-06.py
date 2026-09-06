@@ -5,8 +5,8 @@
 instead of InvalidProviderError (unhashable provide tokens, bad scope strings).
 Also compare with @Injectable(scope='Request') which raises InvalidProviderError."""
 from bustan import Injectable, Module
-from bustan.core.errors import BustanError, InvalidProviderError
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.errors import BustanError, InvalidProviderError
+from bustan.kernel.module.graph import build_module_graph
 
 results = []
 

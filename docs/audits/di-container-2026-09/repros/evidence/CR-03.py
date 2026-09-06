@@ -23,9 +23,9 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Inject, Injectable, Module, Scope, create_app
-from bustan.core.ioc.container import build_container
-from bustan.core.ioc.tokens import APPLICATION
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.ioc.tokens import APPLICATION
+from bustan.kernel.module.graph import build_module_graph
 
 CTOR_SLEEP = 1.0
 

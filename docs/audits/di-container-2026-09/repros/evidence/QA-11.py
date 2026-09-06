@@ -1,6 +1,13 @@
 # ruff: noqa
 # Evidence script for finding QA-11 (workflow id F-77) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
+# Left naming the pre-rename package tree, on purpose. The packages were renamed after
+# this ran - core to kernel, platform/http to runtime, logger to observability, config
+# to configuration - but one of the per-file coverage rows it collects is for
+# src/bustan/core/ioc/resolver.py, which was deleted rather than renamed and has no
+# successor at any path. Renaming the four rows around it would leave the set it reports
+# silently short of the one it was written to report, and would claim it had measured a
+# tree it never saw.
 """F-77: coverage gate prints FAIL but exits 0 because pytest-cov compares with precision=0 rounding."""
 import os, re, subprocess, sys, tempfile
 from coverage.results import should_fail_under

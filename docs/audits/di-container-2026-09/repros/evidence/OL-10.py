@@ -8,7 +8,7 @@ import inspect
 import warnings
 
 from bustan import Module, create_app_context
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 TOKEN = object()
 

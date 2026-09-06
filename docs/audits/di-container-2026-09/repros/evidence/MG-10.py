@@ -22,7 +22,7 @@ if len(sys.argv) > 1 and sys.argv[1] == CHILD:
     import anyio
 
     from bustan import Injectable, Module
-    from bustan.core.module.metadata import get_module_metadata
+    from bustan.kernel.module.metadata import get_module_metadata
     from bustan.app.bootstrap import create_app_context
 
     # allocate a variable amount of garbage first so class addresses (and so hashes) differ
@@ -76,10 +76,10 @@ results["set_order_varies"] = len(orders) > 1
 
 print("--- 2. single provider dict passed as providers= ---")
 from bustan import Injectable, Module  # noqa: E402
-from bustan.core.errors import InvalidModuleError, InvalidProviderError  # noqa: E402
-from bustan.core.ioc.tokens import InjectionToken  # noqa: E402
-from bustan.core.module.graph import build_module_graph  # noqa: E402
-from bustan.core.module.metadata import get_module_metadata  # noqa: E402
+from bustan.kernel.errors import InvalidModuleError, InvalidProviderError  # noqa: E402
+from bustan.kernel.ioc.tokens import InjectionToken  # noqa: E402
+from bustan.kernel.module.graph import build_module_graph  # noqa: E402
+from bustan.kernel.module.metadata import get_module_metadata  # noqa: E402
 
 TOK = InjectionToken("X")
 try:

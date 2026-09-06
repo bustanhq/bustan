@@ -79,7 +79,7 @@ async def main() -> None:
     print("instantiate_class(FakeUserService, module=UsersModule) ->", type(inst).__name__, "db:", type(inst.db).__name__)
     checks["control_declaring_module_works"] = isinstance(inst, FakeUserService)
     # and the override manager does know the declaring module:
-    from bustan.core.ioc.overrides import OverrideManager
+    from bustan.kernel.ioc.overrides import OverrideManager
 
     om = ctx.container.override_manager
     print("OverrideManager resolves declaring module ->", om._resolve_override_key(UserService, None)[0].__name__)

@@ -12,9 +12,9 @@ import anyio
 from starlette.requests import Request
 
 from bustan import Injectable, Module, Scope
-from bustan.core.errors import ProviderResolutionError
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.errors import ProviderResolutionError
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 
 calls: list[int] = []
 counter = itertools.count()

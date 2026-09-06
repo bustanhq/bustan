@@ -18,8 +18,8 @@ from starlette.testclient import TestClient
 
 from bustan import Injectable, Module, create_app, create_app_context
 from bustan.app.application import ApplicationContext
-from bustan.core.ioc.scopes import ScopeManager
-from bustan.core.lifecycle.manager import LifecycleManager
+from bustan.kernel.ioc.scopes import ScopeManager
+from bustan.kernel.lifecycle.manager import LifecycleManager
 from bustan.errors import LifecycleError
 
 events: list[str] = []
