@@ -5,10 +5,12 @@ import builtins
 import importlib
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
+from xml.etree import ElementTree
 
 import pytest
 
@@ -61,6 +63,45 @@ def test_init_creates_expected_files(tmp_path: Path, capsys) -> None:
     assert "uv add --dev ty ruff pytest" in stdout
     assert "uv run start" in stdout
     assert "uv run dev" in stdout
+
+
+def test_init_writes_tests_pytest_can_collect_and_run(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "hello-bustan")
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        assert cli_main_module.main(["init"]) == 0
+    finally:
+        os.chdir(old_cwd)
+
+    report_path = tmp_path / "junit.xml"
+    environment = dict(os.environ)
+    environment.pop("PYTEST_ADDOPTS", None)
+    environment["PYTHONPATH"] = str(tmp_path / "src")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "no:cacheprovider",
+            f"--junit-xml={report_path}",
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    suite = ElementTree.parse(report_path).getroot().find("testsuite")
+    assert suite is not None, completed.stdout
+    assert suite.get("tests") == "3", completed.stdout
+    assert suite.get("errors") == "0", completed.stdout
+    # The collection above is what proves it; this states the cause. An __init__.py here
+    # would make tests/<package_name> importable as <package_name>, and pytest's default
+    # import mode puts its parent first on sys.path, shadowing src/<package_name>.
+    assert not (tmp_path / "tests" / "hello_bustan" / "__init__.py").exists()
 
 
 def test_init_adds_scripts_to_pyproject(tmp_path: Path) -> None:

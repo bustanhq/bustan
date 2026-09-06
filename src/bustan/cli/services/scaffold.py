@@ -39,22 +39,22 @@ def init_project(*, package_name: str) -> None:
     template_vars = {"project_name": project_name, "package_name": package_name}
     templates_root = Path(__file__).parent.parent / "templates" / "app"
 
+    # The tests directory is deliberately not a package. An __init__.py here would make
+    # tests/<package_name> importable as <package_name>, and pytest's default import mode
+    # puts its parent first on sys.path, so it would shadow src/<package_name> and the
+    # generated tests could not import the code they test.
     source_files = {
         cwd / "README.md": "README.md",
         package_directory / "__init__.py": "app_init.py",
         package_directory / "app_module.py": "app_module.py",
         package_directory / "app_controller.py": "app_controller.py",
         package_directory / "app_service.py": "app_service.py",
-        tests_directory / "__init__.py": None,
         tests_directory / "test_app_controller.py": "test_app_controller.py",
         tests_directory / "test_app_service.py": "test_app_service.py",
         tests_directory / "test_app_module.py": "test_app_module.py",
     }
 
     for file_path, template_name in source_files.items():
-        if template_name is None:
-            file_path.touch()
-            continue
         if file_path.exists() and file_path.name == "README.md":
             continue
         template_path = templates_root / template_name
