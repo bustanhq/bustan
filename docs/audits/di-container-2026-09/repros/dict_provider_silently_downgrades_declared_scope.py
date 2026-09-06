@@ -4,7 +4,7 @@ class is then shared by every request.
 """
 
 from bustan import Injectable, InjectionToken, Module, Scope
-from bustan.core.ioc.registry import normalize_provider
+from bustan.kernel.ioc.registry import normalize_provider
 
 
 @Injectable(scope=Scope.REQUEST)
