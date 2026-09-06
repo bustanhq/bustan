@@ -173,6 +173,108 @@ jobs:
       - name: Run audit repro harness
         run: uv run python docs/audits/di-container-2026-09/run_repros.py
 
+  dependency-audit:
+    name: Dependency audit (advisory)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      # Exported from the committed lockfiles rather than resolved afresh, so the audit
+      # reads what a checkout actually installs. All seven are exported, not just the
+      # root: each example is a standalone uv project whose lockfile resolves its own
+      # versions, and those already differ from the root's, so a root-only audit would
+      # miss an advisory that only the examples carry. `bustan` itself is dropped because
+      # the examples depend on it by path, which has no release to hold an advisory.
+      # A failed export is a broken lockfile, not a finding, so this step blocks.
+      - name: Export the resolved dependency sets
+        run: |
+          mkdir -p dependency-audit
+          for project in . examples/*/; do
+            case "$project" in
+              .) name=root ;;
+              *) name="$(basename "$project")" ;;
+            esac
+            uv export --frozen --no-emit-project --no-emit-package bustan \
+              --all-groups --format requirements-txt \
+              --project "$project" --output-file "dependency-audit/$name.requirements.txt" \
+              --quiet
+          done
+
+      # Advisory, not blocking, and deliberately so. An advisory is published against a
+      # version this repository already depends on; it is not introduced by the pull
+      # request that happens to be open on the day it lands. Blocking would hand an
+      # upstream disclosure to whoever pushes next as a red build, and the fix - raise the
+      # floor, relock - does not belong inside their unrelated change. The finding goes to
+      # the run summary instead, and `docs/RELEASE_CHECKLIST.md` makes reading that summary
+      # a release step, which is the point at which acting on it is somebody's job. The
+      # layering step above takes the same shape for the same reason.
+      - name: Audit the resolved dependency sets
+        id: audit
+        continue-on-error: true
+        run: |
+          status=0
+          : > audit-report.txt
+          for requirements in dependency-audit/*.requirements.txt; do
+            name="$(basename "$requirements" .requirements.txt)"
+            echo "=== $name" >> audit-report.txt
+            if uvx pip-audit --requirement "$requirements" --disable-pip --format columns \
+                 > findings.txt 2> findings.err; then
+              echo "No known vulnerabilities." >> audit-report.txt
+            else
+              status=1
+              if [ -s findings.txt ]; then
+                # Identical rows are collapsed because the advisory service reports one
+                # advisory once per alias it carries, and a reader needs the advisory, the
+                # package and the fixed version once each, not a count inflated by aliases.
+                awk '!seen[$0]++' findings.txt >> audit-report.txt
+              else
+                cat findings.err >> audit-report.txt
+              fi
+            fi
+            echo >> audit-report.txt
+          done
+          cat audit-report.txt
+          exit "$status"
+
+      # The report belongs on the run summary rather than only inside a step log, because a
+      # step whose failure does not stop the job is a step nobody opens. The clean report is
+      # written too: the release checklist asks for the audit's result, and "nothing found in
+      # these seven lockfiles" is that result, where a green checks list alone is not.
+      - name: Summarise the dependency audit
+        env:
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          if [ "$AUDIT_OUTCOME" = "failure" ]; then
+            {
+              echo '### Dependency audit: advisory finding'
+              echo
+              echo 'A package resolved by a committed lockfile has a known advisory. Raise the'
+              echo 'floor past the fixed version and relock, in its own pull request.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo '### Dependency audit: clean'
+              echo
+              echo 'No advisory matches any package the committed lockfiles resolve to.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          {
+            echo
+            echo '```'
+            cat audit-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   supported-platforms:
     name: Supported Platform (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

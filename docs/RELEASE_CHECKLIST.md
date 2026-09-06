@@ -30,7 +30,14 @@ issues carry the classification labels the notes are grouped by.
 2. Confirm the supervisor's own verification passes on the merged branch, not only that
    CI was green on each pull request: the suite, the audit repro harness with no verdict
    moved, the examples, the API reference check and the link check.
-3. Confirm no release pull request or release bot is armed on `main`. One mechanism owns
+3. Read the `Dependency audit (advisory)` job's run summary in
+   [ci.yml](../.github/workflows/ci.yml) on the commit being tagged, rather than repeating
+   the audit by hand. The job audits the resolved dependency set of the root project and of
+   all six examples from their committed lockfiles, and it does not block, so a green checks
+   list is not the answer: the summary is. A finding names the advisory, the package, the
+   installed version and the fixed version. Raise the floor past the fixed version and
+   relock in its own pull request, then re-read the summary; do not tag over a finding.
+4. Confirm no release pull request or release bot is armed on `main`. One mechanism owns
    releases, and it is this one.
 
 ## Prepare The Release Commit
