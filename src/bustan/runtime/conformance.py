@@ -29,14 +29,13 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Annotated, Any, cast
+from typing import Annotated, Any, cast
 
 from ..adapters.asgi import AsgiAdapter
-from ..adapters.starlette import StarletteAdapter
 from ..app.bootstrap import create_app
 from ..common.decorators.controller import Controller
 from ..common.decorators.parameter import (
@@ -56,11 +55,8 @@ from ..pipeline.context import ExecutionContext
 from ..pipeline.decorators import UseFilters
 from ..pipeline.filters import ExceptionFilter
 from ..pipeline.middleware import Middleware, MiddlewareConsumer
-from .adapter import AbstractHttpAdapter, AdapterCapabilities
+from .adapter import AbstractHttpAdapter, AdapterCapabilities, AdapterRuntime
 from .versioning import VersioningOptions, VersioningType
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator as AsyncIteratorType
 
 # The header every case compares, whatever else it names: a response's media type is
 # part of the framework's contract rather than one transport's default.
@@ -734,61 +730,87 @@ MEDIA_TYPE_VERSIONING_CASES: tuple[ConformanceCase, ...] = (
 )
 
 
-class LifespanRecorder:
-    """A lifespan that records having been run, for the case that asks whether it was.
+@dataclass(slots=True)
+class ModuleLifecycleRecord:
+    """What the module graph's own lifecycle hooks have run, counted as they run.
 
-    The suite hands this to the adapter as the application's lifespan, so what is being
-    certified is the adapter's own obligation: run the lifespan it was constructed with,
-    startup before the first request reaches a handler and shutdown after the last one.
+    Nothing here is a lifespan. The record is written only by hooks the framework
+    invokes through the lifespan it built and handed the adapter, so a count that has
+    not moved means the module graph never started or never stopped, and no substitute
+    the suite wrote can move it in the framework's place.
     """
 
-    def __init__(self) -> None:
-        self.startups = 0
-        self.shutdowns = 0
-
-    @asynccontextmanager
-    async def __call__(self, _application: object) -> AsyncIteratorType[None]:
-        self.startups += 1
-        try:
-            yield
-        finally:
-            self.shutdowns += 1
+    module_inits: int = 0
+    application_shutdowns: int = 0
 
     def state(self) -> dict[str, object]:
-        """What the lifespan has done so far, as the cases compare it."""
+        """What the module graph has done so far, as the cases compare it."""
 
-        return {"startups": self.startups, "shutdowns": self.shutdowns}
+        return {
+            "module_inits": self.module_inits,
+            "application_shutdowns": self.application_shutdowns,
+        }
 
 
-def _build_lifespan_module(recorder: LifespanRecorder) -> type[object]:
-    """An application whose one route reports what its lifespan has done so far."""
+def _build_lifecycle_module(record: ModuleLifecycleRecord) -> type[object]:
+    """An application whose module keeps lifecycle hooks and whose route reports them."""
 
     @Controller("/lifespan")
     class LifespanController:
         @Get("/")
         def read(self) -> dict[str, object]:
-            return recorder.state()
+            return record.state()
 
     @Module(controllers=[LifespanController])
     class LifespanModule:
-        pass
+        def on_module_init(self) -> None:
+            record.module_inits += 1
+
+        def on_application_shutdown(self, _signal: str | None) -> None:
+            record.application_shutdowns += 1
 
     return LifespanModule
+
+
+class _LifespanAdapterFactory:
+    """Build the adapter under test out of the runtime the framework hands a factory.
+
+    A factory is how an adapter receives the lifespan the framework built, and the port
+    declares no constructor, so asking for it is a request an adapter may refuse. The
+    refusal is remembered because the framework, not the suite, calls the factory: the
+    ``TypeError`` a refusal raises arrives at the caller from application assembly,
+    where other causes raise the same type, and only a call that recorded a refusal here
+    may be reported as an adapter failing the case.
+    """
+
+    def __init__(self, adapter_class: Callable[..., AbstractHttpAdapter]) -> None:
+        self._adapter_class = adapter_class
+        self.refusal: TypeError | None = None
+
+    def __call__(self, runtime: AdapterRuntime) -> AbstractHttpAdapter:
+        try:
+            return self._adapter_class(lifespan=runtime.lifespan)
+        except TypeError as error:
+            self.refusal = error
+            raise
 
 
 LIFESPAN_STARTUP_CASE = ConformanceCase(
     name="lifespan_startup_runs_before_the_first_request",
     dimension="lifespan",
     request=ConformanceRequest(path="/lifespan"),
-    expected=_expect_json({"startups": 1, "shutdowns": 0}),
+    expected=_expect_json({"module_inits": 1, "application_shutdowns": 0}),
 )
 
 LIFESPAN_SHUTDOWN_CASE = ConformanceCase(
     name="lifespan_shutdown_runs_after_the_last_request",
     dimension="lifespan",
     request=ConformanceRequest(path="/lifespan"),
-    expected=_observation(None, {}, _canonical_json({"startups": 1, "shutdowns": 1})),
+    expected=_observation(
+        None, {}, _canonical_json({"module_inits": 1, "application_shutdowns": 1})
+    ),
 )
+
 
 SCENARIOS: tuple[ConformanceScenario, ...] = (
     ConformanceScenario("parameters", _build_parameter_module, PARAMETER_CASES),
@@ -840,17 +862,16 @@ def evaluate_adapter_conformance(adapter: AbstractHttpAdapter) -> AdapterConform
     )
 
 
-def _build_adapter(prototype: AbstractHttpAdapter, **options: object) -> AbstractHttpAdapter:
-    """Return a new adapter of the prototype's class, built with ``options``.
+def _build_adapter(prototype: AbstractHttpAdapter) -> AbstractHttpAdapter:
+    """Return a new adapter of the prototype's class, built the way the port allows.
 
-    The call is dynamic because the port says nothing about how an adapter is
-    constructed: what a constructor accepts is the adapter's own business today, so a
-    scenario that needs something at construction asks for it and reports a refusal
-    rather than assuming every adapter takes it.
+    The port says nothing about how an adapter is constructed, and the only thing it
+    can be assumed to accept is nothing at all, which is what a scenario needing no
+    lifespan asks for.
     """
 
     factory = cast("Callable[..., AbstractHttpAdapter]", type(prototype))
-    return factory(**options)
+    return factory()
 
 
 @contextmanager
@@ -889,25 +910,31 @@ def _run_scenario(
 
 
 def _run_lifespan_scenario(prototype: AbstractHttpAdapter) -> tuple[ConformanceCheck, ...]:
-    """Certify that the adapter runs the lifespan it was constructed with.
+    """Certify that the adapter runs the lifespan the framework built for the module graph.
 
-    An adapter is handed its lifespan when it is built rather than when routes are
-    registered, so this scenario constructs its own; an adapter whose constructor does
-    not accept one fails the case with that as the reason rather than crashing the run.
+    The adapter is not built here and then handed over. It is built by the framework,
+    from a factory, so the lifespan it receives is the one that starts and stops the
+    module graph and no substitute stands in for it: what the cases read is the count
+    the graph's own hooks kept. An adapter whose constructor will not take a lifespan
+    fails the case with that as the reason rather than crashing the run.
     """
 
-    recorder = LifespanRecorder()
+    record = ModuleLifecycleRecord()
+    factory = _LifespanAdapterFactory(cast("Callable[..., AbstractHttpAdapter]", type(prototype)))
     try:
-        adapter = _build_adapter(prototype, lifespan=recorder)
+        application = create_app(_build_lifecycle_module(record), adapter=factory)
     except TypeError as error:
+        # Assembly raises TypeError for its own reasons too, so only the refusal the
+        # factory recorded is read as this adapter failing the case.
+        if factory.refusal is None:
+            raise
         return (_failed_check(LIFESPAN_STARTUP_CASE, f"no lifespan on construction: {error}"),)
 
-    create_app(_build_lifespan_module(recorder), adapter=adapter)
-    with cast(Any, adapter.create_test_client()) as client:
+    with cast(Any, application.get_http_adapter().create_test_client()) as client:
         startup = _run_case(client, LIFESPAN_STARTUP_CASE)
 
     shutdown = _compare(
-        LIFESPAN_SHUTDOWN_CASE, _observation(None, {}, _canonical_json(recorder.state()))
+        LIFESPAN_SHUTDOWN_CASE, _observation(None, {}, _canonical_json(record.state()))
     )
     return (startup, shutdown)
 
@@ -1023,10 +1050,34 @@ def describe_difference(
     return tuple(differences)
 
 
+_STARLETTE_EXTRA_MISSING = (
+    "The starlette adapter needs the starlette extra, which is not installed.\n\n"
+    "Install it with:\n\n"
+    "    pip install 'bustan[starlette]'"
+)
+
+
 def load_adapter(name: str) -> AbstractHttpAdapter:
-    """Return a new adapter by name, for a caller that has only the name."""
+    """Return a new adapter by name, for a caller that has only the name.
+
+    A name no adapter answers to is a ``ValueError``, and a named adapter whose optional
+    dependency is absent is an ``ImportError`` saying what to install: the caller can
+    tell a typo from an incomplete installation without reading a traceback. The import
+    is deferred for that second reason as well as the first - importing this module must
+    not require a web server, or the half of the suite that needs none could not be run
+    without one installed.
+    """
 
     if name == "starlette":
+        try:
+            from ..adapters.starlette import StarletteAdapter
+        except ModuleNotFoundError as error:
+            # Only the absent extra becomes advice. Anything else missing underneath the
+            # adapter is a real import failure, and an install instruction would send the
+            # reader to fix the one thing that is not wrong.
+            if error.name not in {"starlette", "uvicorn"}:
+                raise
+            raise ImportError(_STARLETTE_EXTRA_MISSING) from error
         return StarletteAdapter()
     if name == "asgi":
         return AsgiAdapter()
