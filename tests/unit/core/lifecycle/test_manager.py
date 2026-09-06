@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pytest
 
-from bustan import Injectable, Module
+from bustan import Injectable, Module, Scope
 from bustan.core.errors import LifecycleError, ProviderResolutionError
 from bustan.core.ioc.container import Container, build_container
 from bustan.core.lifecycle.manager import LifecycleErrorGroup, LifecycleManager
@@ -172,7 +172,154 @@ async def test_shutdown_drops_the_instances_it_destroyed() -> None:
     before = container.resolve(Pool, module=AppModule)
     await manager.shutdown()
 
+    assert container.scope_manager.singletons == {}
+
+    await manager.startup()
     assert container.resolve(Pool, module=AppModule) is not before
+
+
+@pytest.mark.anyio
+async def test_resolution_between_a_shutdown_and_the_next_startup_is_refused() -> None:
+    @Injectable
+    class Pool:
+        def __init__(self) -> None:
+            self.opened = False
+
+        def on_module_init(self) -> None:
+            self.opened = True
+
+        def on_module_destroy(self) -> None:
+            self.opened = False
+
+    @Module(providers=[Pool], exports=[Pool])
+    class AppModule:
+        pass
+
+    manager, container = _manager_for(AppModule)
+    await manager.startup()
+    await manager.shutdown()
+
+    with pytest.raises(ProviderResolutionError) as raised:
+        container.resolve(Pool, module=AppModule)
+
+    message = str(raised.value)
+    assert "Pool" in message
+    assert "shut down" in message
+    # The state is not terminal, so the message has to say what makes it resolvable
+    # again rather than reading as though the container were spent.
+    assert "Start the application again" in message
+
+
+@pytest.mark.anyio
+async def test_every_kind_of_binding_is_refused_between_a_shutdown_and_a_startup() -> None:
+    # One rule for all bindings. A transient provider and a value provider run no
+    # initialization hook of their own, but which kind of binding declares a token is
+    # the declaring module's business: making resolvability after shutdown depend on it
+    # would let a module change when its consumers may resolve without telling them.
+    @Injectable(scope=Scope.TRANSIENT)
+    class Ticket:
+        pass
+
+    @Module(
+        providers=[Ticket, {"provide": "config", "use_value": {"dsn": "sqlite://"}}],
+        exports=[Ticket, "config"],
+    )
+    class AppModule:
+        pass
+
+    manager, container = _manager_for(AppModule)
+    await manager.startup()
+    await manager.shutdown()
+
+    for token in (Ticket, "config"):
+        with pytest.raises(ProviderResolutionError, match="has been shut down"):
+            container.resolve(token, module=AppModule)
+
+
+@pytest.mark.anyio
+async def test_the_next_startup_makes_the_application_resolvable_again() -> None:
+    events: list[str] = []
+
+    @Injectable
+    class Pool:
+        def __init__(self) -> None:
+            self.opened = False
+
+        def on_module_init(self) -> None:
+            self.opened = True
+            events.append("open")
+
+        def on_module_destroy(self) -> None:
+            self.opened = False
+            events.append("close")
+
+    @Module(providers=[Pool], exports=[Pool])
+    class AppModule:
+        pass
+
+    manager, container = _manager_for(AppModule)
+
+    await manager.startup()
+    first = cast(Any, container.resolve(Pool, module=AppModule))
+    await manager.shutdown()
+
+    with pytest.raises(ProviderResolutionError, match="has been shut down"):
+        container.resolve(Pool, module=AppModule)
+
+    await manager.startup()
+    second = cast(Any, container.resolve(Pool, module=AppModule))
+
+    assert second is not first
+    assert second.opened is True
+    assert first.opened is False
+    assert events == ["open", "close", "open"]
+    assert manager.state.initialized is True
+    assert manager.state.closed is False
+
+
+@pytest.mark.anyio
+async def test_a_startup_that_failed_leaves_the_application_unresolvable() -> None:
+    # A failed startup tears down what it had built and leaves the application closed,
+    # so it leaves resolution refused for the same reason a completed shutdown does.
+    @Injectable
+    class Pool:
+        def on_application_bootstrap(self) -> None:
+            raise RuntimeError("cannot open the pool")
+
+    @Module(providers=[Pool], exports=[Pool])
+    class AppModule:
+        pass
+
+    manager, container = _manager_for(AppModule)
+
+    with pytest.raises(LifecycleError, match="cannot open the pool"):
+        await manager.startup()
+
+    with pytest.raises(ProviderResolutionError, match="has been shut down"):
+        container.resolve(Pool, module=AppModule)
+
+
+@pytest.mark.anyio
+async def test_a_shutdown_whose_hooks_failed_still_refuses_resolution() -> None:
+    # The instances are destroyed whether or not their hooks finished cleanly, so a
+    # noisy teardown must not leave the container answering out of an empty cache.
+    @Injectable
+    class Pool:
+        def on_module_destroy(self) -> None:
+            raise RuntimeError("cannot close the pool")
+
+    @Module(providers=[Pool], exports=[Pool])
+    class AppModule:
+        pass
+
+    manager, container = _manager_for(AppModule)
+    await manager.startup()
+
+    with pytest.raises(LifecycleError, match="cannot close the pool"):
+        await manager.shutdown()
+
+    with pytest.raises(ProviderResolutionError, match="has been shut down"):
+        container.resolve(Pool, module=AppModule)
 
 
 @pytest.mark.anyio
