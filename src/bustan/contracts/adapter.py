@@ -48,10 +48,11 @@ class AdapterRoute:
 
     An adapter registers ``handler`` at ``path`` for every method in ``methods``, and
     for each request calls ``from_native_request``, awaits ``handler``, then calls
-    ``to_native_response`` on the result. ``registration`` is the one exception: when
-    the framework has already built a registration in the transport's own terms - the
-    OpenAPI document and its viewer are built that way - it arrives here instead of a
-    handler, and the adapter registers it as it stands. Exactly one of the two is set.
+    ``to_native_response`` on the result. Every route carries a handler, and there is
+    no way to hand an adapter a route already built in its own transport's terms, so
+    an adapter never has to recognise an opaque object as one of its own. A route that
+    reaches an adapter without a handler is a fault in the framework, and the adapter
+    refuses it by name rather than registering something that cannot serve a request.
 
     ``requires_raw_body``, ``requires_streaming`` and ``hosts`` restate what the route
     needs from the transport, so the capability check reads the plan rather than
@@ -67,7 +68,6 @@ class AdapterRoute:
     methods: tuple[str, ...]
     name: str | None = None
     handler: RouteHandler | None = None
-    registration: object | None = None
     hosts: tuple[str, ...] = ()
     requires_raw_body: bool = False
     requires_streaming: bool = False

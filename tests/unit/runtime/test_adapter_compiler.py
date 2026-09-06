@@ -91,5 +91,4 @@ def test_the_plan_hands_an_adapter_a_neutral_handler_and_no_transport_object() -
     )
 
     assert compiled_routes[0].handler is not None
-    assert compiled_routes[0].registration is None
     assert compiled_routes[0].contracts[0].controller_cls is UsersController
