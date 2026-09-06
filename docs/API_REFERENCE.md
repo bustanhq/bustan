@@ -526,10 +526,10 @@ Fluent builder for the base OpenAPI document.
 
 ##### Methods
 
-- `set_title(self, title: str) -> 'DocumentBuilder'`
-- `set_version(self, version: str) -> 'DocumentBuilder'`
-- `set_description(self, description: str) -> 'DocumentBuilder'`
-- `add_bearer_auth(self, name: str = 'bearer') -> 'DocumentBuilder'`
+- `set_title(self, title: str) -> DocumentBuilder`
+- `set_version(self, version: str) -> DocumentBuilder`
+- `set_description(self, description: str) -> DocumentBuilder`
+- `add_bearer_auth(self, name: str = 'bearer') -> DocumentBuilder`
 - `build(self) -> dict[str, object]`
 
 #### `ExecutionContext`
