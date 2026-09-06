@@ -179,8 +179,9 @@ while routes are compiled. Three things follow:
   application starts, through `bustan.testing`, and every request the application then
   serves runs the replacement.
 
-Bind a list to register more than one component under one token. They run in the order
-the list was written, and the components of every declaring module run in the order the
+Register more than one component under one token by binding a list, or by writing a
+separate entry for each component. Both spellings run their components in the order
+they were declared, and the components of every declaring module run in the order the
 modules were registered:
 
 ```python
@@ -190,6 +191,21 @@ modules were registered:
 class AppModule:
     pass
 ```
+
+```python
+@Module(
+    providers=[
+        {"provide": APP_GUARD, "use_value": AuditGuard()},
+        {"provide": APP_GUARD, "use_class": RejectAllGuard},
+    ],
+)
+class AppModule:
+    pass
+```
+
+A module may mix the two spellings under one token, and the result is one flat list in
+declaration order: an entry that names a list contributes its components in place, and
+every other entry contributes its one component.
 
 ## Resolving Providers Inside a Handler
 
