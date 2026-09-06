@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Bustan example: provider exports across feature modules"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["bustan", "httpx>=0.28.1,<1.0.0"]
+dependencies = ["bustan[starlette]", "httpx>=0.28.1,<1.0.0"]
 
 [project.scripts]
 start = "multi_module_app:main"

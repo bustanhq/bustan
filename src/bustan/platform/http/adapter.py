@@ -3,12 +3,16 @@
 The port itself is declared in ``bustan.contracts`` so that an adapter can be written
 against it without importing framework code; it is re-exported here because this is
 where the framework's own callers have always reached for it. What is defined here is
-the framework's half: compiling the route plan and refusing, before a server starts, a
-route the chosen adapter cannot serve.
+the framework's half: the construction contract that tells an adapter what the
+framework decided before it existed, compiling the route plan, and refusing - before a
+server starts - a route the chosen adapter cannot serve.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ...contracts import AbstractHttpAdapter, AdapterCapabilities, AdapterRoute
@@ -18,6 +22,56 @@ if TYPE_CHECKING:
     from ...pipeline.middleware import MiddlewareRegistry
     from .compiler import RouteContract
     from .execution import ExecutionPlan
+
+# What a server hands its lifespan: the server object itself, in exchange for a context
+# manager held open for as long as that server serves. The argument is the transport's
+# own object, so it is named only as ``object`` here; the framework writes to it through
+# the handler it built, never through this alias.
+type AdapterLifespan = Callable[[object], AbstractAsyncContextManager[None]]
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterRuntime:
+    """What the framework settled before an adapter existed, for the adapter to honour.
+
+    Two things about a run are the framework's to decide and an adapter's to apply, and
+    neither can be discovered from the port's methods. ``debug`` is how the deployment
+    was started. ``lifespan`` is the handler that starts and stops the module graph, so
+    an adapter that does not run it serves requests against modules whose ``on_startup``
+    never fired.
+    """
+
+    debug: bool = False
+    lifespan: AdapterLifespan | None = None
+
+
+# An adapter the framework builds itself, rather than one it is handed already built.
+# The framework calls it once, with the runtime, and serves through what comes back.
+type AdapterFactory = Callable[[AdapterRuntime], AbstractHttpAdapter]
+
+
+def build_http_adapter(
+    adapter: AbstractHttpAdapter | AdapterFactory,
+    runtime: AdapterRuntime,
+) -> AbstractHttpAdapter:
+    """Return the adapter to serve through, building it if it was supplied as a factory.
+
+    An adapter passed as an instance is already constructed and is returned untouched:
+    the framework cannot reach into a built object, so such an adapter carries whatever
+    debug setting and lifespan its caller gave it. An adapter passed as a factory is
+    called with *runtime* and therefore receives both, which is the only way a transport
+    other than the one the framework builds by default can be given them.
+    """
+
+    if isinstance(adapter, AbstractHttpAdapter):
+        return adapter
+
+    built = adapter(runtime)
+    if not isinstance(built, AbstractHttpAdapter):
+        raise TypeError(
+            f"An adapter factory must return an AbstractHttpAdapter, not {type(built).__name__}."
+        )
+    return built
 
 
 def compile_adapter_routes(
@@ -81,7 +135,11 @@ def _validate_adapter_capabilities(
 __all__ = (
     "AbstractHttpAdapter",
     "AdapterCapabilities",
+    "AdapterFactory",
+    "AdapterLifespan",
     "AdapterRoute",
+    "AdapterRuntime",
     "CompiledAdapterRoute",
+    "build_http_adapter",
     "compile_adapter_routes",
 )

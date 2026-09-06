@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Bustan example: dynamic module registration"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["bustan", "httpx>=0.28.1,<1.0.0"]
+dependencies = ["bustan[starlette]", "httpx>=0.28.1,<1.0.0"]
 
 [project.scripts]
 start = "dynamic_module_usage:main"
