@@ -284,3 +284,29 @@ for letting the agent fix it rather than reaching into its lane. And the shape r
 or assertion taken outside the lifespan it is about is wrong twice over, once as a reading of
 a shut-down application and once as a test that will break when somebody makes that a refusal.
 Look for it in any ticket that adds a lifecycle rule.
+
+## Verify the reason, not only the conclusion
+
+A ticket that reaches the right conclusion from the wrong reason still sends the agent to argue
+the wrong case, and the agent cannot check the reasoning because it only has the ticket.
+
+One filed here said a helper could not be imported across two packages because one sits below
+the other in the layering. The conclusion was right and the reason was invented. The layer table
+in `scripts/check_layering.py` puts both packages in a single layer, so an import between them
+breaks no layering rule at all. What actually forbids it is a module-level import cycle, which
+the interpreter states plainly the moment you try:
+
+```
+ImportError: cannot import name 'token_identity' from partially initialized module
+```
+
+The difference is not academic. The wrong reason pointed at a fix that would have made the
+layering worse to no purpose; the real reason points at the fix that removes the cycle, which is
+the opposite recommendation. Had the ticket been dispatched as filed, the agent would have
+written a draft arguing a case the repository does not support.
+
+So when a ticket asserts that something cannot be done, do the thing in a scratch tree and read
+the error before writing the ticket. An architecture rule stated in a document or a layer table
+is a description of intent; the import graph is the fact. The same holds for any constraint a
+ticket hands an agent as given: a claimed refusal, an ordering, a file said to be untouchable.
+Try it, and quote what came back.
