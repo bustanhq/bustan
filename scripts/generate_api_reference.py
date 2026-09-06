@@ -370,7 +370,7 @@ def _format_annotation(annotation: object) -> str:
     """Render an annotation without exposing internal repr noise where possible."""
 
     if isinstance(annotation, str):
-        return annotation
+        return _unwrap_quoted_annotation(annotation)
 
     if inspect.isclass(annotation):
         return annotation.__qualname__
@@ -388,6 +388,32 @@ def _format_annotation(annotation: object) -> str:
     if rendered_annotation.startswith("collections.abc."):
         rendered_annotation = rendered_annotation.removeprefix("collections.abc.")
     return rendered_annotation
+
+
+def _unwrap_quoted_annotation(annotation: str) -> str:
+    """Strip the quotes a forward reference keeps when it is written as a string literal.
+
+    Under ``from __future__ import annotations`` every annotation reaches us as the
+    source text that produced it, so ``-> Builder`` arrives as ``Builder`` while
+    ``-> "Builder"`` arrives as ``'Builder'``, quote characters and all. Both mean the
+    same type, so rendering them differently documents how someone spelled an
+    annotation rather than what it says.
+
+    Only a string that is wrapped in matching quotes end to end is unwrapped, and only
+    when what is inside carries no quote of its own. That leaves a partially quoted
+    annotation such as ``list['Builder']`` alone, because stripping there would need to
+    understand the expression rather than its edges.
+    """
+
+    if len(annotation) < 2:
+        return annotation
+    quote = annotation[0]
+    if quote not in {"'", '"'} or annotation[-1] != quote:
+        return annotation
+    inner = annotation[1:-1]
+    if not inner or quote in inner:
+        return annotation
+    return inner
 
 
 def _format_default(default: object) -> str:
