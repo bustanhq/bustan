@@ -51,10 +51,13 @@ def test_a_difference_names_the_case_both_adapters_and_the_field() -> None:
 
     differences = matrix._differences(("starlette", "asgi"), results)
 
+    body_difference = (
+        "response_strategy_standard: starlette and asgi differ - "
+        "body: starlette='{\"a\":1}', asgi='{\"a\":2}'"
+    )
     assert differences == [
         "response_strategy_standard: starlette and asgi differ - status: starlette=200, asgi=500",
-        "response_strategy_standard: starlette and asgi differ - body: starlette='{\"a\":1}', "
-        "asgi='{\"a\":2}'",
+        body_difference,
     ]
 
 
