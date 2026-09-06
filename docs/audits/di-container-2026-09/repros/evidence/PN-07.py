@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding PN-07 (workflow id F-54) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-54: __bustan_provider__ dict on the class is mutable and trusted verbatim."""

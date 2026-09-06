@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding PN-11 (workflow id F-90) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 # F-90: tokens are keyed by equality, so StrEnum members alias bare strings

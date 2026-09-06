@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding EX-03 (workflow id F-83) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-83: middleware exception path is unguarded for DI failures.

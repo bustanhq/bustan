@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RF-05 (workflow id F-36) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-36: APPLICATION token / Starlette-annotated parameter resolve to different object

@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-05 (workflow id F-37) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-37: startup failure after on_module_init -> no teardown, LifecycleState unset.

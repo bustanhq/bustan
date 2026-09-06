@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding EX-04 (workflow id F-82) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-82: 403 problem-details bodies disclose the guard class module path and auth strategy names."""

@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding MG-06 (workflow id F-27) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-27: module classes instantiated with no args by middleware compiler (raw TypeError) and again for hooks."""

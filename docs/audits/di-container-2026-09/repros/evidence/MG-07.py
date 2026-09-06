@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding MG-07 (workflow id F-50) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-50: exporting a module class / DynamicModule (NestJS-style re-export) is rejected with a

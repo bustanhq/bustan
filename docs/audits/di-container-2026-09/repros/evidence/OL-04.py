@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-04 (workflow id F-41) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-41: provider lifecycle hooks are duck-typed on every cached singleton value."""

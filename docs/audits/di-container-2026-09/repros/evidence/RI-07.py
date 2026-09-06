@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RI-07 (workflow id F-18) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-18: nested resolve(token, request=None) inherits the outer request ContextVar,

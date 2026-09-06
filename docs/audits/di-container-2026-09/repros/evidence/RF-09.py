@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RF-09 (workflow id F-55) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-55: multiple Inject markers on one Annotated parameter; last wins silently."""

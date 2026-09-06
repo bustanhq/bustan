@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding DP-01 (workflow id F-47) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-47: ModuleRef injected through DI is root-module scoped; strict=False is not a container-wide lookup.

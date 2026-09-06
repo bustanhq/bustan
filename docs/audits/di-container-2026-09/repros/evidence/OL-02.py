@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-02 (workflow id F-15) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-15: APP_* global pipeline providers are resolved eagerly at compile time: overrides are a silent no-op,

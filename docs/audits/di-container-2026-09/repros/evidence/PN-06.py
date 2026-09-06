@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding PN-06 (workflow id F-31) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-31: invalid dict-provider input escapes as raw TypeError/ValueError

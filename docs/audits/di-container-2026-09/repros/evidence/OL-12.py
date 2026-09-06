@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-12 (workflow id F-49) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-49: durable instances are excluded from eager warmup and from every lifecycle stage.

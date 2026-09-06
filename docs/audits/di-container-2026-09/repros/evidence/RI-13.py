@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RI-13 (workflow id F-74) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-74: route middleware runs outside request-scope lifetime; request-scoped middleware cannot inject Response."""

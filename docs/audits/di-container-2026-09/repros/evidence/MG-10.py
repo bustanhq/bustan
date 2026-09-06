@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding MG-10 (workflow id F-52) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-52: @Module coercions accept sets and single dicts and overwrite silently on double decoration.

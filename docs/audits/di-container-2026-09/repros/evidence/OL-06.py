@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-06 (workflow id F-38) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-38: overrides cannot target DynamicModule registrations via public module_cls.

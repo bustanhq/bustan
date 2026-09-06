@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RI-04 (workflow id F-03) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-03: durable provider injects Request and retains the first caller's Request for the partition."""
