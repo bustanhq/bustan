@@ -342,3 +342,34 @@ striking a path through while leaving its backticks, and once by anchoring on a 
 
 And run the gate after every amendment, against any pull request, purely to read back the parsed
 pattern line. All three of those were caught that way and none was visible in the rendered issue.
+
+## A prohibition states a fact, so grep it before writing it
+
+An `Owns` grant gets checked because the gate checks it. The `Must not touch` list gets no such
+check, and neither does an acceptance criterion, so both are where an unverified belief survives
+all the way to a delivering agent.
+
+The layout move forbade an entire directory on the stated reason that "the repro scripts import
+from `bustan` by its public names and must keep working untouched, which is itself a check that
+the public surface did not move". Seventeen of the nineteen executed scripts do. Two import
+`bustan.core.ioc.registry`, an internal path. One grep of the directory would have found them.
+Instead the ticket forbade the only edit that could complete it, and the agent had no correct
+delivery available: it did the whole move, verified it, and opened a draft blocked on three lines.
+
+The same ticket carried an acceptance criterion reading "`tests/unit/test_public_api.py` passes
+**untouched**. If it needs an edit, the move changed the public surface and something is wrong."
+That is a claim about the contents of one named file, and it is false: the file imports internal
+symbols by module path precisely so it can assert the public re-exports are the same objects, so a
+package rename must rewrite those lines and says nothing at all about the public surface. The
+agent read the file, judged the criterion wrong rather than the move, and said so with a one-line
+command as evidence. It was right.
+
+So: every clause that names a path and asserts something about what is inside it - a prohibition's
+reason, an acceptance criterion, a "this must not change" - is a factual claim, and gets verified
+the same way a grant does, by reading the file. If the reason cannot be checked cheaply, do not
+write the reason; write the prohibition alone. A prohibition with no stated reason is honest. A
+prohibition resting on a false one is a ticket that cannot be delivered, and the agent pays for it
+with a full round.
+
+The tell is grammatical. Any prohibition whose sentence contains "because", "since", "as", or a
+dash followed by an explanation is asserting something checkable. Check it.
