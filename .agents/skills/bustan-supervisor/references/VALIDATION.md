@@ -373,3 +373,27 @@ with a full round.
 
 The tell is grammatical. Any prohibition whose sentence contains "because", "since", "as", or a
 dash followed by an explanation is asserting something checkable. Check it.
+
+## Run the gate's parse over every open ticket, not only the one being dispatched
+
+The ownership gate is used at dispatch, against one ticket, because that is when it decides
+something. That timing hides defects. A ticket whose `Owns` section does not parse is broken from
+the moment it is filed, and nothing surfaces it until the day someone tries to dispatch it - by
+which time an agent is waiting.
+
+Rewriting eight tickets after the layout move meant reading back the parsed pattern line for all
+eight at once. Seven were fine. The eighth had carried, since the day it was filed, a bare symbol
+name in a trailing clause: `- ``scripts/conformance_matrix.py`` - only if the change to
+``load_adapter`` forces it`. The gate refuses that section outright rather than guessing, which is
+correct, so that ticket could never have been dispatched. Nobody would have known until it was.
+Two other tickets leaked command fragments into their pattern lists the same way - harmless,
+because a command matches no path, but the same defect one step less severe.
+
+So the parse is a sweep, not a dispatch step. Run it across every open ticket whenever the tree
+moves under them, and periodically otherwise. It costs one call per ticket and it reads back
+exactly what the gate will believe. The gate needs no pull request to be useful - point it at any
+merged one and read the first line.
+
+Corollary, and the reason all three defects existed: an explanation after a path is fine, but
+anything inside backticks in an `Owns` bullet is read as a path. Write the explanation in plain
+words - "only by running the generator, never by hand" - and keep backticks for paths alone.
