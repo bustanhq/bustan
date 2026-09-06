@@ -104,10 +104,15 @@ step of the run.
    with the version that was uploaded, so verification is part of publishing rather than
    something that has to be remembered. That workflow can still be run on its own with a
    version number, which is how a version published before this chain existed is checked.
+   The job installs the package, scaffolds a project with `bustan init`, and then runs
+   that project's own tests with only the dev dependencies the scaffolder prints, so a
+   scaffolded project that cannot run its tests fails the release rather than passing on
+   the files being present.
 2. If manual verification is needed, install the package in a clean environment.
 3. Verify `import bustan` succeeds.
 4. Verify `bustan --help` succeeds.
 5. Verify that `uv init --package my-app`, `uv add "bustan==<version>"`, and `uv run bustan init` scaffold the expected package layout from the published artifact.
 6. Confirm the scaffolded project contains `src/my_app/__init__.py`, `app_module.py`, `app_controller.py`, `app_service.py`, and the matching `tests/my_app/` files.
-7. Publish or verify the GitHub release notes.
-8. Announce the release if it is externally relevant.
+7. Add only the dev dependencies the scaffolder printed under `Next steps` - today `uv add --dev ty ruff pytest` - and run `uv run pytest` in the scaffolded project. All of its generated tests must pass. Adding anything the scaffolder did not name makes the run prove less than a new user's first run does.
+8. Publish or verify the GitHub release notes.
+9. Announce the release if it is externally relevant.
