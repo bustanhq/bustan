@@ -106,7 +106,11 @@ await context.close()
 
 Shutdown destroys the instances the application built, so it also drops them: the singleton, durable and controller caches are emptied once the last teardown stage has run.
 
-Startup may then run again. A second `await context.init()`, or a second `with TestClient(app)` block over the same application, builds a fresh set of instances from the same module graph and runs every startup hook over them again. Resolving a provider between a shutdown and the next startup builds a new instance rather than handing back a destroyed one.
+Between that shutdown and the next startup the application resolves nothing. `context.get(token)`, `ModuleRef.get(token)` and every other resolution raises `ProviderResolutionError`, naming the token and saying the application must be started again. Building a replacement instead would hand back a provider whose `on_module_init` had never run - an unopened pool, an unconnected client - which is the failure the destroyed instance was dropped to avoid.
+
+The rule is the same for every binding, including a transient provider and a `use_value` provider that run no initialization hook of their own. A transient provider reaches the destroyed singletons through its dependencies, so letting it through would rebuild them uninitialized and give back exactly what the refusal exists to prevent. Which kind of binding declares a token also belongs to the module that declares it and can change without its consumers being told, so a container that answered for some kinds and not others would make resolvability after shutdown a detail of somebody else's module.
+
+Startup may then run again, and that is what lifts the refusal: it is lifted when the startup begins, because the startup stages resolve the providers whose hooks they run. A second `await context.init()`, or a second `with TestClient(app)` block over the same application, builds a fresh set of instances from the same module graph and runs every startup hook over them again. Overrides may be registered again in the same window, so the second startup can be given a different set from the first.
 
 The graph, the container and the compiled routes are built once and are not rebuilt by a second startup; only the instances are.
 
@@ -114,7 +118,7 @@ The graph, the container and the compiled routes are built once and are not rebu
 
 - Hook failures are wrapped in `LifecycleError`.
 - A failing startup hook stops application bootstrap before the app starts serving traffic.
-- A startup that fails part-way tears down whatever it had already built, in reverse construction order, before the failure propagates. The failure that reaches the caller is the one that stopped startup; a hook that also failed while undoing it is recorded as a note on that exception. The application is left closed, so a later `close()` does not run teardown a second time.
+- A startup that fails part-way tears down whatever it had already built, in reverse construction order, before the failure propagates. The failure that reaches the caller is the one that stopped startup; a hook that also failed while undoing it is recorded as a note on that exception. The application is left closed, so a later `close()` does not run teardown a second time and resolution is refused until a startup succeeds.
 - Every teardown stage runs to completion even when a hook fails, so one failing component cannot leak another component's resources.
 - One failed teardown hook is raised on its own. More than one is raised together as an `ExceptionGroup`, which is also a `LifecycleError`; each member names the hook that failed and keeps the original exception as its `__cause__`.
 

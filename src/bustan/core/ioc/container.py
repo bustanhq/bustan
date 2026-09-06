@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..errors import InvalidModuleError
+from ..errors import InvalidModuleError, ProviderResolutionError
 from ..utils import _display_name, _qualname
 from .overrides import OverrideManager
 from .planning.container_plan import plan_container
@@ -35,6 +35,7 @@ class Container:
         self.registry = Registry()
         self.scope_manager = ScopeManager()
         self.override_manager = OverrideManager(self.registry)
+        self._shut_down = False
 
         self._build_bindings()
         self.plan = plan_container(
@@ -77,6 +78,49 @@ class Container:
                     f"{_display_name(declaring_module)}, which declares no provider for it"
                 )
 
+    def mark_startup_begun(self) -> None:
+        """Report that a startup has begun, so providers may be resolved again.
+
+        A startup resolves the providers it initializes, so the refusal a completed
+        shutdown installed is lifted before the first startup stage runs rather than
+        after the last one.
+        """
+        self._shut_down = False
+
+    def mark_shut_down(self) -> None:
+        """Report that a teardown has completed and every instance has been dropped.
+
+        Resolution is refused from here until the next startup: the instances this
+        container held have been destroyed, and building replacements for them outside
+        a startup would hand back providers whose initialization hooks never ran.
+        """
+        self._shut_down = True
+
+    @property
+    def is_shut_down(self) -> bool:
+        """Report whether a completed shutdown is still waiting for the next startup."""
+        return self._shut_down
+
+    def _refuse_while_shut_down(self, subject: object) -> None:
+        """Refuse to build anything between a completed shutdown and the next startup.
+
+        The rule is the same for every binding, including a transient one and a
+        ``use_value`` one that carry no initialization hooks of their own. An exception
+        for those two could not be held to: a transient provider reaches the destroyed
+        singletons through its dependencies, and letting the transient through would
+        rebuild them here, uninitialized, which is the whole of what this refusal
+        exists to prevent. Which kind of binding declares a token is also the declaring
+        module's business and changes without notice to the caller, so an exception
+        would make resolvability after shutdown a detail of somebody else's module.
+        """
+        if not self._shut_down:
+            return
+        raise ProviderResolutionError(
+            f"{_qualname(subject)} cannot be resolved because the application has been shut "
+            "down and every instance it built has been destroyed. Start the application "
+            "again to build a fresh set of instances, then resolve from that one"
+        )
+
     def resolve(
         self,
         token: object,
@@ -90,7 +134,12 @@ class Container:
         resolution never captures a request that merely happens to be active further
         out. Overrides are honoured against the token's declaring module, so
         overriding an exported provider also applies to importing modules.
+
+        Between a completed shutdown and the next startup nothing resolves: the
+        application has destroyed what it built, so the caller is told to start it
+        again rather than handed a provider that was never initialized.
         """
+        self._refuse_while_shut_down(token)
         return self.kernel.resolve(token, module=module, request=request)
 
     async def resolve_async(
@@ -102,6 +151,7 @@ class Container:
     ) -> object:
         """Resolve a provider, awaiting async factories when required."""
 
+        self._refuse_while_shut_down(token)
         return await self.kernel.resolve_async(token, module=module, request=request)
 
     def instantiate_class(
@@ -112,6 +162,7 @@ class Container:
         request: HttpRequest | None = None,
     ) -> object:
         """Build one fresh instance of a class, such as a controller or a test double."""
+        self._refuse_while_shut_down(cls)
         return self.kernel.instantiate_class(cls, module=module, request=request)
 
     async def instantiate_class_async(
@@ -122,6 +173,7 @@ class Container:
         request: HttpRequest | None = None,
     ) -> object:
         """Build one fresh instance of a class, awaiting async dependencies."""
+        self._refuse_while_shut_down(cls)
         return await self.kernel.instantiate_class_async(cls, module=module, request=request)
 
     def call_factory(
@@ -133,6 +185,7 @@ class Container:
         request: HttpRequest | None = None,
     ) -> object:
         """Resolve the tokens a factory declares and call it."""
+        self._refuse_while_shut_down(factory)
         return self.kernel.call_factory(factory, inject, module=module, request=request)
 
     async def call_factory_async(
@@ -144,6 +197,7 @@ class Container:
         request: HttpRequest | None = None,
     ) -> object:
         """Resolve the tokens a factory declares and call it, awaiting an async factory."""
+        self._refuse_while_shut_down(factory)
         return await self.kernel.call_factory_async(factory, inject, module=module, request=request)
 
     def override(self, token: object, value: object, *, module: ModuleKey | None = None) -> None:

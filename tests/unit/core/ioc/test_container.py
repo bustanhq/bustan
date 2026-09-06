@@ -851,3 +851,71 @@ def test_an_override_survives_a_graph_naming_a_token_nothing_can_hash() -> None:
     container.override("config", "fake")
 
     assert container.resolve("config", module=AppModule) == "fake"
+
+
+def test_a_container_that_has_never_started_resolves() -> None:
+    # Refusing resolution is what a completed shutdown installs. An application that
+    # was built and never started has destroyed nothing, so it answers as it always has.
+    @Injectable
+    class Clock:
+        pass
+
+    @Module(providers=[Clock], exports=[Clock])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    assert container.is_shut_down is False
+    assert isinstance(container.resolve(Clock, module=AppModule), Clock)
+
+
+def test_a_shut_down_container_refuses_every_way_of_building_something() -> None:
+    @Injectable
+    class Clock:
+        pass
+
+    @Module(providers=[Clock], exports=[Clock])
+    class AppModule:
+        pass
+
+    class Report:
+        def __init__(self, clock: Clock) -> None:
+            self.clock = clock
+
+    container = build_container(build_module_graph(AppModule))
+    container.mark_shut_down()
+
+    with pytest.raises(ProviderResolutionError, match="has been shut down"):
+        container.resolve(Clock, module=AppModule)
+    with pytest.raises(ProviderResolutionError, match="has been shut down"):
+        anyio.run(lambda: container.resolve_async(Clock, module=AppModule))
+    with pytest.raises(ProviderResolutionError, match="has been shut down"):
+        container.instantiate_class(Report, module=AppModule)
+    with pytest.raises(ProviderResolutionError, match="has been shut down"):
+        anyio.run(lambda: container.instantiate_class_async(Report, module=AppModule))
+    with pytest.raises(ProviderResolutionError, match="has been shut down"):
+        container.call_factory(lambda clock: clock, (Clock,), module=AppModule)
+    with pytest.raises(ProviderResolutionError, match="has been shut down"):
+        anyio.run(
+            lambda: container.call_factory_async(lambda clock: clock, (Clock,), module=AppModule)
+        )
+
+
+def test_a_started_container_builds_again() -> None:
+    # The refusal is lifted when a startup begins rather than when it finishes,
+    # because a startup resolves the providers whose hooks it is about to run.
+    @Injectable
+    class Clock:
+        pass
+
+    @Module(providers=[Clock], exports=[Clock])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    container.mark_shut_down()
+    container.mark_startup_begun()
+
+    assert container.is_shut_down is False
+    assert isinstance(container.resolve(Clock, module=AppModule), Clock)
