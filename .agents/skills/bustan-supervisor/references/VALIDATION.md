@@ -251,3 +251,36 @@ Two consequences. Amend the bullet list first and let the prose explain the boun
 And read the parsed-patterns line every time, which is why the gate prints it: the same output
 shows this ticket parsing a backticked command out of a bullet as though it were a path, which
 is harmless only because no changed file will ever match it.
+
+## Disjoint files do not make two tickets independent
+
+Ownership keeps two agents from writing the same line. It says nothing about one ticket
+introducing a rule the other ticket's tests break. Two tickets can own entirely disjoint files,
+each be green on its own branch, pass every check in CI, and still fail the moment both are on
+one tree.
+
+That happened between a ticket that made resolving after a completed shutdown a refusal and a
+ticket that made one token answer with one type. Their file sets do not intersect anywhere. The
+first merged; the second, whose own branch was green at 1142 passing, then failed one of its own
+new tests:
+
+```
+ProviderResolutionError: ApplicationProbe cannot be resolved because the application has
+been shut down and every instance it built has been destroyed
+```
+
+The test took its second reading after the `with TestClient(...)` block, which is legal until
+the other ticket exists and illegal afterwards. Neither agent could have seen it: each was
+blind to the other by design, and the rule only exists on the merged tree.
+
+So the check is not on either branch. Before merging the second of two tickets that landed in
+the same wave, merge the new `main` into it in a scratch worktree and run the suite there. A
+green pull request means green against the `main` it was cut from. Only the composed tree
+answers the question the merge actually asks.
+
+Two smaller notes from the same episode. The failure was in the second ticket's own file, so
+sending it back cost one round and no grant - which is the outcome to aim for, and an argument
+for letting the agent fix it rather than reaching into its lane. And the shape recurs: a probe
+or assertion taken outside the lifespan it is about is wrong twice over, once as a reading of
+a shut-down application and once as a test that will break when somebody makes that a refusal.
+Look for it in any ticket that adds a lifecycle rule.
