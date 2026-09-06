@@ -310,3 +310,35 @@ the error before writing the ticket. An architecture rule stated in a document o
 is a description of intent; the import graph is the fact. The same holds for any constraint a
 ticket hands an agent as given: a claimed refusal, an ordering, a file said to be untouchable.
 Try it, and quote what came back.
+
+## A ticket whose verification block reaches outside its Owns cannot be delivered
+
+Read the verification block against the `Owns` list before dispatch, and ask what each command
+touches. A step that exercises files the ticket may not edit is not a strict instruction - it is
+a contradiction, and the agent meets it by breaking one half or the other.
+
+One shipped that way. A ticket moved a dependency behind an optional extra, forbade
+`examples/**`, and required `run_examples.py` to pass. Every example imported that dependency
+and got it transitively, so the move broke all six: the block could not pass while the list held.
+No correct delivery existed. The agent edited the twelve files, put them in a table at the top of
+the pull request with the reason for each, and offered to lift them out - which is the only way
+the contradiction could have surfaced. A delivery that had edited them quietly, or blocked, would
+have hidden it.
+
+The check is quick and mechanical. For each command in the block, name the files it reads and the
+files it can fail on, and confirm the ticket may edit every one it can be required to fix.
+Generated products count: a lockfile regenerated from an owned manifest, an API reference
+regenerated from an owned docstring, and a downstream project's manifest that must follow a
+dependency change are all forced by an owned edit, and all of them need granting up front rather
+than in review.
+
+Two smaller notes from the same episode, both about amending the list rather than the rule.
+
+Anchor an `Owns` amendment on the `## Owns` heading, never on a path string. A path that appears
+in the acceptance criteria as well as the list will take the edit into the wrong section, where
+the gate cannot see it, and the ticket reads as amended while the gate still refuses. That has
+now happened three times in one programme: once by writing a grant only in prose, once by
+striking a path through while leaving its backticks, and once by anchoring on a duplicated path.
+
+And run the gate after every amendment, against any pull request, purely to read back the parsed
+pattern line. All three of those were caught that way and none was visible in the rendered issue.

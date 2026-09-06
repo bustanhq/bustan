@@ -975,13 +975,26 @@ directories in their own `Owns` lists. Dispatching this ticket first turns nine 
 `Owns` lists into fiction in a single commit, and file ownership is the only thing that
 lets blind agents share the repository. The rc.2 set runs first; this ticket waits.
 
-*Gate two: the layering check has to be able to pass.* The acceptance criterion above
-says `scripts/check_layering.py` passes against the new tree. The check landed reporting
-violations that a rename does not remove - an import edge survives its file being moved -
-and this ticket forbids the behavioural edits that would close them. So either those
-violations are closed by the tickets that own the files, or this criterion is unreachable
-and has to be rewritten to say the report is no worse than it was. Decide which before
-dispatch, not during.
+*Gate two: the layering criterion, decided.* The acceptance criterion said
+`scripts/check_layering.py` passes against the new tree. That was unreachable. The check
+landed reporting eleven violations that a rename does not remove - an import edge survives
+its file being moved - and this ticket forbids the behavioural edits that would close them.
+Nothing else on the board closed them either: of the eleven, three are in a file an open
+wave 3 ticket owns and eight are in files no open ticket owns at all, and neither wave 3
+ticket's body mentioned the layering check.
+
+**The criterion is now "no new violations", not "no violations".** This ticket passes when
+`check_layering.py` reports the same set it reported before the move, and fails when the
+move adds one. That is what a rename can honestly promise: the move changes no behaviour,
+so it cannot close an import edge, and holding it to a standard it cannot meet only blocks
+the ticket and everything behind it.
+
+Two things follow, and both are the point of writing this down rather than quietly relaxing
+the criterion. The eleven violations remain real and remain unowned, so **closing them is
+its own work** and needs its own tickets against the files that carry them - not a silent
+write-off because the gate stopped naming them. And every wave 3 ticket now records the
+count and the rule in its verification block, so an agent can tell whether it added one;
+before this decision, none of them ran the check at all.
 
 ---
 
