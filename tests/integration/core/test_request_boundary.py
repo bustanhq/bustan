@@ -137,11 +137,11 @@ def test_the_request_scope_state_is_read_through_the_contract() -> None:
 
 
 def test_the_application_is_reached_through_the_contract_when_none_was_pushed() -> None:
-    """``request.app`` is a contract member, so the fallback needs no transport type.
+    """A request tells the container an application is running, not which one.
 
-    A resolution entered with a request but no running application falls back to the
-    application that request was served by. That is a property of the request contract
-    now, rather than something probed for on whatever object happened to arrive.
+    A resolution entered with a request and nothing pushed still names the application
+    the container belongs to, which is the object every other entry point answers with.
+    The server the request arrived on is a transport detail and never the answer.
     """
 
     application = create_app(AppModule)
@@ -150,8 +150,13 @@ def test_the_application_is_reached_through_the_contract_when_none_was_pushed() 
     )
 
     resolved = application.container.resolve(NeedsTheApplication, module=AppModule, request=request)
+    entered_directly = application.get(NeedsTheApplication)
 
-    assert cast(NeedsTheApplication, resolved).application is application.get_http_server()
+    assert cast(NeedsTheApplication, resolved).application is not application.get_http_server()
+    assert (
+        cast(NeedsTheApplication, resolved).application
+        is cast(NeedsTheApplication, entered_directly).application
+    )
 
 
 def build_starlette_request(app: Starlette) -> Request:
