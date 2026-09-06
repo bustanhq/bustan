@@ -924,7 +924,8 @@ install without extras and confirm the kernel imports with no web server present
 
 ## T-306 The package layout move
 
-**Wave** 3, serial, last. **Depends on** T-301 through T-305 all merged.
+**Wave** 3, serial, last. **Depends on** T-301 through T-305 all merged, **and on
+two further gates recorded below**.
 **Blocks** every wave 4 and wave 5 ticket, which reference the new paths.
 **Owns** every file under `src/bustan/` for the purpose of moving it and rewriting
 imports; `pyproject.toml` packaging entries; `tests/` import lines;
@@ -964,6 +965,23 @@ this ticket; if you find a bug while moving a file, report it, do not fix it her
 API test and the byte-exact API reference check both pass untouched;
 `scripts/check_layering.py` passes against the new tree; a second
 `.git-blame-ignore-revs` entry names the move commit.
+
+**Two gates before this ticket may be dispatched.** Both were found after the ticket
+was written, and neither is satisfied by anything inside this ticket's own scope.
+
+*Gate one: the rc.2 follow-up set must be closed first.* This move renames `core/` and
+`platform/http/`, and nine of the ten open rc.2 follow-ups name paths under those two
+directories in their own `Owns` lists. Dispatching this ticket first turns nine ticket
+`Owns` lists into fiction in a single commit, and file ownership is the only thing that
+lets blind agents share the repository. The rc.2 set runs first; this ticket waits.
+
+*Gate two: the layering check has to be able to pass.* The acceptance criterion above
+says `scripts/check_layering.py` passes against the new tree. The check landed reporting
+violations that a rename does not remove - an import edge survives its file being moved -
+and this ticket forbids the behavioural edits that would close them. So either those
+violations are closed by the tickets that own the files, or this criterion is unreachable
+and has to be rewritten to say the report is no worse than it was. Decide which before
+dispatch, not during.
 
 ---
 
