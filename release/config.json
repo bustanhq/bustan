@@ -1,18 +1,11 @@
 {
-  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "release-type": "python",
-  "packages": {
-    ".": {
-      "package-name": "bustan",
-      "changelog-path": "CHANGELOG.md",
-      "include-component-in-tag": false
-    }
-  },
   "bustan-governance": {
     "release-gate": {
       "max_removed_routes": 0,
       "max_changed_routes": 0,
-      "adapters": ["starlette"],
+      "adapters": [
+        "starlette"
+      ],
       "require_adapter_conformance": true
     }
   }

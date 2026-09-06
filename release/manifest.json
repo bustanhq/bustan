@@ -1,5 +1,4 @@
 {
-  ".": "1.1.0",
   "bustan-governance": {
     "adapter-conformance": {
       "starlette": {

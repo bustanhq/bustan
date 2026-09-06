@@ -224,3 +224,89 @@ exists.
 A test asserting the behaviour a ticket removes is a test defending the defect. Granting it
 is correct, and the grant is bounded: name the file, and say that changing the assertion is
 in scope while changing anything else in it is not.
+
+## A grant the gate cannot see is not a grant
+
+Write every grant into the ticket's `Owns` bullet list, not only into the prose that explains
+it. The ownership gate parses the list and stops at the first bold lead-in that follows, so an
+amendment written below that point - however clearly it names the file and however carefully it
+bounds the grant - is invisible to the check that decides whether a pull request stays inside
+its lane.
+
+This was caught by running the gate rather than by reading the amendment. A ticket was granted
+a source file in an amendment paragraph, the gate was run against the draft to confirm the new
+boundary, and the parsed-patterns line it always prints did not contain the file:
+
+```
+ownership patterns (issue #82): ... tests/integration/core/test_request_boundary.py,
+docs/API_REFERENCE.md, uv run python scripts/generate_api_reference.py
+```
+
+Had the agent gone on to edit the granted file, the gate would have reported it as outside the
+ticket's ownership and the reviewer would have had to decide, at merge time, whether the
+refusal was real or an artefact of where the grant was typed. That is the one thing a gate
+must never make a reviewer do.
+
+Two consequences. Amend the bullet list first and let the prose explain the bound afterwards.
+And read the parsed-patterns line every time, which is why the gate prints it: the same output
+shows this ticket parsing a backticked command out of a bullet as though it were a path, which
+is harmless only because no changed file will ever match it.
+
+## Disjoint files do not make two tickets independent
+
+Ownership keeps two agents from writing the same line. It says nothing about one ticket
+introducing a rule the other ticket's tests break. Two tickets can own entirely disjoint files,
+each be green on its own branch, pass every check in CI, and still fail the moment both are on
+one tree.
+
+That happened between a ticket that made resolving after a completed shutdown a refusal and a
+ticket that made one token answer with one type. Their file sets do not intersect anywhere. The
+first merged; the second, whose own branch was green at 1142 passing, then failed one of its own
+new tests:
+
+```
+ProviderResolutionError: ApplicationProbe cannot be resolved because the application has
+been shut down and every instance it built has been destroyed
+```
+
+The test took its second reading after the `with TestClient(...)` block, which is legal until
+the other ticket exists and illegal afterwards. Neither agent could have seen it: each was
+blind to the other by design, and the rule only exists on the merged tree.
+
+So the check is not on either branch. Before merging the second of two tickets that landed in
+the same wave, merge the new `main` into it in a scratch worktree and run the suite there. A
+green pull request means green against the `main` it was cut from. Only the composed tree
+answers the question the merge actually asks.
+
+Two smaller notes from the same episode. The failure was in the second ticket's own file, so
+sending it back cost one round and no grant - which is the outcome to aim for, and an argument
+for letting the agent fix it rather than reaching into its lane. And the shape recurs: a probe
+or assertion taken outside the lifespan it is about is wrong twice over, once as a reading of
+a shut-down application and once as a test that will break when somebody makes that a refusal.
+Look for it in any ticket that adds a lifecycle rule.
+
+## Verify the reason, not only the conclusion
+
+A ticket that reaches the right conclusion from the wrong reason still sends the agent to argue
+the wrong case, and the agent cannot check the reasoning because it only has the ticket.
+
+One filed here said a helper could not be imported across two packages because one sits below
+the other in the layering. The conclusion was right and the reason was invented. The layer table
+in `scripts/check_layering.py` puts both packages in a single layer, so an import between them
+breaks no layering rule at all. What actually forbids it is a module-level import cycle, which
+the interpreter states plainly the moment you try:
+
+```
+ImportError: cannot import name 'token_identity' from partially initialized module
+```
+
+The difference is not academic. The wrong reason pointed at a fix that would have made the
+layering worse to no purpose; the real reason points at the fix that removes the cycle, which is
+the opposite recommendation. Had the ticket been dispatched as filed, the agent would have
+written a draft arguing a case the repository does not support.
+
+So when a ticket asserts that something cannot be done, do the thing in a scratch tree and read
+the error before writing the ticket. An architecture rule stated in a document or a layer table
+is a description of intent; the import graph is the fact. The same holds for any constraint a
+ticket hands an agent as given: a claimed refusal, an ordering, a file said to be untouchable.
+Try it, and quote what came back.

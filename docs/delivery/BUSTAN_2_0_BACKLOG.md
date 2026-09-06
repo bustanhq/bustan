@@ -1298,9 +1298,9 @@ CI, so the next contributor understands the constraint before working against it
 
 **Context.** The "1.0.0 and 1.0.1 were accidental, 2.0.0 is the real one" statement
 appears in four files plus the README and must now change everywhere at once.
-`CHANGELOG.md` has a hand-written tail below the generated content that release-please
-will never clean up. The `bustan-governance` release-gate configuration in the release
-files is read by nothing.
+`CHANGELOG.md` has a hand-written tail below the content the retired release bot
+generated. The `bustan-governance` release-gate configuration in the release files is
+read by the `bustan governance release-gate` command and by no workflow.
 
 **Scope.** Reconcile the status statements, remove the stale tail, and either wire the
 governance gate into CI or delete it before it becomes load-bearing folklore.
@@ -1311,7 +1311,8 @@ governance gate into CI or delete it before it becomes load-bearing folklore.
 
 **Scope.** Full verification block plus the conformance matrix on both adapters plus
 the blocking repro gate; confirm the kernel imports with no web server installed;
-merge the release-please PR; verify the published artifact through the existing
+compose the changelog entry from the milestone's closed issues, land it with the version
+bump, tag the merged commit; verify the published artifact through the existing
 post-publish workflow.
 
 ---
