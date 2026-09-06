@@ -65,6 +65,65 @@ def test_init_creates_expected_files(tmp_path: Path, capsys) -> None:
     assert "uv run dev" in stdout
 
 
+# Installed alongside a scaffolded project's tests to hide the HTTP client packages
+# that starlette's own test client needs. A scaffolded project is told to add bustan,
+# ty, ruff and pytest and nothing else, so a generated test that only passes because
+# one of these happens to be present in the developing environment is not passing for
+# a user, and this plugin makes that difference visible here.
+_NO_HTTP_CLIENT_PLUGIN = """\
+import sys
+from importlib.abc import MetaPathFinder
+
+HIDDEN = frozenset({"httpx", "httpx2"})
+
+
+class _HideHttpClients(MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.partition(".")[0] in HIDDEN:
+            raise ModuleNotFoundError(f"No module named {fullname!r}", name=fullname)
+        return None
+
+
+for name in [name for name in sys.modules if name.partition(".")[0] in HIDDEN]:
+    del sys.modules[name]
+sys.meta_path.insert(0, _HideHttpClients())
+"""
+
+
+def _run_scaffolded_tests(tmp_path: Path) -> tuple[ElementTree.Element | None, str]:
+    """Run a scaffolded project's own tests with no HTTP client package available."""
+
+    plugin_directory = tmp_path / "no_http_client_plugin"
+    plugin_directory.mkdir()
+    (plugin_directory / "no_http_client.py").write_text(_NO_HTTP_CLIENT_PLUGIN, encoding="utf-8")
+
+    report_path = tmp_path / "junit.xml"
+    environment = dict(os.environ)
+    environment.pop("PYTEST_ADDOPTS", None)
+    environment["PYTHONPATH"] = os.pathsep.join([str(plugin_directory), str(tmp_path / "src")])
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "no_http_client",
+            "--ignore",
+            str(plugin_directory),
+            f"--junit-xml={report_path}",
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    suite = ElementTree.parse(report_path).getroot().find("testsuite")
+    return suite, completed.stdout
+
+
 def test_init_writes_tests_pytest_can_collect_and_run(tmp_path: Path) -> None:
     _write_pyproject(tmp_path, "hello-bustan")
     old_cwd = os.getcwd()
@@ -74,30 +133,15 @@ def test_init_writes_tests_pytest_can_collect_and_run(tmp_path: Path) -> None:
     finally:
         os.chdir(old_cwd)
 
-    report_path = tmp_path / "junit.xml"
-    environment = dict(os.environ)
-    environment.pop("PYTEST_ADDOPTS", None)
-    environment["PYTHONPATH"] = str(tmp_path / "src")
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-p",
-            "no:cacheprovider",
-            f"--junit-xml={report_path}",
-        ],
-        cwd=tmp_path,
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    suite, output = _run_scaffolded_tests(tmp_path)
 
-    suite = ElementTree.parse(report_path).getroot().find("testsuite")
-    assert suite is not None, completed.stdout
-    assert suite.get("tests") == "3", completed.stdout
-    assert suite.get("errors") == "0", completed.stdout
+    assert suite is not None, output
+    assert suite.get("tests") == "3", output
+    assert suite.get("errors") == "0", output
+    # A scaffolded project installs no HTTP client package, so a generated test that
+    # reaches for one fails rather than erroring; both counts have to be zero for the
+    # generated suite to be one a user can actually run.
+    assert suite.get("failures") == "0", output
     # The collection above is what proves it; this states the cause. An __init__.py here
     # would make tests/<package_name> importable as <package_name>, and pytest's default
     # import mode puts its parent first on sys.path, shadowing src/<package_name>.
