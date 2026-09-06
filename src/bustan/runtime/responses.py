@@ -112,13 +112,11 @@ def _apply_response_plan(
     response: CoercedResponse,
     response_plan: ResponsePlan,
 ) -> CoercedResponse:
-    # Every response the framework writes carries a status and headers, whether the
-    # framework built it or a handler returned its transport's own, so the plan is
-    # applied the same way to both.
+    # Every response the framework writes carries a status, whether the framework built
+    # it or a handler returned its transport's own, so the plan is applied the same way
+    # to both.
     if response.status_code == 200:
         response.status_code = response_plan.default_status_code
-    for header_name, header_value in response_plan.headers:
-        response.headers.setdefault(header_name, header_value)
     return response
 
 

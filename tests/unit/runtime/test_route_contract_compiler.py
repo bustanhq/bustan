@@ -244,12 +244,14 @@ def test_a_global_interceptor_that_mutates_the_body_is_refused_on_a_raw_route() 
 def test_the_compiled_response_plan_drops_the_slots_no_compiler_path_ever_filled() -> None:
     """A plan field that nothing writes cannot be told apart from an unfinished feature.
 
-    A redirect target and a raw-response parameter name were carried on every plan and
-    left at their defaults by every path that builds one, so no route could produce a
-    plan holding either and no reader could rely on one being set.
+    A header list, a redirect target and a raw-response parameter name were carried on
+    every plan and left at their defaults by every path that builds one, so no route
+    could produce a plan holding any of them and no reader could rely on one being set.
+    A handler reaches a response header and a redirect by returning a response itself.
     """
 
     plan_fields = {field.name for field in fields(ResponsePlan)}
 
+    assert "headers" not in plan_fields
     assert "redirect_to" not in plan_fields
     assert "raw_response_parameter" not in plan_fields
