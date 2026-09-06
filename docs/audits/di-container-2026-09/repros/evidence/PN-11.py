@@ -9,7 +9,7 @@ from enum import StrEnum
 
 from bustan import Module
 from bustan.app.bootstrap import create_app_context
-from bustan.core.errors import InvalidModuleError, ProviderResolutionError
+from bustan.kernel.errors import InvalidModuleError, ProviderResolutionError
 
 
 class Tokens(StrEnum):

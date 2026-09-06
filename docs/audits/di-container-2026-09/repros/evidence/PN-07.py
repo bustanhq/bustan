@@ -4,7 +4,7 @@
 """F-54: __bustan_provider__ dict on the class is mutable and trusted verbatim."""
 from bustan import Injectable, Module, create_app_context
 from bustan.common.constants import BUSTAN_PROVIDER_ATTR
-from bustan.core.errors import InvalidProviderError, InvalidModuleError
+from bustan.kernel.errors import InvalidProviderError, InvalidModuleError
 
 @Injectable
 class Svc:

@@ -3,7 +3,7 @@
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-53: DynamicModule cannot override a base provider token or re-add a base import."""
 from bustan import DynamicModule, InjectionToken, Module, create_app_context
-from bustan.core.errors import InvalidModuleError
+from bustan.kernel.errors import InvalidModuleError
 
 OPTS = InjectionToken("OPTS")
 results = []
@@ -57,7 +57,7 @@ except InvalidModuleError as exc:
 
 # Case 4: ConfigurableModuleBuilder base is empty, so for_root works
 from bustan import ConfigurableModuleBuilder
-from bustan.core.module.metadata import get_module_metadata
+from bustan.kernel.module.metadata import get_module_metadata
 Gen, TOKEN = ConfigurableModuleBuilder().set_class_name("Cfg").build()
 meta = get_module_metadata(Gen)
 print(f"case4 generated base providers={meta.providers!r} imports={meta.imports!r}")

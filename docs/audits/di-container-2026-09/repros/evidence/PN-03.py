@@ -6,7 +6,7 @@ matches by equality, so equal-but-not-identical string/int tokens cannot be
 overridden; has_override silently returns False; clear_override raises."""
 from bustan import Module
 from bustan.app.bootstrap import create_app_context
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 from bustan.testing.overrides import override_provider
 
 results = []

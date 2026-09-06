@@ -10,7 +10,7 @@ for_module(ChildModule).get(PrivateInChild) works.
 from __future__ import annotations
 
 from bustan import DiscoveryModule, Injectable, Module, ModuleRef, create_app
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 
 @Injectable()

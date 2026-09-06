@@ -3,7 +3,7 @@
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-79: provider-level lifecycle hook failures and LifecycleManager re-entrancy guards are untested.
 
-Part 1 runs the suite under coverage for bustan.core.lifecycle and checks that the cited lines
+Part 1 runs the suite under coverage for bustan.kernel.lifecycle and checks that the cited lines
 (runner.py 68-69, 114-122; manager.py 47, 49, 97-98) are reported as never executed.
 Part 2 exercises those exact code paths through the public API to show they currently behave
 (so the gap is a missing lock-in, not a live bug).
@@ -21,15 +21,15 @@ from starlette.testclient import TestClient
 from bustan import Injectable, Module, create_app, create_app_context
 from bustan.errors import LifecycleError
 
-print("== Part 1: coverage of bustan.core.lifecycle under the full test suite ==")
+print("== Part 1: coverage of bustan.kernel.lifecycle under the full test suite ==")
 proc = subprocess.run(
     [sys.executable, "-m", "pytest", "tests", "-q", "-p", "no:cacheprovider",
-     "--cov=bustan.core.lifecycle", "--cov-report=term-missing"],
+     "--cov=bustan.kernel.lifecycle", "--cov-report=term-missing"],
     cwd="/home/user/bustan", capture_output=True, text=True,
 )
 missing: dict[str, set[int]] = {}
 for line in proc.stdout.splitlines():
-    m = re.match(r"src/bustan/core/lifecycle/(runner|manager)\.py\s+.*?%\s+(.*)$", line)
+    m = re.match(r"src/bustan/kernel/lifecycle/(runner|manager)\.py\s+.*?%\s+(.*)$", line)
     if m:
         print("  ", line.strip())
         nums: set[int] = set()

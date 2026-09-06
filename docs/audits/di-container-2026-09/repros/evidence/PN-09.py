@@ -11,8 +11,8 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Inject, Module, Scope, create_app
-from bustan.core.errors import ProviderResolutionError
-from bustan.core.ioc.tokens import APPLICATION, INQUIRER, REQUEST, RESPONSE
+from bustan.kernel.errors import ProviderResolutionError
+from bustan.kernel.ioc.tokens import APPLICATION, INQUIRER, REQUEST, RESPONSE
 
 TOKEN = object()
 

@@ -17,7 +17,7 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from bustan import Controller, DynamicModule, Get, Inject, Injectable, Module, Scope, create_app
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 from bustan.testing import override_provider
 
 print("== Part 1: what the test tree covers ==")
@@ -31,7 +31,7 @@ print("  of those, any mentioning REQUEST/DURABLE/TRANSIENT/use_existing:",
 print("  files mentioning Scope.DURABLE / durable:", rg(r"Scope\.DURABLE|DURABLE|durable"))
 print("  files using TestClient AND durable:", [f for f in rg(r"TestClient") if re.search(r"DURABLE|durable", open("/home/user/bustan/" + f).read())])
 print("  files referencing durable_instances/durable_locks:", rg(r"durable_instances|durable_locks"))
-print("  test_dynamic_modules.py mentions override:", bool(re.search(r"override", open("/home/user/bustan/tests/unit/core/module/test_dynamic_modules.py").read())))
+print("  test_dynamic_modules.py mentions override:", bool(re.search(r"override", open("/home/user/bustan/tests/unit/kernel/module/test_dynamic_modules.py").read())))
 print("  files with DynamicModule AND override:", [f for f in rg(r"DynamicModule") if re.search(r"override", open("/home/user/bustan/" + f).read())])
 
 print("== Part 2: behaviours currently unpinned ==")

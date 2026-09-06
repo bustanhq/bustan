@@ -21,8 +21,8 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Injectable, Module, Scope, create_app
-from bustan.core.ioc.container import Container
-from bustan.core.ioc.scopes import ScopeManager
+from bustan.kernel.ioc.container import Container
+from bustan.kernel.ioc.scopes import ScopeManager
 
 
 def build_app():

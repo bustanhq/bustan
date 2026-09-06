@@ -6,8 +6,8 @@ import logging
 from typing import Any, cast
 from starlette.testclient import TestClient
 from bustan import Controller, Get, Module, Scope, create_app
-from bustan.platform.http.metadata import get_controller_metadata
-from bustan.core.errors import RouteDefinitionError
+from bustan.runtime.metadata import get_controller_metadata
+from bustan.kernel.errors import RouteDefinitionError
 logging.basicConfig(level=logging.CRITICAL)
 
 try:

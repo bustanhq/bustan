@@ -85,7 +85,7 @@ except Exception as exc:
 
 # Also: the compiler knows the policy at compile time; check that no validation references the registry token
 import inspect
-import bustan.platform.http.compiler as comp
+import bustan.runtime.compiler as comp
 src = inspect.getsource(comp)
 print("compiler.py mentions AUTHENTICATOR_REGISTRY:", "AUTHENTICATOR_REGISTRY" in src)
 

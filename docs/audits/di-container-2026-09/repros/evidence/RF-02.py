@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Annotated, Optional
 
 from bustan import Injectable, Module, OptionalDep, create_app_context
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 
 @Injectable

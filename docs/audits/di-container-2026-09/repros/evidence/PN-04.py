@@ -6,8 +6,8 @@ prioritizes the first use_* key, explodes a string 'inject' into characters,
 and accepts non-class / non-callable targets that fail at resolve time."""
 from bustan import Injectable, Module
 from bustan.app.bootstrap import create_app_context
-from bustan.core.errors import BustanError, ProviderResolutionError
-from bustan.core.ioc.registry import normalize_provider
+from bustan.kernel.errors import BustanError, ProviderResolutionError
+from bustan.kernel.ioc.registry import normalize_provider
 
 results = []
 

@@ -88,8 +88,8 @@ with TestClient(cast(Any, _create_app(AppB, no_lifespan=True))) as client:
     results["provider_nolifespan"] = b.json()["tenant"] == "tenant-a" and a.json()["cfg_id"] == b.json()["cfg_id"]
 
 # Variant C: singleton provider depends on durable provider, WITH lifespan (eager startup, request None)
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 
 with TestClient(cast(Any, create_app(AppB))) as client:
     a = client.get("/report", headers={"x-tenant-id": "tenant-a"})

@@ -22,9 +22,9 @@ import anyio
 from starlette.requests import Request
 
 from bustan import Controller, Get, Inject, Injectable, Module, Scope
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
-from bustan.platform.http.controller_factory import ControllerFactory
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
+from bustan.runtime.controller_factory import ControllerFactory
 
 
 def build_request() -> Request:

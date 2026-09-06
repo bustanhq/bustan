@@ -11,8 +11,8 @@ import time
 import anyio
 
 from bustan import Injectable, Module
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 
 constructions: list[str] = []
 

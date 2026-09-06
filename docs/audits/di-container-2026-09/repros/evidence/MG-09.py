@@ -16,9 +16,9 @@ import sys
 import traceback
 
 from bustan import DynamicModule, Module
-from bustan.core.errors import ModuleCycleError
-from bustan.core.module import graph as graph_mod
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.errors import ModuleCycleError
+from bustan.kernel.module import graph as graph_mod
+from bustan.kernel.module.graph import build_module_graph
 
 results: dict[str, object] = {}
 
@@ -178,11 +178,11 @@ try:
 
     sys.settrace(tracer)
     try:
-        rc = pytest.main(["-q", "-p", "no:cacheprovider", "/home/user/bustan/tests/unit/core/module",
+        rc = pytest.main(["-q", "-p", "no:cacheprovider", "/home/user/bustan/tests/unit/kernel/module",
                           "-o", "addopts="], plugins=[Plugin()])
     finally:
         sys.settrace(None)
-    print("pytest tests/unit/core/module rc =", rc)
+    print("pytest tests/unit/kernel/module rc =", rc)
     print("guard body lines 138-139 executed after tests:", bool(hit_lines & guard_lines))
     results["guard_dead_after_tests"] = not (hit_lines & guard_lines)
 except Exception:  # noqa: BLE001

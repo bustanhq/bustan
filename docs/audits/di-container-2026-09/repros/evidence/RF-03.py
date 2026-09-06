@@ -18,7 +18,7 @@ with open(os.path.join(PKG, "base_mod.py"), "w") as fh:
         from __future__ import annotations
         from typing import Annotated
         from bustan import Injectable, Inject
-        from bustan.core.ioc.tokens import InjectionToken
+        from bustan.kernel.ioc.tokens import InjectionToken
 
         CONFIG = InjectionToken("CONFIG")
         type Alias = dict  # PEP 695 alias, only defined here
@@ -63,7 +63,7 @@ sys.path.insert(0, HERE)
 from _gen_f11 import base_mod, child_mod  # noqa: E402
 
 from bustan import Module, create_app_context  # noqa: E402
-from bustan.core.errors import ProviderResolutionError  # noqa: E402
+from bustan.kernel.errors import ProviderResolutionError  # noqa: E402
 
 
 def attempt(cls: type) -> str:

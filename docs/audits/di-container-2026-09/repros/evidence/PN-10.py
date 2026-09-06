@@ -10,7 +10,7 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Injectable, Module, Scope, create_app
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 from bustan.common.types import ProviderScope
 
 TENANT_CACHE = object()

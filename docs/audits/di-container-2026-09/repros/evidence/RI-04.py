@@ -6,9 +6,9 @@ from typing import Any, cast
 from starlette.requests import Request
 from starlette.testclient import TestClient
 from bustan import Controller, Get, Injectable, Module, Scope, create_app
-from bustan.core.errors import ProviderResolutionError
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.errors import ProviderResolutionError
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 
 results: dict[str, Any] = {}
 
@@ -65,7 +65,7 @@ if container is None:
     container = getattr(st, "container", None) if st is not None else None
 if container is None:
     # walk app attributes for a ScopeManager
-    from bustan.core.ioc.scopes import ScopeManager
+    from bustan.kernel.ioc.scopes import ScopeManager
     def find_sm(obj, depth=0, seen=None):
         seen = seen or set()
         if id(obj) in seen or depth > 4:

@@ -20,7 +20,7 @@ Starlette is the default HTTP engine today. Bustan adds structure on top of it r
 - `bustan` is currently in the early `1.1.x` alpha series.
 - The supported Python floor is currently `>=3.13`.
 - Compatibility promises apply only to `bustan`, `bustan.errors`, and `bustan.testing`.
-- Internal modules such as `bustan.core.*`, `bustan.app.*`, and `bustan.platform.*` are still implementation details.
+- Internal modules such as `bustan.kernel.*`, `bustan.app.*`, and `bustan.runtime.*` are still implementation details.
 - The public PascalCase API is already being treated as the intended long-term contract, even though alpha behavior may still move.
 
 ## Installation

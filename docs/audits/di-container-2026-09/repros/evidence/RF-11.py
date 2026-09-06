@@ -12,8 +12,8 @@ from typing import Annotated
 
 from bustan import Inject, Injectable, Module, OptionalDep
 from bustan.app.bootstrap import create_app_context
-from bustan.core.errors import ProviderResolutionError
-from bustan.core.ioc.tokens import REQUEST
+from bustan.kernel.errors import ProviderResolutionError
+from bustan.kernel.ioc.tokens import REQUEST
 
 
 def run(label, module_cls, token):

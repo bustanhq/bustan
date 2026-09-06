@@ -12,7 +12,7 @@ from bustan.addons.discovery import DiscoveryModule, DiscoveryService
 from bustan.addons.module_ref import ModuleRef
 from bustan.app.application import Application, ApplicationContext
 from bustan.app.bootstrap import create_app_context
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 
 @Injectable()

@@ -12,8 +12,8 @@ Claim C (F-08 cross-ref): a re-exported token is present in available_providers
 """
 from bustan import Injectable, Module
 from bustan.app.bootstrap import create_app_context
-from bustan.core.module.graph import build_module_graph
-from bustan.core.errors import ExportViolationError, ProviderResolutionError
+from bustan.kernel.module.graph import build_module_graph
+from bustan.kernel.errors import ExportViolationError, ProviderResolutionError
 
 results = []
 

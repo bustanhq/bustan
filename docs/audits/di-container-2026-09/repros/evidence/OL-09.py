@@ -7,8 +7,8 @@ from typing import Annotated
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Inject, Module, Scope, create_app
-from bustan.core.ioc.container import Container
-from bustan.core.ioc.tokens import REQUEST
+from bustan.kernel.ioc.container import Container
+from bustan.kernel.ioc.tokens import REQUEST
 
 TOKEN = object()
 

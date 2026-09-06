@@ -8,8 +8,8 @@ from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Guard, Injectable, Module, UseGuards, create_app, create_app_context
 from bustan.common.constants import BUSTAN_PROVIDER_ATTR
-from bustan.core.errors import InvalidModuleError, ProviderResolutionError
-from bustan.core.ioc.registry import normalize_provider
+from bustan.kernel.errors import InvalidModuleError, ProviderResolutionError
+from bustan.kernel.ioc.registry import normalize_provider
 
 results: list[tuple[str, bool, str]] = []
 

@@ -6,7 +6,7 @@ requesting module, so instantiate_class() scope inference depends on registratio
 from __future__ import annotations
 from starlette.requests import Request
 from bustan import Injectable, Module, create_app, create_app_context, ModuleRef
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 @Injectable(scope="request")
 class RequestState:

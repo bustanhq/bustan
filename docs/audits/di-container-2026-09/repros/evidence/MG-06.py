@@ -4,7 +4,7 @@
 """F-27: module classes instantiated with no args by middleware compiler (raw TypeError) and again for hooks."""
 import traceback
 from bustan import Controller, Get, Injectable, Module, create_app, create_app_context
-from bustan.core.errors import BustanError
+from bustan.kernel.errors import BustanError
 from starlette.testclient import TestClient
 
 

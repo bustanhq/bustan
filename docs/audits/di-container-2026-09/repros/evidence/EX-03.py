@@ -15,7 +15,7 @@ import anyio
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Injectable, Module, Scope, create_app
-from bustan.logger.observability import ObservabilityHooks
+from bustan.observability.observability import ObservabilityHooks
 from bustan.pipeline.middleware import Middleware, MiddlewareConsumer
 
 logging.basicConfig(level=logging.CRITICAL)

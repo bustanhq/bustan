@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import anyio
 
 from bustan import Module, create_app_context
-from bustan.core.errors import LifecycleError
+from bustan.kernel.errors import LifecycleError
 
 results: list[tuple[str, bool, str]] = []
 

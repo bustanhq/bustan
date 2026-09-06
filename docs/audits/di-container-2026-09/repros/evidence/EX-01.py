@@ -11,9 +11,9 @@ from typing import Any, cast
 from starlette.testclient import TestClient
 
 from bustan import Controller, ExceptionFilter, ExecutionContext, Get, Injectable, Module, Scope, UseFilters, create_app
-from bustan.core.errors import BadRequestException, GuardRejectedError
-from bustan.core.ioc.tokens import APP_FILTER
-from bustan.logger.observability import ObservabilityHooks
+from bustan.kernel.errors import BadRequestException, GuardRejectedError
+from bustan.kernel.ioc.tokens import APP_FILTER
+from bustan.observability.observability import ObservabilityHooks
 
 
 class RecordingMetrics:

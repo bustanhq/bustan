@@ -21,7 +21,7 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Inject, Injectable, InjectionToken, Module, create_app
-from bustan.core.errors import ProviderResolutionError
+from bustan.kernel.errors import ProviderResolutionError
 
 SESSION = InjectionToken("SESSION")
 ALIAS = InjectionToken("ALIAS")

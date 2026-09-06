@@ -1,6 +1,6 @@
 ---
 name: di-container-audit
-description: Adversarial audit checklist and executable repro harness for the bustan dependency-injection container (module graph, resolver, scopes, overrides, lifecycle, bustan.testing). Use when reviewing or changing code under src/bustan/core/ioc, src/bustan/core/module, src/bustan/core/lifecycle or src/bustan/testing, when triaging a ProviderResolutionError, a cross-request state leak, a scope bug or a container memory leak, or when asked to re-run, extend or verify the DI audit findings.
+description: Adversarial audit checklist and executable repro harness for the bustan dependency-injection container (module graph, resolver, scopes, overrides, lifecycle, bustan.testing). Use when reviewing or changing code under src/bustan/kernel/ioc, src/bustan/kernel/module, src/bustan/kernel/lifecycle or src/bustan/testing, when triaging a ProviderResolutionError, a cross-request state leak, a scope bug or a container memory leak, or when asked to re-run, extend or verify the DI audit findings.
 license: MIT
 compatibility: Requires uv and Python 3.13 inside the bustan repository (run scripts with uv run python)
 metadata:

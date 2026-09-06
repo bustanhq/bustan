@@ -8,8 +8,8 @@ misleading provider-flavoured ExportViolationError, and following TROUBLESHOOTIN
 from __future__ import annotations
 
 from bustan import DynamicModule, Injectable, Module
-from bustan.core.errors import ExportViolationError, InvalidModuleError
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.errors import ExportViolationError, InvalidModuleError
+from bustan.kernel.module.graph import build_module_graph
 
 results: dict[str, bool] = {}
 
@@ -100,7 +100,7 @@ try:
         binding.token is SharedModule and binding.resolver_kind == "class"
     )
     results["svc_not_reexported"] = Svc not in graph.available_providers_for(App3)
-    from bustan.core.ioc.container import build_container
+    from bustan.kernel.ioc.container import build_container
 
     container = build_container(graph)
     inst = container.resolve(SharedModule, module=App3)

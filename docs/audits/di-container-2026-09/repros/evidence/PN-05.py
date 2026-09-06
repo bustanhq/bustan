@@ -5,7 +5,7 @@
 pipeline factory builds it with comp_type() (no-arg) and 500s."""
 from starlette.testclient import TestClient
 from bustan import Module, Controller, Get, UseGuards, Guard, Injectable, create_app, create_app_context
-from bustan.core.errors import InvalidPipelineError
+from bustan.kernel.errors import InvalidPipelineError
 
 @Injectable()
 class Policy:
@@ -40,7 +40,7 @@ with TestClient(app, raise_server_exceptions=False) as client:
         print(f"GET /x/ attempt {i+1} ->", r.status_code, r.text[:160])
 
 # capture the exception type deterministically via the factory (the HTTP layer swallows it into a 500)
-from bustan.platform.http.controller_factory import ControllerFactory
+from bustan.runtime.controller_factory import ControllerFactory
 from bustan.pipeline.metadata import PipelineMetadata
 factory = ControllerFactory(app.container)
 req = __import__("starlette.requests", fromlist=["Request"]).Request({"type": "http", "method": "GET", "path": "/", "headers": []})

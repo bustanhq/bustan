@@ -1,6 +1,11 @@
 # ruff: noqa
 # Evidence script for finding CR-05 (workflow id F-24) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
+# Left naming the pre-rename package tree, on purpose. The packages were renamed after
+# this ran - core to kernel, platform/http to runtime, logger to observability, config
+# to configuration - but the module this script imports, src/bustan/core/ioc/resolver.py,
+# was deleted rather than renamed and has no successor at any path. Renaming the names
+# around it would not let it run, and would claim it had measured a tree it never saw.
 """F-24: constructor planning (_plan_constructor_parameters, resolver.py:509-605) is not
 memoized: every instantiate_class call re-runs inspect.signature, get_type_hints and
 _build_type_hint_namespace (O(visible tokens)); with binding_scope None it also scans

@@ -29,8 +29,8 @@ from starlette.testclient import TestClient
 from bustan import Controller, Get, Inject, Injectable, Module, UseGuards, create_app, create_app_context
 from bustan.addons.module_ref import ModuleRef
 from bustan.app.application import ApplicationContext
-from bustan.core.errors import ProviderResolutionError
-from bustan.core.ioc.tokens import APPLICATION
+from bustan.kernel.errors import ProviderResolutionError
+from bustan.kernel.ioc.tokens import APPLICATION
 from bustan.pipeline.guards import Guard
 
 

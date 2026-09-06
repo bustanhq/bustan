@@ -6,8 +6,8 @@ from typing import Any, cast
 from starlette.requests import Request
 from starlette.testclient import TestClient
 from bustan import Controller, Get, Injectable, Module, Scope, create_app
-from bustan.core.ioc.registry import normalize_provider
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.registry import normalize_provider
+from bustan.kernel.module.graph import build_module_graph
 
 results: dict[str, Any] = {}
 

@@ -322,6 +322,17 @@ From wave 3 onward add `uv run python scripts/check_layering.py`; from wave 3 al
 | 5 | 6 | **2.0.0-rc.5** | T-500..T-504 | 5 agents |
 | 6 | 7 | **2.0.0** | T-600..T-604 | 5 agents |
 
+**Package names changed in wave 3, and older ticket bodies keep the older names.**
+T-306 renamed `core/` to `kernel/`, `platform/http/` to `runtime/`, `logger/` to
+`observability/` and `config/` to `configuration/`; `platform/` no longer exists.
+Ticket bodies for waves 0 through 3 shipped before that move and still name the
+pre-move tree on purpose. An `Owns` list records what a ticket owned at the time it
+owned it, and rewriting a delivered one would claim that T-104 replaced a file at
+`src/bustan/kernel/ioc/resolver.py`, which never existed. Tickets that have not been
+dispatched yet name the current tree instead, because their `Owns` lists are still
+read by the ownership gate, and a pattern that matches no file in the repository
+makes every path in the pull request look unowned.
+
 ---
 
 # Wave 0a - the sweep that must land alone
@@ -1033,7 +1044,7 @@ and assert the mapped status instead.
 ## T-401 A usable exception hierarchy
 
 **Wave** 4. **Closes** EX-02, EX-04 on the 2.0 line.
-**Owns** `src/bustan/core/errors.py`, `src/bustan/errors.py`,
+**Owns** `src/bustan/kernel/errors.py`, `src/bustan/errors.py`,
 `src/bustan/pipeline/filters.py`, `src/bustan/pipeline/guards.py`,
 `src/bustan/runtime/compiler.py` policy validation.
 
@@ -1207,8 +1218,8 @@ CI job that fails on regression beyond a stated threshold.
 ## T-502 NestJS parity gaps
 
 **Wave** 5. **Closes** DP-01, DP-02, DP-03, MG-08. **Owns** `src/bustan/addons/module_ref.py`,
-`src/bustan/core/module/builder.py`, `src/bustan/core/module/compiler.py` dynamic
-merge, `src/bustan/core/ioc/planning/` inquirer handling.
+`src/bustan/kernel/module/builder.py`, `src/bustan/kernel/module/compiler.py` dynamic
+merge, `src/bustan/kernel/ioc/planning/` inquirer handling.
 
 **Context.** `ModuleRef` injected through DI is always root-scoped regardless of which
 module's provider received it, and `strict=False` also resolves against the root
@@ -1228,7 +1239,7 @@ the instance for `INQUIRER`. Validate inject entries.
 ## T-503 Public surface and stability policy
 
 **Wave** 5. **Closes** QA-05, QA-06, QA-09. **Owns** `src/bustan/__init__.py`,
-`src/bustan/core/ioc/registry.py` typing, `docs/STABILITY.md`,
+`src/bustan/kernel/ioc/registry.py` typing, `docs/STABILITY.md`,
 `tests/unit/test_public_api.py`, `docs/API_REFERENCE.md` regeneration, CI repro gate.
 
 **Context.** Six extension points an enterprise must customise live only in namespaces
