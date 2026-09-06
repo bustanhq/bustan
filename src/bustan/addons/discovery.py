@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Annotated
 
 from ..app.application import ApplicationContext
-from ..app.bootstrap import http_application_for
 from ..common.decorators.injectable import Inject, Injectable
 from ..common.types import ProviderScope
 from ..core.ioc.tokens import APPLICATION
@@ -73,7 +72,7 @@ class DiscoveryService:
         A standalone application context serves no routes, so there are none to report
         rather than an error to raise.
         """
-        application = http_application_for(self._application)
+        application = self._application.http_application
         if application is None:
             return ()
         return application.snapshot_routes()

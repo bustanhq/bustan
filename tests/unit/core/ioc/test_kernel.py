@@ -8,10 +8,12 @@ the private-seam tests this file replaces.
 from __future__ import annotations
 
 import functools
+import gc
 import inspect
 import threading
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast
 from unittest import mock
+from weakref import ref
 
 import anyio
 import pytest
@@ -483,6 +485,25 @@ def test_the_application_token_answers_with_the_context_when_entered_with_a_requ
     # transport's own server object, which is not an application at all.
     assert type(resolved) is ApplicationContext
     assert resolved is cast(ApplicationProbe, application.get(ApplicationProbe)).application
+
+
+def test_an_application_is_not_retained_once_the_caller_drops_it() -> None:
+    """The container names its application and the application names back.
+
+    Two objects that reference each other are collected together only while nothing
+    outside them holds either, so nothing may keep a table of applications: one entry
+    would pin the application, its container, its module graph and every singleton it
+    built for as long as the process runs.
+    """
+
+    dropped = [ref(create_app(ProbeModule)) for _ in range(5)]
+
+    # Twice, because the first pass collects the cycle and the second proves the
+    # weak references it cleared stay cleared.
+    gc.collect()
+    gc.collect()
+
+    assert [reference() for reference in dropped] == [None] * 5
 
 
 def test_inquirer_is_refused_when_nothing_is_being_built_for_anyone() -> None:

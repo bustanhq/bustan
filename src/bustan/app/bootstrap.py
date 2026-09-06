@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from weakref import WeakKeyDictionary
 
 from ..adapters.starlette import StarletteAdapter
 from ..core.ioc.container import build_container
@@ -22,24 +21,6 @@ if TYPE_CHECKING:
     from ..openapi import SwaggerOptions
     from ..platform.http.versioning import VersioningOptions
     from ..testing.overrides import PipelineOverrideRegistry
-
-
-# The HTTP application assembled around an application context, when there is one.
-# ``APPLICATION`` names the context, which describes a container rather than a
-# transport, so an application that serves HTTP is recorded here, where the two are
-# assembled together, instead of being carried on every context whether or not one
-# exists. The keys are weak, so the association lives exactly as long as the context.
-_HTTP_APPLICATIONS: WeakKeyDictionary[ApplicationContext, Application] = WeakKeyDictionary()
-
-
-def http_application_for(context: ApplicationContext) -> Application | None:
-    """Return the HTTP application assembled around an application context.
-
-    A context created on its own answers no HTTP request and has no application here,
-    which is how a caller tells the two apart without inspecting either.
-    """
-
-    return _HTTP_APPLICATIONS.get(context)
 
 
 def create_app(
@@ -114,7 +95,10 @@ def _create_app(
         route_contracts=route_contracts,
         execution_plans=execution_plans,
     )
-    _HTTP_APPLICATIONS[application_context] = application
+    # The context and the application it serves HTTP through name each other, so what
+    # a provider is injected with can still report the routes the application compiled.
+    # The assembler is the only writer; everything else reads the context's accessor.
+    application_context._http_application = application
     _attach_runtime_artifacts(
         application,
         module_graph,
