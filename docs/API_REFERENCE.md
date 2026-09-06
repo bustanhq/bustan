@@ -94,6 +94,11 @@ IoC container, without an associated HTTP server instance.
 
 A context built without one never runs a lifecycle hook, so `init()` and
 `close()` on it do nothing.
+- `(property) http_application`
+  Accessor for the HTTP application assembled around this context.
+
+A context created on its own serves no HTTP traffic and has none, which is how
+a caller tells the two apart without inspecting either.
 - `get(self, token: object) -> Any`
   Resolve a provider as though no request were being served.
 

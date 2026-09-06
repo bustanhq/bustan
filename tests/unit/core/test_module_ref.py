@@ -24,8 +24,8 @@ from bustan import (
     request_context_id,
 )
 from bustan.adapters.starlette.requests import from_starlette_request
-from bustan.addons.discovery import _resolve_application_context, _resolve_module_node
-from bustan.addons.module_ref import _resolve_application, _resolve_module_key
+from bustan.addons.discovery import _resolve_module_node
+from bustan.addons.module_ref import _application_context, _resolve_module_key
 from bustan.contracts import HttpRequest
 from bustan.errors import ProviderResolutionError
 
@@ -139,13 +139,6 @@ def test_module_ref_create_and_helper_error_paths_are_covered() -> None:
     with pytest.raises(KeyError, match="Unknown module"):
         _resolve_module_key(application, cast(Any, object()))
 
-    with pytest.raises(ProviderResolutionError, match="requires an application context"):
-        _resolve_application(object())
-
-    bare_starlette = Starlette()
-    with pytest.raises(ProviderResolutionError, match="requires an application context"):
-        _resolve_application(bare_starlette)
-
 
 def test_discovery_helper_error_paths_are_covered() -> None:
     @Injectable
@@ -169,17 +162,16 @@ def test_discovery_helper_error_paths_are_covered() -> None:
     with pytest.raises(KeyError, match="Unknown module"):
         _resolve_module_node(application.module_graph.nodes, cast(Any, object()))
 
-    with pytest.raises(ProviderResolutionError, match="requires an application context"):
-        _resolve_application_context(object())
+    # The narrowing that is left is for a container told it belongs to something that
+    # is not an application at all, not for one of the framework's own answers.
+    with pytest.raises(ProviderResolutionError, match="was told it belongs to object"):
+        _application_context(object(), "DiscoveryService")
 
-    bare_starlette = Starlette()
-    with pytest.raises(ProviderResolutionError, match="requires an application context"):
-        _resolve_application_context(bare_starlette)
+    with pytest.raises(ProviderResolutionError, match="was told it belongs to Starlette"):
+        _application_context(Starlette(), "ModuleRef")
 
-    starlette = Starlette()
-    starlette.state.bustan_application = application
-    assert _resolve_application(starlette) is application
-    assert _resolve_application_context(starlette) is application
+    context = create_app_context(AppModule)
+    assert _application_context(context, "ModuleRef") is context
 
 
 @Injectable(scope="request")

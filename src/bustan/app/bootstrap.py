@@ -17,6 +17,7 @@ from .application import Application, ApplicationContext
 from .lifespan import build_lifespan
 
 if TYPE_CHECKING:
+    from ..core.ioc.container import Container
     from ..openapi import SwaggerOptions
     from ..platform.http.versioning import VersioningOptions
     from ..testing.overrides import PipelineOverrideRegistry
@@ -59,6 +60,11 @@ def _create_app(
     container = build_container(module_graph)
     lifecycle_manager = LifecycleManager(module_graph, container)
 
+    # The context is seated before anything is compiled, because compilation resolves
+    # providers and a provider that injects APPLICATION must be answered the same way
+    # here as it is on the request that reaches it later.
+    application_context = _seat_application_context(container, lifecycle_manager)
+
     # 2. Build lifecyle and routing configuration
     lifespan = None if no_lifespan else build_lifespan(lifecycle_manager)
     route_contracts = compile_route_contracts(module_graph, container)
@@ -89,6 +95,10 @@ def _create_app(
         route_contracts=route_contracts,
         execution_plans=execution_plans,
     )
+    # The context and the application it serves HTTP through name each other, so what
+    # a provider is injected with can still report the routes the application compiled.
+    # The assembler is the only writer; everything else reads the context's accessor.
+    application_context._http_application = application
     _attach_runtime_artifacts(
         application,
         module_graph,
@@ -110,7 +120,24 @@ def create_app_context(root_module: type[object] | DynamicModule) -> Application
     module_graph = build_module_graph(root_module)
     container = build_container(module_graph)
     lifecycle_manager = LifecycleManager(module_graph, container)
-    return ApplicationContext(container, lifecycle_manager)
+    return _seat_application_context(container, lifecycle_manager)
+
+
+def _seat_application_context(
+    container: Container, lifecycle_manager: LifecycleManager
+) -> ApplicationContext:
+    """Build the application context a container is resolved against, and seat it.
+
+    One context is built per container, whether or not the application it belongs to
+    also serves HTTP, and the container is told about it here. That is what makes
+    `APPLICATION` one type: every entry point into the container - the application
+    itself, a request being served, an imperative resolution - answers with this
+    object rather than with whatever the caller happened to arrive holding.
+    """
+
+    context = ApplicationContext(container, lifecycle_manager)
+    container.kernel.belongs_to(context)
+    return context
 
 
 def _attach_runtime_artifacts(
