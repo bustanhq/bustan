@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import pytest
@@ -25,6 +26,12 @@ if TYPE_CHECKING:
 
 CONFIG_TOKEN = InjectionToken[str]("CONFIG")
 MISSING_TOKEN = InjectionToken[object]("MISSING")
+
+
+class Tokens(StrEnum):
+    """A string enum token set, whose members equal the bare strings they are written as."""
+
+    DB = "db"
 
 
 def test_explicit_inject_overrides_annotation_based_resolution() -> None:
@@ -127,3 +134,104 @@ def test_application_token_resolves_in_application_context() -> None:
     service = context.get(AppAwareService)
 
     assert service.app is context
+
+
+def test_two_annotations_naming_equal_tokens_of_different_types_stay_apart() -> None:
+    # Annotated memoizes a subscription on its arguments, so two annotations whose
+    # markers compare equal are one object carrying one token. A string enum member
+    # equals the bare string it is written as, and the second parameter used to be
+    # handed the first one's provider before the container was ever consulted.
+    assert Annotated[object, Inject(Tokens.DB)] is not Annotated[object, Inject("db")]
+
+    @Injectable
+    class FromEnum:
+        pass
+
+    @Injectable
+    class FromStr:
+        pass
+
+    @Injectable
+    class Consumer:
+        def __init__(
+            self,
+            from_enum: Annotated[object, Inject(Tokens.DB)],
+            from_str: Annotated[object, Inject("db")],
+        ) -> None:
+            self.from_enum = from_enum
+            self.from_str = from_str
+
+    # One module may not declare both, because two equal tokens of different types in
+    # one providers list is refused where it is written. Declaring them apart is the
+    # arrangement a user reaches for instead, and the one this defect survived in.
+    @Module(
+        providers=[{"provide": Tokens.DB, "use_class": FromEnum}],
+        exports=[Tokens.DB],
+    )
+    class SharedModule:
+        pass
+
+    @Module(
+        imports=[SharedModule],
+        providers=[Consumer, {"provide": "db", "use_class": FromStr}],
+        exports=[Consumer],
+    )
+    class FeatureModule:
+        pass
+
+    container = build_container(build_module_graph(FeatureModule))
+    consumer = cast(Any, container.resolve(Consumer, module=FeatureModule))
+
+    assert isinstance(consumer.from_enum, FromEnum)
+    assert isinstance(consumer.from_str, FromStr)
+    assert consumer.from_enum is not consumer.from_str
+
+
+def test_two_annotations_naming_a_true_and_a_one_token_stay_apart() -> None:
+    # True equals 1 and hashes with it, so a boolean token and the integer it equals
+    # are the same pairing of traps as the string enum, without any enum in sight.
+    assert Annotated[object, Inject(True)] is not Annotated[object, Inject(1)]
+
+    @Injectable
+    class Consumer:
+        def __init__(
+            self,
+            from_bool: Annotated[str, Inject(True)],
+            from_int: Annotated[str, Inject(1)],
+        ) -> None:
+            self.from_bool = from_bool
+            self.from_int = from_int
+
+    @Module(providers=[{"provide": True, "use_value": "bool-token"}], exports=[True])
+    class SharedModule:
+        pass
+
+    @Module(
+        imports=[SharedModule],
+        providers=[Consumer, {"provide": 1, "use_value": "int-token"}],
+        exports=[Consumer],
+    )
+    class FeatureModule:
+        pass
+
+    container = build_container(build_module_graph(FeatureModule))
+    consumer = cast(Any, container.resolve(Consumer, module=FeatureModule))
+
+    assert consumer.from_bool == "bool-token"
+    assert consumer.from_int == "int-token"
+
+
+def test_two_annotations_naming_the_same_token_are_still_one_annotation() -> None:
+    # Memoization is what makes an annotation cheap to repeat, and telling equal tokens
+    # of different types apart must not cost it: the same token written twice is still
+    # one marker and one annotation object.
+    assert Inject(Tokens.DB) == Inject(Tokens.DB)
+    assert hash(Inject(Tokens.DB)) == hash(Inject(Tokens.DB))
+    assert Annotated[object, Inject(Tokens.DB)] is Annotated[object, Inject(Tokens.DB)]
+    assert Annotated[object, Inject("db")] is Annotated[object, Inject("db")]
+
+
+def test_an_inject_marker_never_equals_a_marker_of_another_kind() -> None:
+    assert Inject("db") != Inject(1)
+    assert Inject("db") != OptionalDep()
+    assert Inject("db") != "db"
