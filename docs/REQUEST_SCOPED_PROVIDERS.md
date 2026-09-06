@@ -183,6 +183,8 @@ For example:
 
 That pattern is demonstrated in [../examples/request_scope_pipeline_app/README.md](../examples/request_scope_pipeline_app/README.md).
 
+A module registers several components under one global pipeline token either by binding a list in a single entry or by writing a separate entry for each component; both spellings run their components in the order they were declared, and mixing them under one token yields one flat list in that same order, with a list entry contributing its components in place. Every component of either spelling is resolved once per request, so any of them may be request-scoped.
+
 ## Common Failure Mode
 
 If a singleton provider or singleton controller tries to inject a request-scoped dependency, the application is refused at startup with a `ProviderResolutionError`. The fix is almost always one of these:
