@@ -38,12 +38,22 @@ That installs the framework, tests, linting, typing tools, and the local CLI ent
 ```bash
 uv init --package my-app
 cd my-app
-uv add bustan
+uv add 'bustan[starlette]'
 uv add --dev pytest ruff ty
 uv run bustan init
 ```
 
 ### Install The Published Package
+
+An application that serves HTTP over the shipped Starlette adapter installs the `starlette` extra:
+
+```bash
+uv add 'bustan[starlette]'
+# or
+pip install 'bustan[starlette]'
+```
+
+Plain `bustan` installs no web server. That is the install for using the framework as a library: modules, providers, and dependency injection resolved through `create_app_context`, with no HTTP served.
 
 ```bash
 uv add bustan
@@ -58,7 +68,7 @@ The recommended quickstart uses the CLI scaffold instead of hand-writing the fir
 ```bash
 uv init --package my-app
 cd my-app
-uv add bustan
+uv add 'bustan[starlette]'
 uv add --dev pytest ruff ty
 uv run bustan init
 ```
