@@ -1,6 +1,17 @@
 name: Published Package Verification
 
 on:
+  # Called by publish.yml once the upload succeeds. This is the path that actually runs
+  # after a release cut by this repository: a release created by a workflow using the
+  # default token raises no event that can start another workflow, so the trigger below
+  # never fires for one. It stays because it is correct for a release a person creates by
+  # hand, which does raise a startable event.
+  workflow_call:
+    inputs:
+      version:
+        description: Published package version to verify, for example 0.1.0
+        required: true
+        type: string
   release:
     types:
       - published
@@ -20,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      INPUT_VERSION: ${{ github.event.inputs.version }}
+      INPUT_VERSION: ${{ inputs.version }}
       RELEASE_TAG: ${{ github.event.release.tag_name }}
 
     steps:
@@ -45,12 +56,25 @@ jobs:
           fi
           echo "BUSTAN_VERSION=$version" >> "$GITHUB_ENV"
 
+      # Retried because this now runs seconds after the upload, and a version can take a
+      # moment to become installable. Only a resolution failure is retried; anything the
+      # install itself gets wrong fails on the last attempt as it would have on the first.
       - name: Verify pip install and console entry point
         run: |
           python -m venv .published-smoke
           . .published-smoke/bin/activate
           python -m pip install --upgrade pip
-          python -m pip install "bustan==${BUSTAN_VERSION}"
+          for attempt in 1 2 3 4 5; do
+            if python -m pip install "bustan==${BUSTAN_VERSION}"; then
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo "bustan==${BUSTAN_VERSION} was not installable after $attempt attempts" >&2
+              exit 1
+            fi
+            echo "bustan==${BUSTAN_VERSION} not installable yet; retrying in 15s"
+            sleep 15
+          done
           python -c "import bustan; print(bustan.__version__)"
           bustan --help
 

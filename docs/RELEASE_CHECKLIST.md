@@ -98,7 +98,12 @@ step of the run.
 
 ## Post Publish
 
-1. Watch [published-package-verification.yml](../.github/workflows/published-package-verification.yml) succeed for the released version, or run it manually with the new version number.
+1. Watch the `Verify the published package` job in the tag's
+   [publish.yml](../.github/workflows/publish.yml) run. It calls
+   [published-package-verification.yml](../.github/workflows/published-package-verification.yml)
+   with the version that was uploaded, so verification is part of publishing rather than
+   something that has to be remembered. That workflow can still be run on its own with a
+   version number, which is how a version published before this chain existed is checked.
 2. If manual verification is needed, install the package in a clean environment.
 3. Verify `import bustan` succeeds.
 4. Verify `bustan --help` succeeds.
