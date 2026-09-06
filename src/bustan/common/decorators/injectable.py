@@ -9,6 +9,7 @@ from typing import overload
 from ...core.errors import InvalidProviderError
 from ...core.utils import _get_metadata
 from ..constants import BUSTAN_PROVIDER_ATTR
+from ..tokens import token_identity
 from ..types import ClassT, ProviderScope
 
 
@@ -94,17 +95,13 @@ class InjectMarker:
 
     token: object
 
-    # This pairing repeats the rule ``token_identity`` applies in the IoC registry.
-    # That module imports provider metadata from this one, so importing the function
-    # back from there is a module-level cycle rather than a layering breach: the two
-    # copies must be changed together until the rule moves down beside the markers.
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, InjectMarker):
             return NotImplemented
-        return (type(self.token), self.token) == (type(other.token), other.token)
+        return token_identity(self.token) == token_identity(other.token)
 
     def __hash__(self) -> int:
-        return hash((type(self.token), self.token))
+        return hash(token_identity(self.token))
 
 
 @dataclass(frozen=True, slots=True)
