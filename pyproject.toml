@@ -40,6 +40,14 @@ requires-python = ">=3.13"
 dependencies = [
     "anyio>=4.13.0,<5.0.0",
     "pydantic>=2.13.3,<3",
+]
+
+# Serving HTTP needs a transport, and which transport is the application's choice. The
+# Starlette adapter is the one this package ships, so its dependencies are named here
+# rather than in the runtime set: installing bustan installs no web server, and an
+# application that wants the shipped adapter asks for it by name.
+[project.optional-dependencies]
+starlette = [
     "starlette>=1.3.1,<2.0.0",
     "uvicorn>=0.34.0,<1.0.0",
 ]
@@ -56,7 +64,11 @@ Issues = "https://github.com/bustanhq/bustan/issues"
 Support = "https://github.com/bustanhq/bustan/issues"
 
 [dependency-groups]
+# The suite exercises the shipped Starlette adapter, so the development environment
+# installs the extra. The claim that the package installs without a web server is
+# proven by scripts/package_smoke_check.py in a clean environment, not by this one.
 dev = [
+    "bustan[starlette]",
     "httpx>=0.28.1,<1.0.0",
     "lefthook>=2.1.4",
     "pytest>=9.0.3,<10.0.0",

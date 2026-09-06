@@ -336,12 +336,19 @@ Current value: `Cookies`
 #### `create_app`
 
 ```python
-def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None) -> Application
+def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | AdapterFactory | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None) -> Application
 ```
 
 Defined in `bustan.app.bootstrap`.
 
 Create a fully assembled Bustan application from the root module.
+
+``adapter`` chooses the transport. Left out, the application serves through the
+Starlette adapter, which needs the ``starlette`` extra installed. Given a built
+adapter, that adapter serves as it stands. Given a callable, the framework calls it
+with an :class:`AdapterRuntime` and serves through what it returns, which is how an
+adapter other than the default is handed ``debug`` and the lifespan that starts and
+stops the module graph.
 
 #### `create_app_context`
 

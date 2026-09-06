@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..adapters.starlette import StarletteAdapter
 from ..core.ioc.container import build_container
 from ..core.lifecycle.manager import LifecycleManager
 from ..core.module.dynamic import DynamicModule
 from ..core.module.graph import build_module_graph
 from ..pipeline.middleware import compile_middleware_registry
-from ..platform.http.adapter import AbstractHttpAdapter, compile_adapter_routes
+from ..platform.http.adapter import (
+    AbstractHttpAdapter,
+    AdapterFactory,
+    AdapterRuntime,
+    build_http_adapter,
+    compile_adapter_routes,
+)
 from ..platform.http.compiler import compile_route_contracts
 from ..platform.http.execution import compile_execution_plans
 from .application import Application, ApplicationContext
@@ -27,12 +32,20 @@ def create_app(
     root_module: type[object] | DynamicModule,
     *,
     debug: bool = False,
-    adapter: AbstractHttpAdapter | None = None,
+    adapter: AbstractHttpAdapter | AdapterFactory | None = None,
     pipeline_override_registry: PipelineOverrideRegistry | None = None,
     versioning: VersioningOptions | None = None,
     swagger: SwaggerOptions | None = None,
 ) -> Application:
-    """Create a fully assembled Bustan application from the root module."""
+    """Create a fully assembled Bustan application from the root module.
+
+    ``adapter`` chooses the transport. Left out, the application serves through the
+    Starlette adapter, which needs the ``starlette`` extra installed. Given a built
+    adapter, that adapter serves as it stands. Given a callable, the framework calls it
+    with an :class:`AdapterRuntime` and serves through what it returns, which is how an
+    adapter other than the default is handed ``debug`` and the lifespan that starts and
+    stops the module graph.
+    """
     return _create_app(
         root_module,
         debug=debug,
@@ -48,7 +61,7 @@ def _create_app(
     root_module: type[object] | DynamicModule,
     *,
     debug: bool = False,
-    adapter: AbstractHttpAdapter | None = None,
+    adapter: AbstractHttpAdapter | AdapterFactory | None = None,
     pipeline_override_registry: PipelineOverrideRegistry | None = None,
     versioning: VersioningOptions | None = None,
     swagger: SwaggerOptions | None = None,
@@ -72,8 +85,8 @@ def _create_app(
     middleware_registry = compile_middleware_registry(module_graph)
 
     # 3. Instantiate the HTTP adapter with full configuration
-    # (Starlette requires debug/lifespan at constructor time)
-    http_adapter = adapter or StarletteAdapter(debug=debug, lifespan=lifespan)
+    adapter_runtime = AdapterRuntime(debug=debug, lifespan=lifespan)
+    http_adapter = build_http_adapter(adapter or _default_adapter, adapter_runtime)
 
     compiled_adapter_routes = compile_adapter_routes(
         http_adapter,
@@ -113,6 +126,36 @@ def _create_app(
             swagger_ui_path=swagger.swagger_ui_path,
         )
     return application
+
+
+_STARLETTE_EXTRA_REQUIREMENT = (
+    "Bustan serves HTTP through a transport adapter, and the adapter it uses by default "
+    "is built on Starlette, which is not installed.\n\n"
+    "Install it with:\n\n"
+    "    pip install 'bustan[starlette]'\n\n"
+    "or pass an adapter of your own as create_app(..., adapter=...)."
+)
+
+
+def _default_adapter(runtime: AdapterRuntime) -> AbstractHttpAdapter:
+    """Build the adapter an application gets when it names none.
+
+    The import is deferred so that importing ``bustan`` never imports a web server: an
+    application that brings its own adapter, and every use of the framework that serves
+    no HTTP at all, needs neither Starlette nor the extra that installs it.
+    """
+
+    try:
+        from ..adapters.starlette import StarletteAdapter
+    except ModuleNotFoundError as error:
+        # Only the absent extra is turned into advice. Anything else missing underneath
+        # the adapter is a real import failure, and hiding it behind an install
+        # instruction would send the reader to fix the one thing that is not wrong.
+        if error.name not in {"starlette", "uvicorn"}:
+            raise
+        raise ImportError(_STARLETTE_EXTRA_REQUIREMENT) from error
+
+    return StarletteAdapter(debug=runtime.debug, lifespan=runtime.lifespan)
 
 
 def create_app_context(root_module: type[object] | DynamicModule) -> ApplicationContext:
