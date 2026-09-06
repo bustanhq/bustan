@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RI-10 (workflow id F-71) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-71: @Controller(scope=Scope.DURABLE) accepted but served as an app-wide singleton."""

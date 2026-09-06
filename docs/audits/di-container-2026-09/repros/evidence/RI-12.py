@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RI-12 (workflow id F-73) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-73: request_context_id is id(request)-based and collides across sequential requests."""

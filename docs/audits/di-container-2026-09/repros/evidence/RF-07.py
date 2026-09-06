@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RF-07 (workflow id F-44) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-44: APPLICATION fallback uses hasattr(request, 'app'); Starlette raises KeyError."""

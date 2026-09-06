@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RI-03 (workflow id F-02) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-02: singleton provider / singleton controller capturing a tenant-keyed DURABLE instance."""

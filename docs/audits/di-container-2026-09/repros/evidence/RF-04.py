@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RF-04 (workflow id F-35) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-35: constructor parameter defaults are ignored by _plan_constructor_parameters."""

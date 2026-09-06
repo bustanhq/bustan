@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding MG-01 (workflow id F-08) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-08: re-exporting an imported token passes graph validation but fails at resolution.

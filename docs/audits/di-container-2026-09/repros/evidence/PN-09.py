@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding PN-09 (workflow id F-87) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 # F-87: factory `inject` tuples naming REQUEST / RESPONSE / APPLICATION /

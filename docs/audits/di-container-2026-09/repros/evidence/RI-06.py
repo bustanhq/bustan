@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RI-06 (workflow id F-05) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-05: scope guard bypass via use_factory inject lists and use_existing aliases.

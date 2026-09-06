@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RI-11 (workflow id F-72) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-72: request-scoped/durable providers constructed before guards; anonymous partition creation; loop stall."""

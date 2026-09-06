@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding EX-02 (workflow id F-76) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-76: AUTHENTICATOR_REGISTRY wiring/runtime errors surface as 403 'Unknown authenticator registry' per request; no compile-time validation."""

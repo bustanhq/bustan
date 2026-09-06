@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-14 (workflow id F-58) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-58: aggregated shutdown LifecycleError discards the individual exceptions.

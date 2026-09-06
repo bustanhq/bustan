@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding QA-12 (workflow id F-78) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 # Partly rewritten for the renamed package tree - core to kernel, platform/http to

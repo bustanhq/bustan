@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-11 (workflow id F-23) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-23: no public way to resolve request-scoped providers from handler / guard code.

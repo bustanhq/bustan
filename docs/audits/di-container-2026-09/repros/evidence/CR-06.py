@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding CR-06 (workflow id F-48) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-48: get_durable_context_key is called several times per uncached resolve; a key that is not stable

@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-09 (workflow id F-42) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-42: async use_factory providers only work for singleton scope over HTTP."""

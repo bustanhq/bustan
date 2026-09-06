@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RI-14 (workflow id F-75) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-75: transient provider injecting Request under a REQUEST-scoped controller -> 500?"""

@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-13 (workflow id F-57) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-57: shutdown() leaves ScopeManager caches populated and startup() is one-shot.

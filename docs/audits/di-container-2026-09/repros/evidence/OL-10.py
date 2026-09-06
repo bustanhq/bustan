@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-10 (workflow id F-43) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-43: iscoroutinefunction predicate vs isawaitable(result) at call time."""

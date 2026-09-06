@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding PN-04 (workflow id F-32) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-32 supplement: do bad use_class/use_factory targets surface at startup
