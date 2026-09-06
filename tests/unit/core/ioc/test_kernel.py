@@ -461,13 +461,15 @@ def test_the_application_token_answers_with_the_context_on_a_request_being_serve
     application = create_app(ProbeModule)
     ProbeController.seen.clear()
 
+    # Both readings are taken while the application is running: it is a running
+    # application the token names, and one that has shut down resolves nothing.
     with TestClient(cast(Any, application)) as client:
         assert client.get("/probe/").status_code == 200
-
-    served = ProbeController.seen[-1]
+        served = ProbeController.seen[-1]
+        entered_directly = cast(ApplicationProbe, application.get(ApplicationProbe)).application
 
     assert type(served) is ApplicationContext
-    assert served is cast(ApplicationProbe, application.get(ApplicationProbe)).application
+    assert served is entered_directly
 
 
 def test_the_application_token_answers_with_the_context_when_entered_with_a_request(
