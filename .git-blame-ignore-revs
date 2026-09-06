@@ -5,3 +5,7 @@
 
 # style: apply ruff format across the repository
 e697fba5348b6ac30a0bb3f4ec095451b3c93dd3
+
+# refactor: move core/ to kernel/, platform/http/ to runtime/, logger/ to
+# observability/ and config/ to configuration/
+3c189c8211b792c7d3288de627f8109ba8a9452c
