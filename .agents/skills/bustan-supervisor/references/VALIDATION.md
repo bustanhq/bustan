@@ -156,3 +156,71 @@ A criterion that survives this check has a second virtue: it tells the agent whe
 work. One that fails it tells the agent to go somewhere it has been forbidden, and the
 better the agent, the more time it spends discovering that the instruction contradicts
 itself.
+
+## Keep an Owns section to paths, and put every explanation behind a bold lead-in
+
+The ownership gate reads from the `Owns` heading to the first bold lead-in, markdown
+heading or rule, and pulls every backticked run out of everything in between. So prose
+inside the section is not ignored - it is parsed. A sentence explaining which test
+function changes contributes that function's name as a candidate path, and the gate
+refuses the whole list rather than guess.
+
+That refusal is correct and should not be worked around with `--owns`. Fix the ticket:
+
+- The `Owns` section is a bullet list of literal repository paths, one per line, and
+  nothing else. No trailing prose after an em-dash, no line numbers, no method names.
+- Everything a reader needs about those paths goes underneath, behind a bold lead-in of
+  its own - `**Notes on that list.**` works and terminates the section cleanly.
+- A path the ticket will create is still a path. Write it out.
+
+Two lists in one wave failed this: one named three test functions in trailing prose, and
+one said "the nine `__init__.py` files listed above", which is a cross-reference the gate
+cannot follow. Both parsed only after the prose moved behind a lead-in.
+
+Verify by running the parser rather than by reading. Every pattern should resolve to at
+least one existing file, or be a path the ticket is explicitly creating. A pattern that
+matches nothing and creates nothing is a typo the gate will not catch for you, because a
+pattern matching no file also flags no file as unowned.
+
+## Grep the whole suite for the string a ticket changes, not only the modules it edits
+
+Checking each acceptance criterion against `Owns` catches a criterion with no legal home.
+It does not catch the other half of the same problem: a criterion whose home is correct, and
+which is nonetheless unreachable because a test somewhere else asserts the behaviour being
+removed.
+
+A security ticket asked that a 403 stop naming the guard's class path. Its `Owns` listed the
+two modules that build the message and the two unit-test files covering them, and every
+criterion had a file it could be satisfied in. The agent implemented it correctly and then
+opened a `BLOCKED:` draft, because two integration tests it did not own asserted the exact
+string the ticket exists to delete:
+
+```
+tests/integration/pipeline/test_request_pipeline.py
+    assert response.json()["detail"].endswith("DenyGuard blocked the request")
+tests/integration/security/test_policy_plan.py
+    assert response.json()["detail"] == "Policy denied: missing roles ('admin',)"
+```
+
+Both were right to block on. Neither was visible from reading the ticket's own modules,
+because a test that asserts an observable response does not have to live near the code that
+produces it.
+
+So when a ticket changes something a caller can see - a status, a header, a message, a
+payload shape - grep the entire **repository** for the current wording before writing `Owns`,
+and add every file that asserts or teaches it. Not the test tree, and not a list of
+directories: `git grep` from the root, with no path argument at all.
+
+That distinction cost a second round on the very next ticket. A ticket retiring a documented
+testing pattern had its `Owns` widened after a sweep of `docs/`, `src/`, `tests/` and
+`examples/` - which found two guides and a whole example project, and missed the
+repository-root `README.md`, where the same recipe was taught to every first-time reader. The
+agent delivered correctly, the criterion "no documentation still shows the retired pattern"
+was still unmet, and the file had to be granted a second time. A directory list is a guess
+about where the repository keeps things; the root is not a directory anyone remembers to name. The grep is the check; reading the modules the ticket edits
+is not a substitute, and neither is running the suite, which passes right up until the fix
+exists.
+
+A test asserting the behaviour a ticket removes is a test defending the defect. Granting it
+is correct, and the grant is bounded: name the file, and say that changing the assertion is
+in scope while changing anything else in it is not.
