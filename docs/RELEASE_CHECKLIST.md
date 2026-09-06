@@ -43,6 +43,41 @@ issues carry the classification labels the notes are grouped by.
 3. Land both on `main` through a pull request, reviewed like any other change. This is the
    last point at which the release is reviewable, because a tag is not.
 
+## Publishing Prerequisites
+
+These are configured once and then only re-checked when the publish workflow changes. They
+are worth checking before pushing a tag, because a mismatch is not visible until the last
+step of the run.
+
+1. Confirm PyPI's trusted publisher for the project matches
+   [publish.yml](../.github/workflows/publish.yml). PyPI does not hold a token; it matches
+   the claims the workflow presents when it asks for one. The publisher must name the
+   repository, the workflow **file name**, and the **environment** the publishing job
+   declares:
+
+   | Field | Value |
+   | --- | --- |
+   | Owner | `bustanhq` |
+   | Repository | `bustan` |
+   | Workflow name | `publish.yml` |
+   | Environment name | `pypi` |
+
+2. Re-check this whenever the workflow file is renamed, or the job's `environment:` is
+   added, removed or renamed. Either change alters the claims and the upload is refused:
+
+   ```
+   invalid-publisher: valid token, but no corresponding publisher
+   ```
+
+   The refusal names the claims it actually saw, which is what to copy into PyPI's form.
+
+3. Know what a mismatch costs, and what it does not. The upload is the second-to-last step,
+   so a mismatch fails only after the gates, the build and the distribution check have all
+   passed - a whole run for a configuration error. It costs nothing else: the release step
+   runs after the upload, so a refused upload publishes no package and leaves no GitHub
+   release behind. Fix the publisher and re-run the failed job on the same run; the tag
+   stands and nothing needs re-cutting.
+
 ## Publish
 
 1. Tag the merged commit as `v<version>`, matching [pyproject.toml](../pyproject.toml)
