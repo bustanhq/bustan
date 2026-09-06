@@ -147,6 +147,33 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  conformance:
+    name: Adapter conformance matrix
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      # Blocking, unlike the advisory jobs around it, because this one passes on the tree
+      # as it stands: every adapter answers every case in the suite, and answers it the
+      # same way. A failure here is therefore a regression in the abstraction that a
+      # change just introduced, not a debt inherited from before the check existed. The
+      # script's docstring states exactly what "the same way" compares.
+      - name: Run the adapter conformance matrix
+        run: uv run python scripts/conformance_matrix.py
+
   audit-repros:
     name: Audit repro harness (advisory)
     runs-on: ubuntu-latest

@@ -200,6 +200,12 @@ from bustan.security import ThrottlerGuard as InternalThrottlerGuard
 from bustan.security import ThrottlerModule as InternalThrottlerModule
 from bustan.security import ThrottlerStorage as InternalThrottlerStorage
 from bustan.testing import (
+    AsgiTestClient as InternalAsgiTestClient,
+)
+from bustan.testing import (
+    AsgiTestResponse as InternalAsgiTestResponse,
+)
+from bustan.testing import (
     CompiledTestingModule as InternalCompiledTestingModule,
 )
 from bustan.testing import (
@@ -441,6 +447,8 @@ def test_root_package_exposes_the_supported_public_api() -> None:
 
 def test_testing_module_exposes_the_supported_helpers() -> None:
     assert bustan_testing.__all__ == (
+        "AsgiTestClient",
+        "AsgiTestResponse",
         "CompiledTestingModule",
         "PipelineOverrideRegistry",
         "TestingModuleBuilder",
@@ -449,6 +457,8 @@ def test_testing_module_exposes_the_supported_helpers() -> None:
         "create_testing_module",
         "override_provider",
     )
+    assert bustan_testing.AsgiTestClient is InternalAsgiTestClient
+    assert bustan_testing.AsgiTestResponse is InternalAsgiTestResponse
     assert bustan_testing.CompiledTestingModule is InternalCompiledTestingModule
     assert bustan_testing.PipelineOverrideRegistry is InternalPipelineOverrideRegistry
     assert bustan_testing.TestingModuleBuilder is InternalTestingModuleBuilder

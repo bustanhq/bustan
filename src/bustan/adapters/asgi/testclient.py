@@ -37,7 +37,13 @@ _MAX_REDIRECTS = 20
 
 
 class AsgiTestResponse:
-    """What one request to the application produced."""
+    """What one request to the application produced.
+
+    ``status_code`` is the status the application started its response with,
+    ``headers`` the headers it sent, ``content`` the body as raw bytes, and ``url``
+    the target the request finally landed on, which differs from the one asked for
+    when redirects were followed.
+    """
 
     __slots__ = ("content", "headers", "status_code", "url")
 

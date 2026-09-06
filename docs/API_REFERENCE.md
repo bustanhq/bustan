@@ -1626,6 +1626,68 @@ from bustan.testing import create_test_app, create_test_module, override_provide
 
 ### Exports
 
+#### `AsgiTestClient`
+
+```python
+class AsgiTestClient
+```
+
+Defined in `bustan.adapters.asgi.testclient`.
+
+Drives one ASGI application in process, one request at a time.
+
+Used as a context manager it runs the application's lifespan, so startup has
+finished before the first request and shutdown runs after the last; used without
+one, it sends requests to an application that was never started, which is what a
+test that does not care about the lifespan wants.
+
+Cookies a response set are kept and sent with later requests, so a test that logs in
+and then asks for something stays logged in.
+
+##### Methods
+
+- `get(self, url: str, **options: Any) -> AsgiTestResponse`
+  Send a GET request.
+- `head(self, url: str, **options: Any) -> AsgiTestResponse`
+  Send a HEAD request.
+- `options(self, url: str, **options: Any) -> AsgiTestResponse`
+  Send an OPTIONS request.
+- `post(self, url: str, **options: Any) -> AsgiTestResponse`
+  Send a POST request.
+- `put(self, url: str, **options: Any) -> AsgiTestResponse`
+  Send a PUT request.
+- `patch(self, url: str, **options: Any) -> AsgiTestResponse`
+  Send a PATCH request.
+- `delete(self, url: str, **options: Any) -> AsgiTestResponse`
+  Send a DELETE request.
+- `request(self, method: str, url: str, *, params: Mapping[str, str] | None = None, headers: Mapping[str, str] | None = None, content: bytes | str | None = None, data: Mapping[str, str] | None = None, json: object | None = None, cookies: Mapping[str, str] | None = None, follow_redirects: bool = True) -> AsgiTestResponse`
+  Send one request and return what the application answered.
+
+The body is whichever of ``content``, ``data`` and ``json`` was supplied; the
+last two also set the content type the application will parse them with.
+
+#### `AsgiTestResponse`
+
+```python
+class AsgiTestResponse
+```
+
+Defined in `bustan.adapters.asgi.testclient`.
+
+What one request to the application produced.
+
+``status_code`` is the status the application started its response with,
+``headers`` the headers it sent, ``content`` the body as raw bytes, and ``url``
+the target the request finally landed on, which differs from the one asked for
+when redirects were followed.
+
+##### Methods
+
+- `(property) text`
+  The body decoded as UTF-8.
+- `json(self) -> Any`
+  The body decoded as JSON.
+
 #### `CompiledTestingModule`
 
 ```python
