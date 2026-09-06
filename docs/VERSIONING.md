@@ -25,7 +25,8 @@ The generated [API_REFERENCE.md](API_REFERENCE.md) is part of that public docume
 
 ## Release Notes And Changelog
 
-- Release notes are generated through the release-please workflow from Conventional Commits.
+- Release notes are composed from the closed issues of the milestone being released, grouped by
+  their classification labels, and live in [CHANGELOG.md](../CHANGELOG.md) before the tag exists.
 - Public-surface additions, removals, and behavior changes should be called out explicitly.
 - Internal refactors may be summarized at a higher level when they do not change the supported public modules.
 

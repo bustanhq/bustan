@@ -1,0 +1,102 @@
+name: Publish
+
+# A release is cut by hand when a milestone empties and verification passes on the
+# merged branch, and the tag is what starts the publish. Nothing here decides what
+# the version is or what the notes say: both are already in the repository when the
+# tag is pushed, which is what makes the tag reviewable before it exists.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/bustan
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      # Before any `uv run`, which re-locks the project as a side effect and would
+      # repair a stale lockfile in place before this step could see it.
+      - name: Check lockfile is current
+        run: uv lock --check
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      # The tag names the release; pyproject.toml is what actually gets published.
+      # A mismatch means the tag was pushed at the wrong commit, and finding that out
+      # after the upload is finding it out too late: PyPI does not take a file back.
+      - name: Check the tag matches the packaged version
+        run: |
+          packaged="$(uv run python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          tagged="${GITHUB_REF_NAME#v}"
+          if [ "$packaged" != "$tagged" ]; then
+            echo "tag $GITHUB_REF_NAME names $tagged, but pyproject.toml packages $packaged" >&2
+            exit 1
+          fi
+          echo "PACKAGE_VERSION=$packaged" >> "$GITHUB_ENV"
+
+      # The same gates a contributor runs, against the exact commit being published.
+      - name: Check API reference drift
+        run: uv run python scripts/generate_api_reference.py --check
+
+      - name: Check markdown links
+        run: uv run python scripts/check_markdown_links.py
+
+      - name: Ruff format
+        run: uv run ruff format --check .
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run ty check src tests scripts
+
+      - name: Test
+        run: uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
+
+      - name: Build
+        run: uv build
+
+      - name: Check distributions
+        run: uvx --from twine twine check dist/*
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      # Published after the upload, so the release the verification workflow reacts to
+      # only exists once there is something on PyPI for it to install.
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="$(uv run python scripts/release_notes.py "$PACKAGE_VERSION")"
+          prerelease=""
+          case "$PACKAGE_VERSION" in
+            *a*|*b*|*rc*) prerelease="--prerelease" ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "$notes" \
+            --verify-tag \
+            $prerelease \
+            dist/*

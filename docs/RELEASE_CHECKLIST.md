@@ -20,29 +20,39 @@ Use this checklist for every tagged release until the release workflow is fully 
 7. Run `uv build`.
 8. Run `uvx --from twine twine check dist/*`.
 
-## Release Automation Prerequisites
+## When To Cut
 
-1. In GitHub, open repository Settings -> Actions -> General -> Workflow permissions.
-2. Set the default `GITHUB_TOKEN` permission to read and write.
-3. Enable Allow GitHub Actions to create and approve pull requests if release-please should use the default token.
-4. If that setting is blocked by organization policy, create a `RELEASE_PLEASE_TOKEN` secret and use a fine-grained PAT or GitHub App token with write access to Contents, Pull requests, and Issues.
-5. Re-run [release-please.yml](../.github/workflows/release-please.yml) after changing the setting or adding the secret.
-6. Confirm [release/config.json](../release/config.json) and [release/manifest.json](../release/manifest.json) still describe the current release strategy.
+A release is cut when a milestone empties, not when a number of commits have piled up.
+The milestone is the release: "these issues are closed" is what the notes say, and the
+issues carry the classification labels the notes are grouped by.
 
-## Publish Preparation
+1. Confirm the milestone has no open issues.
+2. Confirm the supervisor's own verification passes on the merged branch, not only that
+   CI was green on each pull request: the suite, the audit repro harness with no verdict
+   moved, the examples, the API reference check and the link check.
+3. Confirm no release pull request or release bot is armed on `main`. One mechanism owns
+   releases, and it is this one.
 
-1. Confirm the version to publish.
-2. Confirm release notes are generated from Conventional Commits.
-3. Confirm CI is green on the supported platform matrix.
-4. Confirm security and support links are still correct.
-5. Confirm the public compatibility notes still match [VERSIONING.md](VERSIONING.md).
-6. Confirm the current tag-signing policy in [GOVERNANCE.md](../GOVERNANCE.md).
+## Prepare The Release Commit
+
+1. Compose the changelog entry from the milestone's closed issues, grouped by their
+   classification labels. Every issue in the milestone appears, or the entry says why it
+   does not.
+2. Set the version in [pyproject.toml](../pyproject.toml). It is the only place a version
+   is written down; nothing else in the repository repeats it.
+3. Land both on `main` through a pull request, reviewed like any other change. This is the
+   last point at which the release is reviewable, because a tag is not.
 
 ## Publish
 
-1. Create or merge the release PR.
-2. Create the release tag.
-3. Let [release-please.yml](../.github/workflows/release-please.yml) run the final validation and trusted publishing path.
+1. Tag the merged commit as `v<version>`, matching [pyproject.toml](../pyproject.toml)
+   exactly. [publish.yml](../.github/workflows/publish.yml) refuses a tag that names a
+   different version than the commit packages.
+2. Push the tag. The workflow re-runs the gates against that exact commit, builds, checks
+   the distributions, publishes to PyPI, and then publishes the GitHub release with the
+   changelog section for that version as its body.
+3. A pre-release version - one carrying `a`, `b` or `rc` - is marked as a pre-release on
+   GitHub automatically.
 
 ## Post Publish
 
