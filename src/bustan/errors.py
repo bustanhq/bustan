@@ -1,6 +1,6 @@
 """Re-export of bustan errors for backward compatibility."""
 
-from .core.errors import (
+from .kernel.errors import (
     BadRequestException,
     BustanError,
     ExportViolationError,

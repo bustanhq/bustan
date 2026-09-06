@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ...core.errors import InvalidControllerError, RouteDefinitionError
-from ...core.utils import _normalize_path
+from ...kernel.errors import InvalidControllerError, RouteDefinitionError
+from ...kernel.utils import _normalize_path
 from ..constants import BUSTAN_CONTROLLER_ATTR
 from ..types import ClassT, ControllerMetadata, HostInput, ProviderScope, normalize_hosts
 

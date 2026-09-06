@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from ..core.ioc.tokens import InjectionToken
+from ..kernel.ioc.tokens import InjectionToken
 from .context import ExecutionContext
 
 

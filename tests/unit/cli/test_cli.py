@@ -18,7 +18,7 @@ import bustan.cli.main as cli_main_module
 from bustan.cli.commands import governance as governance_commands
 from bustan.cli.commands import routes as routes_commands
 from bustan.cli.services import scaffold as scaffold_service
-from bustan.core.module.dynamic import ModuleInstanceKey
+from bustan.kernel.module.dynamic import ModuleInstanceKey
 
 _PYPROJECT_TOML = """\
 [project]

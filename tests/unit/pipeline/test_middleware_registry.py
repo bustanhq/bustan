@@ -10,8 +10,8 @@ import pytest
 from bustan import Controller, Get, Module, Post
 from bustan.adapters.starlette import StarletteHttpRequest
 from bustan.contracts import HttpRequest, HttpResponse
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 from bustan.pipeline.middleware import (
     Middleware,
     MiddlewareRouteTarget,
@@ -23,7 +23,7 @@ from bustan.pipeline.middleware import (
     compile_middleware_registry,
     path_matches,
 )
-from bustan.platform.http.compiler import compile_route_contracts
+from bustan.runtime.compiler import compile_route_contracts
 
 if TYPE_CHECKING:
     from tests.conftest import RequestFactory

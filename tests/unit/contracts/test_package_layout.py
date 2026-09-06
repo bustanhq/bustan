@@ -19,7 +19,7 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[3] / "src" / "bustan"
 # on the page rather than an omission a reader has to infer.
 PACKAGES_WITHOUT_A_TOP_LEVEL_SURFACE = (
     "common",
-    "core/lifecycle",
+    "kernel/lifecycle",
     "cli/services",
     "cli/commands",
     "cli/templates",

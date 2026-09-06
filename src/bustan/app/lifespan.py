@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
 
-from ..core.lifecycle.manager import LifecycleManager
+from ..kernel.lifecycle.manager import LifecycleManager
 
 # What a server hands its lifespan: the server object itself, in exchange for a
 # context manager held open for as long as that server serves. The argument is typed

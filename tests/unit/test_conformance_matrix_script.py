@@ -7,8 +7,8 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
 
-from bustan.platform.http.adapter import AdapterCapabilities
-from bustan.platform.http.conformance import (
+from bustan.runtime.adapter import AdapterCapabilities
+from bustan.runtime.conformance import (
     AdapterConformanceResult,
     ConformanceCheck,
     ResponseObservation,

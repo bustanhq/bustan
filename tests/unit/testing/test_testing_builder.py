@@ -6,8 +6,8 @@ import pytest
 from starlette.applications import Starlette
 
 from bustan import Controller, Get, Guard, Injectable, Module
-from bustan.core.module.metadata import ModuleMetadata, get_module_metadata
 from bustan.errors import LifecycleError, ProviderResolutionError
+from bustan.kernel.module.metadata import ModuleMetadata, get_module_metadata
 from bustan.testing import (
     CompiledTestingModule,
     PipelineOverrideRegistry,

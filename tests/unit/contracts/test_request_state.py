@@ -8,7 +8,7 @@ from bustan.adapters.starlette import StarletteHttpRequest
 from bustan.addons.context import REQUEST_CONTEXT_ID_ATTR
 from bustan.contracts import HttpRequest, HttpRequestState
 from bustan.contracts.requests import REQUEST_SLOTS_ATTR
-from bustan.core.ioc.scopes import REQUEST_SCOPE_CACHE_ATTR, REQUEST_SCOPE_CONTROLLER_CACHE_ATTR
+from bustan.kernel.ioc.scopes import REQUEST_SCOPE_CACHE_ATTR, REQUEST_SCOPE_CONTROLLER_CACHE_ATTR
 
 if TYPE_CHECKING:
     from tests.conftest import RequestFactory

@@ -10,12 +10,12 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
 from ..contracts import HttpRequest
-from ..core.lifecycle.runner import build_module_instance
-from ..core.module.dynamic import ModuleKey
+from ..kernel.lifecycle.runner import build_module_instance
+from ..kernel.module.dynamic import ModuleKey
 
 if TYPE_CHECKING:
-    from ..core.module.graph import ModuleGraph
-    from ..platform.http.compiler import RouteContract
+    from ..kernel.module.graph import ModuleGraph
+    from ..runtime.compiler import RouteContract
 
 # Continue the chain: pass the request on and await whatever answers it.
 CallNext = Callable[[HttpRequest], Awaitable[object]]

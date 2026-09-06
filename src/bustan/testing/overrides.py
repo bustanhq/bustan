@@ -7,9 +7,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ..app.application import Application
-from ..core.errors import ProviderResolutionError
-from ..core.ioc.container import Container
-from ..core.utils import _qualname
+from ..kernel.errors import ProviderResolutionError
+from ..kernel.ioc.container import Container
+from ..kernel.utils import _qualname
 from ..pipeline.metadata import PipelineMetadata
 
 

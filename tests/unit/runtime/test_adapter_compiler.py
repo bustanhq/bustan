@@ -1,0 +1,95 @@
+"""Unit tests for adapter-route compilation."""
+
+from __future__ import annotations
+
+from bustan import VERSION_NEUTRAL, Controller, Get, Module, VersioningOptions, VersioningType
+from bustan.adapters.starlette import StarletteAdapter
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
+from bustan.runtime.adapter import CompiledAdapterRoute, compile_adapter_routes
+from bustan.runtime.compiler import compile_route_contracts
+from bustan.runtime.execution import ExecutionPlan
+
+
+def test_adapter_compiler_consumes_compiled_route_contracts_only() -> None:
+    @Controller("/users")
+    class UsersController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+    route_contracts = compile_route_contracts(graph, container)
+
+    compiled_routes = compile_adapter_routes(
+        StarletteAdapter(),
+        route_contracts,
+        container,
+    )
+
+    assert len(compiled_routes) == 1
+    assert isinstance(compiled_routes[0], CompiledAdapterRoute)
+    assert compiled_routes[0].contracts == (route_contracts[0],)
+    assert len(compiled_routes[0].execution_plans) == 1
+    assert isinstance(compiled_routes[0].execution_plans[0], ExecutionPlan)
+    assert compiled_routes[0].execution_plans[0].route_contract is route_contracts[0]
+    assert compiled_routes[0].path == "/users"
+    assert compiled_routes[0].methods == ("GET",)
+
+
+def test_adapter_compiler_preserves_deterministic_order() -> None:
+    @Controller("/zeta")
+    class ZetaController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"controller": "zeta"}
+
+    @Controller("/alpha")
+    class AlphaController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"controller": "alpha"}
+
+    @Module(controllers=[ZetaController, AlphaController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+    compiled_routes = compile_adapter_routes(
+        StarletteAdapter(),
+        compile_route_contracts(graph, container),
+        container,
+    )
+
+    assert [compiled_route.path for compiled_route in compiled_routes] == ["/zeta", "/alpha"]
+
+
+def test_the_plan_hands_an_adapter_a_neutral_handler_and_no_transport_object() -> None:
+    @Controller("/users", version=VERSION_NEUTRAL)
+    class UsersController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+    compiled_routes = compile_adapter_routes(
+        StarletteAdapter(),
+        compile_route_contracts(graph, container),
+        container,
+        versioning=VersioningOptions(type=VersioningType.HEADER),
+    )
+
+    assert compiled_routes[0].handler is not None
+    assert compiled_routes[0].registration is None
+    assert compiled_routes[0].contracts[0].controller_cls is UsersController

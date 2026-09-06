@@ -8,8 +8,8 @@ from types import FunctionType, NoneType, UnionType
 from typing import Any, Union, cast, get_args, get_origin
 from uuid import UUID
 
-from ..platform.http.compiler import RouteContract
-from ..platform.http.params import HandlerBindingPlan, ParameterSource
+from ..runtime.compiler import RouteContract
+from ..runtime.params import HandlerBindingPlan, ParameterSource
 from .decorators import (
     OPENAPI_BODY_ATTR,
     OPENAPI_OPERATION_ATTR,

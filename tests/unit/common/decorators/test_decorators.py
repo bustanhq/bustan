@@ -22,13 +22,13 @@ from bustan import (
 )
 from bustan.common.decorators.injectable import ProviderMetadata, get_provider_metadata
 from bustan.common.types import ProviderScope
-from bustan.core.errors import (
+from bustan.kernel.errors import (
     InvalidControllerError,
     InvalidPipelineError,
     InvalidProviderError,
     RouteDefinitionError,
 )
-from bustan.core.module.metadata import (
+from bustan.kernel.module.metadata import (
     ModuleMetadata,
     get_module_metadata,
 )
@@ -37,7 +37,7 @@ from bustan.pipeline.metadata import (
     get_controller_pipeline_metadata,
     get_handler_pipeline_metadata,
 )
-from bustan.platform.http.metadata import (
+from bustan.runtime.metadata import (
     ControllerMetadata,
     RouteMetadata,
     get_controller_metadata,

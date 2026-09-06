@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ...app.bootstrap import _create_app
-from ...platform.http.registry import diff_route_snapshots
+from ...runtime.registry import diff_route_snapshots
 from .routes import _load_root_module, _load_snapshot
 
 if TYPE_CHECKING:
     from ...app.application import Application
-    from ...platform.http.compiler import RouteContract
+    from ...runtime.compiler import RouteContract
 
 
 def register_governance_commands(
@@ -155,7 +155,7 @@ def _build_diff_report(target: str, snapshot_path: str) -> dict[str, object]:
 
 
 def _build_conformance_report(adapter_name: str) -> dict[str, object]:
-    from ...platform.http.conformance import evaluate_adapter_conformance, load_adapter
+    from ...runtime.conformance import evaluate_adapter_conformance, load_adapter
 
     return evaluate_adapter_conformance(load_adapter(adapter_name)).to_dict()
 

@@ -9,12 +9,12 @@ from typing import Any, cast
 
 from ..app.application import Application
 from ..app.bootstrap import _create_app, create_app
-from ..core.errors import LifecycleError
-from ..core.ioc.container import Container
-from ..core.ioc.registry import token_identity
-from ..core.lifecycle.manager import LifecycleManager
-from ..core.module.decorators import Module
-from ..core.module.dynamic import ModuleKey
+from ..kernel.errors import LifecycleError
+from ..kernel.ioc.container import Container
+from ..kernel.ioc.registry import token_identity
+from ..kernel.lifecycle.manager import LifecycleManager
+from ..kernel.module.decorators import Module
+from ..kernel.module.dynamic import ModuleKey
 from .overrides import PipelineOverrideRegistry
 
 

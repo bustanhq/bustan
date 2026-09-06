@@ -17,7 +17,7 @@ from bustan import (
     UseInterceptors,
     create_app,
 )
-from bustan.core.errors import RouteDefinitionError
+from bustan.kernel.errors import RouteDefinitionError
 from bustan.pipeline.interceptors import (
     CallHandler,
     _as_call_handler,

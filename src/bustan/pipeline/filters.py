@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from typing import cast
 
 from ..contracts import HttpResponse
-from ..core.errors import BadRequestException, GuardRejectedError, ParameterBindingError
+from ..kernel.errors import BadRequestException, GuardRejectedError, ParameterBindingError
 from .context import ExecutionContext
 
 _LOGGER = logging.getLogger(__name__)

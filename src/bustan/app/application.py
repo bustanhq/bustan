@@ -6,12 +6,12 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ..core.ioc.container import Container
-    from ..core.lifecycle.manager import LifecycleManager
-    from ..core.module.graph import ModuleGraph
-    from ..platform.http.adapter import AbstractHttpAdapter
-    from ..platform.http.compiler import RouteContract
-    from ..platform.http.execution import ExecutionPlan
+    from ..kernel.ioc.container import Container
+    from ..kernel.lifecycle.manager import LifecycleManager
+    from ..kernel.module.graph import ModuleGraph
+    from ..runtime.adapter import AbstractHttpAdapter
+    from ..runtime.compiler import RouteContract
+    from ..runtime.execution import ExecutionPlan
     from ..security.cors import CorsOptions
 
 
@@ -161,7 +161,7 @@ class Application(ApplicationContext):
 
     def snapshot_routes(self) -> tuple[dict[str, object], ...]:
         """Return a deterministic snapshot of the compiled application routes."""
-        from ..platform.http.registry import snapshot_route_contracts
+        from ..runtime.registry import snapshot_route_contracts
 
         return snapshot_route_contracts(self._route_contracts)
 
@@ -170,7 +170,7 @@ class Application(ApplicationContext):
         previous_snapshot: Sequence[Mapping[str, object]],
     ) -> tuple[dict[str, object], ...]:
         """Compare a previous route snapshot against the current application routes."""
-        from ..platform.http.registry import diff_route_snapshots
+        from ..runtime.registry import diff_route_snapshots
 
         return diff_route_snapshots(previous_snapshot, self.snapshot_routes())
 

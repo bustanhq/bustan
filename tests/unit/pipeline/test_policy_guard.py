@@ -11,17 +11,17 @@ import pytest
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Injectable, Module, UseGuards, create_app, request_context_id
-from bustan.core.errors import (
+from bustan.kernel.errors import (
     GuardRejectedError,
     InvalidPipelineError,
     ProviderResolutionError,
 )
-from bustan.core.ioc.container import build_container
-from bustan.core.module.graph import build_module_graph
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 from bustan.pipeline.guards import Guard, PolicyGuard, run_guards
 from bustan.pipeline.metadata import AuthPolicy
-from bustan.platform.http.compiler import PolicyPlan
-from bustan.platform.http.controller_factory import ControllerFactory
+from bustan.runtime.compiler import PolicyPlan
+from bustan.runtime.controller_factory import ControllerFactory
 from bustan.security import AUTHENTICATOR_REGISTRY
 
 if TYPE_CHECKING:

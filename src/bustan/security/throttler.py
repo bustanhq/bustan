@@ -9,9 +9,9 @@ from typing import Protocol, runtime_checkable
 
 from ..common.decorators.injectable import Injectable
 from ..contracts import RateLimitDecision
-from ..core.ioc.tokens import APP_GUARD, InjectionToken
-from ..core.module.decorators import Module
-from ..core.module.dynamic import DynamicModule
+from ..kernel.ioc.tokens import APP_GUARD, InjectionToken
+from ..kernel.module.decorators import Module
+from ..kernel.module.dynamic import DynamicModule
 from ..pipeline.context import ExecutionContext
 from ..pipeline.guards import Guard
 from ..pipeline.metadata import RateLimitPolicy, extend_handler_policy_metadata

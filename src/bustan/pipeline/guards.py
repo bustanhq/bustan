@@ -8,8 +8,8 @@ from collections.abc import Awaitable
 from typing import Any, cast
 from uuid import uuid4
 
-from ..core.errors import GuardRejectedError, ProviderResolutionError
-from ..core.utils import _qualname
+from ..kernel.errors import GuardRejectedError, ProviderResolutionError
+from ..kernel.utils import _qualname
 from .auth import AUTHENTICATOR_REGISTRY, Principal
 from .context import ExecutionContext
 

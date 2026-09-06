@@ -4,27 +4,27 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..core.ioc.container import build_container
-from ..core.lifecycle.manager import LifecycleManager
-from ..core.module.dynamic import DynamicModule
-from ..core.module.graph import build_module_graph
+from ..kernel.ioc.container import build_container
+from ..kernel.lifecycle.manager import LifecycleManager
+from ..kernel.module.dynamic import DynamicModule
+from ..kernel.module.graph import build_module_graph
 from ..pipeline.middleware import compile_middleware_registry
-from ..platform.http.adapter import (
+from ..runtime.adapter import (
     AbstractHttpAdapter,
     AdapterFactory,
     AdapterRuntime,
     build_http_adapter,
     compile_adapter_routes,
 )
-from ..platform.http.compiler import compile_route_contracts
-from ..platform.http.execution import compile_execution_plans
+from ..runtime.compiler import compile_route_contracts
+from ..runtime.execution import compile_execution_plans
 from .application import Application, ApplicationContext
 from .lifespan import build_lifespan
 
 if TYPE_CHECKING:
-    from ..core.ioc.container import Container
+    from ..kernel.ioc.container import Container
     from ..openapi import SwaggerOptions
-    from ..platform.http.versioning import VersioningOptions
+    from ..runtime.versioning import VersioningOptions
     from ..testing.overrides import PipelineOverrideRegistry
 
 

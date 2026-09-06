@@ -65,14 +65,14 @@ from bustan.common.decorators.route import (
     Put as InternalPut,
 )
 from bustan.common.types import ProviderScope
-from bustan.config import ConfigModule as InternalConfigModule
-from bustan.config import ConfigService as InternalConfigService
+from bustan.configuration import ConfigModule as InternalConfigModule
+from bustan.configuration import ConfigService as InternalConfigService
 from bustan.contracts import HttpFormData as InternalHttpFormData
 from bustan.contracts import HttpQueryParams as InternalHttpQueryParams
 from bustan.contracts import HttpRequest as InternalHttpRequest
 from bustan.contracts import HttpResponse as InternalHttpResponse
 from bustan.contracts import HttpUrl as InternalHttpUrl
-from bustan.core.errors import (
+from bustan.kernel.errors import (
     BadRequestException,
     BustanError,
     ExportViolationError,
@@ -87,60 +87,60 @@ from bustan.core.errors import (
     ProviderResolutionError,
     RouteDefinitionError,
 )
-from bustan.core.ioc.scopes import DurableProvider as InternalDurableProvider
-from bustan.core.ioc.tokens import (
+from bustan.kernel.ioc.scopes import DurableProvider as InternalDurableProvider
+from bustan.kernel.ioc.tokens import (
     APP_FILTER as InternalAppFilter,
 )
-from bustan.core.ioc.tokens import (
+from bustan.kernel.ioc.tokens import (
     APP_GUARD as InternalAppGuard,
 )
-from bustan.core.ioc.tokens import (
+from bustan.kernel.ioc.tokens import (
     APP_INTERCEPTOR as InternalAppInterceptor,
 )
-from bustan.core.ioc.tokens import (
+from bustan.kernel.ioc.tokens import (
     APP_PIPE as InternalAppPipe,
 )
-from bustan.core.ioc.tokens import (
+from bustan.kernel.ioc.tokens import (
     APPLICATION as InternalApplicationToken,
 )
-from bustan.core.ioc.tokens import (
+from bustan.kernel.ioc.tokens import (
     INQUIRER as InternalInquirerToken,
 )
-from bustan.core.ioc.tokens import (
+from bustan.kernel.ioc.tokens import (
     REQUEST as InternalRequestToken,
 )
-from bustan.core.ioc.tokens import (
+from bustan.kernel.ioc.tokens import (
     RESPONSE as InternalResponseToken,
 )
-from bustan.core.ioc.tokens import (
+from bustan.kernel.ioc.tokens import (
     InjectionToken as InternalInjectionToken,
 )
-from bustan.core.lifecycle.hooks import (
+from bustan.kernel.lifecycle.hooks import (
     BeforeApplicationShutdown as InternalBeforeApplicationShutdown,
 )
-from bustan.core.lifecycle.hooks import (
+from bustan.kernel.lifecycle.hooks import (
     OnApplicationBootstrap as InternalOnApplicationBootstrap,
 )
-from bustan.core.lifecycle.hooks import (
+from bustan.kernel.lifecycle.hooks import (
     OnApplicationShutdown as InternalOnApplicationShutdown,
 )
-from bustan.core.lifecycle.hooks import (
+from bustan.kernel.lifecycle.hooks import (
     OnModuleDestroy as InternalOnModuleDestroy,
 )
-from bustan.core.lifecycle.hooks import (
+from bustan.kernel.lifecycle.hooks import (
     OnModuleInit as InternalOnModuleInit,
 )
-from bustan.core.module.builder import (
+from bustan.kernel.module.builder import (
     ConfigurableModuleBuilder as InternalConfigurableModuleBuilder,
 )
-from bustan.core.module.decorators import Global as InternalGlobal
-from bustan.core.module.decorators import Module as InternalModule
-from bustan.core.module.dynamic import DynamicModule as InternalDynamicModule
-from bustan.core.module.graph import ModuleGraph as InternalModuleGraph
-from bustan.core.module.graph import ModuleNode as InternalModuleNode
-from bustan.logger import Logger as InternalLogger
-from bustan.logger import LoggerService as InternalLoggerService
-from bustan.logger import LogLevel as InternalLogLevel
+from bustan.kernel.module.decorators import Global as InternalGlobal
+from bustan.kernel.module.decorators import Module as InternalModule
+from bustan.kernel.module.dynamic import DynamicModule as InternalDynamicModule
+from bustan.kernel.module.graph import ModuleGraph as InternalModuleGraph
+from bustan.kernel.module.graph import ModuleNode as InternalModuleNode
+from bustan.observability import Logger as InternalLogger
+from bustan.observability import LoggerService as InternalLoggerService
+from bustan.observability import LogLevel as InternalLogLevel
 from bustan.openapi import ApiBearerAuth as InternalApiBearerAuth
 from bustan.openapi import ApiBody as InternalApiBody
 from bustan.openapi import ApiOperation as InternalApiOperation
@@ -185,13 +185,13 @@ from bustan.pipeline.middleware import (
 from bustan.pipeline.middleware import (
     MiddlewareConsumer as InternalMiddlewareConsumer,
 )
-from bustan.platform.http.versioning import (
+from bustan.runtime.versioning import (
     VERSION_NEUTRAL as InternalVersionNeutral,
 )
-from bustan.platform.http.versioning import (
+from bustan.runtime.versioning import (
     VersioningOptions as InternalVersioningOptions,
 )
-from bustan.platform.http.versioning import (
+from bustan.runtime.versioning import (
     VersioningType as InternalVersioningType,
 )
 from bustan.security import CorsOptions as InternalCorsOptions

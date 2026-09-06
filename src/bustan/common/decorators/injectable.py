@@ -6,8 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import overload
 
-from ...core.errors import InvalidProviderError
-from ...core.utils import _get_metadata
+from ...kernel.errors import InvalidProviderError
+from ...kernel.utils import _get_metadata
 from ..constants import BUSTAN_PROVIDER_ATTR
 from ..tokens import token_identity
 from ..types import ClassT, ProviderScope

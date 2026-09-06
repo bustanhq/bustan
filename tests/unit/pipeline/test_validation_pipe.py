@@ -12,8 +12,8 @@ from pydantic import BaseModel, ConfigDict
 from starlette.requests import Request
 
 from bustan.common.types import RouteMetadata
-from bustan.core.errors import BadRequestException
-from bustan.core.module.dynamic import ModuleInstanceKey
+from bustan.kernel.errors import BadRequestException
+from bustan.kernel.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.built_in_pipes import (
     DefaultValuePipe,
     ParseArrayPipe,
@@ -25,10 +25,10 @@ from bustan.pipeline.built_in_pipes import (
     ValidationPipe,
 )
 from bustan.pipeline.context import ExecutionContext, RequestContext
-from bustan.platform.http.metadata import ControllerRouteDefinition
+from bustan.runtime.metadata import ControllerRouteDefinition
 
 if TYPE_CHECKING:
-    from bustan.core.ioc.container import Container
+    from bustan.kernel.ioc.container import Container
 
 
 class PayloadModel(BaseModel):

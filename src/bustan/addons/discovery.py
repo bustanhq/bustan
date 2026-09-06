@@ -7,10 +7,10 @@ from typing import Annotated
 from ..app.application import ApplicationContext
 from ..common.decorators.injectable import Inject, Injectable
 from ..common.types import ProviderScope
-from ..core.ioc.tokens import APPLICATION
-from ..core.module.decorators import Module
-from ..core.module.dynamic import ModuleKey
-from ..core.utils import _display_name
+from ..kernel.ioc.tokens import APPLICATION
+from ..kernel.module.decorators import Module
+from ..kernel.module.dynamic import ModuleKey
+from ..kernel.utils import _display_name
 from .module_ref import ModuleRef, _application_context
 
 
