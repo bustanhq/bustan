@@ -18,7 +18,6 @@ from bustan.core.ioc.registry import (
     Registry,
     TokenMap,
     normalize_provider,
-    token_identity,
 )
 
 
@@ -265,17 +264,6 @@ def test_injectable_durable_class_needs_an_unbound_context_key_hook() -> None:
 
     with pytest.raises(InvalidProviderError, match="classmethod or a staticmethod"):
         normalize_provider(decorated, AppModule)
-
-
-def test_token_identity_separates_equal_tokens_of_different_types() -> None:
-    class Tokens(StrEnum):
-        DB = "db"
-
-    assert Tokens.DB == "db"
-    assert hash(Tokens.DB) == hash("db")
-    assert token_identity(Tokens.DB) != token_identity("db")
-    assert token_identity(True) != token_identity(1)
-    assert token_identity("db") == token_identity("db")
 
 
 def test_every_valid_dict_provider_shape_is_accepted() -> None:

@@ -9,6 +9,10 @@ from typing import Any, cast
 
 from ...common.constants import BUSTAN_PROVIDER_ATTR
 from ...common.decorators.injectable import get_provider_metadata
+
+# Re-exported: the module graph, the compiler, the scope keys, the override ledger and
+# the test builder all name the token identity rule through this module.
+from ...common.tokens import TokenKey, token_identity
 from ...common.types import ProviderScope
 from ..errors import InvalidProviderError
 from ..module.dynamic import ModuleKey
@@ -47,20 +51,6 @@ class Binding:
     resolver_kind: str  # class | factory | value | existing
     target: object
     scope: ProviderScope
-
-
-type TokenKey = tuple[type[object], object]
-
-
-def token_identity(token: object) -> TokenKey:
-    """Return a token's type-aware identity.
-
-    Python maps equal keys onto one dict entry, so a string enum member and the bare
-    string it equals collide. Pairing a token with its type keeps the two apart wherever
-    the framework needs to tell one declaration from another.
-    """
-
-    return (type(token), token)
 
 
 class TokenMap[V](MutableMapping[object, V]):
