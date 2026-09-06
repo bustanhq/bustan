@@ -81,11 +81,30 @@ def Injectable(
     return decorate(target)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class InjectMarker:
-    """Annotated metadata that overrides a dependency token."""
+    """Annotated metadata that overrides a dependency token.
+
+    Two markers are the same marker only when they name the same token, where sameness
+    takes the token's type as well as its value. ``Annotated`` memoizes a subscription
+    on its arguments, so a marker that compared equal to a marker over a different type
+    would hand both annotations one object carrying one token, and the second parameter
+    would silently receive the first one's provider.
+    """
 
     token: object
+
+    # This pairing repeats the rule ``token_identity`` applies in the IoC registry.
+    # That module imports provider metadata from this one, so importing the function
+    # back from there is a module-level cycle rather than a layering breach: the two
+    # copies must be changed together until the rule moves down beside the markers.
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, InjectMarker):
+            return NotImplemented
+        return (type(self.token), self.token) == (type(other.token), other.token)
+
+    def __hash__(self) -> int:
+        return hash((type(self.token), self.token))
 
 
 @dataclass(frozen=True, slots=True)
