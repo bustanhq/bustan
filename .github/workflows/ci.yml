@@ -236,7 +236,7 @@ jobs:
                 # Identical rows are collapsed because the advisory service reports one
                 # advisory once per alias it carries, and a reader needs the advisory, the
                 # package and the fixed version once each, not a count inflated by aliases.
-                awk '''!seen[$0]++''' findings.txt >> audit-report.txt
+                awk '!seen[$0]++' findings.txt >> audit-report.txt
               else
                 cat findings.err >> audit-report.txt
               fi
