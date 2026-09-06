@@ -18,6 +18,10 @@ jobs:
     name: Publish ${{ github.ref_name }}
     runs-on: ubuntu-latest
 
+    # Read by the verification job below, which installs this exact version from PyPI.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
     environment:
       name: pypi
       url: https://pypi.org/p/bustan
@@ -46,6 +50,7 @@ jobs:
       # A mismatch means the tag was pushed at the wrong commit, and finding that out
       # after the upload is finding it out too late: PyPI does not take a file back.
       - name: Check the tag matches the packaged version
+        id: version
         run: |
           packaged="$(uv run python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
           tagged="${GITHUB_REF_NAME#v}"
@@ -54,6 +59,7 @@ jobs:
             exit 1
           fi
           echo "PACKAGE_VERSION=$packaged" >> "$GITHUB_ENV"
+          echo "version=$packaged" >> "$GITHUB_OUTPUT"
 
       # The same gates a contributor runs, against the exact commit being published.
       - name: Check API reference drift
@@ -100,3 +106,15 @@ jobs:
             --verify-tag \
             $prerelease \
             dist/*
+
+  # The release this workflow creates is made with the default token, and a release created
+  # that way raises no event that can start another workflow. Its `release: published`
+  # trigger therefore never fired for a release cut here - the verification had never run
+  # once in this repository's history. Calling it directly is what closes that gap: the
+  # chain is now an explicit dependency rather than an event that was only assumed to fire.
+  verify:
+    name: Verify the published package
+    needs: publish
+    uses: ./.github/workflows/published-package-verification.yml
+    with:
+      version: ${{ needs.publish.outputs.version }}
