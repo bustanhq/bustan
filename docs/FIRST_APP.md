@@ -7,7 +7,7 @@ This walkthrough uses the current CLI scaffold, which is the recommended startin
 ```bash
 uv init --package my-app
 cd my-app
-uv add bustan
+uv add 'bustan[starlette]'
 uv add --dev pytest ruff ty
 uv run bustan init
 ```
