@@ -1,5 +1,6 @@
 """Supported testing helpers for the bustan package."""
 
+from ..adapters.asgi.testclient import AsgiTestClient, AsgiTestResponse
 from .builder import (
     CompiledTestingModule,
     TestingModuleBuilder,
@@ -10,6 +11,8 @@ from .builder import (
 from .overrides import PipelineOverrideRegistry, override_provider
 
 __all__ = (
+    "AsgiTestClient",
+    "AsgiTestResponse",
     "CompiledTestingModule",
     "PipelineOverrideRegistry",
     "TestingModuleBuilder",
