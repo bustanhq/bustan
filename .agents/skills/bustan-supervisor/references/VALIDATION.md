@@ -224,3 +224,30 @@ exists.
 A test asserting the behaviour a ticket removes is a test defending the defect. Granting it
 is correct, and the grant is bounded: name the file, and say that changing the assertion is
 in scope while changing anything else in it is not.
+
+## A grant the gate cannot see is not a grant
+
+Write every grant into the ticket's `Owns` bullet list, not only into the prose that explains
+it. The ownership gate parses the list and stops at the first bold lead-in that follows, so an
+amendment written below that point - however clearly it names the file and however carefully it
+bounds the grant - is invisible to the check that decides whether a pull request stays inside
+its lane.
+
+This was caught by running the gate rather than by reading the amendment. A ticket was granted
+a source file in an amendment paragraph, the gate was run against the draft to confirm the new
+boundary, and the parsed-patterns line it always prints did not contain the file:
+
+```
+ownership patterns (issue #82): ... tests/integration/core/test_request_boundary.py,
+docs/API_REFERENCE.md, uv run python scripts/generate_api_reference.py
+```
+
+Had the agent gone on to edit the granted file, the gate would have reported it as outside the
+ticket's ownership and the reviewer would have had to decide, at merge time, whether the
+refusal was real or an artefact of where the grant was typed. That is the one thing a gate
+must never make a reviewer do.
+
+Two consequences. Amend the bullet list first and let the prose explain the bound afterwards.
+And read the parsed-patterns line every time, which is why the gate prints it: the same output
+shows this ticket parsing a backticked command out of a bullet as though it were a path, which
+is harmless only because no changed file will ever match it.
