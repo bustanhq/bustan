@@ -29,6 +29,11 @@ class ApplicationContext:
     ) -> None:
         self._container = container
         self._lifecycle_manager = lifecycle_manager
+        # Set by the application factory when the context is assembled into something
+        # that serves HTTP. The context is what APPLICATION answers with, and it
+        # describes a container rather than a transport, so it names the HTTP
+        # application rather than being one.
+        self._http_application: Application | None = None
 
     @property
     def container(self) -> Container:
@@ -58,6 +63,15 @@ class ApplicationContext:
         `close()` on it do nothing.
         """
         return self._lifecycle_manager
+
+    @property
+    def http_application(self) -> Application | None:
+        """Accessor for the HTTP application assembled around this context.
+
+        A context created on its own serves no HTTP traffic and has none, which is how
+        a caller tells the two apart without inspecting either.
+        """
+        return self._http_application
 
     def get(self, token: object) -> Any:
         """Resolve a provider as though no request were being served.

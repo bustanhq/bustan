@@ -17,8 +17,8 @@ from ..core.module.dynamic import ModuleKey
 class ModuleRef:
     """Resolve providers through the finalized public application semantics."""
 
-    def __init__(self, application: Annotated[object, Inject(APPLICATION)]) -> None:
-        self._application = _resolve_application(application)
+    def __init__(self, application: Annotated[ApplicationContext, Inject(APPLICATION)]) -> None:
+        self._application = _application_context(application, "ModuleRef")
         self._module_key = self._application.root_key
 
     @classmethod
@@ -75,19 +75,18 @@ class ModuleRef:
         return self._application.container.scope_manager.active_request.get()
 
 
-def _resolve_application(application: object) -> ApplicationContext:
-    """Return the application context behind whatever ``APPLICATION`` resolved to."""
+def _application_context(application: object, requested_by: str) -> ApplicationContext:
+    """Narrow what ``APPLICATION`` answered with to an application context.
+
+    Every application seats its context on the container it was built for, so this
+    refuses only a container that was told it belongs to something else entirely.
+    """
 
     if isinstance(application, ApplicationContext):
         return application
-    # A server object carries the application it serves on its own state namespace,
-    # which is how one is recognised without knowing whose server it is.
-    runtime = getattr(getattr(application, "state", None), "bustan_application", None)
-    if isinstance(runtime, ApplicationContext):
-        return runtime
     raise ProviderResolutionError(
-        "ModuleRef requires an application context; APPLICATION resolved to "
-        f"{type(application).__name__}"
+        f"{requested_by} needs the application context, and this container was told it belongs "
+        f"to {type(application).__name__} instead"
     )
 
 
