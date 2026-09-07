@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, cast
+from uuid import uuid4
 
 import pytest
 from starlette.requests import Request
@@ -47,8 +48,17 @@ def test_durable_controller_with_a_context_key_hook_is_refused_before_it_serves(
 
 
 def test_per_tenant_state_is_served_by_a_durable_provider_the_controller_injects() -> None:
+    # Each context mints a token it carries for as long as it lives. The comparison
+    # is what this test exists for, and it has to hold when the partitioning is
+    # broken as well as when it works: instances that are not retained per tenant
+    # are collected between requests, and an address freed by one instance is handed
+    # to the next, so addresses would report one retained context per tenant either
+    # way.
     @Injectable(scope=Scope.DURABLE)
     class TenantContext:
+        def __init__(self) -> None:
+            self.token = uuid4().hex
+
         @classmethod
         def get_durable_context_key(cls, request: Request | None) -> str:
             return request.headers.get("x-tenant", "none") if request is not None else "none"
@@ -59,8 +69,8 @@ def test_per_tenant_state_is_served_by_a_durable_provider_the_controller_injects
             self.tenant_context = tenant_context
 
         @Get("/")
-        def read_tenant(self) -> dict[str, int]:
-            return {"tenant_context": id(self.tenant_context)}
+        def read_tenant(self) -> dict[str, str]:
+            return {"tenant_context": self.tenant_context.token}
 
     @Module(controllers=[TenantsController], providers=[TenantContext])
     class AppModule:
