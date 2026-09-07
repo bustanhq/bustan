@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import pytest
 
@@ -140,10 +141,16 @@ def test_an_application_on_this_adapter_serves_every_shape_of_route(
 
 
 def test_the_framework_reaches_the_application_through_this_adapter_too() -> None:
+    # Each instance carries a freshly generated identifier as its own state, so two
+    # instances differ whether or not their lifetimes overlap. An object's address is
+    # not such an identifier: it is unique only among objects alive at the same moment,
+    # and the first request's instance is collectable before the second is built, so
+    # comparing addresses across sequential requests measures the allocator instead of
+    # the scope.
     @Injectable(scope="request")
     class RequestIdentity:
         def __init__(self) -> None:
-            self.value = object()
+            self.value = uuid4().hex
 
     @Controller("/identity", scope=Scope.REQUEST)
     class IdentityController:
@@ -152,7 +159,7 @@ def test_the_framework_reaches_the_application_through_this_adapter_too() -> Non
 
         @Get("/")
         def read(self) -> dict[str, str]:
-            return {"identity": str(id(self.identity.value))}
+            return {"identity": self.identity.value}
 
     @Module(controllers=[IdentityController], providers=[RequestIdentity])
     class AppModule:
