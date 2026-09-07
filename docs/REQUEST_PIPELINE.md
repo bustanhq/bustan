@@ -180,9 +180,10 @@ while routes are compiled. Three things follow:
   serves runs the replacement.
 
 Register more than one component under one token by binding a list, or by writing a
-separate entry for each component. Both spellings run their components in the order
-they were declared, and the components of every declaring module run in the order the
-modules were registered:
+separate entry for each component. Both spellings run `APP_GUARD`, `APP_PIPE` and
+`APP_INTERCEPTOR` components in the order they were declared, and the components of
+every declaring module run in the order the modules were registered. `APP_FILTER` is
+ordered by the precedence rule below instead:
 
 ```python
 @Module(
@@ -206,6 +207,14 @@ class AppModule:
 A module may mix the two spellings under one token, and the result is one flat list in
 declaration order: an entry that names a list contributes its components in place, and
 every other entry contributes its one component.
+
+Exception filters are ordered by how closely each one matches the error, not by where
+it was declared. An error is offered to the matching filters one at a time until one
+returns a result: a filter that names a type narrower than `Exception` is asked before
+any catch-all filter, a filter naming a nearer base class is asked before one naming a
+further base class, and two filters that match the error equally closely are asked in
+the reverse of declaration order, so the one declared last is asked first. Both
+spellings rank the same way, and so do filters contributed by different modules.
 
 ## Resolving Providers Inside a Handler
 
