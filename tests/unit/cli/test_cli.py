@@ -216,6 +216,65 @@ def test_scaffolded_project_needs_no_reformatting(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
+# The rule set a scaffolded project is measured against here. It is written out rather
+# than left to the linter's defaults on purpose: a scaffolded project carries no linter
+# configuration, so it is judged by whichever defaults the release its owner installed
+# happens to ship, and those defaults change between releases. The linter reachable from
+# this suite is the one this repository pins, which is older than the one a new project
+# installs, so a guard that inherited defaults would be measuring a different, weaker
+# rule set than the one users are held to and would report clean while they were not.
+# Naming the rules makes the guard mean the same thing under every version, and makes
+# widening it a decision someone takes rather than something an upgrade does silently.
+#
+# The list is the same one this repository lints itself with. Import order, `I`, is the
+# rule the templates actually failed, but there is no reason to hold code this project
+# ships to a lower standard than code it keeps, and the set is a superset of the linter
+# defaults a new project gets today, so passing here means passing there.
+_SCAFFOLDED_PROJECT_LINT_RULES = ("E", "F", "W", "I", "UP", "B", "SIM")
+
+
+def test_scaffolded_project_passes_lint(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "hello-bustan")
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        assert cli_main_module.main(["init"]) == 0
+    finally:
+        os.chdir(old_cwd)
+
+    # The scaffolded README tells a new project's owner to lint it, so the tree the
+    # scaffolder writes has to survive that command. The templates are excluded from
+    # this repository's own lint run and have to be, because three of them hold a
+    # placeholder and are not parseable Python until the scaffolder substitutes it, so
+    # the rendered project in a temporary directory is the only place they can be
+    # linted at all. Checking the rendered output rather than the template files also
+    # covers a template added later without anyone remembering to list it.
+    #
+    # --isolated pins the run to explicit settings instead of whatever configuration
+    # sits above the temporary directory, and with it the line length is the linter's
+    # own default of 88, which is shorter than the width this repository uses. That is
+    # the width a scaffolded project is measured at, so the templates are written to
+    # fit it.
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--isolated",
+            "--select",
+            ",".join(_SCAFFOLDED_PROJECT_LINT_RULES),
+            ".",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _TEMPLATES_ROOT = _REPOSITORY_ROOT / "src" / "bustan" / "cli" / "templates"
 _STABILITY_GUIDE = _REPOSITORY_ROOT / "docs" / "STABILITY.md"
