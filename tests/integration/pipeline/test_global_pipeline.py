@@ -105,7 +105,12 @@ def test_a_module_may_declare_several_global_guards_and_all_of_them_run() -> Non
 
 
 def test_a_request_scoped_global_guard_is_built_once_for_each_request() -> None:
-    identities: list[int] = []
+    # The guards themselves are collected rather than an identifier taken from them,
+    # so the two are alive together when they are compared and ``is`` answers the
+    # question directly. An identifier read out of one guard and compared after that
+    # guard has been collected measures the allocator instead: an address is reused
+    # once the object holding it is gone.
+    built: list[Guard] = []
 
     @Injectable(scope=Scope.REQUEST)
     class RequestScopedGuard(Guard):
@@ -113,7 +118,7 @@ def test_a_request_scoped_global_guard_is_built_once_for_each_request() -> None:
             self.path = request.url.path
 
         def can_activate(self, context: ExecutionContext) -> bool:
-            identities.append(id(self))
+            built.append(self)
             return True
 
     @Module(
@@ -129,8 +134,8 @@ def test_a_request_scoped_global_guard_is_built_once_for_each_request() -> None:
         assert client.get("/users").status_code == 200
         assert client.get("/users").status_code == 200
 
-    assert len(identities) == 2
-    assert len(set(identities)) == 2
+    assert len(built) == 2
+    assert built[0] is not built[1]
 
 
 def test_a_global_guard_built_by_an_async_callable_object_is_awaited() -> None:

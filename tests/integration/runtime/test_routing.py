@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
@@ -88,20 +89,27 @@ def test_create_app_registers_http_routes_and_coerces_common_return_types() -> N
 
 
 def test_create_app_reuses_a_singleton_controller_instance_per_request() -> None:
+    # Each instance mints a token it carries for as long as it lives, because the
+    # comparison is made after the response has been read and the instance behind it
+    # may be gone by then. An address would not survive that: CPython hands the
+    # address of a collected object to the next one, so two instances built for
+    # separate requests can report the same value and read as one reused instance.
     @Injectable
     class CounterService:
-        pass
+        def __init__(self) -> None:
+            self.token = uuid4().hex
 
     @Controller("/controllers")
     class ControllerIdentityController:
         def __init__(self, counter_service: CounterService) -> None:
             self.counter_service = counter_service
+            self.token = uuid4().hex
 
         @Get("/identity")
-        def read_identity(self) -> dict[str, int]:
+        def read_identity(self) -> dict[str, str]:
             return {
-                "controller_id": id(self),
-                "service_id": id(self.counter_service),
+                "controller_token": self.token,
+                "service_token": self.counter_service.token,
             }
 
     @Module(
@@ -121,8 +129,8 @@ def test_create_app_reuses_a_singleton_controller_instance_per_request() -> None
 
     assert first_response.status_code == 200
     assert second_response.status_code == 200
-    assert first_payload["controller_id"] == second_payload["controller_id"]
-    assert first_payload["service_id"] == second_payload["service_id"]
+    assert first_payload["controller_token"] == second_payload["controller_token"]
+    assert first_payload["service_token"] == second_payload["service_token"]
 
 
 def test_create_app_exposes_response_token_during_controller_resolution() -> None:
@@ -356,10 +364,15 @@ def test_create_app_handles_stream_responses_through_the_response_handler() -> N
 
 
 def test_create_app_resolves_request_scoped_providers_per_request() -> None:
+    # The token distinguishes two request-scoped instances whose lifetimes never
+    # overlap. Their addresses would not: the first is collected when its request
+    # ends and the second is free to be built at the same address, which reads as
+    # one instance shared by both requests.
     @Injectable(scope="request")
     class RequestState:
         def __init__(self, request: Request) -> None:
             self.request = request
+            self.token = uuid4().hex
 
     @Injectable(scope="request")
     class RequestAudit:
@@ -377,8 +390,8 @@ def test_create_app_resolves_request_scoped_providers_per_request() -> None:
             return {
                 "request_id": self.request_state.request.headers["x-request-id"],
                 "path": self.request_state.request.url.path,
-                "request_state_id": id(self.request_state),
-                "audit_request_state_id": id(self.request_audit.request_state),
+                "request_state_token": self.request_state.token,
+                "audit_request_state_token": self.request_audit.request_state.token,
             }
 
     @Module(
@@ -402,6 +415,6 @@ def test_create_app_resolves_request_scoped_providers_per_request() -> None:
     assert second_payload["request_id"] == "second"
     assert first_payload["path"] == "/requests/state"
     assert second_payload["path"] == "/requests/state"
-    assert first_payload["request_state_id"] == first_payload["audit_request_state_id"]
-    assert second_payload["request_state_id"] == second_payload["audit_request_state_id"]
-    assert first_payload["request_state_id"] != second_payload["request_state_id"]
+    assert first_payload["request_state_token"] == first_payload["audit_request_state_token"]
+    assert second_payload["request_state_token"] == second_payload["audit_request_state_token"]
+    assert first_payload["request_state_token"] != second_payload["request_state_token"]
