@@ -199,6 +199,7 @@ from bustan.security import SkipThrottle as InternalSkipThrottle
 from bustan.security import ThrottlerGuard as InternalThrottlerGuard
 from bustan.security import ThrottlerModule as InternalThrottlerModule
 from bustan.security import ThrottlerStorage as InternalThrottlerStorage
+from bustan.security.throttler import ThrottleState as InternalThrottleState
 from bustan.testing import (
     AsgiTestClient as InternalAsgiTestClient,
 )
@@ -334,6 +335,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "SkipThrottle",
         "SwaggerModule",
         "SwaggerOptions",
+        "ThrottleState",
         "ThrottlerGuard",
         "ThrottlerModule",
         "ThrottlerStorage",
@@ -429,6 +431,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.SkipThrottle is InternalSkipThrottle
     assert bustan.SwaggerModule is InternalSwaggerModule
     assert bustan.SwaggerOptions is InternalSwaggerOptions
+    assert bustan.ThrottleState is InternalThrottleState
     assert bustan.ThrottlerGuard is InternalThrottlerGuard
     assert bustan.ThrottlerModule is InternalThrottlerModule
     assert bustan.ThrottlerStorage is InternalThrottlerStorage

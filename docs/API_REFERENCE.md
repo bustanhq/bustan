@@ -1530,6 +1530,26 @@ Defined in `bustan.openapi`.
 
 SwaggerOptions(document_builder: 'DocumentBuilder', path: 'str' = '/api', swagger_ui_path: 'str | None' = None)
 
+#### `ThrottleState`
+
+```python
+class ThrottleState
+```
+
+Defined in `bustan.security.throttler`.
+
+What a throttling store knows about one key once it has counted a request.
+
+``count`` is how many requests the key is answerable for inside the window, the
+request just counted included. It exceeds the limit by exactly one when the request
+was refused, because a refused request is not added to the window: refusing a caller
+must not lengthen the wait it is already serving.
+
+``reset_after`` is whole seconds until the oldest request still inside the window
+leaves it, which is the moment ``count`` next falls. It is therefore also how long a
+refused caller must wait before a request is accepted, and it is what the guard
+sends as ``Retry-After``. It is ``0`` when the key has nothing counted against it.
+
 #### `ThrottlerGuard`
 
 ```python
@@ -1557,7 +1577,28 @@ Factory for throttling support.
 
 ##### Methods
 
-- `for_root(*, ttl: int, limit: int, key_resolver: ThrottlerKeyResolver | None = None) -> DynamicModule`
+- `for_root(*, ttl: int, limit: int, key_resolver: ThrottlerKeyResolver | None = None, storage: ThrottlerStorage | None = None, trusted_proxies: Sequence[str] = (), max_keys: int = 10000) -> DynamicModule`
+  Return a module that counts every request and refuses callers over the limit.
+
+``ttl`` is the window in seconds and ``limit`` the requests one key may make
+inside it. ``storage`` counts the requests; leave it unset for an in-process
+store holding at most ``max_keys`` keys, and pass a shared implementation of
+``ThrottlerStorage`` when the application runs as more than one worker, because
+an in-process store counts each worker separately and N workers then allow N
+times the limit.
+
+``trusted_proxies`` is the list of addresses and CIDR blocks that are allowed to
+name the caller on the application's behalf, given as the peers the application
+accepts connections from. It is empty by default, which counts every request
+under the address it arrived from and ignores forwarding headers entirely. Set
+it to the load balancer the application actually sits behind, never to a wide
+block: any peer in this list can put any address in ``X-Forwarded-For`` and be
+counted as that caller, so listing a peer an attacker can connect from lets that
+attacker spend another caller's allowance or evade its own limit.
+
+``key_resolver`` replaces the derivation of the key altogether. A resolver of
+your own is responsible for its own trust decisions, so ``trusted_proxies`` is
+not consulted when one is given.
 
 #### `ThrottlerStorage`
 
@@ -1567,12 +1608,24 @@ class ThrottlerStorage(Protocol)
 
 Defined in `bustan.security.throttler`.
 
-Protocol for request counting backends.
+Where the throttler keeps its per-key request windows.
+
+Implement this to count requests somewhere every worker process can see, which is
+what makes a configured limit mean the same thing behind a load balancer as it does
+on one process: the in-process default counts each worker separately, so N workers
+allow N times the limit. The method is asynchronous so an implementation backed by a
+network service does not block the event loop while it waits.
+
+An implementation must treat one call as one request: count it, and report the state
+of the key afterwards. It must not add the request to the window when the window is
+already full, so that a refused caller does not extend its own wait. Where several
+processes share the store, counting and reporting have to happen as one atomic
+operation, or two workers racing on the same key will both be told they are within
+the limit.
 
 ##### Methods
 
-- `increment(self, key: str, ttl: int) -> int`
-- `get_ttl(self, key: str) -> int`
+- `count_request(self, key: str, ttl: int, limit: int) -> ThrottleState`
 
 #### `UseFilters`
 
