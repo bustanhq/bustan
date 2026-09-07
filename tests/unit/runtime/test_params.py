@@ -37,10 +37,17 @@ from bustan.runtime.params import (
     _MISSING,
     _NO_BODY,
     _UNSET_BODY,
+    DEFAULT_MAX_BODY_BYTES,
+    DEFAULT_MAX_UPLOAD_BYTES,
+    DEFAULT_MAX_UPLOAD_FILES,
+    DEFAULT_SYNC_HANDLER_THREADS,
+    DEFAULT_TIMEOUT_SECONDS,
     HandlerBindingPlan,
     ParameterBinding,
     ParameterBindingMode,
     ParameterSource,
+    RequestBodyTooLargeError,
+    RequestLimits,
     ValidationMode,
     _bind_parameter,
     _coerce_value,
@@ -1224,6 +1231,220 @@ def test_query_and_coerce_helpers_cover_missing_union_and_success_paths() -> Non
     ) == [1, 2]
 
 
+def test_request_limits_default_to_finite_bounds() -> None:
+    # An application that configures nothing must still be bounded, so every default
+    # here is a number rather than None. This is the whole contract of the type.
+    limits = RequestLimits()
+
+    assert limits.max_body_bytes == DEFAULT_MAX_BODY_BYTES
+    assert limits.max_upload_bytes == DEFAULT_MAX_UPLOAD_BYTES
+    assert limits.max_upload_files == DEFAULT_MAX_UPLOAD_FILES
+    assert limits.timeout_seconds == DEFAULT_TIMEOUT_SECONDS
+    assert limits.sync_handler_threads == DEFAULT_SYNC_HANDLER_THREADS
+    assert None not in (
+        limits.max_body_bytes,
+        limits.max_upload_bytes,
+        limits.max_upload_files,
+        limits.timeout_seconds,
+    )
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "max_body_bytes",
+        "max_upload_bytes",
+        "max_upload_files",
+        "timeout_seconds",
+        "sync_handler_threads",
+    ],
+)
+def test_request_limits_refuse_a_bound_that_would_refuse_every_request(field_name: str) -> None:
+    with pytest.raises(ValueError, match=field_name):
+        RequestLimits(**{field_name: 0})
+
+
+def test_an_oversized_declared_body_is_refused_without_the_body_being_read() -> None:
+    # This is the point of the limit: a caller announcing more than the application
+    # accepts is answered from the declared length alone, so the bytes never reach this
+    # process at all. A stub that raises when its body is touched is what proves it; a
+    # test that only read the status back would pass either way.
+    @Controller("/notes")
+    class NotesController:
+        @Post("/")
+        def create(self, title: str) -> None:
+            return None
+
+    route_definition = iter_controller_routes(NotesController)[0]
+    binding_plan = compile_parameter_bindings(NotesController, route_definition)
+    request = _UnreadableBodyRequestStub(headers={"content-length": "2048"})
+
+    with pytest.raises(RequestBodyTooLargeError, match="2048 bytes, over the 1024 byte limit"):
+        anyio.run(
+            bind_handler_arguments,
+            request,
+            binding_plan,
+            None,
+            RequestLimits(max_body_bytes=1024),
+        )
+
+    assert request.body_reads == 0
+
+
+def test_a_declared_body_within_the_limit_is_bound_normally() -> None:
+    @Controller("/notes")
+    class NotesController:
+        @Post("/")
+        def create(self, title: str) -> None:
+            return None
+
+    route_definition = iter_controller_routes(NotesController)[0]
+    binding_plan = compile_parameter_bindings(NotesController, route_definition)
+    request = _request_stub(
+        headers={"content-length": "18"},
+        body=b'{"title": "ada"}',
+        json_value={"title": "ada"},
+    )
+
+    positional_arguments, keyword_arguments = anyio.run(
+        bind_handler_arguments,
+        request,
+        binding_plan,
+        None,
+        RequestLimits(max_body_bytes=1024),
+    )
+
+    assert positional_arguments == ("ada",)
+    assert keyword_arguments == {}
+
+
+def test_a_body_that_declares_no_length_is_refused_once_it_has_arrived() -> None:
+    # Nothing can be judged before the read when the caller declares no length, so the
+    # request is refused on what actually arrived instead of being let through.
+    @Controller("/notes")
+    class NotesController:
+        @Post("/")
+        def create(self, title: str) -> None:
+            return None
+
+    route_definition = iter_controller_routes(NotesController)[0]
+    binding_plan = compile_parameter_bindings(NotesController, route_definition)
+    request = _request_stub(body=b"x" * 64, json_value={"title": "ada"})
+
+    with pytest.raises(RequestBodyTooLargeError, match="carries 64 bytes, over the 16 byte limit"):
+        anyio.run(
+            bind_handler_arguments,
+            request,
+            binding_plan,
+            None,
+            RequestLimits(max_body_bytes=16),
+        )
+
+
+@pytest.mark.parametrize("declared", ["not-a-number", "-1"])
+def test_a_body_length_that_is_not_a_usable_number_falls_through_to_the_arrival_check(
+    declared: str,
+) -> None:
+    @Controller("/notes")
+    class NotesController:
+        @Post("/")
+        def create(self, title: str) -> None:
+            return None
+
+    route_definition = iter_controller_routes(NotesController)[0]
+    binding_plan = compile_parameter_bindings(NotesController, route_definition)
+    request = _request_stub(
+        headers={"content-length": declared},
+        body=b"x" * 64,
+        json_value={"title": "ada"},
+    )
+
+    with pytest.raises(RequestBodyTooLargeError, match="carries 64 bytes"):
+        anyio.run(
+            bind_handler_arguments,
+            request,
+            binding_plan,
+            None,
+            RequestLimits(max_body_bytes=16),
+        )
+
+
+def test_an_oversized_declared_upload_is_refused_without_the_form_being_parsed() -> None:
+    @Controller("/uploads")
+    class UploadsController:
+        @Post("/")
+        def upload(self, avatar: Annotated[object, UploadedFile("avatar")]) -> None:
+            return None
+
+    route_definition = iter_controller_routes(UploadsController)[0]
+    binding_plan = compile_parameter_bindings(UploadsController, route_definition)
+    request = _UnreadableBodyRequestStub(headers={"content-length": "4096"})
+
+    with pytest.raises(RequestBodyTooLargeError, match="The upload declares 4096 bytes"):
+        anyio.run(
+            bind_handler_arguments,
+            request,
+            binding_plan,
+            None,
+            RequestLimits(max_upload_bytes=1024),
+        )
+
+    assert request.form_reads == 0
+
+
+def test_more_uploaded_files_than_the_limit_allows_are_refused() -> None:
+    @Controller("/uploads")
+    class UploadsController:
+        @Post("/")
+        def upload(
+            self, attachments: Annotated[list[object], UploadedFiles("attachments")]
+        ) -> None:
+            return None
+
+    route_definition = iter_controller_routes(UploadsController)[0]
+    binding_plan = compile_parameter_bindings(UploadsController, route_definition)
+    request = _request_stub(
+        form_data=FormData([("attachments", "one"), ("attachments", "two")]),
+    )
+
+    with pytest.raises(RequestBodyTooLargeError, match="uploads 2 files"):
+        anyio.run(
+            bind_handler_arguments,
+            request,
+            binding_plan,
+            None,
+            RequestLimits(max_upload_files=1),
+        )
+
+
+def test_limits_set_to_none_read_a_body_the_defaults_would_refuse() -> None:
+    # A deployment that has measured that it needs an unbounded read can say so. It is
+    # never what an application gets by leaving the limits alone.
+    @Controller("/notes")
+    class NotesController:
+        @Post("/")
+        def create(self, title: str) -> None:
+            return None
+
+    route_definition = iter_controller_routes(NotesController)[0]
+    binding_plan = compile_parameter_bindings(NotesController, route_definition)
+    request = _request_stub(
+        headers={"content-length": str(DEFAULT_MAX_BODY_BYTES * 2)},
+        body=b"x" * 64,
+        json_value={"title": "ada"},
+    )
+
+    positional_arguments, _keyword_arguments = anyio.run(
+        bind_handler_arguments,
+        request,
+        binding_plan,
+        None,
+        RequestLimits(max_body_bytes=None),
+    )
+
+    assert positional_arguments == ("ada",)
+
+
 def _binding_plan(
     *bindings: ParameterBinding,
     inferred_parameter_names: tuple[str, ...] = (),
@@ -1316,3 +1537,25 @@ def _request_stub(
         json_value=json_value,
         form_data=form_data,
     )
+
+
+class _UnreadableBodyRequestStub(_RequestStub):
+    """A request whose body and form raise if anything reaches for them.
+
+    Counting the reads is what makes "rejected without being read into memory" an
+    assertion rather than a claim: a limit checked after the read would still answer
+    413, and only the count tells the two apart.
+    """
+
+    def __init__(self, *, headers: dict[str, str] | None = None) -> None:
+        super().__init__(headers=headers, client=_DEFAULT_CLIENT)
+        self.body_reads = 0
+        self.form_reads = 0
+
+    async def body(self) -> bytes:
+        self.body_reads += 1
+        raise AssertionError("the request body was read despite exceeding the limit")
+
+    async def form(self) -> FormData:
+        self.form_reads += 1
+        raise AssertionError("the request form was parsed despite exceeding the limit")

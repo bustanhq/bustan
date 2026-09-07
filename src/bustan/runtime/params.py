@@ -1,4 +1,11 @@
-"""Request parameter analysis and runtime binding helpers."""
+"""Request parameter analysis and runtime binding helpers.
+
+This module also declares :class:`RequestLimits`, the bounds one application puts on a
+single request. They live here because binding is where a request body is first read
+and is therefore where the body and upload limits are enforced; the timeout and the
+thread ceiling in the same value type are read by the execution engine, which already
+depends on this module and so can hold the whole set as one object.
+"""
 
 from __future__ import annotations
 
@@ -25,7 +32,7 @@ from ..common.decorators.parameter import (
     _UploadedFilesMarker,
 )
 from ..contracts import HttpRequest, as_http_request, names_native_request
-from ..kernel.errors import ParameterBindingError
+from ..kernel.errors import BustanError, ParameterBindingError
 from ..kernel.utils import _qualname
 from .metadata import ControllerRouteDefinition, get_controller_metadata
 
@@ -35,6 +42,68 @@ if TYPE_CHECKING:
 _MISSING = object()
 _NO_BODY = object()
 _UNSET_BODY = object()
+
+# The bounds an application that configures nothing still runs under. Each is finite,
+# because the alternative is not "no limit" but "the limit the caller picks": a body
+# size, a number of uploaded parts and a running time are all chosen by whoever sent
+# the request, and all three are paid for in this process's memory and threads.
+DEFAULT_MAX_BODY_BYTES = 1024 * 1024
+DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+DEFAULT_MAX_UPLOAD_FILES = 20
+DEFAULT_TIMEOUT_SECONDS = 30.0
+# anyio offloads a synchronous handler onto its own default limiter, which allows this
+# many threads. Matching it means an application that configures nothing keeps exactly
+# the concurrency it had, and one that configures anything no longer has to reach into
+# anyio to say so.
+DEFAULT_SYNC_HANDLER_THREADS = 40
+
+
+class RequestBodyTooLargeError(BustanError):
+    """Raised when a request carries more body bytes or parts than the limit allows."""
+
+
+@dataclass(frozen=True, slots=True)
+class RequestLimits:
+    """What one application will spend on a single request.
+
+    ``max_body_bytes`` bounds the body read to bind ordinary parameters and
+    ``max_upload_bytes`` the body read to parse a multipart form; they are separate
+    because a route that accepts uploads is expected to carry more than a JSON
+    document, and giving both the larger bound would raise the ceiling on every route.
+    ``max_upload_files`` bounds how many parts of a form may bind to one parameter.
+    ``timeout_seconds`` is the wall clock one request may take before it is abandoned
+    and answered through the route's exception filters. ``sync_handler_threads`` is how
+    many synchronous handlers may run at once.
+
+    Every bound has a finite default. ``None`` removes one for a deployment that has
+    measured that it needs to, and is never what an application gets by not choosing.
+
+    A synchronous handler runs on a thread and Python cannot interrupt one, so
+    ``timeout_seconds`` is enforced for such a handler only once it returns; what bounds
+    a synchronous handler that never returns is ``sync_handler_threads``, which caps how
+    many of them can be occupying threads at the same time.
+    """
+
+    max_body_bytes: int | None = DEFAULT_MAX_BODY_BYTES
+    max_upload_bytes: int | None = DEFAULT_MAX_UPLOAD_BYTES
+    max_upload_files: int | None = DEFAULT_MAX_UPLOAD_FILES
+    timeout_seconds: float | None = DEFAULT_TIMEOUT_SECONDS
+    sync_handler_threads: int = DEFAULT_SYNC_HANDLER_THREADS
+
+    def __post_init__(self) -> None:
+        # A limit of zero or less refuses every request rather than bounding it, so it
+        # is a configuration mistake worth naming where it is written rather than once
+        # per request in a log nobody reads.
+        for field_name in (
+            "max_body_bytes",
+            "max_upload_bytes",
+            "max_upload_files",
+            "timeout_seconds",
+            "sync_handler_threads",
+        ):
+            value = cast(float | None, getattr(self, field_name))
+            if value is not None and value <= 0:
+                raise ValueError(f"{field_name} must be greater than zero, got {value!r}")
 
 
 class ParameterSource(StrEnum):
@@ -207,20 +276,30 @@ async def bind_handler_arguments(
     request: HttpRequest | object,
     binding_plan: HandlerBindingPlan,
     context: ExecutionContext | None = None,
+    limits: RequestLimits | None = None,
 ) -> tuple[tuple[object, ...], dict[str, object]]:
     """Bind handler parameters and split them into args/kwargs."""
 
-    return separate_bound_parameters(await bind_handler_parameters(request, binding_plan, context))
+    return separate_bound_parameters(
+        await bind_handler_parameters(request, binding_plan, context, limits)
+    )
 
 
 async def bind_handler_parameters(
     request: HttpRequest | object,
     binding_plan: HandlerBindingPlan,
     context: ExecutionContext | None = None,
+    limits: RequestLimits | None = None,
 ) -> tuple[BoundParameter, ...]:
-    """Bind every parameter in a compiled handler plan."""
+    """Bind every parameter in a compiled handler plan.
+
+    ``limits`` are the bounds the request is read under; leaving them out applies the
+    defaults rather than none, so a caller that has no application to ask is still not
+    a way to read an unbounded body.
+    """
 
     http_request = as_http_request(request)
+    effective_limits = limits if limits is not None else RequestLimits()
     bound_parameters: list[BoundParameter] = []
     request_body: object = _UNSET_BODY
 
@@ -231,6 +310,7 @@ async def bind_handler_parameters(
             binding,
             request_body,
             context,
+            limits=effective_limits,
         )
         bound_parameters.append(BoundParameter(binding=binding, value=value))
 
@@ -264,7 +344,10 @@ async def _bind_parameter(
     binding: ParameterBinding,
     request_body: object,
     context: ExecutionContext | None = None,
+    *,
+    limits: RequestLimits | None = None,
 ) -> tuple[object, object]:
+    effective_limits = limits if limits is not None else RequestLimits()
     if binding.source is ParameterSource.REQUEST:
         if names_native_request(binding.annotation):
             # The parameter named the transport's own request type, so it is handed
@@ -382,6 +465,7 @@ async def _bind_parameter(
         return None, request_body
 
     if binding.source in (ParameterSource.FILE, ParameterSource.FILES):
+        _refuse_declared_body(request, effective_limits.max_upload_bytes, source="upload")
         form = await request.form()
         lookup_name = binding.alias or binding.name
         if binding.source is ParameterSource.FILE:
@@ -393,6 +477,9 @@ async def _bind_parameter(
             return None, request_body
 
         files_value = form.getlist(lookup_name)
+        _refuse_excess_uploads(
+            len(files_value), effective_limits.max_upload_files, field=binding.name
+        )
         if files_value:
             return files_value, request_body
         if binding.has_default:
@@ -434,7 +521,7 @@ async def _bind_parameter(
         )
 
     if binding.source is ParameterSource.BODY:
-        request_body = await _load_request_body(request, request_body)
+        request_body = await _load_request_body(request, request_body, effective_limits)
         lookup_name = binding.alias or binding.name
         if request_body is _NO_BODY:
             if binding.has_default:
@@ -528,7 +615,7 @@ async def _bind_parameter(
             request_body,
         )
 
-    request_body = await _load_request_body(request, request_body)
+    request_body = await _load_request_body(request, request_body, effective_limits)
     body_value = _extract_body_value(binding_plan, binding, request_body)
     if body_value is not _MISSING:
         return (
@@ -564,13 +651,20 @@ def _query_value(request: HttpRequest, binding: ParameterBinding) -> object:
     return _MISSING
 
 
-async def _load_request_body(request: HttpRequest, request_body: object) -> object:
+async def _load_request_body(
+    request: HttpRequest,
+    request_body: object,
+    limits: RequestLimits,
+) -> object:
     if request_body is not _UNSET_BODY:
         return request_body
+
+    _refuse_declared_body(request, limits.max_body_bytes, source="request body")
 
     # The request body stream can only be consumed once, so cache the parsed
     # JSON document for all subsequent parameter bindings.
     body_bytes = await request.body()
+    _refuse_received_body(len(body_bytes), limits.max_body_bytes, source="request body")
     if not body_bytes:
         return _NO_BODY
 
@@ -582,6 +676,66 @@ async def _load_request_body(request: HttpRequest, request_body: object) -> obje
             source="request body",
             reason=str(exc),
         ) from exc
+
+
+def _refuse_declared_body(request: HttpRequest, limit: int | None, *, source: str) -> None:
+    """Refuse a request that announces more body bytes than the limit allows.
+
+    This reads the declared length and nothing else, so a caller announcing a body far
+    larger than the application accepts is answered before that body is pulled into
+    this process: the point of the limit is that the memory is never spent, and a check
+    made after the read would have spent it already.
+
+    A request that declares no length, or declares one that is not a number, is left to
+    the check made once its body has arrived and to whatever single read the transport
+    adapter caps on its own.
+    """
+
+    if limit is None:
+        return
+
+    declared = request.headers.get("content-length")
+    if declared is None:
+        return
+
+    try:
+        declared_bytes = int(declared)
+    except ValueError:
+        return
+
+    if declared_bytes > limit:
+        raise RequestBodyTooLargeError(
+            f"The {source} declares {declared_bytes} bytes, over the {limit} byte limit"
+        )
+
+
+def _refuse_received_body(received_bytes: int, limit: int | None, *, source: str) -> None:
+    """Refuse a body that arrived larger than the limit despite declaring nothing.
+
+    A body sent without a declared length cannot be judged before it is read, so this is
+    what closes the gap for one: the request is still refused rather than bound, and the
+    application never sees it. The memory it took is bounded by what the transport
+    adapter allows a single read to accumulate, not by this limit.
+    """
+
+    if limit is not None and received_bytes > limit:
+        raise RequestBodyTooLargeError(
+            f"The {source} carries {received_bytes} bytes, over the {limit} byte limit"
+        )
+
+
+def _refuse_excess_uploads(uploaded_count: int, limit: int | None, *, field: str) -> None:
+    """Refuse a form that bound more parts to one parameter than the limit allows.
+
+    Parts can only be counted once the form has been parsed, so what bounds the cost of
+    reaching this point is the byte limit checked before the parse; this bounds what a
+    handler is then handed, which is a list the caller decides the length of.
+    """
+
+    if limit is not None and uploaded_count > limit:
+        raise RequestBodyTooLargeError(
+            f"The request uploads {uploaded_count} files for {field!r}, over the {limit} file limit"
+        )
 
 
 def _extract_body_value(

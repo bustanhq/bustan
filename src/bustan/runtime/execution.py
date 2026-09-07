@@ -5,20 +5,20 @@ from __future__ import annotations
 import inspect
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from functools import partial
 from inspect import iscoroutinefunction
 from typing import TYPE_CHECKING, Any, cast
 
-from anyio import to_thread
+from anyio import CapacityLimiter, move_on_after, to_thread
 
 from ..contracts import HttpRequest, HttpResponse, RouteHandler
-from ..kernel.errors import GuardRejectedError
+from ..kernel.errors import BustanError, GuardRejectedError
 from ..kernel.ioc.container import Container
 from ..kernel.module.dynamic import ModuleKey
 from ..observability.observability import ObservabilityHooks
 from ..pipeline.context import ExecutionContext
-from ..pipeline.filters import ExceptionFilter, handle_exception
+from ..pipeline.filters import ExceptionFilter, ProblemDetails, handle_exception
 from ..pipeline.guards import run_guards
 from ..pipeline.interceptors import call_with_interceptors
 from ..pipeline.middleware import Middleware, ResolvedRouteMiddleware
@@ -36,6 +36,8 @@ from .params import (
     BoundParameter,
     HandlerBindingPlan,
     ParameterSource,
+    RequestBodyTooLargeError,
+    RequestLimits,
     bind_handler_parameters,
     separate_bound_parameters,
 )
@@ -49,6 +51,58 @@ RouteExceptionHandler = Callable[[HttpRequest, Exception], Awaitable[RuntimeResp
 _EXCEPTION_RESPONSE_PLAN = ResponsePlan(declared_type=None, default_status_code=200)
 _LOGGER = logging.getLogger(__name__)
 _INTERNAL_SERVER_ERROR_DETAIL = "Internal server error"
+# Reserved on the application object for the limits it serves requests under, following
+# the framework's convention that a name it owns on someone else's namespace says so.
+REQUEST_LIMITS_ATTR = "bustan_request_limits"
+
+
+class RequestTimeoutError(BustanError):
+    """Raised when one request took longer than the time its application allows it."""
+
+
+class RequestLimitExceptionFilter(ExceptionFilter):
+    """Renders the two refusals the runtime's own request limits produce.
+
+    It declares every exception and answers only those two, which is what keeps it out
+    of an application's way: the chain ranks a filter that declares a specific type
+    ahead of a catch-all one and, among catch-all filters, a later-declared one ahead of
+    an earlier, so placing this first means every filter an application installed is
+    offered the exception before this is. Answering ``None`` for anything else leaves
+    the rest of the chain, and the framework's own fallback, exactly as they were.
+
+    What it returns is the problem-details document the fallback would return, carrying
+    the status the limit implies rather than the 500 an unrecognised exception gets.
+    """
+
+    exception_types = (Exception,)
+
+    async def catch(self, exc: Exception, context: ExecutionContext) -> HttpResponse | None:
+        if isinstance(exc, RequestBodyTooLargeError):
+            status_code, title = 413, "Content Too Large"
+        elif isinstance(exc, RequestTimeoutError):
+            status_code, title = 504, "Gateway Timeout"
+        else:
+            return None
+
+        _LOGGER.warning("Request refused by a request limit: %s", exc)
+        request = context.request
+        problem = ProblemDetails(
+            type="about:blank",
+            title=title,
+            status=status_code,
+            # A timeout's own message names the budget the deployment configured, which
+            # tells a caller how long to hold a connection to exhaust the workers; the
+            # status's reason says everything a caller can act on instead.
+            detail=str(exc) if status_code < 500 else title,
+            instance=request.path if request is not None else None,
+        )
+        payload = {key: value for key, value in asdict(problem).items() if value is not None}
+        response = HttpResponse.json(payload, status_code=status_code)
+        response.media_type = "application/problem+json"
+        return response
+
+
+_REQUEST_LIMIT_FILTER = RequestLimitExceptionFilter()
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,110 +294,125 @@ async def execute_http_route(
     response_token = container.scope_manager.push_response(response_context)
     response_handler = ResponseHandler()
     observability = ObservabilityHooks.current()
+    limits = request_limits_of(application_runtime)
     context: ExecutionContext | None = None
     filters: tuple[ExceptionFilter, ...] | None = None
     observation = None
     durable_snapshot: frozenset[object] | None = None
 
     try:
-        # The context and the observation come first, before anything a request pays
-        # for can fail. An exception raised while a constructor runs then has the same
-        # context, the same filter chain and the same metrics as one raised inside the
-        # handler, instead of leaving the route with nothing to answer it with.
-        context = _http_context(
-            execution_plan,
-            request=request,
-            response_context=response_context,
-            container=container,
-            controller=None,
-        )
-        observation = observability.start_request(context)
+        # The clock covers the whole of the request the application pays for, not
+        # only the handler: a guard that hangs, a provider that never resolves and a
+        # body that never finishes arriving each hold a worker exactly as a slow
+        # handler does. Rendering the refusal happens outside the scope, so the
+        # filters that answer a timeout are not themselves running out of time.
+        with move_on_after(limits.timeout_seconds):
+            # The context and the observation come first, before anything a request pays
+            # for can fail. An exception raised while a constructor runs then has the same
+            # context, the same filter chain and the same metrics as one raised inside the
+            # handler, instead of leaving the route with nothing to answer it with.
+            context = _http_context(
+                execution_plan,
+                request=request,
+                response_context=response_context,
+                container=container,
+                controller=None,
+            )
+            observation = observability.start_request(context)
 
-        durable_snapshot = _durable_partitions(container, execution_plan)
-        # Guards decide whether the request is served at all, so they and the filters
-        # that render their verdict are the only components resolved before that
-        # decision. Everything the request would consume once it is admitted - the
-        # controller, whatever it injects, the pipes and the interceptors - is built
-        # after, so a refused caller pays for none of it and leaves nothing behind.
-        gate = await factory.resolve_pipeline_async(
-            PipelinePlan(
-                guards=execution_plan.pipeline_plan.guards,
-                filters=execution_plan.pipeline_plan.filters,
-            ),
-            module=execution_plan.module_key,
-            request=request,
-        )
-        filters = gate.filters
+            durable_snapshot = _durable_partitions(container, execution_plan)
+            # Guards decide whether the request is served at all, so they and the filters
+            # that render their verdict are the only components resolved before that
+            # decision. Everything the request would consume once it is admitted - the
+            # controller, whatever it injects, the pipes and the interceptors - is built
+            # after, so a refused caller pays for none of it and leaves nothing behind.
+            gate = await factory.resolve_pipeline_async(
+                PipelinePlan(
+                    guards=execution_plan.pipeline_plan.guards,
+                    filters=execution_plan.pipeline_plan.filters,
+                ),
+                module=execution_plan.module_key,
+                request=request,
+            )
+            filters = gate.filters
 
-        await run_guards(context, gate.guards)
-        # The request was admitted, so anything cached from here on is work it asked
-        # for and is not undone if a later stage fails.
-        durable_snapshot = None
+            await run_guards(context, gate.guards)
+            # The request was admitted, so anything cached from here on is work it asked
+            # for and is not undone if a later stage fails.
+            durable_snapshot = None
 
-        controller_instance = await factory.instantiate_async(
-            execution_plan.controller_cls,
-            module=execution_plan.module_key,
-            request=request,
-        )
-        handler = getattr(controller_instance, execution_plan.handler_name)
-        # The controller exists only now, so the context every later stage sees is
-        # rebuilt around it; guards saw the one that could not name an instance yet.
-        context = _http_context(
-            execution_plan,
-            request=request,
-            response_context=response_context,
-            container=container,
-            controller=controller_instance,
-        )
-
-        remainder = await factory.resolve_pipeline_async(
-            PipelinePlan(
-                pipes=execution_plan.pipeline_plan.pipes,
-                interceptors=execution_plan.pipeline_plan.interceptors,
-            ),
-            module=execution_plan.module_key,
-            request=request,
-        )
-
-        bound_parameters = await bind_handler_parameters(
-            request,
-            execution_plan.binding_plan,
-            context,
-        )
-        piped_parameters = await _apply_pipes(
-            bound_parameters,
-            context,
-            remainder.pipes,
-            execution_plan.binding_plan,
-        )
-        positional_arguments, keyword_arguments = separate_bound_parameters(piped_parameters)
-
-        async def final_handler() -> object:
-            if execution_plan.is_async_handler:
-                return await handler(*positional_arguments, **keyword_arguments)
-            return await to_thread.run_sync(
-                partial(handler, *positional_arguments, **keyword_arguments)
+            controller_instance = await factory.instantiate_async(
+                execution_plan.controller_cls,
+                module=execution_plan.module_key,
+                request=request,
+            )
+            handler = getattr(controller_instance, execution_plan.handler_name)
+            # The controller exists only now, so the context every later stage sees is
+            # rebuilt around it; guards saw the one that could not name an instance yet.
+            context = _http_context(
+                execution_plan,
+                request=request,
+                response_context=response_context,
+                container=container,
+                controller=controller_instance,
             )
 
-        result = await call_with_interceptors(
-            context,
-            remainder.interceptors,
-            final_handler,
-        )
-        response = response_handler.write(result=result, response_plan=execution_plan.response_plan)
-        response = _merge_response_context(
-            response_context,
-            response,
-            default_status_code=execution_plan.response_plan.default_status_code,
-        )
-        _apply_rate_limit_headers(request, response)
-
-        if observation is not None:
-            observability.finish_request(
-                observation,
-                status_code=_response_status_code(response),
+            remainder = await factory.resolve_pipeline_async(
+                PipelinePlan(
+                    pipes=execution_plan.pipeline_plan.pipes,
+                    interceptors=execution_plan.pipeline_plan.interceptors,
+                ),
+                module=execution_plan.module_key,
+                request=request,
             )
-        return HttpExecutionResult(response=response, context=context)
+
+            bound_parameters = await bind_handler_parameters(
+                request,
+                execution_plan.binding_plan,
+                context,
+                limits,
+            )
+            piped_parameters = await _apply_pipes(
+                bound_parameters,
+                context,
+                remainder.pipes,
+                execution_plan.binding_plan,
+            )
+            positional_arguments, keyword_arguments = separate_bound_parameters(piped_parameters)
+
+            async def final_handler() -> object:
+                if execution_plan.is_async_handler:
+                    return await handler(*positional_arguments, **keyword_arguments)
+                return await to_thread.run_sync(
+                    partial(handler, *positional_arguments, **keyword_arguments),
+                    limiter=_sync_handler_limiter(limits),
+                )
+
+            result = await call_with_interceptors(
+                context,
+                remainder.interceptors,
+                final_handler,
+            )
+            response = response_handler.write(
+                result=result, response_plan=execution_plan.response_plan
+            )
+            response = _merge_response_context(
+                response_context,
+                response,
+                default_status_code=execution_plan.response_plan.default_status_code,
+            )
+            _apply_rate_limit_headers(request, response)
+
+            if observation is not None:
+                observability.finish_request(
+                    observation,
+                    status_code=_response_status_code(response),
+                )
+            return HttpExecutionResult(response=response, context=context)
+
+        # The block above ends in a return, so arriving here means the deadline
+        # passed and the scope swallowed the cancellation on its way out.
+        raise RequestTimeoutError(f"The request exceeded the {limits.timeout_seconds} second limit")
     except Exception as exc:
         if isinstance(exc, GuardRejectedError):
             _evict_durable_partitions(container, durable_snapshot)
@@ -419,7 +488,7 @@ async def execute_http_exception(
         )
         filters = resolved_pipeline.filters
         observation = observability.start_request(context)
-        filtered_result = await handle_exception(context, error, filters)
+        filtered_result = await handle_exception(context, error, _with_limit_filter(filters))
         response = response_handler.write(
             result=filtered_result,
             response_plan=_EXCEPTION_RESPONSE_PLAN,
@@ -485,7 +554,7 @@ async def _render_failure(
     if context is not None:
         if filters is None:
             filters = await _global_filters(factory, execution_plan, request)
-        filtered_result = await handle_exception(context, exc, filters)
+        filtered_result = await handle_exception(context, exc, _with_limit_filter(filters))
         response = response_handler.write(
             result=filtered_result,
             response_plan=_EXCEPTION_RESPONSE_PLAN,
@@ -607,6 +676,58 @@ def _evict_durable_partitions(
             durable_instances.pop(key, None)
 
 
+def _with_limit_filter(filters: tuple[ExceptionFilter, ...]) -> tuple[ExceptionFilter, ...]:
+    """Put the runtime's own limit filter behind every filter the application declared.
+
+    First in the tuple is last in preference, because the chain prefers a filter that
+    was declared later over one declared earlier when both catch the same breadth. An
+    application therefore always gets to answer its own timeouts and oversized bodies,
+    and this is what answers them when it does not.
+    """
+
+    return (_REQUEST_LIMIT_FILTER, *filters)
+
+
+def set_request_limits(application_runtime: object, limits: RequestLimits) -> None:
+    """Declare the limits *application_runtime* serves its requests under.
+
+    The limits belong to an application rather than to the process, so two applications
+    in one process do not have to agree on how large a body or how long a request one
+    of them accepts. Whatever is not declared this way is served under the defaults,
+    which are finite; there is no way to end up with no limits by omission.
+    """
+
+    setattr(_application_runtime(application_runtime), REQUEST_LIMITS_ATTR, limits)
+
+
+def request_limits_of(application_runtime: object) -> RequestLimits:
+    """Return the limits *application_runtime* serves its requests under."""
+
+    limits = getattr(_application_runtime(application_runtime), REQUEST_LIMITS_ATTR, None)
+    return limits if isinstance(limits, RequestLimits) else RequestLimits()
+
+
+def _sync_handler_limiter(limits: RequestLimits) -> CapacityLimiter:
+    """Return the limiter that bounds how many synchronous handlers run at once.
+
+    This is the running loop's own default thread limiter rather than a second one
+    beside it. A synchronous handler is offloaded to a thread, and so is everything
+    else in the process that offloads work the same way; a private limiter would bound
+    the handlers while the total number of threads stayed whatever the two limiters
+    happened to add up to, which is not a ceiling anyone set.
+
+    It follows that this one bound is per event loop where the rest are per application:
+    two applications serving on one loop share it, and the last of them to serve a
+    request is the one whose figure stands. A deployment that wants two different thread
+    ceilings needs two loops to hold them.
+    """
+
+    limiter = to_thread.current_default_thread_limiter()
+    if limiter.total_tokens != limits.sync_handler_threads:
+        limiter.total_tokens = limits.sync_handler_threads
+    return limiter
+
+
 def _application_runtime(application_runtime: object) -> object:
     """Return the Bustan application behind whatever the transport handed over.
 
@@ -694,8 +815,11 @@ def _merge_response_context(
 
 
 __all__ = [
+    "REQUEST_LIMITS_ATTR",
     "ExecutionPlan",
     "HttpExecutionResult",
+    "RequestLimitExceptionFilter",
+    "RequestTimeoutError",
     "RouteExceptionHandler",
     "RuntimeResponse",
     "compile_execution_plan",
@@ -703,5 +827,7 @@ __all__ = [
     "create_route_handler",
     "execute_http_exception",
     "execute_http_route",
+    "request_limits_of",
     "run_middleware_chain",
+    "set_request_limits",
 ]
