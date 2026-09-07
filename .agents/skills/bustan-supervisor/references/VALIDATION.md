@@ -381,3 +381,27 @@ into the dispatch prompt against the commit it was taken from, with the stale fi
 stale. That is cheap, it is dated, and it puts the correction in the one place the agent cannot
 skip. Correcting the document is a separate ticket with its own owner; correcting the agent is
 today's job.
+
+## Check whether the batch is already out before dispatching it
+
+Batch 6 went out twice, nine minutes apart, from this session. Six agents ran on three tickets,
+each pair sharing a branch name and a one-file `Owns` list, none of them able to see its twin.
+
+The first dispatch had left evidence: three sessions, a check-in trigger, and a commit of mine on
+the supervisor branch timestamped between the two dispatches. I read none of it, because I had no
+memory of the first dispatch and never thought to ask whether one had happened.
+
+What saved it was the protocol rather than me. The second agent on the first ticket found the
+branch taken, opened a draft beginning `BLOCKED:` on a renamed branch and stopped. The second agent
+on another ticket was one approval away from force-pushing an amended commit over work it had not
+written. That one was luck: it happened to ask.
+
+Dispatch is one of the two irreversible gates, and it is irreversible in a way merging is not - a
+merge can be reverted, but an agent that has started cannot be un-started, and two agents on one
+branch corrupt each other's work rather than queueing. So before creating any delivery session,
+list the live sessions and the armed triggers and look for the ticket number. If a session already
+carries it, the batch is out. Cheap, mechanical, and it takes one call.
+
+The general form: a supervisor's own recent actions are state it can lose, and losing them is
+invisible from the inside. Anything the supervisor does that another supervisor could not undo has
+to be checked against the world first, not against memory.
