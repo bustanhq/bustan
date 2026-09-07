@@ -98,9 +98,6 @@ class ResponsePlan:
     strategy: ResponseStrategy = ResponseStrategy.STANDARD
     default_status_code: int = 200
     declared_responses: tuple[DeclaredResponse, ...] = ()
-    headers: tuple[tuple[str, str], ...] = ()
-    redirect_to: str | None = None
-    raw_response_parameter: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
