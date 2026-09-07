@@ -69,19 +69,10 @@ def test_registered_routes_serve_the_neutral_handler() -> None:
     assert getattr(registered, "bustan_probe", None) == "left-behind"
 
 
-def test_a_prebuilt_registration_is_registered_as_it_stands() -> None:
-    adapter = StarletteAdapter()
-    prebuilt = Route("/openapi.json", endpoint=lambda request: Response(), methods=["GET"])
-
-    adapter.register_routes(
-        [AdapterRoute(path="/openapi.json", methods=("GET",), registration=prebuilt)]
-    )
-
-    assert adapter.get_instance().routes[0] is prebuilt
-
-
-def test_a_route_with_neither_a_handler_nor_a_registration_is_refused() -> None:
-    with pytest.raises(ValueError, match="neither a handler nor a registration"):
+def test_a_route_carrying_no_handler_is_refused_by_name() -> None:
+    # A handler is the whole of what the port hands an adapter, so a route without one
+    # cannot serve a request and is refused rather than registered as a dead path.
+    with pytest.raises(ValueError, match="/nothing carries no handler"):
         build_starlette_routes([AdapterRoute(path="/nothing", methods=("GET",))])
 
 
