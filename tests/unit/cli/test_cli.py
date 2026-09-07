@@ -65,6 +65,36 @@ def test_init_creates_expected_files(tmp_path: Path, capsys) -> None:
     assert "uv run dev" in stdout
 
 
+def _uv_commands(text: str) -> list[str]:
+    """Return every uv command line in text, indentation and fencing removed."""
+
+    return [line.strip() for line in text.splitlines() if line.strip().startswith("uv ")]
+
+
+def test_scaffolded_readme_gives_the_same_commands_init_prints(tmp_path: Path, capsys) -> None:
+    _write_pyproject(tmp_path, "hello-bustan")
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        assert cli_main_module.main(["init"]) == 0
+    finally:
+        os.chdir(old_cwd)
+
+    printed = _uv_commands(capsys.readouterr().out)
+    written = _uv_commands((tmp_path / "README.md").read_text(encoding="utf-8"))
+
+    # The terminal output scrolls away and the README is the copy the user keeps, so the
+    # two have to name one install command, not two. The install lines are compared as a
+    # whole rather than searched for: a README that adds a second, different "uv add" or
+    # drops the transport extra scaffolds a project whose own generated tests cannot
+    # import, and only an exact comparison catches that.
+    assert [command for command in written if command.startswith("uv add ")] == [
+        command for command in printed if command.startswith("uv add ")
+    ]
+    # Everything else the command offers as a next step is documented too.
+    assert set(printed) <= set(written)
+
+
 # Installed alongside a scaffolded project's tests to hide the HTTP client packages
 # that starlette's own test client needs. A scaffolded project is told to add bustan,
 # ty, ruff and pytest and nothing else, so a generated test that only passes because
