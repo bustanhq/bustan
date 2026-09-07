@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from ..adapters.asgi.types import Receive, Scope, Send
     from ..kernel.ioc.container import Container
     from ..kernel.lifecycle.manager import LifecycleManager
     from ..kernel.module.graph import ModuleGraph
@@ -229,6 +230,13 @@ class Application(ApplicationContext):
                     res.setdefault(path, []).append(route)
         return res
 
-    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
-        """Forward ASGI calls directly to the underlying HTTP adapter."""
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Forward ASGI calls directly to the underlying HTTP adapter.
+
+        The parameters spell the ASGI vocabulary exactly as the transport declares it,
+        so this object is assignable wherever a server or an in-process client asks for
+        an ASGI application. Narrowing any of them would make the framework's own
+        composition a type error for everyone outside this repository.
+        """
+
         await self._adapter(scope, receive, send)
