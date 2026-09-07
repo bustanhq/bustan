@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding CR-03 (workflow id F-21) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-21: sync DI construction on the event-loop thread acquires a threading.Lock that a

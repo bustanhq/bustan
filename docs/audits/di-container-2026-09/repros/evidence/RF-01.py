@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RF-01 (workflow id F-12) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-12: synthesized annotation namespace shadows lexical scope for same-named token classes."""

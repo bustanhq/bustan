@@ -23,7 +23,7 @@ def run_init_command(arguments: argparse.Namespace) -> int:
     init_project(package_name=package_name)
     print(f"Initialised Bustan app for package '{package_name}'.")
     print("Next steps:")
-    print("  uv add bustan")
+    print("  uv add 'bustan[starlette]'")
     print("  uv add --dev ty ruff pytest")
     print("  uv run start")
     print("  uv run dev")

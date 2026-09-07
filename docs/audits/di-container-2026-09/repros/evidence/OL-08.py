@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-08 (workflow id F-40) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-40: TestingModuleBuilder resolves use_class/use_factory replacements from ROOT.

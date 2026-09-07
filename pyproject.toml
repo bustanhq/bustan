@@ -103,6 +103,11 @@ line-length = 100
 target-version = "py313"
 exclude = [
     "src/bustan/cli/templates",
+    # The audit evidence scripts are kept exactly as they ran, so they are neither
+    # linted nor formatted: a fix would change what a script measures, and two of the
+    # findings cannot be satisfied at all without deleting the behaviour on record.
+    # This entry is the only suppression the scripts have; none of them carries a
+    # file-level noqa, so adding one back would split one decision across two places.
     "docs/audits/di-container-2026-09/repros/evidence",
 ]
 

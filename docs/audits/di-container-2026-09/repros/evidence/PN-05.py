@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding PN-05 (workflow id F-33) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-33: undecorated class registered as provider is container-resolvable but the

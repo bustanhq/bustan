@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding QA-11 (workflow id F-77) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 # Left naming the pre-rename package tree, on purpose. The packages were renamed after

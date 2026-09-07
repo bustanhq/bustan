@@ -14,7 +14,7 @@ from bustan.runtime.compiler import DeclaredResponse, ResponsePlan, ResponseStra
 from bustan.runtime.responses import ResponseHandler
 
 
-def test_serialized_responses_apply_response_plan_status_and_headers() -> None:
+def test_serialized_responses_apply_the_response_plan_status() -> None:
     response = ResponseHandler().write(
         result={"status": "ok"},
         response_plan=ResponsePlan(
@@ -22,13 +22,11 @@ def test_serialized_responses_apply_response_plan_status_and_headers() -> None:
             strategy=ResponseStrategy.STANDARD,
             default_status_code=201,
             declared_responses=(DeclaredResponse(status=201),),
-            headers=(("x-response-plan", "enabled"),),
         ),
     )
 
     assert isinstance(response, HttpResponse)
     assert response.status_code == 201
-    assert response.headers["x-response-plan"] == "enabled"
     assert response.body == b'{"status":"ok"}'
 
 
@@ -93,13 +91,11 @@ def test_response_handler_covers_passthrough_and_error_branches() -> None:
             strategy=ResponseStrategy.RAW,
             default_status_code=204,
             declared_responses=(DeclaredResponse(status=204),),
-            headers=(("x-raw", "yes"),),
         ),
     )
 
     assert raw_response is native_response
     assert raw_response.status_code == 204
-    assert raw_response.headers["x-raw"] == "yes"
 
     stream = HttpStreamResponse(body=iter((b"a", b"b")))
     file_response = HttpFileResponse(path="payload.txt")

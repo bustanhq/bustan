@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding CR-04 (workflow id F-22) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-22: request-scoped cache writes are unlocked (resolver.py:151-152, 268-269, 883-888;

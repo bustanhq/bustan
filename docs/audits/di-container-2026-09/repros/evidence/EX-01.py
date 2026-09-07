@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding EX-01 (workflow id F-85) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 # F-85: exceptions raised while DI constructs the controller / request-scoped

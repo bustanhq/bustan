@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding QA-15 (workflow id F-81) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-81: untested categories - override-by-scope matrix, durable over HTTP, durable lifecycle/eviction,

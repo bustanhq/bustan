@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RF-10 (workflow id F-86) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 # F-86: under create_app_context(), ApplicationContext.get pushes the

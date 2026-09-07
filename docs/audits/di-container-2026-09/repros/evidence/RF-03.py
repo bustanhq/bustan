@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RF-03 (workflow id F-11) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-11: inherited __init__ type hints evaluated in the SUBCLASS module globals -> NameError."""

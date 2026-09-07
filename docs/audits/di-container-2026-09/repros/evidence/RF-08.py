@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding RF-08 (workflow id F-56) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-56: class overriding __new__ but keeping object.__init__ bypasses injection."""

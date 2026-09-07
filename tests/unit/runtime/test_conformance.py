@@ -10,11 +10,13 @@ same way, which is what makes the suite worth having.
 from __future__ import annotations
 
 import ast
+import builtins
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from bustan.adapters.asgi import AsgiAdapter
 from bustan.contracts import AbstractHttpAdapter, AdapterCapabilities, HttpRequest
 from bustan.runtime import conformance as conformance_module
 from bustan.runtime.compiler import ResponseStrategy
@@ -236,6 +238,56 @@ def test_an_adapter_that_cannot_be_built_with_a_lifespan_fails_that_case() -> No
     assert "no lifespan on construction" in checks[0].detail
 
 
+def test_the_lifespan_cases_fail_when_the_adapter_drops_the_frameworks_lifespan() -> None:
+    """The cases are only worth running if they can go red when the module graph never starts."""
+
+    checks = conformance_module._run_lifespan_scenario(_LifespanIgnoringAdapter())
+
+    assert [check.passed for check in checks] == [False, False]
+    assert all("module_inits" in check.detail for check in checks)
+
+
+def test_the_lifespan_scenario_certifies_no_lifespan_the_suite_wrote() -> None:
+    """The counters the cases read must be written by the module graph, not by the suite."""
+
+    record = conformance_module.ModuleLifecycleRecord()
+    module = conformance_module._build_lifecycle_module(record)
+
+    assert callable(getattr(module, "on_module_init", None))
+    assert callable(getattr(module, "on_application_shutdown", None))
+    assert record.state() == {"module_inits": 0, "application_shutdowns": 0}
+    assert "asynccontextmanager" not in _module_source()
+
+
+def test_the_suite_imports_no_adapter_that_needs_an_extra_at_module_scope() -> None:
+    """Only the kernel is needed to import the suite, so the adapter needing none can run."""
+
+    tree = ast.parse(_module_source())
+    module_scope = [node for node in tree.body if isinstance(node, ast.ImportFrom)]
+
+    assert not [
+        node for node in module_scope if (node.module or "").startswith("adapters.starlette")
+    ]
+
+
+def test_load_adapter_turns_an_absent_extra_into_an_install_instruction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing extra and an unknown adapter name are different mistakes and read that way."""
+
+    real_import = builtins.__import__
+
+    def refuse(name: str, *arguments: Any, **options: Any) -> Any:
+        if name.endswith("adapters.starlette"):
+            raise ModuleNotFoundError("No module named 'starlette'", name="starlette")
+        return real_import(name, *arguments, **options)
+
+    monkeypatch.setattr(builtins, "__import__", refuse)
+
+    with pytest.raises(ImportError, match=r"bustan\[starlette\]"):
+        load_adapter("starlette")
+
+
 class _LifespanlessAdapter(AbstractHttpAdapter):
     """An adapter whose constructor takes nothing, which is all the port requires."""
 
@@ -267,3 +319,16 @@ class _LifespanlessAdapter(AbstractHttpAdapter):
 
     def add_middleware(self, middleware_class: type, **options: object) -> None:
         raise NotImplementedError
+
+
+class _LifespanIgnoringAdapter(AsgiAdapter):
+    """A working adapter that accepts the framework's lifespan and then drops it.
+
+    Everything else about it conforms, so the lifespan cases fail on what they are for
+    rather than on the adapter being unable to answer a request at all.
+    """
+
+    name = "lifespan-ignoring"
+
+    def __init__(self, *, lifespan: object | None = None) -> None:
+        super().__init__()

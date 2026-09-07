@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding OL-07 (workflow id F-39) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-39: overridden providers get no lifecycle hooks.

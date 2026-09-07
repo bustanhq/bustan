@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding PN-02 (workflow id F-10) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-10: singleton factory returning None is never cached (sync re-runs; async breaks init())."""

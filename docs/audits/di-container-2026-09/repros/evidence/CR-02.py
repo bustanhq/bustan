@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding CR-02 (workflow id F-20) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-20: sync resolve (threading.Lock) vs resolve_async (anyio.Lock) on the same singleton.

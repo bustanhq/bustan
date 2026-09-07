@@ -203,7 +203,6 @@ async def test_an_adapter_written_only_against_the_port_serves_the_plan() -> Non
 
     assert [route.path for route in adapter.registered] == ["/users"]
     assert adapter.registered[0].handler is not None
-    assert adapter.registered[0].registration is None
     assert await adapter.start(0) is None
     await adapter.stop()
     assert adapter.stopped

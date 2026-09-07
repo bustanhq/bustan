@@ -1,4 +1,3 @@
-# ruff: noqa
 # Evidence script for finding PN-03 (workflow id F-30) from the 2026-09 DI container audit.
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-30: OverrideManager matches tokens by identity ('is') while the registry
