@@ -153,7 +153,47 @@ class StarletteHttpRequest:
         client is never asked for them twice.
         """
 
-        limit = self._limits().max_body_bytes
+        return await self._read_bounded(self._limits().max_body_bytes)
+
+    async def json(self) -> object:
+        """Read the request body under the body limit and decode it as JSON."""
+
+        return json.loads(await self.body())
+
+    async def form(self) -> HttpFormData:
+        """Read the request body as form data, uploaded files included.
+
+        A form is read under the application's upload bound rather than its body bound,
+        because those are two figures for two different things: a route that accepts
+        uploads is expected to carry more than a JSON document, and reading a form under
+        the smaller of the two would refuse an upload the application was configured to
+        serve.
+
+        The bytes are read here, under that bound, before the transport is asked to
+        parse them. The transport's own multipart parser has no total bound to stop at
+        and spools a part past a threshold onto disk, so a form left to it is a body of
+        the caller's choosing written into this process whatever the application said it
+        would accept; reading first means the refusal happens at the chunk that crosses
+        the bound, and nothing past it is ever asked for.
+
+        A deployment that declared no upload bound is left to the transport to parse as
+        it streams, because reading an unbounded body into memory in order to bound it
+        would spend exactly what removing the bound asked to be spent lazily.
+        """
+
+        limit = self._limits().max_upload_bytes
+        if limit is not None:
+            await self._read_bounded(limit)
+        return cast(HttpFormData, await self._request.form())
+
+    async def _read_bounded(self, limit: int | None) -> bytes:
+        """Read the body, stopping at the chunk that carries it past *limit*.
+
+        The bound is a parameter because the two readers of one request are bounded by
+        different figures: a body by what the application will bind, a form by what it
+        will accept as an upload.
+        """
+
         if limit is None:
             return await self._request.body()
 
@@ -180,16 +220,6 @@ class StarletteHttpRequest:
         # what makes this read the request's one read rather than a read beside it.
         self._request._body = body
         return body
-
-    async def json(self) -> object:
-        """Read the request body under the body limit and decode it as JSON."""
-
-        return json.loads(await self.body())
-
-    async def form(self) -> HttpFormData:
-        """Read the request body as form data, uploaded files included."""
-
-        return cast(HttpFormData, await self._request.form())
 
     def _limits(self) -> RequestLimits:
         """Return the limits the application serving this request reads it under.
