@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
-
-from starlette.testclient import TestClient
 
 from bustan import Application, create_app
+from bustan.testing import AsgiTestClient
 
 from .app_module import AppModule
 
@@ -33,7 +31,7 @@ def demo() -> None:
     """Show the seeded list endpoint and a write that carries request-local context."""
 
     application = build_application()
-    with TestClient(cast(Any, application)) as client:
+    with AsgiTestClient(application) as client:
         print(client.get("/posts").json())
         print(
             client.post(

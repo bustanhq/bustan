@@ -1,11 +1,12 @@
 from blog_api import build_application
-from starlette.testclient import TestClient
+
+from bustan.testing import AsgiTestClient
 
 
 def test_blog_api_lists_seeded_posts() -> None:
     application = build_application()
 
-    with TestClient(application) as client:
+    with AsgiTestClient(application) as client:
         response = client.get("/posts")
 
     assert response.status_code == 200
@@ -15,7 +16,7 @@ def test_blog_api_lists_seeded_posts() -> None:
 def test_blog_api_uses_request_actor_for_post_creation() -> None:
     application = build_application()
 
-    with TestClient(application) as client:
+    with AsgiTestClient(application) as client:
         response = client.post(
             "/posts",
             headers={"x-user-id": "ada"},

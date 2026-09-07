@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, cast
 
+from ..adapters.asgi.testclient import AsgiTestClient
+from ..adapters.asgi.types import AsgiApp
 from ..app.application import Application
 from ..app.bootstrap import _create_app, create_app
 from ..kernel.errors import LifecycleError
@@ -107,11 +109,17 @@ class CompiledTestingModule:
         """Compare a previous route snapshot against the current application routes."""
         return self.application.diff_routes(tuple(previous_snapshot))
 
-    def create_client(self):
-        """Return a Starlette test client bound to the compiled application."""
-        from starlette.testclient import TestClient
+    def create_client(self) -> AsgiTestClient:
+        """Return an in-process client that sends requests to the compiled application.
 
-        return TestClient(cast(Any, self.application))
+        The client is the framework's own, so a test needs no HTTP client package
+        beyond what the application already installs. Used as a context manager it
+        runs the application's ASGI lifespan; a compiled module has already started
+        through its lifecycle manager, so entering it changes nothing that startup
+        did and leaving it is not a substitute for close().
+        """
+
+        return AsgiTestClient(cast(AsgiApp, self.application))
 
     async def close(self) -> None:
         """Tear the compiled application down through its own lifecycle.

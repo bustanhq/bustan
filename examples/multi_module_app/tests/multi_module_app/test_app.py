@@ -1,11 +1,12 @@
 from multi_module_app import build_application
-from starlette.testclient import TestClient
+
+from bustan.testing import AsgiTestClient
 
 
 def test_multi_module_app_exposes_users_with_auth_issuer() -> None:
     application = build_application()
 
-    with TestClient(application) as client:
+    with AsgiTestClient(application) as client:
         response = client.get("/users")
 
     assert response.status_code == 200

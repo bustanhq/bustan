@@ -1,11 +1,12 @@
 from request_scope_pipeline_app import build_application
-from starlette.testclient import TestClient
+
+from bustan.testing import AsgiTestClient
 
 
 def test_request_scope_pipeline_rejects_missing_identity() -> None:
     application = build_application()
 
-    with TestClient(application) as client:
+    with AsgiTestClient(application) as client:
         response = client.get("/account/me")
 
     assert response.status_code == 403
@@ -14,7 +15,7 @@ def test_request_scope_pipeline_rejects_missing_identity() -> None:
 def test_request_scope_pipeline_shares_request_identity_across_components() -> None:
     application = build_application()
 
-    with TestClient(application) as client:
+    with AsgiTestClient(application) as client:
         response = client.get(
             "/account/me",
             headers={"x-user-id": "moses", "x-request-id": "req-42"},
