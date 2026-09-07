@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any, cast
 
-from starlette.testclient import TestClient
-
 from bustan import (
     APP_INTERCEPTOR,
     Controller,
@@ -18,6 +16,7 @@ from bustan import (
     create_app,
 )
 from bustan.pipeline.interceptors import CallHandler
+from bustan.testing import AsgiTestClient
 
 
 def test_create_app_executes_interceptors_in_canonical_attachment_order() -> None:
@@ -60,7 +59,7 @@ def test_create_app_executes_interceptors_in_canonical_attachment_order() -> Non
     class AppModule:
         pass
 
-    with TestClient(cast(Any, create_app(AppModule))) as client:
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/users")
 
     assert response.status_code == 200
@@ -102,7 +101,7 @@ def test_create_app_supports_stream_transforming_interceptors() -> None:
     class AppModule:
         pass
 
-    with TestClient(cast(Any, create_app(AppModule))) as client:
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/streams")
 
     assert response.status_code == 200

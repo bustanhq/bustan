@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from starlette.testclient import TestClient
-
 from bustan import Controller, Get, Middleware, Module, create_app
 from bustan.contracts import HttpRequest
 from bustan.kernel.errors import BadRequestException
 from bustan.pipeline.middleware import MiddlewareConsumer
+from bustan.testing import AsgiTestClient
 
 
 class FailingMiddleware(Middleware):
@@ -17,8 +16,8 @@ class FailingMiddleware(Middleware):
         raise BadRequestException("middleware refused the request")
 
 
-def _client(module: type[object], *, debug: bool = False) -> TestClient:
-    return TestClient(cast(Any, create_app(module, debug=debug)))
+def _client(module: type[object], *, debug: bool = False) -> AsgiTestClient:
+    return AsgiTestClient(cast(Any, create_app(module, debug=debug)))
 
 
 def test_the_middleware_failure_path_answers_in_the_same_content_type() -> None:

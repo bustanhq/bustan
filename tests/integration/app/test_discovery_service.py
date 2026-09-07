@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from starlette.testclient import TestClient
-
 from bustan import (
     Controller,
     DiscoveryModule,
@@ -17,6 +15,7 @@ from bustan import (
     create_app,
     create_app_context,
 )
+from bustan.testing import AsgiTestClient
 
 
 def test_create_app_exposes_public_runtime_artifacts_on_http_server_state() -> None:
@@ -56,7 +55,7 @@ def test_discovery_service_is_injectable_during_request_runtime() -> None:
     class AppModule:
         pass
 
-    with TestClient(cast(Any, create_app(AppModule))) as client:
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/discovery")
 
     assert response.status_code == 200
