@@ -687,8 +687,7 @@ def _refuse_declared_body(request: HttpRequest, limit: int | None, *, source: st
     made after the read would have spent it already.
 
     A request that declares no length, or declares one that is not a number, is left to
-    the check made once its body has arrived and to whatever single read the transport
-    adapter caps on its own.
+    the check made once its body has arrived, which refuses it only after reading it.
     """
 
     if limit is None:
@@ -712,10 +711,16 @@ def _refuse_declared_body(request: HttpRequest, limit: int | None, *, source: st
 def _refuse_received_body(received_bytes: int, limit: int | None, *, source: str) -> None:
     """Refuse a body that arrived larger than the limit despite declaring nothing.
 
-    A body sent without a declared length cannot be judged before it is read, so this is
-    what closes the gap for one: the request is still refused rather than bound, and the
-    application never sees it. The memory it took is bounded by what the transport
-    adapter allows a single read to accumulate, not by this limit.
+    A body sent without a declared length cannot be judged before it is read, so the
+    request is refused only once the whole of it is already in this process. That is a
+    limitation and not a second line of defence: this check decides what the application
+    is handed, never what reading the request cost.
+
+    What it cost is whatever the serving adapter bounds a body at on its own, and only
+    one of them bounds anything. The raw ASGI adapter refuses a body past ten megabytes
+    as it reads it. The Starlette adapter, which is what an application gets when it
+    names no adapter, has no bound of any kind, so an undeclared body of any size is
+    read in full before this refuses it.
     """
 
     if limit is not None and received_bytes > limit:
