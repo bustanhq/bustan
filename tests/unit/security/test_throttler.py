@@ -9,11 +9,13 @@ import pytest
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Module, SkipThrottle, ThrottlerModule, create_app
+from bustan.kernel.errors import InvalidPipelineError
 from bustan.security import RateLimit
 from bustan.security.throttler import (
     InMemoryThrottlerStorage,
     ThrottleState,
     _client_address_key_resolver,
+    _window_seconds,
 )
 
 
@@ -443,15 +445,6 @@ async def test_no_reading_across_a_boundary_reports_more_than_the_window() -> No
         assert (await storage.count_request(f"k{index}", ttl, 5)).reset_after == ttl
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "The per-route limit is compiled into the policy plan and never read: the guard "
-        "counts every route against the application-wide limit and consults the plan "
-        "only for the skip flag. Reading it is the one change this test is waiting for, "
-        "and the test passes the moment that lands."
-    ),
-)
 def test_a_per_route_rate_limit_is_enforced_below_the_application_limit() -> None:
     """A route that asks for a tighter limit than the application must get it.
 
@@ -477,4 +470,191 @@ def test_a_per_route_rate_limit_is_enforced_below_the_application_limit() -> Non
         second = client.get("/")
 
     assert first.status_code == 200
+    assert first.headers["X-RateLimit-Limit"] == "1"
+    assert first.headers["X-RateLimit-Remaining"] == "0"
     assert second.status_code == 429
+
+
+def test_a_route_declaring_no_rate_limit_is_counted_against_the_application_limit() -> None:
+    """The route that declares nothing keeps the behaviour it has today.
+
+    Both routes are in the same application, so this is also what proves the declared
+    limit belongs to the route that declared it: five requests to the undeclared route
+    are all answered while the declared route is refused its second.
+    """
+
+    @Controller("/")
+    class AppController:
+        @RateLimit(limit=1, window="1m")
+        @Get("/declared")
+        def declared(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+        @Get("/undeclared")
+        def undeclared(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(imports=[ThrottlerModule.for_root(ttl=60, limit=5)], controllers=[AppController])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        assert client.get("/declared").status_code == 200
+        assert client.get("/declared").status_code == 429
+
+        undeclared = [client.get("/undeclared") for _ in range(6)]
+
+    assert [response.status_code for response in undeclared[:5]] == [200] * 5
+    assert undeclared[0].headers["X-RateLimit-Limit"] == "5"
+    assert undeclared[5].status_code == 429
+
+
+def test_a_route_that_skips_still_skips_when_it_also_declares_a_limit() -> None:
+    """Skipping wins over a declared limit, and is read before one is resolved.
+
+    The two can be declared together, by a controller-wide limit meeting a handler that
+    opts out as much as by one handler carrying both. A route that has asked to be
+    exempt is exempt: the declared limit is never reached, so no window is opened for it
+    and no key is counted against.
+    """
+
+    @Controller("/")
+    class AppController:
+        @SkipThrottle
+        @RateLimit(limit=1, window="1m")
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    storage = InMemoryThrottlerStorage()
+
+    @Module(
+        imports=[ThrottlerModule.for_root(ttl=60, limit=5, storage=storage)],
+        controllers=[AppController],
+    )
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        responses = [client.get("/") for _ in range(4)]
+
+    assert [response.status_code for response in responses] == [200] * 4
+    assert len(storage) == 0
+
+
+def test_the_declared_window_is_the_one_the_route_is_measured_against() -> None:
+    """The window is read, not just the limit.
+
+    The route declares one second where the application declares sixty. A second after
+    its first request the route's window has emptied and the application's has not, so a
+    request that is answered proves the route was measured against the window it asked
+    for.
+    """
+
+    clock = _Clock()
+
+    @Controller("/")
+    class AppController:
+        @RateLimit(limit=1, window="1s")
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(
+        imports=[
+            ThrottlerModule.for_root(ttl=60, limit=5, storage=InMemoryThrottlerStorage(clock=clock))
+        ],
+        controllers=[AppController],
+    )
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        assert client.get("/").status_code == 200
+        assert client.get("/").status_code == 429
+
+        clock.advance(2)
+        assert client.get("/").status_code == 200
+
+
+def test_two_routes_declaring_different_limits_do_not_share_a_window() -> None:
+    """Each declared route gets a window of its own, keyed apart from every other.
+
+    A shared key would let the tighter route spend the looser route's allowance, and
+    would measure whichever route counted last against the other's window.
+    """
+
+    @Controller("/")
+    class AppController:
+        @RateLimit(limit=1, window="1m")
+        @Get("/tight")
+        def tight(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+        @RateLimit(limit=3, window="1m")
+        @Get("/loose")
+        def loose(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(imports=[ThrottlerModule.for_root(ttl=60, limit=5)], controllers=[AppController])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        assert client.get("/tight").status_code == 200
+        assert client.get("/tight").status_code == 429
+
+        loose = [client.get("/loose") for _ in range(4)]
+
+    assert [response.status_code for response in loose] == [200, 200, 200, 429]
+
+
+def test_two_callers_do_not_share_a_declared_routes_window() -> None:
+    """A declared limit is still per caller, as the application-wide limit is."""
+
+    @Controller("/")
+    class AppController:
+        @RateLimit(limit=1, window="1m")
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(
+        imports=[
+            ThrottlerModule.for_root(
+                ttl=60,
+                limit=5,
+                key_resolver=lambda context: (
+                    f"client:{context.request.headers.get('x-client-id', 'missing')}"
+                ),
+            )
+        ],
+        controllers=[AppController],
+    )
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        first = client.get("/", headers={"x-client-id": "a"})
+        other = client.get("/", headers={"x-client-id": "b"})
+        repeat = client.get("/", headers={"x-client-id": "a"})
+
+    assert first.status_code == 200
+    assert other.status_code == 200
+    assert repeat.status_code == 429
+
+
+@pytest.mark.parametrize(
+    ("window", "expected"),
+    [("45", 45), ("30s", 30), ("1m", 60), ("2h", 7200), ("1d", 86400), (" 1M ", 60)],
+)
+def test_a_declared_window_is_read_as_seconds(window: str, expected: int) -> None:
+    assert _window_seconds(window) == expected
+
+
+@pytest.mark.parametrize("window", ["", "m", "soon", "1 m", "1w", "-5", "1.5m", "0", "0s"])
+def test_an_unreadable_window_is_refused_rather_than_defaulted(window: str) -> None:
+    """A window nobody can read must not be silently treated as no limit at all."""
+
+    with pytest.raises(InvalidPipelineError):
+        _window_seconds(window)
