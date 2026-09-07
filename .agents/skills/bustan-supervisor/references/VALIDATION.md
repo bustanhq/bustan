@@ -405,3 +405,32 @@ carries it, the batch is out. Cheap, mechanical, and it takes one call.
 The general form: a supervisor's own recent actions are state it can lose, and losing them is
 invisible from the inside. Anything the supervisor does that another supervisor could not undo has
 to be checked against the world first, not against memory.
+
+## Green alone is not green together: compose the batch before merging the second PR
+
+Two pull requests from one batch, #214 and #215, were reviewed and approved separately. Both were
+green. They shared no file, so git reported no conflict and both showed `mergeable_state: clean`
+against the same base. #214 merged. #215, merged onto the result locally, failed five tests.
+
+The cause was semantic and invisible to every check either branch ran. #214 gave one adapter a
+bounded body read, so it refuses before it knows how large the body was. #215 added a conformance
+case asserting that both adapters answer an oversized body identically. Each branch was green
+against the base they were cut from; the assertion only becomes false once both exist. CI on
+either pull request could not have caught it, because CI on a pull request tests the merge of that
+branch with the base, and the base did not yet contain the other change.
+
+So: when two pull requests in a batch touch the same behaviour from different sides - the same
+subsystem, the same contract, the same test surface - merging the first makes the second's CI
+stale. Fetch the second onto the new base, run the suite locally, and read the result before
+merging. It costs one merge and one test run.
+
+The batching rule that prevents collisions is disjoint `Owns` sets, and disjoint `Owns` sets are
+exactly what makes this failure possible: the two branches were allowed to run in parallel because
+they touched no common file, and touching no common file is why nothing compared them. File
+ownership bounds who can write; it says nothing about who can contradict.
+
+The compensating move is not tighter batching. It is that the second and later merges of a batch
+are composed and run before they land, and that a case which now fails is read as a finding before
+it is read as a test to relax. Here it was a finding: the second adapter reads a body 4096 times
+the application's configured limit before anything refuses it, which is the defect the first pull
+request had just fixed on the other adapter. The failing assertion was the only thing that said so.
