@@ -434,3 +434,36 @@ are composed and run before they land, and that a case which now fails is read a
 it is read as a test to relax. Here it was a finding: the second adapter reads a body 4096 times
 the application's configured limit before anything refuses it, which is the defect the first pull
 request had just fixed on the other adapter. The failing assertion was the only thing that said so.
+
+## A finding reasoned out is not a finding, however sound the reasoning
+
+A ticket went out of this session claiming a test "cannot fail": it asserted that a
+singleton controller is the same object across two requests by comparing addresses, and the
+argument was that the first instance is collected before the second is allocated, so the
+addresses would very likely match and the assertion would pass even if singleton scoping
+broke. The bare pattern does reuse an address in 1000 trials out of 1000, which is what made
+the argument feel finished.
+
+Before dispatching it I made the controller and its service request-scoped - the regression
+the test exists to catch - and ran it. It failed, on the line the ticket had called blind.
+The reasoning was sound and the conclusion was wrong, because the objects in that test are
+not collected when the argument assumed they were.
+
+The cost was low only because the check happened before dispatch rather than after. An agent
+sent against that ticket would have been asked to fix a test that already worked, would have
+found that out, and would have been right to open a block; the round would have been spent
+proving me wrong.
+
+So: a finding stated in a ticket has to be one that was observed, not one that follows. The
+mechanical form is cheap and there is no excuse for skipping it - break the property the test
+names, run the test, and record what happened. If the test goes red, the test is fine and the
+finding is about hygiene rather than about a hole; say so in those words, because the
+difference decides whether the ticket is urgent.
+
+The same rule cuts the other way and that is the half worth remembering. The ticket beside
+this one was written on a hypothesis too - that an unbounded multipart form probably costs
+disk rather than memory, so the honest outcome might be a closing note. The agent measured
+instead of accepting the frame and found a declared limit was not being applied at all: a
+64 MiB upload served 200 to an application that had declared it would take 1 MiB. Reasoning
+understated that one as badly as it overstated the other. Measurement is not a formality that
+confirms the ticket; it is the thing that decides what the ticket says.
