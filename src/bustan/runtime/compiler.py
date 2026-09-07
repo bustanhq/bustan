@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -275,19 +276,27 @@ class RouteCompiler:
         )
 
 
+# The response base classes of the transports a handler may return a response from, named
+# rather than imported. Compiling a route runs on every application's startup path, and no
+# layer below an adapter may make a transport a hard dependency of that, so each entry is
+# read from the modules already imported instead. That is the whole answer rather than a
+# weaker one: a declared return type can only be one of these classes when the module
+# defining it has been imported, so an entry naming a module nobody imported cannot match
+# any annotation, and neither can one whose transport is not installed at all.
+_TRANSPORT_RESPONSE_BASES: tuple[tuple[str, str], ...] = (("starlette.responses", "Response"),)
+
+
 def _compile_response_strategy(declared_type: object | None) -> ResponseStrategy:
     from collections.abc import AsyncGenerator, AsyncIterator, Generator, Iterator
     from os import PathLike
     from pathlib import Path
-
-    from starlette.responses import Response
 
     from ..contracts import HttpResponse
 
     if declared_type in {None, NoneType}:
         return ResponseStrategy.STANDARD
     if isinstance(declared_type, type):
-        if issubclass(declared_type, (Response, HttpResponse)):
+        if issubclass(declared_type, HttpResponse) or _is_transport_response(declared_type):
             return ResponseStrategy.RAW
         if issubclass(declared_type, (Path, PathLike)):
             return ResponseStrategy.FILE
@@ -296,6 +305,16 @@ def _compile_response_strategy(declared_type: object | None) -> ResponseStrategy
     if origin in {Iterator, Generator, AsyncIterator, AsyncGenerator}:
         return ResponseStrategy.STREAM
     return ResponseStrategy.STANDARD
+
+
+def _is_transport_response(declared_type: type) -> bool:
+    """Return whether a declared return type is a transport's own response class."""
+
+    for module_name, class_name in _TRANSPORT_RESPONSE_BASES:
+        base = getattr(sys.modules.get(module_name), class_name, None)
+        if isinstance(base, type) and issubclass(declared_type, base):
+            return True
+    return False
 
 
 def _resolve_declared_return_type(route_definition: ControllerRouteDefinition) -> object | None:
