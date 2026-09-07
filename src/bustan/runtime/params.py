@@ -12,7 +12,8 @@ from __future__ import annotations
 import collections.abc
 import inspect
 import sys
-from dataclasses import dataclass, is_dataclass
+from dataclasses import MISSING as DATACLASS_MISSING
+from dataclasses import dataclass, fields, is_dataclass
 from enum import StrEnum
 from types import NoneType, UnionType
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin, get_type_hints
@@ -953,6 +954,19 @@ def _is_pydantic_model_type(annotation: object) -> bool:
     return issubclass(annotation, BaseModel)
 
 
+def _missing_dataclass_fields(
+    annotation: type[object], raw_value_mapping: dict[str, object]
+) -> list[str]:
+    return [
+        field.name
+        for field in fields(annotation)
+        if field.init
+        and field.default is DATACLASS_MISSING
+        and field.default_factory is DATACLASS_MISSING
+        and field.name not in raw_value_mapping
+    ]
+
+
 def _coerce_value(
     raw_value: object,
     *,
@@ -1004,12 +1018,27 @@ def _coerce_value(
         try:
             return annotation(**raw_value_mapping)
         except TypeError as exc:
+            missing_fields = _missing_dataclass_fields(annotation, raw_value_mapping)
+            if missing_fields:
+                field_word = "field" if len(missing_fields) == 1 else "fields"
+                missing_detail = ", ".join(repr(field) for field in missing_fields)
+                message = (
+                    f"Could not bind {source_description} {parameter_name!r} to "
+                    f"{_display_annotation(annotation)}: missing required {field_word} "
+                    f"{missing_detail}"
+                )
+                reason = f"missing required {field_word}: {', '.join(missing_fields)}"
+            else:
+                message = (
+                    f"Could not bind {source_description} {parameter_name!r} to "
+                    f"{_display_annotation(annotation)}: {exc}"
+                )
+                reason = str(exc)
             raise _parameter_error(
-                f"Could not bind {source_description} {parameter_name!r} to "
-                f"{_display_annotation(annotation)}: {exc}",
+                message,
                 field=parameter_name,
                 source=source_description,
-                reason=str(exc),
+                reason=reason,
             ) from exc
 
     if _is_pydantic_model_type(annotation):
