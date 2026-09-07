@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-import pytest
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
@@ -325,8 +324,14 @@ def test_create_app_handles_file_responses_through_the_response_handler(
 def test_create_app_handles_stream_responses_through_the_response_handler() -> None:
     @Controller("/responses")
     class ResponseController:
-        @Get("/stream")
-        def read_stream(self) -> Iterator[bytes]:
+        @Get("/sync-stream")
+        def read_sync_stream(self) -> Iterator[bytes]:
+            yield b"hello"
+            yield b" "
+            yield b"stream"
+
+        @Get("/async-stream")
+        async def read_async_stream(self) -> AsyncIterator[bytes]:
             yield b"hello"
             yield b" "
             yield b"stream"
@@ -335,25 +340,19 @@ def test_create_app_handles_stream_responses_through_the_response_handler() -> N
     class AppModule:
         pass
 
-    application = create_app(AppModule)
-    # This synchronously generated body cannot be observed through the in-process ASGI
-    # client: that client reports the connection as disconnected as soon as the request
-    # body has been read, and the serving adapter drops a streamed body still being
-    # produced when a disconnect arrives first. Losing that race depends on when the
-    # producing path yields control, and an asynchronously generated stream survives it
-    # through the same client, so this assertion is made through the client the serving
-    # adapter offers for its own transport. Where the package that client needs is
-    # absent the answer cannot be observed at all, so the check is skipped, not failed.
-    try:
-        native_client = application.get_http_adapter().create_test_client()
-    except ImportError as unavailable:
-        pytest.skip(str(unavailable))
+    # Both producers are asserted through the supported test client, because which of
+    # them survives the trip depends on when the producing path yields control: a body
+    # produced by a synchronous iterator hands control back between chunks and an
+    # asynchronous one need not, so only the first is exposed to a serving adapter that
+    # watches for a disconnect while it writes.
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        sync_response = client.get("/responses/sync-stream")
+        async_response = client.get("/responses/async-stream")
 
-    with cast(Any, native_client) as client:
-        stream_response = client.get("/responses/stream")
-
-    assert stream_response.status_code == 200
-    assert stream_response.text == "hello stream"
+    assert sync_response.status_code == 200
+    assert sync_response.text == "hello stream"
+    assert async_response.status_code == 200
+    assert async_response.text == "hello stream"
 
 
 def test_create_app_resolves_request_scoped_providers_per_request() -> None:

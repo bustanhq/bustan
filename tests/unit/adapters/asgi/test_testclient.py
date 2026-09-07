@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, cast
 
@@ -224,3 +225,52 @@ def test_a_client_can_drive_an_application_that_is_not_an_adapters() -> None:
     response = AsgiTestClient(app).get("/anything")
 
     assert response.text == "bare"
+
+
+async def _stream_watching_for_a_disconnect(_scope, receive, send) -> None:
+    """Write a streamed body while watching for a disconnect, as a serving adapter does.
+
+    The body is produced by a path that yields control between chunks, which is what a
+    synchronous producer handed to a thread does. Whichever of the two finishes first
+    ends the exchange, so a disconnect reported while the body is still being written
+    costs the caller the rest of it.
+    """
+
+    async def listen() -> None:
+        while (await receive())["type"] != "http.disconnect":
+            pass
+
+    async def write() -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        for chunk in (b"hello", b" ", b"stream"):
+            await asyncio.sleep(0)
+            await send({"type": "http.response.body", "body": chunk, "more_body": True})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    racing = {asyncio.create_task(listen()), asyncio.create_task(write())}
+    _finished, pending = await asyncio.wait(racing, return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+
+
+def test_a_streamed_body_is_not_cut_short_by_a_disconnect_the_caller_never_sent() -> None:
+    response = AsgiTestClient(_stream_watching_for_a_disconnect).get("/stream")
+
+    assert response.status_code == 200
+    assert response.text == "hello stream"
+
+
+def test_the_disconnect_arrives_once_the_response_has_been_written() -> None:
+    received: list[str] = []
+
+    async def app(_scope, receive, send) -> None:
+        received.append((await receive())["type"])
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"done", "more_body": False})
+        received.append((await receive())["type"])
+
+    response = AsgiTestClient(app).get("/anything")
+
+    assert response.text == "done"
+    assert received == ["http.request", "http.disconnect"]

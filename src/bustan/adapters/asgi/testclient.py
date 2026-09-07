@@ -196,11 +196,13 @@ class AsgiTestClient:
     ) -> AsgiTestResponse:
         scope = self._build_scope(method, target, headers, body, cookies)
         messages: list[Message] = []
+        channel = _RequestChannel(body)
 
         async def send(message: Message) -> None:
             messages.append(message)
+            channel.note_sent(message)
 
-        await self._app(scope, _body_stream(body), send)
+        await self._app(scope, channel.receive, send)
         return self._read_response(messages, target)
 
     def _build_scope(
@@ -306,18 +308,41 @@ def _encode_body(
     return (content.encode("utf-8") if isinstance(content, str) else content), {}
 
 
-def _body_stream(body: bytes):
-    """Return a receive callable that yields *body* once, then a disconnect."""
+class _RequestChannel:
+    """The receive side of one request, kept open until the response has been written.
 
-    messages = [
-        {"type": "http.request", "body": body, "more_body": False},
-        {"type": "http.disconnect"},
-    ]
+    A connection that is still being answered is a connection the client is still on, so
+    the disconnect is withheld until the application has finished writing its response.
+    Reporting it any earlier makes an application that watches for a disconnect while it
+    streams a body see one the client never sent, and abandon the body it was producing:
+    the caller then reads the right status and no content at all, with nothing raised.
 
-    async def receive() -> Message:
-        return messages.pop(0) if len(messages) > 1 else messages[0]
+    Waiting is the whole point rather than a delay to be tuned away. The response is
+    finished at the first body message that says no more follows, which is where the
+    disconnect a real client causes by going away belongs.
+    """
 
-    return receive
+    __slots__ = ("_body", "_body_taken", "_written")
+
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+        self._body_taken = False
+        self._written = asyncio.Event()
+
+    async def receive(self) -> Message:
+        """Yield the request body once, then the disconnect the finished response causes."""
+
+        if not self._body_taken:
+            self._body_taken = True
+            return {"type": "http.request", "body": self._body, "more_body": False}
+        await self._written.wait()
+        return {"type": "http.disconnect"}
+
+    def note_sent(self, message: Message) -> None:
+        """Record one message the application wrote, to know when the response is done."""
+
+        if message.get("type") == "http.response.body" and not message.get("more_body", False):
+            self._written.set()
 
 
 __all__ = (
