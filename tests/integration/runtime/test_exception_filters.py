@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any, cast
 
 import pytest
-from starlette.testclient import TestClient
 
 from bustan import (
     Controller,
@@ -19,6 +18,7 @@ from bustan import (
     create_app,
 )
 from bustan.errors import ProviderResolutionError
+from bustan.testing import AsgiTestClient
 
 
 def test_create_app_prefers_specific_filters_over_catch_all_filters() -> None:
@@ -47,7 +47,7 @@ def test_create_app_prefers_specific_filters_over_catch_all_filters() -> None:
     class AppModule:
         pass
 
-    with TestClient(cast(Any, create_app(AppModule))) as client:
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/fails")
 
     assert response.status_code == 200
@@ -65,7 +65,7 @@ def test_create_app_returns_problem_details_for_unhandled_exceptions() -> None:
     class AppModule:
         pass
 
-    with TestClient(cast(Any, create_app(AppModule))) as client:
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/fails")
 
     assert response.status_code == 500

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from starlette.testclient import TestClient
-
 from bustan import Controller, Get, Module, create_app
 from bustan.observability.observability import ObservabilityHooks
+from bustan.testing import AsgiTestClient
 
 
 def test_create_app_emits_route_aware_observability_labels() -> None:
@@ -38,7 +37,7 @@ def test_create_app_emits_route_aware_observability_labels() -> None:
 
     with (
         ObservabilityHooks.scoped_override(ObservabilityHooks(metrics=Metrics(), tracer=Tracer())),
-        TestClient(cast(Any, create_app(AppModule))) as client,
+        AsgiTestClient(cast(Any, create_app(AppModule))) as client,
     ):
         response = client.get("/users")
 
@@ -96,7 +95,7 @@ def test_create_app_emits_terminal_observability_for_failed_requests() -> None:
 
     with (
         ObservabilityHooks.scoped_override(ObservabilityHooks(metrics=Metrics(), tracer=Tracer())),
-        TestClient(cast(Any, create_app(AppModule))) as client,
+        AsgiTestClient(cast(Any, create_app(AppModule))) as client,
     ):
         response = client.get("/fails")
 

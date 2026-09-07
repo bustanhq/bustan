@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import Any, cast
 
 from starlette.responses import JSONResponse
-from starlette.testclient import TestClient
 
 from bustan import Controller, ExceptionFilter, Get, Middleware, Module, UseFilters, create_app
 from bustan.contracts import HttpRequest
 from bustan.pipeline.middleware import MiddlewareConsumer
+from bustan.testing import AsgiTestClient
 
 
 class RootOrderMiddleware(Middleware):
@@ -55,7 +55,7 @@ def test_create_app_runs_route_middleware_in_module_order() -> None:
 
     application = create_app(AppModule)
 
-    with TestClient(cast(Any, application)) as client:
+    with AsgiTestClient(cast(Any, application)) as client:
         response = client.get("/users")
 
     assert response.status_code == 200
@@ -77,7 +77,7 @@ def test_create_app_routes_middleware_exceptions_through_filters() -> None:
 
     application = create_app(AppModule)
 
-    with TestClient(cast(Any, application)) as client:
+    with AsgiTestClient(cast(Any, application)) as client:
         response = client.get("/users")
 
     assert response.status_code == 418

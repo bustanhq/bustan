@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import Any, cast
 
 import pytest
-from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Module, ThrottlerModule, create_app
 from bustan.adapters.starlette import StarletteHttpRequest
 from bustan.contracts import RateLimitDecision
 from bustan.security.throttler import InMemoryThrottlerStorage, ThrottlerGuard
+from bustan.testing import AsgiTestClient
 
 
 @Controller("/limited")
@@ -26,7 +26,7 @@ class ThrottledModule:
 
 
 def test_the_throttler_writes_a_typed_slot_the_response_writer_reads_back() -> None:
-    with TestClient(cast(Any, create_app(ThrottledModule))) as client:
+    with AsgiTestClient(cast(Any, create_app(ThrottledModule))) as client:
         response = client.get("/limited")
 
     assert response.status_code == 200
@@ -46,7 +46,7 @@ def test_a_request_no_throttler_ran_for_carries_an_empty_slot() -> None:
     class AppModule:
         pass
 
-    with TestClient(cast(Any, create_app(AppModule))) as client:
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
         response = client.get("/open")
 
     assert response.status_code == 200

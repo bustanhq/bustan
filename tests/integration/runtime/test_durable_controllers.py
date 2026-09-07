@@ -6,10 +6,10 @@ from typing import Any, cast
 
 import pytest
 from starlette.requests import Request
-from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Injectable, Module, Scope, create_app
 from bustan.kernel.errors import InvalidControllerError
+from bustan.testing import AsgiTestClient
 
 
 def test_durable_controller_without_a_context_key_hook_is_refused_before_it_serves() -> None:
@@ -66,7 +66,7 @@ def test_per_tenant_state_is_served_by_a_durable_provider_the_controller_injects
     class AppModule:
         pass
 
-    with TestClient(cast(Any, create_app(AppModule))) as client:
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
         contexts = [
             client.get("/tenants/", headers={"x-tenant": f"tenant-{index}"}).json()[
                 "tenant_context"

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from starlette.testclient import TestClient
-
 from bustan import Controller, Get, Module, VersioningOptions, VersioningType, create_app
+from bustan.testing import AsgiTestClient
 
 
 def test_header_versioning_dispatches_to_matching_routes() -> None:
@@ -31,7 +30,7 @@ def test_header_versioning_dispatches_to_matching_routes() -> None:
         versioning=VersioningOptions(type=VersioningType.HEADER, header="x-api-version"),
     )
 
-    with TestClient(cast(Any, application)) as client:
+    with AsgiTestClient(cast(Any, application)) as client:
         assert client.get("/users", headers={"x-api-version": "1"}).json() == {"version": "v1"}
         assert client.get("/users", headers={"x-api-version": "2"}).json() == {"version": "v2"}
         assert client.get("/users", headers={"x-api-version": "3"}).status_code == 404
