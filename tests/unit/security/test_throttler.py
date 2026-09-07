@@ -9,6 +9,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Module, SkipThrottle, ThrottlerModule, create_app
+from bustan.security import RateLimit
 from bustan.security.throttler import (
     InMemoryThrottlerStorage,
     ThrottleState,
@@ -440,3 +441,40 @@ async def test_no_reading_across_a_boundary_reports_more_than_the_window() -> No
         clock.now = reading
 
         assert (await storage.count_request(f"k{index}", ttl, 5)).reset_after == ttl
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "The per-route limit is compiled into the policy plan and never read: the guard "
+        "counts every route against the application-wide limit and consults the plan "
+        "only for the skip flag. Reading it is the one change this test is waiting for, "
+        "and the test passes the moment that lands."
+    ),
+)
+def test_a_per_route_rate_limit_is_enforced_below_the_application_limit() -> None:
+    """A route that asks for a tighter limit than the application must get it.
+
+    The application allows five requests a minute and the route allows one, so the
+    second request to that route is over the route's limit while still inside the
+    application's. A route that answers it has had its declared limit ignored, which is
+    indistinguishable to the caller from the route never having declared one.
+    """
+
+    @Controller("/")
+    class AppController:
+        @RateLimit(limit=1, window="1m")
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(imports=[ThrottlerModule.for_root(ttl=60, limit=5)], controllers=[AppController])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule))) as client:
+        first = client.get("/")
+        second = client.get("/")
+
+    assert first.status_code == 200
+    assert second.status_code == 429
