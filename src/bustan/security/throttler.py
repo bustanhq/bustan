@@ -50,7 +50,9 @@ class ThrottleState:
     ``reset_after`` is whole seconds until the oldest request still inside the window
     leaves it, which is the moment ``count`` next falls. It is therefore also how long a
     refused caller must wait before a request is accepted, and it is what the guard
-    sends as ``Retry-After``. It is ``0`` when the key has nothing counted against it.
+    sends as ``Retry-After``. It is ``0`` when the key has nothing counted against it,
+    and it never exceeds the window: a caller told to wait longer than the window it is
+    measured against has been told something that cannot be true.
     """
 
     count: int
@@ -99,6 +101,10 @@ class InMemoryThrottlerStorage:
     Evicting a key forgets what its caller has spent, so ``max_keys`` has to be
     comfortably above the number of callers expected in one window; a caller whose key
     is evicted starts again with a full allowance.
+
+    Requests are aged by the difference between two readings of ``clock``, which must
+    therefore be monotonic, as the default is. A clock that can step backwards would let
+    a key report a window longer than the one it is measured against.
     """
 
     max_keys: int = DEFAULT_THROTTLER_MAX_KEYS
@@ -139,7 +145,15 @@ class InMemoryThrottlerStorage:
         if window:
             self._windows[key] = window
             self._windows.move_to_end(key)
-            reset_after = max(0, math.ceil(window[0] + ttl - now))
+            # From the age of the oldest request, never from the clock reading plus
+            # the window. A clock reading whose window crosses a binade boundary
+            # cannot hold the sum to the same precision as itself, so the sum rounds
+            # and the difference comes back a fraction over the window, which the
+            # ceiling turns into a whole second too many. Subtracting two readings
+            # is exact over any interval a window spans, and is exactly zero for the
+            # request just counted, so a fresh key reports the whole window and no
+            # key can ever be told to wait longer than one.
+            reset_after = max(0, math.ceil(ttl - (now - window[0])))
         else:
             self._windows.pop(key, None)
             reset_after = 0

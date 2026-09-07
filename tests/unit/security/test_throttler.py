@@ -389,3 +389,54 @@ def test_a_request_with_nothing_to_key_on_is_counted_under_one_shared_key() -> N
 
     assert resolve(cast(Any, _StubContext(None))) == "throttle:unknown"
     assert resolve(cast(Any, _StubContext(_ClientlessRequest()))) == "throttle:unknown"
+
+
+@pytest.mark.anyio
+async def test_a_fresh_key_is_told_the_whole_window_and_never_a_second_more() -> None:
+    """A reading whose window crosses a binade boundary must not gain a second.
+
+    A float holds a clock reading to the precision of the binade it sits in, and the
+    next binade up is half as fine. A reading less than one window short of a power of
+    two therefore cannot hold the reading plus the window to its own precision: the sum
+    rounds, and where it rounds up, subtracting the reading back off leaves a fraction
+    more than the window, which a ceiling turns into a whole second too many. Measuring
+    the age of the oldest request instead cannot do this, because subtracting a reading
+    from itself is exactly zero at every magnitude.
+
+    Each reading below sits three units of the lower binade above the point one window
+    short of a power of two, which lands inside the crossing region at every magnitude a
+    monotonic clock reaches, from a container two minutes old to a host up for a
+    fortnight. Every one of them is asserted to lose the round trip first, so this test
+    cannot quietly stop covering the case it was written for.
+    """
+
+    ttl = 60
+    readings = [2.0**k - 30.0 + 3 * math.ulp(2.0 ** (k - 1)) for k in range(8, 21)]
+    assert all(math.ceil((reading + ttl) - reading) == ttl + 1 for reading in readings)
+
+    for reading in readings:
+        clock = _Clock()
+        clock.now = reading
+        storage = InMemoryThrottlerStorage(clock=clock)
+
+        state = await storage.count_request("k", ttl, 5)
+
+        assert (state.count, state.reset_after) == (1, ttl)
+
+
+@pytest.mark.anyio
+async def test_no_reading_across_a_boundary_reports_more_than_the_window() -> None:
+    """The whole crossing region, not only the readings picked to round the wrong way."""
+
+    ttl = 60
+    boundary = 2.0**18
+    readings = [boundary - ttl + step * (ttl / 2_000) for step in range(2_000)]
+    losing = [r for r in readings if math.ceil((r + ttl) - r) != ttl]
+    assert losing, "the sampled region no longer contains a reading that loses the round trip"
+
+    storage = InMemoryThrottlerStorage(clock=_Clock())
+    clock = cast(_Clock, storage.clock)
+    for index, reading in enumerate(readings):
+        clock.now = reading
+
+        assert (await storage.count_request(f"k{index}", ttl, 5)).reset_after == ttl

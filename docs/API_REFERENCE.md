@@ -1564,7 +1564,9 @@ must not lengthen the wait it is already serving.
 ``reset_after`` is whole seconds until the oldest request still inside the window
 leaves it, which is the moment ``count`` next falls. It is therefore also how long a
 refused caller must wait before a request is accepted, and it is what the guard
-sends as ``Retry-After``. It is ``0`` when the key has nothing counted against it.
+sends as ``Retry-After``. It is ``0`` when the key has nothing counted against it,
+and it never exceeds the window: a caller told to wait longer than the window it is
+measured against has been told something that cannot be true.
 
 #### `ThrottlerGuard`
 
