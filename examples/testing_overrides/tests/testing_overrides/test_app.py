@@ -1,12 +1,11 @@
 import asyncio
 
-from starlette.testclient import TestClient
 from testing_overrides import compile_with_fake_greeting
 from testing_overrides.app_module import AppModule
 from testing_overrides.fake_greeting_service import FakeGreetingService
 from testing_overrides.greeting_service import GreetingService
 
-from bustan.testing import create_test_app
+from bustan.testing import AsgiTestClient, create_test_app
 
 
 def test_create_test_app_applies_provider_overrides() -> None:
@@ -15,7 +14,7 @@ def test_create_test_app_applies_provider_overrides() -> None:
         provider_overrides={GreetingService: FakeGreetingService("from test")},
     )
 
-    with TestClient(application) as client:
+    with AsgiTestClient(application) as client:
         response = client.get("/greetings")
 
     assert response.status_code == 200
@@ -38,7 +37,7 @@ def test_a_compiled_testing_module_serves_the_replacement() -> None:
 def test_an_application_built_without_an_override_serves_the_real_provider() -> None:
     application = create_test_app(AppModule)
 
-    with TestClient(application) as client:
+    with AsgiTestClient(application) as client:
         response = client.get("/greetings")
 
     assert response.json() == {"message": "production"}

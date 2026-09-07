@@ -5,11 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, cast
 
-from starlette.testclient import TestClient
-
 from bustan import Controller, Get, Module, Post, create_app
 from bustan.adapters.starlette import StarletteAdapter
 from bustan.runtime.adapter import AbstractHttpAdapter, AdapterCapabilities
+from bustan.testing import AsgiTestClient
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +46,7 @@ def _assert_http_adapter_conformance(adapter: AbstractHttpAdapter) -> None:
     )
 
     application = create_app(AppModule, adapter=adapter)
-    with TestClient(cast(Any, application)) as client:
+    with AsgiTestClient(cast(Any, application)) as client:
         health_response = client.get("/health")
         payload_response = client.post("/payloads", json={"name": "Ada"})
 

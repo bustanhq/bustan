@@ -1710,8 +1710,14 @@ Compiled application and container wrapper for tests.
   Return a deterministic snapshot of the compiled application routes.
 - `diff_routes(self, previous_snapshot: Iterable[Mapping[str, object]]) -> tuple[dict[str, object], ...]`
   Compare a previous route snapshot against the current application routes.
-- `create_client(self)`
-  Return a Starlette test client bound to the compiled application.
+- `create_client(self) -> AsgiTestClient`
+  Return an in-process client that sends requests to the compiled application.
+
+The client is the framework's own, so a test needs no HTTP client package
+beyond what the application already installs. Used as a context manager it
+runs the application's ASGI lifespan; a compiled module has already started
+through its lifecycle manager, so entering it changes nothing that startup
+did and leaving it is not a substitute for close().
 - `close(self) -> None`
   Tear the compiled application down through its own lifecycle.
 

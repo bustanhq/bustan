@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 from starlette.applications import Starlette
 
@@ -753,3 +757,74 @@ async def test_a_value_override_reaches_a_non_class_token_built_at_runtime() -> 
         assert compiled.get(registered_token) == "test"
     finally:
         await compiled.close()
+
+
+# Run in a subprocess that cannot import either HTTP client package starlette's own test
+# client needs. Installing bustan installs neither, so a testing helper that only works
+# because one is present in this repository's development environment is not one a user
+# can rely on, and hiding them here is what tells the two apart.
+_NO_HTTP_CLIENT_PROGRAM = """\
+import sys
+from importlib.abc import MetaPathFinder
+
+HIDDEN = frozenset({"httpx", "httpx2"})
+
+
+class _HideHttpClients(MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.partition(".")[0] in HIDDEN:
+            raise ModuleNotFoundError(f"No module named {fullname!r}", name=fullname)
+        return None
+
+
+for name in [name for name in sys.modules if name.partition(".")[0] in HIDDEN]:
+    del sys.modules[name]
+sys.meta_path.insert(0, _HideHttpClients())
+
+import asyncio
+
+from bustan import Controller, Get, Module
+from bustan.testing import create_testing_module
+
+
+@Controller("/greetings")
+class GreetingController:
+    @Get("/")
+    def read_greeting(self) -> dict[str, str]:
+        return {"message": "production"}
+
+
+@Module(controllers=[GreetingController])
+class AppModule:
+    pass
+
+
+async def main() -> None:
+    compiled = await create_testing_module(AppModule).compile()
+    try:
+        with compiled.create_client() as client:
+            response = client.get("/greetings")
+    finally:
+        await compiled.close()
+    print(response.status_code, response.json())
+
+
+asyncio.run(main())
+"""
+
+
+def test_create_client_serves_requests_without_an_http_client_package(tmp_path: Path) -> None:
+    """A compiled module's client must work where no HTTP client package is installed."""
+
+    program = tmp_path / "no_http_client_probe.py"
+    program.write_text(_NO_HTTP_CLIENT_PROGRAM, encoding="utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, str(program)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "200 {'message': 'production'}"
