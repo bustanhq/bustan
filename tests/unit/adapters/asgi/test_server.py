@@ -9,6 +9,7 @@ import pytest
 from bustan.adapters.asgi.application import AsgiApplication
 from bustan.adapters.asgi.requests import DEFAULT_MAX_BODY_BYTES
 from bustan.adapters.asgi.server import AsgiServer
+from bustan.adapters.asgi.types import AsgiApp, Receive, Scope, Send
 from bustan.contracts import AdapterRoute, HttpRequest, HttpResponse, HttpStreamResponse
 
 
@@ -50,8 +51,11 @@ class _RunningServer:
         self.server, self.task, self.port = server, task, port
 
 
-async def _start(max_body_bytes: int | None = DEFAULT_MAX_BODY_BYTES) -> _RunningServer:
-    server = AsgiServer(_application(), host="127.0.0.1", port=0, max_body_bytes=max_body_bytes)
+async def _start(
+    app: AsgiApp | None = None, max_body_bytes: int | None = DEFAULT_MAX_BODY_BYTES
+) -> _RunningServer:
+    served = _application() if app is None else app
+    server = AsgiServer(served, host="127.0.0.1", port=0, max_body_bytes=max_body_bytes)
     task = asyncio.create_task(server.serve())
     while not server.sockets:
         await asyncio.sleep(0)
@@ -62,6 +66,27 @@ async def _start(max_body_bytes: int | None = DEFAULT_MAX_BODY_BYTES) -> _Runnin
 async def _stop(running: _RunningServer) -> None:
     await running.server.stop()
     await running.task
+
+
+def _serving(handler: AsgiApp) -> AsgiApp:
+    """Wrap a bare HTTP application so the server's lifespan conversation completes.
+
+    A server runs the lifespan protocol around serving, and an application that ignores
+    it never reports that it started, so the server never listens. Only the HTTP part of
+    these applications is under test, and this is the smallest thing that lets one run.
+    """
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "lifespan":
+            await handler(scope, receive, send)
+            return
+        while True:
+            message = await receive()
+            await send({"type": f"{message['type']}.complete"})
+            if message["type"] == "lifespan.shutdown":
+                return
+
+    return app
 
 
 async def _speak(port: int, request: bytes) -> bytes:
@@ -258,3 +283,69 @@ async def test_a_status_with_no_standard_reason_is_still_written_as_a_status_lin
 @pytest.mark.anyio
 async def test_a_server_that_is_not_running_reports_no_sockets() -> None:
     assert AsgiServer(_application()).sockets == ()
+
+
+async def _stream_watching_for_a_disconnect(_scope: Scope, receive: Receive, send: Send) -> None:
+    """Write a streamed body while watching for a disconnect, as a serving adapter does.
+
+    The body is produced by a path that yields control between chunks, which is what a
+    synchronous producer handed to a thread does. Whichever of the two finishes first
+    ends the exchange, so a disconnect reported while the body is still being written
+    costs the client the rest of it.
+    """
+
+    async def listen() -> None:
+        while (await receive())["type"] != "http.disconnect":
+            pass
+
+    async def write() -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        for chunk in (b"hello", b" ", b"stream"):
+            await asyncio.sleep(0)
+            await send({"type": "http.response.body", "body": chunk, "more_body": True})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    racing = {asyncio.create_task(listen()), asyncio.create_task(write())}
+    _finished, pending = await asyncio.wait(racing, return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_a_streamed_body_is_not_cut_short_by_a_disconnect_the_client_never_sent() -> None:
+    running = await _start(_serving(_stream_watching_for_a_disconnect))
+
+    answer = await _speak(running.port, b"GET /stream HTTP/1.1\r\nhost: localhost\r\n\r\n")
+    await _stop(running)
+
+    assert answer.startswith(b"HTTP/1.1 200 OK\r\n")
+    assert answer.endswith(b"hello stream")
+
+
+@pytest.mark.anyio
+async def test_the_disconnect_a_client_really_sends_reaches_the_application() -> None:
+    received: list[str] = []
+    reported = asyncio.Event()
+
+    async def app(_scope: Scope, receive: Receive, send: Send) -> None:
+        received.append((await receive())["type"])
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"chunk", "more_body": True})
+        received.append((await receive())["type"])
+        reported.set()
+
+    running = await _start(_serving(app))
+    reader, writer = await asyncio.open_connection("127.0.0.1", running.port)
+    writer.write(b"GET /stream HTTP/1.1\r\nhost: localhost\r\n\r\n")
+    await writer.drain()
+    await reader.readuntil(b"chunk")
+    await asyncio.sleep(0)
+
+    assert received == ["http.request"], "reported a disconnect while the client was still here"
+
+    writer.close()
+    await asyncio.wait_for(reported.wait(), timeout=5)
+    await _stop(running)
+
+    assert received == ["http.request", "http.disconnect"]
