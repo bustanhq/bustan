@@ -17,6 +17,7 @@ from ..pipeline.metadata import (
     extend_controller_policy_metadata,
     extend_handler_policy_metadata,
 )
+from .throttler import _window_seconds
 
 DecoratedT = TypeVar("DecoratedT", bound=object)
 
@@ -38,6 +39,11 @@ def Permissions(*permissions: str) -> Callable[[DecoratedT], DecoratedT]:
 
 
 def RateLimit(*, limit: int, window: str) -> Callable[[DecoratedT], DecoratedT]:
+    # Reading the window here refuses one that cannot be read where it was written, while
+    # the application is being built. Left to the guard that enforces it, the same refusal
+    # reaches the caller as a server fault, on every request the route ever serves, and
+    # says nothing at the place the mistake was made.
+    _window_seconds(window)
     return _policy_decorator(rate_limit=RateLimitPolicy(limit=limit, window=window))
 
 

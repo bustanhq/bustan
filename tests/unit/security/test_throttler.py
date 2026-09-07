@@ -658,3 +658,54 @@ def test_an_unreadable_window_is_refused_rather_than_defaulted(window: str) -> N
 
     with pytest.raises(InvalidPipelineError):
         _window_seconds(window)
+
+
+@pytest.mark.parametrize(
+    "window", ["", "m", "soon", "1 minute", "1 m", "1w", "-5", "1.5m", "0", "0s"]
+)
+def test_a_route_cannot_be_declared_with_a_window_that_cannot_be_read(window: str) -> None:
+    """The refusal lands where the window was written, not on the route's callers.
+
+    Refused where it is declared, an unreadable window is a build that stops at the line
+    that wrote it. Refused only where the limit is enforced, the very same mistake is a
+    server fault returned to every caller of that route for as long as it is deployed,
+    and nothing at all at the place it was made.
+    """
+
+    with pytest.raises(InvalidPipelineError):
+        RateLimit(limit=1, window=window)
+
+
+def test_no_route_with_an_unreadable_window_ever_reaches_a_caller() -> None:
+    """The route that used to answer every request with a server fault cannot exist.
+
+    Declaring the unreadable window is where this now stops: the controller body raises,
+    so there is no route, no application and no request to fault. The same route with a
+    window that can be read serves its callers, answering and then refusing, which is
+    what leaves the throttler's two statuses as the only ones a caller sees.
+    """
+
+    with pytest.raises(InvalidPipelineError):
+
+        @Controller("/")
+        class UnreadableController:
+            @RateLimit(limit=1, window="1 minute")
+            @Get("/")
+            def index(self) -> dict[str, str]:
+                return {"status": "ok"}
+
+    @Controller("/")
+    class AppController:
+        @RateLimit(limit=1, window="1m")
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(imports=[ThrottlerModule.for_root(ttl=60, limit=5)], controllers=[AppController])
+    class AppModule:
+        pass
+
+    with TestClient(cast(Any, create_app(AppModule)), raise_server_exceptions=False) as client:
+        statuses = [client.get("/").status_code for _ in range(3)]
+
+    assert statuses == [200, 429, 429]
