@@ -22,7 +22,12 @@ from bustan.contracts import (
     Url,
 )
 from bustan.runtime import params as framework_limits
-from bustan.runtime.params import RequestBodyTooLargeError
+from bustan.runtime.execution import set_request_limits
+from bustan.runtime.params import (
+    DEFAULT_MAX_UPLOAD_BYTES,
+    RequestBodyTooLargeError,
+    RequestLimits,
+)
 
 if TYPE_CHECKING:
     from bustan.adapters.asgi.types import Message
@@ -233,6 +238,162 @@ async def test_a_body_beyond_the_limit_is_refused_rather_than_buffered(
         await request.body()
 
 
+class _Application:
+    """Something to hang request limits on, which is all a scope's application has to be."""
+
+
+class _Meter:
+    """A receive callable that hands out one chunk at a time and counts what it handed."""
+
+    def __init__(self, body: bytes, *, chunk_bytes: int) -> None:
+        self._body = body
+        self._chunk_bytes = chunk_bytes
+        self._offset = 0
+        self.consumed = 0
+
+    async def __call__(self) -> Message:
+        chunk = self._body[self._offset : self._offset + self._chunk_bytes]
+        self._offset += len(chunk)
+        self.consumed += len(chunk)
+        return {
+            "type": "http.request",
+            "body": chunk,
+            "more_body": self._offset < len(self._body),
+        }
+
+
+def _application(
+    *, max_body_bytes: int | None, max_upload_bytes: int | None = DEFAULT_MAX_UPLOAD_BYTES
+) -> _Application:
+    application = _Application()
+    set_request_limits(
+        application,
+        RequestLimits(max_body_bytes=max_body_bytes, max_upload_bytes=max_upload_bytes),
+    )
+    return application
+
+
+@pytest.mark.anyio
+async def test_a_body_over_the_application_limit_never_reaches_this_process_whole(
+    build_scope: ScopeFactory,
+) -> None:
+    """The status alone proves nothing: what the limit is for is the memory.
+
+    A body that declares no length cannot be judged before it is read, so the question is
+    how much of it is read before the read stops. The answer has to be the limit and the
+    chunk that crossed it, not the transport's own ceiling far above it.
+    """
+
+    meter = _Meter(b"x" * (4 * 1024 * 1024), chunk_bytes=1024)
+    request = AsgiHttpRequest(build_scope(app=_application(max_body_bytes=1024)), meter)
+
+    with pytest.raises(RequestBodyTooLargeError):
+        await request.body()
+
+    assert meter.consumed <= 1024 + 1024
+    assert meter.consumed < DEFAULT_MAX_BODY_BYTES
+
+
+@pytest.mark.anyio
+async def test_the_read_stops_on_the_chunk_that_carries_the_body_past_the_limit(
+    build_scope: ScopeFactory,
+) -> None:
+    meter = _Meter(b"x" * 4096, chunk_bytes=1)
+    request = AsgiHttpRequest(build_scope(app=_application(max_body_bytes=64)), meter)
+
+    with pytest.raises(RequestBodyTooLargeError):
+        await request.body()
+
+    assert meter.consumed == 65
+
+
+@pytest.mark.anyio
+async def test_the_refusal_names_the_limit_rather_than_a_size_it_never_read(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """The sentence is the one every adapter gives, and it says only what it knows.
+
+    A caller refused the same body by two transports is owed the same answer by both, so
+    this is asserted as a whole sentence rather than as a fragment. It names the limit
+    because that is all a read stopped early can honestly name: reporting the body's size
+    would mean having read the body.
+    """
+
+    scope = build_scope(app=_application(max_body_bytes=1024))
+    request = AsgiHttpRequest(scope, build_receive(b"x" * 4096, chunks=8))
+
+    with pytest.raises(RequestBodyTooLargeError) as refusal:
+        await request.body()
+
+    assert str(refusal.value) == "The request body exceeds the 1024 byte limit"
+
+
+@pytest.mark.anyio
+async def test_a_body_within_the_application_limit_is_served_unchanged(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    scope = build_scope(app=_application(max_body_bytes=1024))
+    request = AsgiHttpRequest(scope, build_receive(b"x" * 512, chunks=4))
+
+    assert await request.body() == b"x" * 512
+
+
+@pytest.mark.anyio
+async def test_the_limit_is_the_one_declared_when_the_body_is_read_not_when_it_was_wrapped(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """An application declares its limits after its routes are built, so wrapping is too early."""
+
+    application = _application(max_body_bytes=4096)
+    request = AsgiHttpRequest(build_scope(app=application), build_receive(b"x" * 512, chunks=4))
+    set_request_limits(application, RequestLimits(max_body_bytes=64))
+
+    with pytest.raises(RequestBodyTooLargeError, match="exceeds the 64 byte limit"):
+        await request.body()
+
+
+@pytest.mark.anyio
+async def test_a_form_is_read_under_the_upload_bound_rather_than_the_body_bound(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """Two figures for two different things, and a form is read under the one that is its own.
+
+    A route that accepts uploads is expected to carry more than a JSON document. Reading a
+    form under the body bound would refuse an upload the application was configured to
+    serve, which is the failure the transport's ceiling was written to avoid and would be
+    no better made here.
+    """
+
+    application = _application(max_body_bytes=8, max_upload_bytes=4096)
+    scope = build_scope(
+        app=application, headers=[(b"content-type", b"application/x-www-form-urlencoded")]
+    )
+    request = AsgiHttpRequest(scope, build_receive(b"name=Ada&note=" + b"x" * 512, chunks=8))
+
+    form = await request.form()
+
+    assert form.get("name") == "Ada"
+
+
+@pytest.mark.anyio
+async def test_the_transport_ceiling_stops_a_body_the_application_declined_to_bound(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """An application may remove its own bound; that is not a licence for an unbounded read.
+
+    The ceiling is a different refusal by a different owner and says so, rather than
+    borrowing the sentence that reports the contract an application chose to serve.
+    """
+
+    scope = build_scope(app=_application(max_body_bytes=None))
+    request = AsgiHttpRequest(scope, build_receive(b"x" * 64, chunks=8), max_body_bytes=32)
+
+    with pytest.raises(RequestBodyTooLargeError) as refusal:
+        await request.body()
+
+    assert str(refusal.value) == "The request body carries more than the 32 byte limit"
+
+
 def test_the_transport_ceiling_stays_above_every_body_the_framework_accepts() -> None:
     """Two numbers in two places, so something has to hold the order between them.
 
@@ -249,9 +410,11 @@ def test_the_transport_ceiling_stays_above_every_body_the_framework_accepts() ->
 
 
 @pytest.mark.anyio
-async def test_a_body_is_unbounded_when_the_adapter_was_built_without_a_limit(
+async def test_a_body_is_unbounded_only_when_nothing_left_a_bound_to_apply(
     build_scope: ScopeFactory, build_receive: ReceiveFactory
 ) -> None:
+    """No application to declare one and no ceiling to fall back on is the only such case."""
+
     request = AsgiHttpRequest(build_scope(), build_receive(b"x" * 64), max_body_bytes=None)
 
     assert await request.body() == b"x" * 64

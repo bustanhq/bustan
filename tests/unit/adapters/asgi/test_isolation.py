@@ -7,12 +7,15 @@ interpreter, with the ``bustan`` package replaced by an empty stand-in so that i
 the framework cannot be what satisfies an import, and asserts that no web framework and
 no framework module other than the contracts ended up in ``sys.modules``.
 
-One import is exempt from the static guard and named symbol by symbol below: the error
-the framework raises when a request body is over the limit, which the adapter has to
-raise by that name or a caller it refused is answered as though the server had broken.
-It is made inside the function that raises it rather than at module scope, so importing
-this package still pulls in nothing but the standard library and the contracts - which
-is the property the dynamic guard measures, and it is left measuring exactly that.
+Two imports are exempt from the static guard and named symbol by symbol below, both on
+the path that reads a request body: the error the framework raises when a body is over
+the limit, which the adapter has to raise by that name or a caller it refused is
+answered as though the server had broken, and the reader for the limits the application
+serving the request declared, which the adapter has to ask or it bounds the read by a
+figure nobody chose. Each is made inside the function that uses it rather than at module
+scope, so importing this package still pulls in nothing but the standard library and the
+contracts - which is the property the dynamic guard measures, and it is left measuring
+exactly that.
 """
 
 from __future__ import annotations
@@ -57,7 +60,12 @@ ALLOWED_FRAMEWORK_PACKAGE = "contracts"
 # here still costs the adapter nothing to import, because it is not made until the line
 # that needs it runs; anything that wants to be imported when the package is loaded
 # belongs in the two allowances above, where the dynamic guard can see it.
-ALLOWED_DEFERRED_IMPORTS = frozenset({("...runtime.params", "RequestBodyTooLargeError")})
+ALLOWED_DEFERRED_IMPORTS = frozenset(
+    {
+        ("...runtime.params", "RequestBodyTooLargeError"),
+        ("...runtime.execution", "request_limits_of"),
+    }
+)
 
 _LOAD_IN_ISOLATION = """
 import importlib
@@ -173,12 +181,16 @@ def test_no_module_imports_anything_but_the_standard_library_and_the_contracts()
     assert offenders == []
 
 
-def test_the_exempt_deferred_import_is_the_only_one_and_is_still_made() -> None:
+def test_the_exempt_deferred_imports_are_the_only_ones_and_are_still_made() -> None:
     """The exemption is worth nothing if it stops matching the code it was written for.
 
-    A deferred import that no longer exists means the adapter went back to raising an
-    error of its own, which is the defect the exemption was granted to close; a second
-    one means the list above was widened without the argument that widening it needs.
+    A deferred import that no longer exists means the adapter went back to answering out
+    of its own head - raising an error of its own, or bounding a read by a figure nobody
+    chose - which is the defect each exemption was granted to close. One that is not on
+    the list means the list was widened without the argument that widening it needs. Each
+    exempt import is written once, so the count is compared as well as the set: a second
+    site for a name already allowed is a second place to keep in step with the framework
+    and passes the set comparison unnoticed.
     """
 
     found: list[tuple[str, str]] = []

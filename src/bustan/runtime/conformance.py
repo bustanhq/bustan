@@ -871,32 +871,16 @@ def _build_request_limit_module(_fixtures: Path) -> type[object]:
     return RequestLimitModule
 
 
-# The sentence each adapter gives when it refuses a body of undeclared length, and why
-# there are two of them.
+# The sentence every adapter gives when it refuses a body of undeclared length.
 #
-# One adapter refuses inside itself, at the chunk that carries the body past the limit the
-# application declared. It never receives the rest, so it cannot say how many bytes were
-# sent and does not claim to. The other reads to a byte ceiling of its own, which is above
-# the limit this scenario sets, so the whole body is buffered and the refusal is made one
-# layer up by the runtime, which counted every byte and says so.
-#
-# That is a defect and not a property of either transport. An adapter that buffers past
-# the limit the application set is spending the memory the limit exists to protect, and
-# refusing afterwards is correct and useless; one of the two adapters has been changed to
-# stop doing it and the other has not yet. It is tracked as its own piece of work. Writing
-# both sentences out here holds each adapter to what it actually answers today and makes
-# the day either one changes a day this case has to be edited, which is the opposite of
-# letting the difference go unwatched.
-STREAMED_OVER_LIMIT_DETAIL: tuple[tuple[str, str], ...] = (
-    (
-        "starlette",
-        f"The request body exceeds the {REQUEST_LIMIT_MAX_BODY_BYTES} byte limit",
-    ),
-    (
-        "asgi",
-        f"The request body carries {OVER_LIMIT_BODY_BYTES} bytes, "
-        f"over the {REQUEST_LIMIT_MAX_BODY_BYTES} byte limit",
-    ),
+# A body that declares no length cannot be judged before it is read, so an adapter refuses
+# it at the chunk that carries it past the limit the application declared. It never
+# receives the rest, so it cannot say how many bytes were sent and does not claim to. That
+# is why the sentence names the limit and not the body: an adapter that could report the
+# body's size would be one that had read all of it, which is the memory the limit exists
+# to refuse to spend.
+STREAMED_OVER_LIMIT_DETAIL = (
+    f"The request body exceeds the {REQUEST_LIMIT_MAX_BODY_BYTES} byte limit"
 )
 
 
@@ -941,17 +925,9 @@ REQUEST_LIMIT_CASES: tuple[ConformanceCase, ...] = (
             headers=(("content-type", JSON_MEDIA_TYPE),),
             body_chunks=_over_limit_body,
         ),
-        # No adapter is held to this document: every adapter the matrix knows is named
-        # below, and one that is not named fails this case until the sentence it gives is
-        # written out here, which is the point. What this document is, is the answer the
-        # two adapters do agree on, member for member, with the one they do not marked as
-        # such.
-        expected=_expect_problem(413, "Content Too Large", UNCOMPARED_BODY_MEMBER, "/limits/notes"),
-        expected_by_adapter=tuple(
-            (adapter, _expect_problem(413, "Content Too Large", detail, "/limits/notes"))
-            for adapter, detail in STREAMED_OVER_LIMIT_DETAIL
+        expected=_expect_problem(
+            413, "Content Too Large", STREAMED_OVER_LIMIT_DETAIL, "/limits/notes"
         ),
-        diverging_body_members=("detail",),
     ),
 )
 
