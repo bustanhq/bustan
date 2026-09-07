@@ -13,17 +13,24 @@ from typing import TYPE_CHECKING, Any, cast
 from anyio import to_thread
 
 from ..contracts import HttpRequest, HttpResponse, RouteHandler
+from ..kernel.errors import GuardRejectedError
 from ..kernel.ioc.container import Container
 from ..kernel.module.dynamic import ModuleKey
 from ..observability.observability import ObservabilityHooks
 from ..pipeline.context import ExecutionContext
-from ..pipeline.filters import handle_exception
+from ..pipeline.filters import ExceptionFilter, handle_exception
 from ..pipeline.guards import run_guards
 from ..pipeline.interceptors import call_with_interceptors
 from ..pipeline.middleware import Middleware, ResolvedRouteMiddleware
 from ..pipeline.pipes import Pipe, run_pipes
-from .compiler import PipelinePlan, PolicyPlan, ResponsePlan, RouteContract
-from .controller_factory import ControllerFactory, ResolvedPipeline
+from .compiler import (
+    GlobalPipelineProvider,
+    PipelinePlan,
+    PolicyPlan,
+    ResponsePlan,
+    RouteContract,
+)
+from .controller_factory import ControllerFactory
 from .metadata import ControllerRouteDefinition
 from .params import (
     BoundParameter,
@@ -234,36 +241,70 @@ async def execute_http_route(
     response_handler = ResponseHandler()
     observability = ObservabilityHooks.current()
     context: ExecutionContext | None = None
-    resolved_pipeline: ResolvedPipeline | None = None
+    filters: tuple[ExceptionFilter, ...] | None = None
     observation = None
+    durable_snapshot: frozenset[object] | None = None
 
     try:
+        # The context and the observation come first, before anything a request pays
+        # for can fail. An exception raised while a constructor runs then has the same
+        # context, the same filter chain and the same metrics as one raised inside the
+        # handler, instead of leaving the route with nothing to answer it with.
+        context = _http_context(
+            execution_plan,
+            request=request,
+            response_context=response_context,
+            container=container,
+            controller=None,
+        )
+        observation = observability.start_request(context)
+
+        durable_snapshot = _durable_partitions(container, execution_plan)
+        # Guards decide whether the request is served at all, so they and the filters
+        # that render their verdict are the only components resolved before that
+        # decision. Everything the request would consume once it is admitted - the
+        # controller, whatever it injects, the pipes and the interceptors - is built
+        # after, so a refused caller pays for none of it and leaves nothing behind.
+        gate = await factory.resolve_pipeline_async(
+            PipelinePlan(
+                guards=execution_plan.pipeline_plan.guards,
+                filters=execution_plan.pipeline_plan.filters,
+            ),
+            module=execution_plan.module_key,
+            request=request,
+        )
+        filters = gate.filters
+
+        await run_guards(context, gate.guards)
+        # The request was admitted, so anything cached from here on is work it asked
+        # for and is not undone if a later stage fails.
+        durable_snapshot = None
+
         controller_instance = await factory.instantiate_async(
             execution_plan.controller_cls,
             module=execution_plan.module_key,
             request=request,
         )
         handler = getattr(controller_instance, execution_plan.handler_name)
-        context = ExecutionContext.create_http(
+        # The controller exists only now, so the context every later stage sees is
+        # rebuilt around it; guards saw the one that could not name an instance yet.
+        context = _http_context(
+            execution_plan,
             request=request,
-            response=response_context,
-            handler=execution_plan.route_definition.handler,
-            controller_cls=execution_plan.controller_cls,
-            module=execution_plan.module_key,
-            controller=controller_instance,
+            response_context=response_context,
             container=container,
-            route=execution_plan.route_definition,
-            route_contract=execution_plan.route_contract,
-            policy_plan=execution_plan.policy_plan,
+            controller=controller_instance,
         )
-        resolved_pipeline = await factory.resolve_pipeline_async(
-            execution_plan.pipeline_plan,
+
+        remainder = await factory.resolve_pipeline_async(
+            PipelinePlan(
+                pipes=execution_plan.pipeline_plan.pipes,
+                interceptors=execution_plan.pipeline_plan.interceptors,
+            ),
             module=execution_plan.module_key,
             request=request,
         )
-        observation = observability.start_request(context)
 
-        await run_guards(context, resolved_pipeline.guards)
         bound_parameters = await bind_handler_parameters(
             request,
             execution_plan.binding_plan,
@@ -272,7 +313,7 @@ async def execute_http_route(
         piped_parameters = await _apply_pipes(
             bound_parameters,
             context,
-            resolved_pipeline.pipes,
+            remainder.pipes,
             execution_plan.binding_plan,
         )
         positional_arguments, keyword_arguments = separate_bound_parameters(piped_parameters)
@@ -286,7 +327,7 @@ async def execute_http_route(
 
         result = await call_with_interceptors(
             context,
-            resolved_pipeline.interceptors,
+            remainder.interceptors,
             final_handler,
         )
         response = response_handler.write(result=result, response_plan=execution_plan.response_plan)
@@ -304,10 +345,14 @@ async def execute_http_route(
             )
         return HttpExecutionResult(response=response, context=context)
     except Exception as exc:
+        if isinstance(exc, GuardRejectedError):
+            _evict_durable_partitions(container, durable_snapshot)
         response = await _render_failure(
             exc,
             context=context,
-            resolved_pipeline=resolved_pipeline,
+            filters=filters,
+            factory=factory,
+            execution_plan=execution_plan,
             response_handler=response_handler,
             response_context=response_context,
             request=request,
@@ -352,7 +397,7 @@ async def execute_http_exception(
     observability = ObservabilityHooks.current()
     observation = None
     context: ExecutionContext | None = None
-    resolved_pipeline: ResolvedPipeline | None = None
+    filters: tuple[ExceptionFilter, ...] | None = None
 
     try:
         controller_instance = await factory.instantiate_async(
@@ -360,25 +405,21 @@ async def execute_http_exception(
             module=execution_plan.module_key,
             request=request,
         )
-        context = ExecutionContext.create_http(
+        context = _http_context(
+            execution_plan,
             request=request,
-            response=response_context,
-            handler=execution_plan.route_definition.handler,
-            controller_cls=execution_plan.controller_cls,
-            module=execution_plan.module_key,
-            controller=controller_instance,
+            response_context=response_context,
             container=container,
-            route=execution_plan.route_definition,
-            route_contract=execution_plan.route_contract,
-            policy_plan=execution_plan.policy_plan,
+            controller=controller_instance,
         )
         resolved_pipeline = await factory.resolve_pipeline_async(
             execution_plan.pipeline_plan,
             module=execution_plan.module_key,
             request=request,
         )
+        filters = resolved_pipeline.filters
         observation = observability.start_request(context)
-        filtered_result = await handle_exception(context, error, resolved_pipeline.filters)
+        filtered_result = await handle_exception(context, error, filters)
         response = response_handler.write(
             result=filtered_result,
             response_plan=_EXCEPTION_RESPONSE_PLAN,
@@ -399,7 +440,9 @@ async def execute_http_exception(
         response = await _render_failure(
             exc,
             context=context,
-            resolved_pipeline=resolved_pipeline,
+            filters=filters,
+            factory=factory,
+            execution_plan=execution_plan,
             response_handler=response_handler,
             response_context=response_context,
             request=request,
@@ -421,20 +464,28 @@ async def _render_failure(
     exc: Exception,
     *,
     context: ExecutionContext | None,
-    resolved_pipeline: ResolvedPipeline | None,
+    filters: tuple[ExceptionFilter, ...] | None,
+    factory: ControllerFactory,
+    execution_plan: ExecutionPlan,
     response_handler: ResponseHandler,
     response_context: HttpResponse,
     request: HttpRequest,
 ) -> RuntimeResponse:
     """Turn an exception the route could not handle itself into a client response.
 
-    Once the route's filters have been resolved they are given the exception; before
-    that they do not exist, so the failure is logged where an operator can read it and
-    answered with an opaque 500 that says nothing about the framework's internals.
+    A context is what an exception filter needs to run, so once there is one the
+    exception is given to filters whatever else failed. The route's own filters are
+    used when they were resolved; when the failure was in resolving them, the
+    application-wide chain is resolved on its own and used instead, and even an empty
+    chain still ends in the framework's problem-details mapping rather than a fixed
+    status. Only a failure that leaves no context at all is answered with an opaque
+    500, logged where an operator can read it and saying nothing about the internals.
     """
 
-    if context is not None and resolved_pipeline is not None:
-        filtered_result = await handle_exception(context, exc, resolved_pipeline.filters)
+    if context is not None:
+        if filters is None:
+            filters = await _global_filters(factory, execution_plan, request)
+        filtered_result = await handle_exception(context, exc, filters)
         response = response_handler.write(
             result=filtered_result,
             response_plan=_EXCEPTION_RESPONSE_PLAN,
@@ -450,6 +501,110 @@ async def _render_failure(
     )
     _apply_rate_limit_headers(request, response)
     return response
+
+
+def _http_context(
+    execution_plan: ExecutionPlan,
+    *,
+    request: HttpRequest,
+    response_context: HttpResponse,
+    container: Container,
+    controller: object,
+) -> ExecutionContext:
+    """Build the execution context for one request at the stage it has reached.
+
+    ``controller`` is ``None`` until the controller has been constructed, which is
+    after the guards have admitted the request. Everything else the context carries is
+    known from the compiled plan, so a guard and a filter running before any instance
+    exists still see the route, the handler, the declared class and the policy plan.
+    """
+
+    return ExecutionContext.create_http(
+        request=request,
+        response=response_context,
+        handler=execution_plan.route_definition.handler,
+        controller_cls=execution_plan.controller_cls,
+        module=execution_plan.module_key,
+        controller=controller,
+        container=container,
+        route=execution_plan.route_definition,
+        route_contract=execution_plan.route_contract,
+        policy_plan=execution_plan.policy_plan,
+    )
+
+
+async def _global_filters(
+    factory: ControllerFactory,
+    execution_plan: ExecutionPlan,
+    request: HttpRequest,
+) -> tuple[ExceptionFilter, ...]:
+    """Resolve the application-wide filter chain declared for this route.
+
+    This runs only after resolving the route's own chain has already failed, so it
+    resolves the globally declared filters alone and answers with an empty chain if
+    even those cannot be built. Reporting that second failure in place of the first
+    would hide the exception the caller is owed an answer to.
+    """
+
+    global_filters = tuple(
+        component
+        for component in execution_plan.pipeline_plan.filters
+        if isinstance(component, GlobalPipelineProvider)
+    )
+    if not global_filters:
+        return ()
+
+    try:
+        resolved = await factory.resolve_pipeline_async(
+            PipelinePlan(filters=global_filters),
+            module=execution_plan.module_key,
+            request=request,
+        )
+    except Exception:
+        _LOGGER.exception("Could not resolve the application-wide exception filters")
+        return ()
+    return resolved.filters
+
+
+def _durable_partitions(
+    container: Container,
+    execution_plan: ExecutionPlan,
+) -> frozenset[object] | None:
+    """Record the durable partitions that already existed, for a route that can refuse.
+
+    Only a guard refuses a request, so a route that declares none can leave nothing
+    behind to undo and is not made to walk the cache on every call.
+    """
+
+    if not execution_plan.pipeline_plan.guards:
+        return None
+    return frozenset(container.scope_manager.durable_instances)
+
+
+def _evict_durable_partitions(
+    container: Container,
+    snapshot: frozenset[object] | None,
+) -> None:
+    """Drop the durable partitions that appeared while a refused request was decided.
+
+    A durable instance is cached under a key derived from the request, so a caller the
+    application then refuses would otherwise decide what the cache holds: it names a
+    partition, the partition is built and kept, and a bounded store fills with entries
+    no admitted caller asked for.
+
+    The store is shared, and a partition another request created in the same window is
+    dropped with them. That costs a rebuild and nothing else, because whoever created
+    it already holds the instance; keeping a refused caller's entry instead would cost
+    the cache.
+    """
+
+    if snapshot is None:
+        return
+
+    durable_instances = container.scope_manager.durable_instances
+    for key in tuple(durable_instances):
+        if key not in snapshot:
+            durable_instances.pop(key, None)
 
 
 def _application_runtime(application_runtime: object) -> object:

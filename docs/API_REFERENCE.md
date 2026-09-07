@@ -61,8 +61,23 @@ via an AbstractHttpAdapter.
   Register Starlette's CORS middleware on the application.
 - `enable_swagger(self, path: str, document: dict[str, object], *, swagger_ui_path: str | None = None) -> None`
   Register OpenAPI JSON and Swagger UI routes.
-- `listen(self, port: int, host: str = '127.0.0.1', reload: bool = False, **kwargs: Any) -> None`
-  Start the ASGI server asynchronously via the adapter.
+- `listen(self, port: int, host: str = '127.0.0.1', reload: bool = False, *, drain_timeout: float | None = None, **kwargs: Any) -> None`
+  Serve the application until the server is signalled or stopped.
+
+A ``SIGINT`` or a ``SIGTERM`` arriving while this is serving stops the server
+gracefully. New requests are refused while the requests already in flight are
+given ``drain_timeout`` seconds to finish, then the shutdown hooks run and are
+told which signal arrived, and only then is the listening port released. A
+request that outlasts the window is cancelled rather than allowed to hold the
+process open. Left out, ``drain_timeout`` is whatever the adapter was built
+with; an adapter whose transport cannot drain serves and stops as before.
+- `close(self) -> None`
+  Stop the server, if one is running, and run the application shutdown sequence.
+
+A running server is stopped the way a signal stops it, and this returns once it
+has released its port, so a caller may bind that port again or start the
+application afresh. With no server running there is nothing to drain and this is
+the teardown on its own.
 - `(property) routes`
   Accessor for the registered routes (by path).
 
@@ -116,9 +131,10 @@ The application is the running application for the whole of startup, so a
 provider built eagerly here may inject `APPLICATION` exactly as one built
 lazily during a request can.
 - `close(self) -> None`
-  Trigger the application shutdown sequence.
+  Run the application shutdown sequence, destroying what startup built.
 
-Mainly used for graceful teardown in tests.
+A context serves no HTTP traffic, so there is nothing to drain and nothing that
+asked it to stop: the teardown hooks run immediately and receive no signal name.
 
 #### `APPLICATION`
 

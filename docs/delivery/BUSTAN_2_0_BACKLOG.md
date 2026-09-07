@@ -266,13 +266,38 @@ the supervisor's judgement is spent on design rather than on detection.
 Every delivery agent reads this before starting. It is deliberately short.
 
 **Repository facts.** Python 3.13 only, `uv` for everything, `uv_build` backend,
-single package at `src/bustan` (11,958 lines), 397 tests (13,006 lines), 6 example
-projects each a standalone `uv` project, docs in `docs/`. Public surface is only
-`bustan`, `bustan.errors` and `bustan.testing`; everything else is internal per
+single package at `src/bustan`, suite under `tests/`, one standalone `uv` project per
+directory under `examples/`, docs in `docs/`. Public surface is only `bustan`,
+`bustan.errors` and `bustan.testing`; everything else is internal per
 `docs/STABILITY.md` and may be restructured freely. `tests/unit/test_public_api.py`
-asserts `bustan.__all__` as a 128-element tuple in exact order, and
-`docs/API_REFERENCE.md` is generated and compared byte-for-byte in CI, so any export
-change is a three-file edit: the module, that test, and a regenerated reference.
+asserts `bustan.__all__` as a tuple in exact order, and `docs/API_REFERENCE.md` is
+generated and compared byte-for-byte in CI, so any export change is a three-file edit:
+the module, that test, and a regenerated reference.
+
+**This document states no count you could have measured yourself.** Not the size of
+the suite, not the size of the package, not the number of exports. Those were quoted
+here once and every one of them went stale while agents went on reading them, because
+a document has no way to notice that it stopped being true. A count that is wrong is
+wrong in every checkout at once, and it is wrong quietly: your own tree tells you the
+truth, so the only agents it costs are the ones that trusted the document over the
+tree. Measure what your ticket needs, in your own checkout, at the commit you branch
+from. Put the before and the after in your pull request, where a reviewer can re-run
+it; that is evidence, which a number copied out of a document never was.
+
+| Figure | Read it out of the tree |
+| --- | --- |
+| tests in the suite | `uv run pytest -q` prints the count on its last line |
+| exports in `bustan.__all__` | `uv run python -c "import bustan; print(len(bustan.__all__))"`, pinned in exact order by `tests/unit/test_public_api.py` |
+| lines in the package or the suite | `wc -l` over the `.py` files under `src/bustan` or `tests/` |
+| example projects | the project directories under `examples/` |
+| the version being cut | the `version` field in `pyproject.toml` |
+
+`tests/unit/test_backlog_figures.py` fails when a count of this kind is written back
+into this file, and fails when a path this section names has moved. Writing a count
+here again therefore means deleting it again, or recording in that test why this
+particular count cannot go stale. Neither the wave map's release column nor a ticket's
+`Owns` list is a count: those are the plan and the record of what a ticket owned, and
+they are meant to stay as written.
 
 **Standards.**
 
@@ -365,7 +390,9 @@ describe code that no longer needs describing.
 to confirm that by reading the diff.
 
 **Acceptance.** `ruff format --check .` and `ruff check .` both clean; the test suite
-passes unchanged at 397 tests; `.git-blame-ignore-revs` names the format commit.
+passes with the same count as the commit you branched from, measured before and after
+and both counts quoted in the pull request; `.git-blame-ignore-revs` names the format
+commit.
 
 ---
 
@@ -406,7 +433,7 @@ by the hook.
 `tests/**/__init__.py`.
 
 **Context.** There is no `conftest.py` anywhere in the repository and exactly one
-`@pytest.fixture` across 397 tests. `_build_request` is defined 13 times with six
+`@pytest.fixture` in the whole suite. `_build_request` is defined 13 times with six
 distinct signatures; seven copies are byte-identical apart from the docstring. Six
 test directories are missing `__init__.py`, which works today only because no basename
 collides across those specific directories.
@@ -416,8 +443,9 @@ subsuming all 13 variants (method, path, path params, query, headers, cookies, J
 body, raw body, app) plus an application factory helper. Delete every local copy and
 repoint its call sites. Add the missing package markers.
 
-**Acceptance.** No `def _build_request` remains under `tests/`. Suite passes at 397
-tests. `grep -rc "def _build_request" tests/` returns zero.
+**Acceptance.** No `def _build_request` remains under `tests/`. The suite passes with
+the same count as the commit you branched from, both counts quoted in the pull
+request. `grep -rc "def _build_request" tests/` returns zero.
 
 ## T-004 Stop the suite defending the defects
 

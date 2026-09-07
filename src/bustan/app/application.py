@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from ..adapters.asgi.types import Receive, Scope, Send
@@ -14,6 +14,28 @@ if TYPE_CHECKING:
     from ..runtime.compiler import RouteContract
     from ..runtime.execution import ExecutionPlan
     from ..security.cors import CorsOptions
+
+# The application teardown, as an adapter receives it: called with the name of the
+# signal that asked the process to stop, or with nothing when a caller asked instead.
+type _ShutdownSequence = Callable[[str | None], Awaitable[None]]
+
+
+@runtime_checkable
+class SupportsGracefulShutdown(Protocol):
+    """An adapter that drains its server before the application is torn down.
+
+    The adapter port says how to start and stop a server, not what a server owes the
+    requests it has already accepted. An adapter that can answer that implements this,
+    and is handed the application teardown so that draining and tearing down are one
+    sequence: the hooks run once the last in-flight request has finished, and the
+    listening socket is released once the hooks have. An adapter that does not is
+    stopped and torn down as two steps, which is all its transport can promise.
+    """
+
+    def prepare_graceful_shutdown(
+        self, shut_down: _ShutdownSequence, drain_timeout: float | None = None
+    ) -> None:
+        """Take the application teardown to run once the server has drained."""
 
 
 class ApplicationContext:
@@ -110,14 +132,26 @@ class ApplicationContext:
         return self
 
     async def close(self) -> None:
-        """Trigger the application shutdown sequence.
+        """Run the application shutdown sequence, destroying what startup built.
 
-        Mainly used for graceful teardown in tests.
+        A context serves no HTTP traffic, so there is nothing to drain and nothing that
+        asked it to stop: the teardown hooks run immediately and receive no signal name.
         """
+
+        await self._run_shutdown(None)
+
+    async def _run_shutdown(self, signal: str | None) -> None:
+        """Run every teardown hook, telling them which signal asked, if one did.
+
+        The application is the running application for the whole of the teardown, in the
+        same way it is for the whole of startup, so a hook may still inject
+        ``APPLICATION`` while the instances it names are being destroyed.
+        """
+
         if self._lifecycle_manager is not None:
             application_token = self._container.scope_manager.push_application(self)
             try:
-                await self._lifecycle_manager.shutdown()
+                await self._lifecycle_manager.shutdown(signal=signal)
             finally:
                 self._container.scope_manager.pop_application(application_token)
 
@@ -141,6 +175,10 @@ class Application(ApplicationContext):
         self._adapter = adapter
         self._route_contracts = route_contracts
         self._execution_plans = execution_plans
+        # Told here rather than when a server starts, because a caller may stop an
+        # application it never started this way, and the sequence is the same one.
+        if isinstance(adapter, SupportsGracefulShutdown):
+            adapter.prepare_graceful_shutdown(self._run_shutdown)
 
     def get_http_adapter(self) -> AbstractHttpAdapter:
         """Accessor for the underlying HTTP framework adapter."""
@@ -213,10 +251,43 @@ class Application(ApplicationContext):
         )
 
     async def listen(
-        self, port: int, host: str = "127.0.0.1", reload: bool = False, **kwargs: Any
+        self,
+        port: int,
+        host: str = "127.0.0.1",
+        reload: bool = False,
+        *,
+        drain_timeout: float | None = None,
+        **kwargs: Any,
     ) -> None:
-        """Start the ASGI server asynchronously via the adapter."""
+        """Serve the application until the server is signalled or stopped.
+
+        A ``SIGINT`` or a ``SIGTERM`` arriving while this is serving stops the server
+        gracefully. New requests are refused while the requests already in flight are
+        given ``drain_timeout`` seconds to finish, then the shutdown hooks run and are
+        told which signal arrived, and only then is the listening port released. A
+        request that outlasts the window is cancelled rather than allowed to hold the
+        process open. Left out, ``drain_timeout`` is whatever the adapter was built
+        with; an adapter whose transport cannot drain serves and stops as before.
+        """
+
+        if drain_timeout is not None and isinstance(self._adapter, SupportsGracefulShutdown):
+            self._adapter.prepare_graceful_shutdown(self._run_shutdown, drain_timeout)
         await self._adapter.listen(port, host=host, reload=reload, **kwargs)
+
+    async def close(self) -> None:
+        """Stop the server, if one is running, and run the application shutdown sequence.
+
+        A running server is stopped the way a signal stops it, and this returns once it
+        has released its port, so a caller may bind that port again or start the
+        application afresh. With no server running there is nothing to drain and this is
+        the teardown on its own.
+        """
+
+        await self._adapter.stop()
+        # The adapter runs the teardown itself when it drained a server, and that
+        # teardown is what leaves nothing here to do. This is the path where no server
+        # was running, and it is safe either way: a second teardown is a no-op.
+        await self._run_shutdown(None)
 
     @property
     def routes(self) -> Mapping[str, list[object]]:

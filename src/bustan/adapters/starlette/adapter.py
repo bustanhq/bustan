@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
 from starlette.applications import Starlette
@@ -11,16 +12,29 @@ from ...contracts import AbstractHttpAdapter, AdapterCapabilities, HttpRequest
 from .requests import from_starlette_request
 from .responses import to_starlette_response
 from .routes import build_starlette_routes
+from .shutdown import DrainGate, DrainingApp
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ...contracts import AdapterRoute
+    from .server import GracefulServer, ShutdownSequence
 
 _TEST_CLIENT_REQUIREMENT = (
     "A Starlette test client requires the optional 'httpx' dependency. "
     "Install httpx to drive the application in process."
 )
+
+# How long the requests already in flight are given to finish once a shutdown has
+# begun. Long enough that an ordinary request finishes, short enough that an orchestrator
+# replacing this process does not give up on it and kill it instead.
+DEFAULT_DRAIN_TIMEOUT_SECONDS = 10.0
+
+# What the server itself is given after the drain window has closed. Whatever is still
+# running by then is already past its deadline, so the server is left only long enough to
+# write out the responses it can before it cancels the rest. Handing it the drain window
+# a second time would spend a timeout the caller set once, twice.
+_SERVER_GRACE_SECONDS = 1
 
 
 class StarletteAdapter(AbstractHttpAdapter):
@@ -46,11 +60,21 @@ class StarletteAdapter(AbstractHttpAdapter):
         *,
         debug: bool = False,
         lifespan: Any | None = None,
+        drain_timeout: float = DEFAULT_DRAIN_TIMEOUT_SECONDS,
     ) -> None:
-        """Wrap an existing Starlette application, or build one from ``debug`` and ``lifespan``."""
+        """Wrap an existing Starlette application, or build one from ``debug`` and ``lifespan``.
+
+        ``drain_timeout`` is how many seconds the requests already in flight are given
+        to finish when the server is asked to stop. The application wrapper overrides it
+        for one run when its own caller names a different window.
+        """
 
         self._app = starlette_app or Starlette(debug=debug, lifespan=lifespan)
-        self._server: object | None = None
+        self._server: GracefulServer | None = None
+        self._stopped: asyncio.Event | None = None
+        self._gate = DrainGate()
+        self._drain_timeout = drain_timeout
+        self._shut_down_application: ShutdownSequence | None = None
 
     def get_instance(self) -> Starlette:
         """Return the Starlette application this adapter drives."""
@@ -77,32 +101,105 @@ class StarletteAdapter(AbstractHttpAdapter):
 
         self._app.add_middleware(cast(Any, middleware_class), **options)
 
+    @property
+    def draining(self) -> bool:
+        """Whether the running server has stopped accepting new requests.
+
+        A process that answers this with true is on its way down and should be taken
+        out of rotation; it is what a readiness check on this adapter reports.
+        """
+
+        return self._gate.draining
+
+    @property
+    def in_flight(self) -> int:
+        """How many requests the running server is serving at this moment."""
+
+        return self._gate.in_flight
+
+    def prepare_graceful_shutdown(
+        self, shut_down: ShutdownSequence, drain_timeout: float | None = None
+    ) -> None:
+        """Hand the adapter the application teardown to run once the server has drained.
+
+        The drain and the teardown are one sequence rather than two, because a teardown
+        that ran while requests were still being served would destroy what those
+        requests are being served from. Passing ``drain_timeout`` sets the window for
+        the runs that follow; leaving it out keeps the one this adapter was built with.
+        """
+
+        self._shut_down_application = shut_down
+        if drain_timeout is not None:
+            self._drain_timeout = drain_timeout
+
     async def start(
         self, port: int, host: str = "127.0.0.1", reload: bool = False, **options: object
     ) -> None:
-        """Serve the application with Uvicorn until the server stops."""
+        """Serve the application with Uvicorn until the server stops.
+
+        A signal that arrives while this is serving stops the server the graceful way:
+        new requests are refused, the ones in flight are given the drain window, the
+        application's shutdown hooks run with the signal's name, and only then is the
+        listening socket released.
+        """
 
         import uvicorn
 
+        from .server import GracefulServer
+
+        settings = dict(options)
+        settings.setdefault("timeout_graceful_shutdown", _SERVER_GRACE_SECONDS)
+        # A gate belongs to one run: a server started again after one was drained must
+        # not inherit a gate that is already closed against every caller.
+        self._gate = DrainGate()
         config = uvicorn.Config(
-            self._app, host=host, port=port, reload=reload, **cast(Any, options)
+            DrainingApp(self._app, self._gate),
+            host=host,
+            port=port,
+            reload=reload,
+            **cast(Any, settings),
         )
-        server = uvicorn.Server(config)
+        server = GracefulServer(config, self._gate, self._drain_and_tear_down)
         self._server = server
+        self._stopped = asyncio.Event()
         try:
             await server.serve()
         finally:
             self._server = None
+            stopped, self._stopped = self._stopped, None
+            if stopped is not None:
+                stopped.set()
 
     async def stop(self) -> None:
-        """Ask a running server to shut down; doing so when none runs does nothing."""
+        """Stop a running server and wait for it to release its socket.
+
+        Returning only once the server has stopped is what lets a caller act on the
+        stop: bind the port again, or start the application a second time. Stopping when
+        no server runs does nothing, and stopping one twice is harmless.
+        """
 
         server = self._server
         if server is None:
             return
         # Uvicorn's own signal handling sets this flag, and its serve loop exits on the
         # next pass, which is what makes a second call harmless.
-        setattr(server, "should_exit", True)  # noqa: B010
+        server.should_exit = True
+        stopped = self._stopped
+        if stopped is not None:
+            await stopped.wait()
+
+    async def _drain_and_tear_down(self, signal_name: str | None) -> None:
+        """Refuse new requests, wait for the ones in flight, then tear the application down.
+
+        The wait is bounded. A request that outlasts the window is left to the server,
+        which cancels it, because a shutdown that waited on it indefinitely would be a
+        shutdown one slow caller could refuse to allow.
+        """
+
+        self._gate.begin_drain()
+        await self._gate.wait_until_idle(self._drain_timeout)
+        if self._shut_down_application is not None:
+            await self._shut_down_application(signal_name)
 
     def create_test_client(self) -> object:
         """Return Starlette's test client, bound to this application."""

@@ -1,6 +1,7 @@
 import asyncio
 
 from bustan import create_app
+
 from .app_module import AppModule
 
 

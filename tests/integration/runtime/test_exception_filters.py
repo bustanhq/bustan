@@ -2,22 +2,26 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, cast
 
 import pytest
 
 from bustan import (
+    APP_FILTER,
     Controller,
     ExceptionFilter,
     ExecutionContext,
     Get,
+    HttpResponse,
     Injectable,
     Module,
     Scope,
     UseFilters,
     create_app,
 )
-from bustan.errors import ProviderResolutionError
+from bustan.errors import BadRequestException, ProviderResolutionError
+from bustan.observability.observability import ObservabilityHooks
 from bustan.testing import AsgiTestClient
 
 
@@ -105,3 +109,187 @@ def test_create_app_refuses_a_default_scope_controller_holding_a_request_scoped_
 
     with pytest.raises(ProviderResolutionError, match="request-scoped"):
         create_app(AppModule)
+
+
+def test_a_route_filter_maps_an_exception_a_constructor_raised() -> None:
+    # A request-scoped provider is where the documentation puts the authenticated
+    # principal, so it is also where authentication and validation failures are
+    # raised. The route's own filters are resolved before anything a request pays
+    # for is constructed, so such a failure is theirs to map like any other.
+    class UnauthenticatedFilter(ExceptionFilter):
+        exception_types = (BadRequestException,)
+
+        async def catch(self, exc: Exception, context: ExecutionContext) -> HttpResponse:
+            return HttpResponse.json({"detail": "mapped by the route filter"}, status_code=422)
+
+    @Injectable(scope=Scope.REQUEST)
+    class CurrentUser:
+        def __init__(self) -> None:
+            raise BadRequestException("missing header", field="x-user", source="header")
+
+    @Controller("/me", scope=Scope.REQUEST)
+    class MeController:
+        def __init__(self, current_user: CurrentUser) -> None:
+            self._current_user = current_user
+
+        @UseFilters(UnauthenticatedFilter())
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    @Module(controllers=[MeController], providers=[CurrentUser])
+    class AppModule:
+        pass
+
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/me/")
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "mapped by the route filter"}
+
+
+def test_an_app_filter_maps_an_exception_a_constructor_raised() -> None:
+    class ApplicationFilter(ExceptionFilter):
+        exception_types = (BadRequestException,)
+
+        async def catch(self, exc: Exception, context: ExecutionContext) -> HttpResponse:
+            return HttpResponse.json({"detail": "mapped by APP_FILTER"}, status_code=422)
+
+    @Injectable(scope=Scope.REQUEST)
+    class CurrentUser:
+        def __init__(self) -> None:
+            raise BadRequestException("missing header", field="x-user", source="header")
+
+    @Controller("/me", scope=Scope.REQUEST)
+    class MeController:
+        def __init__(self, current_user: CurrentUser) -> None:
+            self._current_user = current_user
+
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    @Module(
+        controllers=[MeController],
+        providers=[CurrentUser, {"provide": APP_FILTER, "use_value": ApplicationFilter()}],
+    )
+    class AppModule:
+        pass
+
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/me/")
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "mapped by APP_FILTER"}
+
+
+def test_an_exception_a_constructor_raised_reaches_the_observability_hooks() -> None:
+    class RecordingMetrics:
+        def __init__(self) -> None:
+            self.records: list[dict[str, str]] = []
+
+        def record_request(self, *, labels: Mapping[str, str]) -> None:
+            self.records.append(dict(labels))
+
+    @Injectable(scope=Scope.REQUEST)
+    class CurrentUser:
+        def __init__(self) -> None:
+            raise BadRequestException("missing header", field="x-user", source="header")
+
+    @Controller("/me", scope=Scope.REQUEST)
+    class MeController:
+        def __init__(self, current_user: CurrentUser) -> None:
+            self._current_user = current_user
+
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    @Module(controllers=[MeController], providers=[CurrentUser])
+    class AppModule:
+        pass
+
+    metrics = RecordingMetrics()
+    with (
+        ObservabilityHooks.scoped_override(ObservabilityHooks(metrics=cast(Any, metrics))),
+        AsgiTestClient(cast(Any, create_app(AppModule))) as client,
+    ):
+        response = client.get("/me/")
+
+    # The mapped status, not a fixed one: the same request is counted under the same
+    # status the caller was answered with.
+    assert response.status_code == 400
+    assert [record["status"] for record in metrics.records] == ["400"]
+    assert metrics.records[0]["operation"].endswith("read")
+
+
+def test_an_exception_a_constructor_raised_is_mapped_without_any_declared_filter() -> None:
+    @Injectable(scope=Scope.REQUEST)
+    class CurrentUser:
+        def __init__(self) -> None:
+            raise BadRequestException("missing header", field="x-user", source="header")
+
+    @Controller("/me", scope=Scope.REQUEST)
+    class MeController:
+        def __init__(self, current_user: CurrentUser) -> None:
+            self._current_user = current_user
+
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    @Module(controllers=[MeController], providers=[CurrentUser])
+    class AppModule:
+        pass
+
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/me/")
+
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Bad Request",
+        "status": 400,
+        "detail": "missing header",
+        "instance": "/me",
+        "errors": [{"field": "x-user", "source": "header"}],
+        "field": "x-user",
+        "source": "header",
+    }
+
+
+def test_the_application_wide_chain_answers_when_the_route_chain_cannot_be_built() -> None:
+    # The route declares a filter that cannot be constructed, so the chain the route
+    # would have been answered with does not exist. The application-wide chain is
+    # resolved on its own rather than the caller being handed a fixed status.
+    class ApplicationFilter(ExceptionFilter):
+        exception_types = (Exception,)
+
+        async def catch(self, exc: Exception, context: ExecutionContext) -> HttpResponse:
+            return HttpResponse.json({"detail": "mapped by APP_FILTER"}, status_code=503)
+
+    @Injectable(scope=Scope.TRANSIENT)
+    class BrokenFilter(ExceptionFilter):
+        def __init__(self) -> None:
+            raise RuntimeError("filter construction blew up")
+
+    @Controller("/broken")
+    class BrokenFilterController:
+        @UseFilters(BrokenFilter)
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    @Module(
+        controllers=[BrokenFilterController],
+        providers=[BrokenFilter, {"provide": APP_FILTER, "use_value": ApplicationFilter()}],
+    )
+    class AppModule:
+        pass
+
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/broken/")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "mapped by APP_FILTER"}

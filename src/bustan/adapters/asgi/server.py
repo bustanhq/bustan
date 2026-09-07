@@ -27,6 +27,11 @@ if TYPE_CHECKING:
 MAX_REQUEST_LINE_BYTES = 8 * 1024
 MAX_HEADER_BLOCK_BYTES = 64 * 1024
 
+# How much is taken from a connection at a time while waiting for the client to leave.
+# One request is answered per connection and the whole of it has already been read, so
+# whatever this collects is discarded; only the end of the stream is being waited for.
+_TRAILING_READ_BYTES = 4096
+
 
 class HttpParseError(Exception):
     """Raised when a request cannot be read, carrying the status that answers it."""
@@ -89,8 +94,14 @@ class AsgiServer:
             except HttpParseError as error:
                 _write_status(writer, error.status, error.reason)
                 return
-            await self._app(scope, _once(body), _writer_send(writer))
-            await writer.drain()
+            channel = _ConnectionChannel(body)
+            watching = asyncio.create_task(_watch_for_the_peer_leaving(reader, channel))
+            try:
+                await self._app(scope, channel.receive, _writer_send(writer, channel))
+                await writer.drain()
+            finally:
+                watching.cancel()
+                await asyncio.gather(watching, return_exceptions=True)
         except (ConnectionError, asyncio.IncompleteReadError):
             # The client went away mid-exchange; there is nobody left to answer.
             pass
@@ -195,21 +206,86 @@ async def _read_body(
     return await reader.readexactly(length)
 
 
-def _once(body: bytes):
-    """Return a receive callable yielding *body* once, then reporting a disconnect."""
+class _ConnectionChannel:
+    """The receive side of one connection, held open until something really ends it.
 
-    messages: list[Message] = [
-        {"type": "http.request", "body": body, "more_body": False},
-        {"type": "http.disconnect"},
-    ]
+    An application that watches for a disconnect while it writes stops writing when it
+    sees one, so a disconnect reported before the client sent it costs the client the
+    rest of the response: the status arrives with a truncated or empty body behind it
+    and nothing is raised. The disconnect therefore belongs to the events that cause it,
+    of which this connection has two, and it is reported at whichever happens first.
 
-    async def receive() -> Message:
-        return messages.pop(0) if len(messages) > 1 else messages[0]
+    The first is the client leaving, seen as its end of the connection reaching end of
+    file or failing outright. That is the truth about the connection rather than an
+    inference from the response, and it is what lets an application that streams until
+    its client hangs up be told that the client hung up.
 
-    return receive
+    The second is the response being finished, because one request is answered per
+    connection and the connection is closed once the last body message has been written:
+    there is no client on it after that either. Without it an application that asks for
+    the next message after finishing its response would wait for a client that is still
+    there and has nothing left to say, and the connection would never be closed.
+
+    Waiting is the point rather than a delay to be tuned away, so nothing here expires.
+    An application streaming to a client that is still connected is doing what it was
+    asked to; a deadline would end that exchange on the clock rather than on the client.
+    """
+
+    __slots__ = ("_body", "_body_taken", "_ended")
+
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+        self._body_taken = False
+        self._ended = asyncio.Event()
+
+    async def receive(self) -> Message:
+        """Yield the request body once, then the disconnect whatever ended the exchange."""
+
+        if not self._body_taken:
+            self._body_taken = True
+            return {"type": "http.request", "body": self._body, "more_body": False}
+        await self._ended.wait()
+        return {"type": "http.disconnect"}
+
+    def note_sent(self, message: Message) -> None:
+        """Record one message written back, to know when the response is finished."""
+
+        if message.get("type") == "http.response.body" and not message.get("more_body", False):
+            self._ended.set()
+
+    def note_peer_gone(self) -> None:
+        """Record that the client's end of the connection has gone."""
+
+        self._ended.set()
 
 
-def _writer_send(writer: asyncio.StreamWriter):
+async def _watch_for_the_peer_leaving(
+    reader: asyncio.StreamReader, channel: _ConnectionChannel
+) -> None:
+    """Tell *channel* when the client's end of the connection has gone.
+
+    The request has been read in full and no second one is answered on this connection,
+    so anything that still arrives is discarded and only the end of the stream matters.
+    A connection that was reset rather than closed raises instead of ending, and says
+    the same thing.
+
+    A client that shuts down only its sending direction and stays to read its response
+    arrives here as the same end of stream and is read as gone, because the two cannot
+    be told apart on a socket this server will not read again. The alternative is to
+    wait for a write to fail, which reports the client leaving only after a response has
+    been produced for nobody, and reports nothing at all to an application that stopped
+    writing to wait for the next message.
+    """
+
+    try:
+        while await reader.read(_TRAILING_READ_BYTES):
+            pass
+    except OSError:
+        pass
+    channel.note_peer_gone()
+
+
+def _writer_send(writer: asyncio.StreamWriter, channel: _ConnectionChannel):
     """Return a send callable that writes ASGI response messages as HTTP/1.1 bytes.
 
     The connection is closed once the last body message has been written, which is what
@@ -227,6 +303,7 @@ def _writer_send(writer: asyncio.StreamWriter):
         elif message.get("type") == "http.response.body":
             writer.write(cast(bytes, message.get("body", b"")))
             await writer.drain()
+        channel.note_sent(message)
 
     return send
 
