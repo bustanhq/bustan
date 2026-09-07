@@ -212,3 +212,38 @@ def test_empty_routes_still_expose_an_explicit_empty_policy_plan() -> None:
     assert contract.policy_plan.audit is None
     assert contract.policy_plan.owner is None
     assert contract.policy_plan.deprecation is None
+
+
+def test_a_route_declaring_the_policies_nothing_acts_on_still_compiles_and_carries_them() -> None:
+    """Declared on the handler rather than the controller, the three still reach the plan.
+
+    Their docstrings say the request path does nothing with them, which is a statement
+    about this version and not a change to it. This is the guard that keeps it one: a
+    route declaring all three compiles, and the compiled plan carries each policy object
+    with the arguments the route gave it.
+    """
+
+    @Controller("/users")
+    class UsersController:
+        @Cache(ttl=30)
+        @Idempotent(key_header="X-Request-Id")
+        @Audit(event="user.delete")
+        @Get("/")
+        def list_users(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+
+    [contract] = compile_route_contracts(graph, container)
+
+    assert contract.policy_plan.cache is not None
+    assert contract.policy_plan.cache.ttl == 30
+    assert contract.policy_plan.idempotency is not None
+    assert contract.policy_plan.idempotency.key_header == "X-Request-Id"
+    assert contract.policy_plan.audit is not None
+    assert contract.policy_plan.audit.event == "user.delete"

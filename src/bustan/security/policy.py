@@ -42,14 +42,37 @@ def RateLimit(*, limit: int, window: str) -> Callable[[DecoratedT], DecoratedT]:
 
 
 def Cache(*, ttl: int) -> Callable[[DecoratedT], DecoratedT]:
+    """No response is cached in this version; the decorator only records the policy.
+
+    ``ttl`` reaches the route's compiled policy plan, and nothing in the request path
+    acts on it, so a route marked with this decorator is recomputed on every request.
+    Cache in front of the application, or inside the handler, for as long as that is so.
+    """
+
     return _policy_decorator(cache=CachePolicy(ttl=ttl))
 
 
 def Idempotent(*, key_header: str = "Idempotency-Key") -> Callable[[DecoratedT], DecoratedT]:
+    """No idempotency key is stored or compared in this version; the policy is recorded.
+
+    ``key_header`` reaches the route's compiled policy plan, and nothing in the request
+    path acts on it, so a retried request runs the handler again and its side effect
+    happens again. Deduplicate inside the handler, against the store that already holds
+    the side effect, for as long as that is so.
+    """
+
     return _policy_decorator(idempotency=IdempotencyPolicy(key_header=key_header))
 
 
 def Audit(*, event: str) -> Callable[[DecoratedT], DecoratedT]:
+    """No audit record is written in this version; the decorator only records the policy.
+
+    ``event`` reaches the route's compiled policy plan, and nothing in the request path
+    acts on it, so a route marked with this decorator leaves no trace of who called it.
+    Write the record from the handler, or from an interceptor of your own, for as long
+    as that is so.
+    """
+
     return _policy_decorator(audit=AuditPolicy(event=event))
 
 
