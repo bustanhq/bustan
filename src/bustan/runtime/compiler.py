@@ -8,12 +8,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import NoneType
-from typing import get_origin, get_type_hints
+from typing import cast, get_origin, get_type_hints
 
 from ..common.types import ControllerMetadata
 from ..kernel.errors import RouteDefinitionError
 from ..kernel.ioc.container import Container
+from ..kernel.ioc.registry import Binding
 from ..kernel.ioc.tokens import APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, InjectionToken
+from ..kernel.module.compiler import _in_declaration_order
 from ..kernel.module.dynamic import ModuleKey
 from ..kernel.module.graph import ModuleGraph
 from ..pipeline.guards import PolicyGuard
@@ -32,6 +34,11 @@ from .params import HandlerBindingPlan, compile_parameter_bindings
 from .scanner import ControllerScanner, ScannedHandler
 from .versioning import normalize_versions
 
+# The binding kinds that name the component they build. A class names it directly and a
+# value is it; every other kind produces its component only by running something, so what
+# it will produce cannot be read before the first request exists.
+_READABLE_RESOLVER_KINDS = frozenset({"class", "value"})
+
 
 @dataclass(frozen=True, slots=True)
 class GlobalPipelineProvider:
@@ -47,8 +54,10 @@ class GlobalPipelineProvider:
     registers every entry, and they run in the order the list was written.
 
     ``declared_component`` is the class, value or list the declaring module bound, which
-    is what the compiler reads when a rule has to be checked before any request exists.
-    It is ``None`` for a component only a factory can produce.
+    is what the compiler reads when a rule has to be checked before any request exists. A
+    module that declared the token several times over reads back as the list of everything
+    it declared, so a rule sees the same components whichever way they were written. It is
+    ``None`` for a component only a factory can produce.
     """
 
     token: InjectionToken[object]
@@ -183,9 +192,49 @@ class RouteCompiler:
         """Return the class or value a module bound to a global token, if it bound one."""
 
         binding = self._container.registry.get_binding((module, token))
-        if binding is None or binding.resolver_kind not in {"class", "value"}:
+        if binding is None:
             return None
-        return binding.target
+        if binding.resolver_kind in _READABLE_RESOLVER_KINDS:
+            return binding.target
+        if binding.resolver_kind == "factory":
+            return self._joined_components(binding, module)
+        return None
+
+    def _joined_components(self, binding: Binding, module: ModuleKey) -> list[object] | None:
+        """Return the components a module declared one at a time under a single token.
+
+        A module that declares a pipeline token more than once has its declarations joined
+        into one binding that builds them all. That binding is a factory, so it names no
+        component of its own, and a rule checked before any request exists would otherwise
+        see nothing where the module declared several components. Reading the joined
+        declarations gives it the same view it has of one declaration naming a list.
+
+        A joined declaration that only a factory can produce, or that aliases another
+        token, names no component, so it is left out and the declarations beside it are
+        still read. ``None`` means no declaration in the binding named a component, which
+        is also what a lone factory declaration returns.
+
+        Only a factory binding is ever passed here, because only a factory holds the
+        arguments a join is made of.
+        """
+
+        factory, entry_tokens = cast("tuple[object, tuple[object, ...]]", binding.target)
+        # The join is recognised by the callable that performs it rather than by the shape
+        # of the binding, because a factory an author wrote has the same shape and its
+        # injected dependencies are its arguments, not components declared for the token.
+        if factory is not _in_declaration_order:
+            return None
+
+        declared: list[object] = []
+        for entry_token in entry_tokens:
+            entry = self._container.registry.get_binding((module, entry_token))
+            if entry is None or entry.resolver_kind not in _READABLE_RESOLVER_KINDS:
+                continue
+            if isinstance(entry.target, (list, tuple)):
+                declared.extend(entry.target)
+            else:
+                declared.append(entry.target)
+        return declared or None
 
     def _compile_handler_contract(
         self,
