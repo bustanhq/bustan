@@ -336,13 +336,14 @@ def test_create_app_handles_stream_responses_through_the_response_handler() -> N
         pass
 
     application = create_app(AppModule)
-    # A streamed body is the one answer this suite cannot observe through the
-    # in-process ASGI client: that client reports the connection as disconnected as
-    # soon as the request body has been read, and the serving adapter abandons a
-    # streaming response the moment a disconnect arrives. The assertion is made
-    # through the client the serving adapter offers for its own transport instead,
-    # and where the package that client needs is absent the streamed answer cannot be
-    # observed at all, so the check is skipped rather than failed.
+    # This synchronously generated body cannot be observed through the in-process ASGI
+    # client: that client reports the connection as disconnected as soon as the request
+    # body has been read, and the serving adapter drops a streamed body still being
+    # produced when a disconnect arrives first. Losing that race depends on when the
+    # producing path yields control, and an asynchronously generated stream survives it
+    # through the same client, so this assertion is made through the client the serving
+    # adapter offers for its own transport. Where the package that client needs is
+    # absent the answer cannot be observed at all, so the check is skipped, not failed.
     try:
         native_client = application.get_http_adapter().create_test_client()
     except ImportError as unavailable:
