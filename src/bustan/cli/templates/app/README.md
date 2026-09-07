@@ -13,7 +13,7 @@ uv sync
 Add Bustan and dev tools if not already present:
 
 ```sh
-uv add bustan
+uv add 'bustan[starlette]'
 uv add --dev ty ruff pytest
 ```
 
