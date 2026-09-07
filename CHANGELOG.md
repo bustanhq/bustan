@@ -3,6 +3,70 @@
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. These releases contain the core framework but should be treated as early alpha orphans. The first production-ready release will be `2.0.0`.
 
+## [2.0.0-rc.3](https://github.com/bustanhq/bustan/compare/v2.0.0rc2...v2.0.0rc3) (2026-09-07)
+
+Ports and adapters. The transport becomes replaceable rather than assumed: a contracts
+package, a narrowed adapter port, a second adapter written against the ASGI specification
+and the standard library alone, a conformance matrix that holds both adapters to the same
+answers, an enforced layering rule, Starlette demoted to an optional extra, and the package
+layout move the rest of the wave was gated behind.
+
+The candidate also closes a defect shipped in `2.0.0rc2`: without the `starlette` extra
+installed, the framework could not compile a single route.
+
+Every entry below is a closed issue from the 2.0.0-rc.3 milestone, grouped by the
+classification label it carries. All 34 are listed. One, [#121](https://github.com/bustanhq/bustan/issues/121), carries both `security`
+and `operability`; it appears once, under Security.
+
+### Security
+
+* audit the resolved dependency set of the root project and all six examples in CI, from their committed lockfiles, so an advisory is found before a release rather than after one ([#121](https://github.com/bustanhq/bustan/issues/121))
+
+### Correctness
+
+* the raw-response interceptor check does not see a component declared as two entries ([#110](https://github.com/bustanhq/bustan/issues/110))
+* `bustan init` writes a tests package that shadows the source package, so two of its three tests cannot import ([#125](https://github.com/bustanhq/bustan/issues/125))
+* a scaffolded project's controller test needs a test client that nothing installs or names ([#126](https://github.com/bustanhq/bustan/issues/126))
+* the framework's own test surface still depended on a third-party test client ([#131](https://github.com/bustanhq/bustan/issues/131))
+* the two adapters disagree about form bodies, and no capability declares it ([#135](https://github.com/bustanhq/bustan/issues/135))
+* three supported surfaces still reach for the transport's test client ([#136](https://github.com/bustanhq/bustan/issues/136))
+* `bustan` without the `starlette` extra cannot compile a single route ([#170](https://github.com/bustanhq/bustan/issues/170))
+* ten integration tests still import a third-party test client ([#178](https://github.com/bustanhq/bustan/issues/178))
+* `AsgiTestClient` disconnects before the body is written, so a streamed response arrives empty and nothing raises ([#184](https://github.com/bustanhq/bustan/issues/184))
+* the application the framework builds is not assignable to the framework's own `AsgiApp` port ([#186](https://github.com/bustanhq/bustan/issues/186))
+
+### Architecture
+
+* T-300: the contracts package ([#86](https://github.com/bustanhq/bustan/issues/86))
+* eight packages still have no explicit `__all__` ([#89](https://github.com/bustanhq/bustan/issues/89))
+* T-301: narrow the adapter port ([#90](https://github.com/bustanhq/bustan/issues/90))
+* T-302: the proof adapter ([#91](https://github.com/bustanhq/bustan/issues/91))
+* T-303: a conformance matrix that means something ([#92](https://github.com/bustanhq/bustan/issues/92))
+* T-304: enforce the layering ([#93](https://github.com/bustanhq/bustan/issues/93))
+* T-305: Starlette becomes an extra ([#94](https://github.com/bustanhq/bustan/issues/94))
+* retype the request boundary against `HttpRequest`, so the kernel stops importing a web framework's type ([#96](https://github.com/bustanhq/bustan/issues/96))
+* remove `AdapterRoute.registration`, the port escape hatch nothing produces any more ([#99](https://github.com/bustanhq/bustan/issues/99))
+* move `token_identity` beside the markers so the rule has one copy ([#119](https://github.com/bustanhq/bustan/issues/119))
+* `ResponsePlan` carries two fields that nothing ever writes ([#137](https://github.com/bustanhq/bustan/issues/137))
+* the conformance suite certifies a lifespan it wrote itself, not the framework's ([#138](https://github.com/bustanhq/bustan/issues/138))
+* T-306: the package layout move ([#139](https://github.com/bustanhq/bustan/issues/139))
+* the scaffolded module test is built on an internal namespace and does not type-check ([#187](https://github.com/bustanhq/bustan/issues/187))
+
+### Documentation
+
+* document the two-entry spelling for global pipeline components ([#111](https://github.com/bustanhq/bustan/issues/111))
+* every install instruction in the repository under-installs ([#134](https://github.com/bustanhq/bustan/issues/134))
+* settle the records the layout move left behind ([#142](https://github.com/bustanhq/bustan/issues/142))
+* six documents still describe the pre-T-306 package tree ([#143](https://github.com/bustanhq/bustan/issues/143))
+* decide whether the audit evidence scripts are linted, and make the suppression consistent ([#145](https://github.com/bustanhq/bustan/issues/145))
+* document exception filter precedence, which is not declaration order ([#147](https://github.com/bustanhq/bustan/issues/147))
+* the scaffolded project's README tells the user to install without the extra ([#179](https://github.com/bustanhq/bustan/issues/179))
+* a freshly scaffolded project is not formatted the way the framework formats itself ([#188](https://github.com/bustanhq/bustan/issues/188))
+
+### Operability
+
+* the published-package verification checks that scaffolded files exist, not that they work ([#128](https://github.com/bustanhq/bustan/issues/128))
+
 ## [2.0.0-rc.2](https://github.com/bustanhq/bustan/compare/v1.1.0...v2.0.0rc2) (2026-09-06)
 
 The first release candidate published from `main`. It carries the whole of the 2.0.0-rc.1 and
