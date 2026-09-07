@@ -75,55 +75,114 @@ def _case(name: str) -> ConformanceCase:
     raise AssertionError(f"no conformance case named {name!r}")
 
 
-def test_only_the_streamed_body_case_narrows_what_is_compared_between_adapters() -> None:
+def test_no_case_narrows_what_is_compared_between_adapters() -> None:
     """A narrowed comparison is a debt, so the suite has to say how much of it there is.
 
-    One case narrows the comparison, by one body member, because the two adapters refuse
-    an undeclared over-limit body at different layers and each reports what its layer
-    knows. Everything else in the suite is compared whole. A second narrowed case
-    appearing without this test being changed is the thing worth catching.
+    None, today: every case is compared whole, member for member, across every adapter,
+    and no case holds one adapter to a document another is not held to. A case appearing
+    that does either without this test being changed is the thing worth catching, because
+    the facility that allows it is general and reaching for it is cheap.
     """
 
-    narrowed = {
-        case.name: case.diverging_body_members
+    narrowed = [
+        case.name
         for scenario in conformance_module.SCENARIOS
         for case in scenario.cases
         if case.diverging_body_members
-    }
+    ]
+    held_apart = [
+        case.name
+        for scenario in conformance_module.SCENARIOS
+        for case in scenario.cases
+        if case.expected_by_adapter
+    ]
 
-    assert narrowed == {_STREAMED_BODY_CASE: ("detail",)}
+    assert narrowed == []
+    assert held_apart == []
 
 
-def test_the_streamed_body_case_holds_every_adapter_to_a_document_of_its_own() -> None:
-    """Narrowing the comparison is only defensible while each adapter is still pinned.
+def test_the_streamed_body_case_holds_every_adapter_to_one_document() -> None:
+    """The case that once needed two answers is the one worth naming here.
 
-    The member the two adapters differ on is asserted per adapter rather than left
-    unasserted, so the day either sentence changes is a day this case fails.
+    Both adapters refuse a body of undeclared length at the chunk that carries it past
+    the limit, so neither has read enough of it to say how large it was and both name the
+    limit instead. An adapter that went back to reporting the size would be one that had
+    buffered the whole body first, and the day that happens is a day this case fails.
     """
 
     case = _case(_STREAMED_BODY_CASE)
-    named = dict(case.expected_by_adapter)
 
-    assert set(named) == set(ADAPTER_NAMES)
-    details = {adapter: _detail(expected) for adapter, expected in named.items()}
-    assert details["starlette"] == "The request body exceeds the 10485760 byte limit"
-    assert details["asgi"] == (
-        "The request body carries 10485762 bytes, over the 10485760 byte limit"
+    assert case.expected_by_adapter == ()
+    assert case.diverging_body_members == ()
+    assert _detail(case.expected) == "The request body exceeds the 10485760 byte limit"
+    for adapter in ADAPTER_NAMES:
+        assert case.expected_for(adapter) is case.expected
+
+
+def _narrowing_case() -> ConformanceCase:
+    """A case that names one diverging member, built here rather than found in the suite.
+
+    The suite narrows nothing, and the facility still has to work for the case that one
+    day needs it. A test that reached into the suite for an example would have stopped
+    testing the facility the moment the last such case was removed, which is exactly when
+    the facility became untested rather than unused.
+    """
+
+    return ConformanceCase(
+        name="narrowing_case",
+        dimension="narrowing",
+        request=conformance_module.ConformanceRequest(method="POST", path="/limits/notes"),
+        expected=_problem(UNCOMPARED_BODY_MEMBER),
+        expected_by_adapter=(
+            ("starlette", _problem("refused while reading")),
+            ("asgi", _problem("refused after reading 10485762 bytes")),
+        ),
+        diverging_body_members=("detail",),
     )
-    # The document no adapter is held to marks the member rather than picking one side.
-    assert _detail(case.expected) == UNCOMPARED_BODY_MEMBER
 
 
-def test_the_narrowed_comparison_still_reports_every_other_part_of_the_answer() -> None:
-    """Narrowed to one member means narrowed to one member, not to nothing."""
+def _problem(detail: str) -> ResponseObservation:
+    """The observation the constructed case's adapters are held to, detail apart."""
 
-    case = _case(_STREAMED_BODY_CASE)
+    return ResponseObservation(
+        413,
+        (("content-type", "application/problem+json"),),
+        json.dumps(
+            {
+                "type": "about:blank",
+                "title": "Content Too Large",
+                "status": 413,
+                "detail": detail,
+                "instance": "/limits/notes",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+    )
+
+
+def test_a_case_that_names_a_diverging_member_has_it_reduced_on_both_sides() -> None:
+    """Two documents that differ only in the named member compare as agreeing."""
+
+    case = _narrowing_case()
     starlette, asgi = (
         conformance_module._reduce_for_comparison(case, dict(case.expected_by_adapter)[name])
         for name in ("starlette", "asgi")
     )
 
+    assert _detail(starlette) == UNCOMPARED_BODY_MEMBER
+    assert _detail(asgi) == UNCOMPARED_BODY_MEMBER
     assert describe_difference("starlette", starlette, "asgi", asgi) == ()
+
+
+def test_a_narrowed_comparison_still_reports_every_other_part_of_the_answer() -> None:
+    """Narrowed to one member means narrowed to one member, not to nothing."""
+
+    case = _narrowing_case()
+    starlette = conformance_module._reduce_for_comparison(
+        case, dict(case.expected_by_adapter)["starlette"]
+    )
+    asgi = dict(case.expected_by_adapter)["asgi"]
 
     for altered in (
         replace(asgi, status_code=500),

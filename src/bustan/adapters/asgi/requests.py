@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from http.cookies import SimpleCookie
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NoReturn, cast
 
 from ...contracts import (
     Headers,
@@ -25,21 +25,20 @@ if TYPE_CHECKING:
 
     from .types import Message, Receive, Scope
 
-# How many body bytes this transport will read before it stops reading. A body is read
-# into memory to be parsed, so an unauthenticated caller could otherwise grow that
-# buffer without limit.
+# How many body bytes this transport will read for a request that has no application
+# behind it to say. A body is read into memory to be parsed, so an unauthenticated
+# caller could otherwise grow that buffer without limit.
 #
 # The number is twice the largest body the framework's own request limits accept under
-# their defaults, and the doubling is the point rather than the value: a transport that
-# stopped reading below a limit the application had set would refuse a request the
-# application was configured to serve, and would answer it with a bound nobody chose.
-# The framework's limit is what answers a caller; this bounds only what a caller already
-# past every framework limit can make one process buffer. A deployment that raises the
-# framework's limits above this raises this too, by building the adapter with a
-# ``max_body_bytes`` of its own. The figure is written out rather than derived from the
-# framework's, because reading it from there would make this package import the
-# framework at module scope and it deliberately imports nothing but the request
-# contracts.
+# their defaults, and the doubling is the point rather than the value: this is a
+# backstop and not the bound a caller is normally answered by. What answers a caller is
+# the limit the application serving the request declared, which is read per request and
+# is lower; this only stands where there is no application to ask, and caps a limit that
+# has been raised above it. A deployment that raises the framework's limits past this
+# raises this too, by building the adapter with a ``max_body_bytes`` of its own. The
+# figure is written out rather than derived from the framework's, because reading it
+# from there would make this package import the framework at module scope and it
+# deliberately imports nothing but the request contracts.
 DEFAULT_MAX_BODY_BYTES = 20 * 1024 * 1024
 
 
@@ -57,7 +56,13 @@ class AsgiHttpRequest:
     objects the server actually handed over.
 
     The body is read at most once and kept, because ASGI delivers it as a stream that
-    cannot be rewound and more than one stage of a request may ask for it.
+    cannot be rewound and more than one stage of a request may ask for it. It is read
+    under the byte bound the application serving the request declared, and the read stops
+    at the chunk that crosses that bound, so a body the application will not accept is
+    never held here in full. A body already read was read under one of the bounds that
+    application itself declared, so a later reader is handed it rather than having it
+    judged again here; what the framework accepts for a particular parameter is the
+    framework's own check, made on the bytes it is handed.
     """
 
     __slots__ = ("_body", "_max_body_bytes", "_path_params", "_receive", "_scope", "_state")
@@ -182,28 +187,56 @@ class AsgiHttpRequest:
         return self._scope.get("app")
 
     async def body(self) -> bytes:
-        """Read the whole request body, refusing one larger than the limit."""
+        """Read the whole request body, refusing one over the application's body limit.
+
+        The refusal happens at the chunk that crosses the limit rather than after the
+        last one, so a body the application will not accept is never held here in full.
+        The limit is the one the application serving this request declared, read now
+        rather than when the request was wrapped, because an application declares its
+        limits after its routes are built.
+        """
 
         if self._body is None:
-            self._body = await self._read_body()
+            body_bound, _ = self._declared_bounds()
+            self._body = await self._read_body(body_bound)
         return self._body
 
     async def json(self) -> object:
-        """Read the request body and decode it as JSON."""
+        """Read the request body under the body limit and decode it as JSON."""
 
         return json.loads(await self.body())
 
     async def form(self) -> HttpFormData:
-        """Read the request body as form data, uploaded files included."""
+        """Read the request body as form data, uploaded files included.
 
-        return parse_form_body(await self.body(), self.headers.get("content-type"))
+        A form is read under the application's upload bound rather than its body bound,
+        because those are two figures for two different things: a route that accepts
+        uploads is expected to carry more than a JSON document, and reading a form under
+        the smaller of the two would refuse an upload the application was configured to
+        serve.
+        """
+
+        if self._body is None:
+            _, upload_bound = self._declared_bounds()
+            self._body = await self._read_body(upload_bound)
+        return parse_form_body(self._body, self.headers.get("content-type"))
 
     def set_path_params(self, path_params: Mapping[str, str]) -> None:
         """Record what a router captured from the path, before the handler is called."""
 
         self._path_params = dict(path_params)
 
-    async def _read_body(self) -> bytes:
+    async def _read_body(self, declared: int | None) -> bytes:
+        """Read the body, stopping at the chunk that carries it past a bound.
+
+        Two bounds, checked in this order because they belong to different owners and a
+        caller is owed the answer of whichever refused. *declared* is the limit the
+        application serving this request set and is normally the lower of the two, so it
+        is what a caller is normally told; this transport's own ceiling stands behind it
+        for a request with no application to declare one, and for a declared limit raised
+        past the ceiling without the ceiling being raised too.
+        """
+
         chunks: list[bytes] = []
         received = 0
         more = True
@@ -213,24 +246,61 @@ class AsgiHttpRequest:
                 raise ClientDisconnected("The client disconnected before its body arrived")
             chunk = cast(bytes, message.get("body", b""))
             received += len(chunk)
-            if self._max_body_bytes is not None and received > self._max_body_bytes:
-                # The framework's own refusal rather than one of this package's, so that
-                # the filter which renders a limit refusal recognises it: a caller who
-                # sent too much is told so, instead of being told the server broke and
-                # having the refusal logged as a fault. The import is made here rather
-                # than at module scope because this package imports nothing but the
-                # request contracts, and a body is only ever refused while the framework
-                # that owns this class is already running.
-                from ...runtime.params import RequestBodyTooLargeError
-
-                # The bytes already counted are not reported, because reading on to total
-                # them is the cost the limit exists to refuse to pay.
-                raise RequestBodyTooLargeError(
-                    f"The request body carries more than the {self._max_body_bytes} byte limit"
-                )
+            # Whatever the client is still sending is left unread from here. Reading to
+            # the end to be polite about it would spend exactly the memory the bound
+            # exists to refuse, and the bytes already counted are not reported for the
+            # same reason: totalling them means reading them.
+            if declared is not None and received > declared:
+                self._refuse(f"The request body exceeds the {declared} byte limit")
+            ceiling = self._max_body_bytes
+            if ceiling is not None and received > ceiling:
+                self._refuse(f"The request body carries more than the {ceiling} byte limit")
             chunks.append(chunk)
             more = bool(message.get("more_body", False))
         return b"".join(chunks)
+
+    def _refuse(self, message: str) -> NoReturn:
+        """Refuse a body over a bound, in the terms the framework refuses one in.
+
+        The framework's own error rather than one of this package's, so that the filter
+        which renders a limit refusal recognises it: a caller who sent too much is told
+        so, instead of being told the server broke and having the refusal logged as a
+        fault.
+
+        The import is made here rather than at module scope because this package imports
+        nothing but the request contracts, and a body is only ever refused while the
+        framework that owns this class is already running.
+        """
+
+        from ...runtime.params import RequestBodyTooLargeError
+
+        raise RequestBodyTooLargeError(message)
+
+    def _declared_bounds(self) -> tuple[int | None, int | None]:
+        """Return the byte bounds the application declared for a body and for a form.
+
+        They are two figures for two different things: a route that accepts uploads is
+        expected to carry more than a JSON document, so reading a form under the body
+        bound would refuse an upload the application was configured to serve.
+
+        The application is asked now rather than when the request was wrapped, because an
+        application declares its limits after its routes are built. A request that arrived
+        with no application behind it declares neither bound, and is left to the ceiling
+        this transport was built with.
+
+        The import is deferred for the reason given on the refusal above, and is reached
+        only while a body is being read, which is only ever while the framework that owns
+        this class is running.
+        """
+
+        application = self._scope.get("app")
+        if application is None:
+            return None, None
+
+        from ...runtime.execution import request_limits_of
+
+        limits = request_limits_of(application)
+        return limits.max_body_bytes, limits.max_upload_bytes
 
     def _query_string(self) -> str:
         return cast(bytes, self._scope.get("query_string", b"")).decode("latin-1")
