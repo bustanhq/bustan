@@ -178,6 +178,41 @@ def test_init_writes_tests_pytest_can_collect_and_run(tmp_path: Path) -> None:
     assert not (tmp_path / "tests" / "hello_bustan" / "__init__.py").exists()
 
 
+def test_scaffolded_project_needs_no_reformatting(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "hello-bustan")
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        assert cli_main_module.main(["init"]) == 0
+    finally:
+        os.chdir(old_cwd)
+
+    # The templates are excluded from this repository's own formatter run, and they have
+    # to be: three of them hold a placeholder and are not parseable Python until the
+    # scaffolder substitutes it. So the only place the formatter can see them is here,
+    # after substitution, over the tree a user actually receives. Asserting on the
+    # rendered output rather than on the template files also means a template added
+    # later is covered without anyone remembering to list it.
+    #
+    # --isolated pins the run to the formatter's default settings, which is what a
+    # scaffolded project gets: it carries no formatter configuration of its own, and
+    # without this the result would depend on whatever configuration happens to sit
+    # above the temporary directory. Those defaults include a line length of 88, which
+    # is shorter than the one this repository formats itself at, so a template line
+    # between the two widths is rejected here and accepted everywhere else. That is the
+    # strictness a scaffolded project is actually measured by, and the templates have
+    # to be written to fit it rather than to fit this repository's own setting.
+    completed = subprocess.run(
+        [sys.executable, "-m", "ruff", "format", "--check", "--isolated", "."],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
 def test_init_adds_scripts_to_pyproject(tmp_path: Path) -> None:
     _write_pyproject(tmp_path, "my-app")
     old_cwd = os.getcwd()

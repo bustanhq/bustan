@@ -1,6 +1,7 @@
 from bustan import Controller, Get
 from .app_service import AppService
 
+
 @Controller("/")
 class AppController:
     def __init__(self, app_service: AppService):
