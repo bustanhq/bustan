@@ -21,9 +21,15 @@ from bustan.contracts import (
     RequestState,
     Url,
 )
+from bustan.runtime.execution import set_request_limits
+from bustan.runtime.params import (
+    DEFAULT_MAX_BODY_BYTES,
+    RequestBodyTooLargeError,
+    RequestLimits,
+)
 
 if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+    from tests.conftest import AppFactory, RequestFactory
 
 
 def test_the_wrapper_exposes_stable_request_fields(build_request: RequestFactory) -> None:
@@ -139,10 +145,127 @@ def test_the_wrapper_decodes_a_json_body(build_request: RequestFactory) -> None:
 
 @pytest.mark.parametrize("attribute", ["app", "native_request"])
 def test_the_declared_escape_hatches_still_reach_the_transport(
-    build_request: RequestFactory, build_app, attribute: str
+    build_request: RequestFactory, build_app: AppFactory, attribute: str
 ) -> None:
     app = build_app()
     wrapped = StarletteHttpRequest(build_request(app=app))
 
     assert getattr(wrapped, attribute) is not None
     assert isinstance(wrapped.native_request, Request)
+
+
+def _chunked(request: Request, body: bytes, *, chunk_bytes: int) -> tuple[Request, list[int]]:
+    """Rebuild *request* around a body delivered in chunks, recording what is handed out.
+
+    The shared factory delivers a body in one message, which is what a small request
+    looks like. A limit that is enforced while the body is read can only be told apart
+    from one enforced after it by a body that arrives in more than one piece, so this
+    supplies the receive callable that sends one, and the list of chunk sizes it got to.
+    """
+
+    handed_out: list[int] = []
+    offset = 0
+
+    async def receive() -> dict[str, object]:
+        nonlocal offset
+        chunk = body[offset : offset + chunk_bytes]
+        offset += len(chunk)
+        handed_out.append(len(chunk))
+        return {"type": "http.request", "body": chunk, "more_body": offset < len(body)}
+
+    return Request(request.scope, receive), handed_out
+
+
+def test_a_body_over_the_applications_limit_is_refused_before_the_rest_arrives(
+    build_request: RequestFactory, build_app: AppFactory
+) -> None:
+    app = build_app()
+    set_request_limits(app, RequestLimits(max_body_bytes=16))
+    request, handed_out = _chunked(
+        build_request(method="POST", path="/notes", app=app), b"x" * 4096, chunk_bytes=8
+    )
+
+    with pytest.raises(RequestBodyTooLargeError, match="exceeds the 16 byte limit"):
+        anyio.run(StarletteHttpRequest(request).body)
+
+    # Three chunks: two inside the limit and the one that crossed it. The remaining
+    # 4072 bytes are never asked for.
+    assert handed_out == [8, 8, 8]
+
+
+def test_a_body_within_the_applications_limit_is_read_whole(
+    build_request: RequestFactory, build_app: AppFactory
+) -> None:
+    app = build_app()
+    set_request_limits(app, RequestLimits(max_body_bytes=16))
+    request, _ = _chunked(
+        build_request(method="POST", path="/notes", app=app), b'{"name":"Ada"}', chunk_bytes=4
+    )
+
+    assert anyio.run(StarletteHttpRequest(request).body) == b'{"name":"Ada"}'
+
+
+def test_a_request_with_no_application_behind_it_is_read_under_the_default_limit(
+    build_request: RequestFactory,
+) -> None:
+    # Nothing to ask about limits is not a reason to read without one: an oversized
+    # body is refused here exactly as it is for a request an application is serving.
+    chunk_bytes = DEFAULT_MAX_BODY_BYTES // 4
+    request, handed_out = _chunked(
+        build_request(method="POST", path="/notes"),
+        b"x" * (DEFAULT_MAX_BODY_BYTES * 2),
+        chunk_bytes=chunk_bytes,
+    )
+
+    with pytest.raises(RequestBodyTooLargeError):
+        anyio.run(StarletteHttpRequest(request).body)
+
+    assert sum(handed_out) <= DEFAULT_MAX_BODY_BYTES + chunk_bytes
+
+
+def test_a_json_body_is_decoded_from_the_read_the_limit_bounded(
+    build_request: RequestFactory, build_app: AppFactory
+) -> None:
+    app = build_app()
+    set_request_limits(app, RequestLimits(max_body_bytes=8))
+    request, _ = _chunked(
+        build_request(method="POST", path="/notes", json_body={"name": "Ada"}, app=app),
+        b'{"name":"Ada"}',
+        chunk_bytes=4,
+    )
+
+    with pytest.raises(RequestBodyTooLargeError):
+        anyio.run(StarletteHttpRequest(request).json)
+
+
+def test_the_bounded_read_is_the_requests_one_read(
+    build_request: RequestFactory, build_app: AppFactory
+) -> None:
+    # Form parsing and the transport's own request object read the body through
+    # Starlette, which asks the client for it once and remembers it. The bounded read
+    # has to leave that memory filled, or a second reader either sees nothing or waits
+    # for a body the client has already finished sending.
+    app = build_app()
+    set_request_limits(app, RequestLimits(max_body_bytes=1024))
+    request, handed_out = _chunked(
+        build_request(
+            method="POST",
+            path="/notes",
+            content_type="application/x-www-form-urlencoded",
+            app=app,
+        ),
+        b"name=Ada&name=Grace",
+        chunk_bytes=4,
+    )
+    wrapped = StarletteHttpRequest(request)
+
+    async def read_twice() -> tuple[bytes, list[object]]:
+        body = await wrapped.body()
+        form = await wrapped.form()
+        return body, form.getlist("name")
+
+    body, names = anyio.run(read_twice)
+
+    assert body == b"name=Ada&name=Grace"
+    assert names == ["Ada", "Grace"]
+    assert sum(handed_out) == len(b"name=Ada&name=Grace")
