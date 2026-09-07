@@ -129,6 +129,7 @@ from .pipeline.decorators import UseFilters, UseGuards, UseInterceptors, UsePipe
 from .pipeline.middleware import Middleware, MiddlewareConsumer
 from .runtime.versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType
 from .security import CorsOptions, SkipThrottle, ThrottlerGuard, ThrottlerModule, ThrottlerStorage
+from .security.throttler import ThrottleState
 
 __all__ = (
     "__version__",
@@ -241,6 +242,7 @@ __all__ = (
     "SkipThrottle",
     "SwaggerModule",
     "SwaggerOptions",
+    "ThrottleState",
     "ThrottlerGuard",
     "ThrottlerModule",
     "ThrottlerStorage",
