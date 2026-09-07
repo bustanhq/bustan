@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
 from typing import Any, cast
 
+import anyio
 from starlette.applications import Starlette
 
 from bustan import (
     APP_GUARD,
     Controller,
+    ExceptionFilter,
     ExecutionContext,
     Get,
     Guard,
@@ -21,8 +25,18 @@ from bustan import (
 from bustan.contracts import HttpRequest
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
+from bustan.pipeline.filters import handle_exception
 from bustan.runtime.compiler import GlobalPipelineProvider, compile_route_contracts
-from bustan.runtime.execution import _application_runtime, compile_execution_plans
+from bustan.runtime.execution import (
+    RequestLimitExceptionFilter,
+    RequestTimeoutError,
+    _application_runtime,
+    _with_limit_filter,
+    compile_execution_plans,
+    request_limits_of,
+    set_request_limits,
+)
+from bustan.runtime.params import RequestBodyTooLargeError, RequestLimits
 from bustan.testing import AsgiTestClient
 
 
@@ -260,3 +274,111 @@ def test_guards_run_before_the_controller_and_its_providers_are_constructed() ->
 
     assert response.status_code == 200
     assert events == ["guard", "provider", "controller", "handler"]
+
+
+def test_request_limits_default_when_an_application_declares_none() -> None:
+    @Controller("/users")
+    class UsersController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    application = create_app(AppModule)
+
+    assert request_limits_of(application) == RequestLimits()
+
+
+def test_request_limits_are_read_back_from_the_application_they_were_set_on() -> None:
+    # The limits belong to an application rather than to the process, and they are read
+    # back through whatever the transport hands over, which is the server rather than
+    # the application on the served path.
+    @Controller("/users")
+    class UsersController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    application = create_app(AppModule)
+    limits = RequestLimits(max_body_bytes=64, timeout_seconds=0.5, sync_handler_threads=3)
+    set_request_limits(application, limits)
+
+    assert request_limits_of(application) is limits
+    assert request_limits_of(application.get_http_server()) is limits
+
+
+def test_the_limit_filter_answers_an_oversized_body_with_413() -> None:
+    context = cast(Any, SimpleNamespace(request=SimpleNamespace(path="/uploads")))
+    error = RequestBodyTooLargeError("The request body declares 9 bytes, over the 4 byte limit")
+
+    response = anyio.run(RequestLimitExceptionFilter().catch, error, context)
+
+    assert response is not None
+    assert response.status_code == 413
+    assert response.media_type == "application/problem+json"
+    assert json.loads(response.body) == {
+        "type": "about:blank",
+        "title": "Content Too Large",
+        "status": 413,
+        "detail": "The request body declares 9 bytes, over the 4 byte limit",
+        "instance": "/uploads",
+    }
+
+
+def test_the_limit_filter_answers_a_timeout_with_504_and_no_configured_budget() -> None:
+    # The message names the budget the deployment chose, which is how long a caller
+    # would have to hold a connection to occupy a worker. The status's own reason is
+    # what the caller is told instead.
+    context = cast(Any, SimpleNamespace(request=SimpleNamespace(path="/slow")))
+    error = RequestTimeoutError("The request exceeded the 0.25 second limit")
+
+    response = anyio.run(RequestLimitExceptionFilter().catch, error, context)
+
+    assert response is not None
+    assert response.status_code == 504
+    assert json.loads(response.body) == {
+        "type": "about:blank",
+        "title": "Gateway Timeout",
+        "status": 504,
+        "detail": "Gateway Timeout",
+        "instance": "/slow",
+    }
+
+
+def test_the_limit_filter_leaves_every_other_exception_to_the_rest_of_the_chain() -> None:
+    context = cast(Any, SimpleNamespace(request=SimpleNamespace(path="/anything")))
+
+    assert anyio.run(RequestLimitExceptionFilter().catch, RuntimeError("boom"), context) is None
+
+
+def test_the_limit_filter_is_offered_the_exception_after_the_applications_own() -> None:
+    # Placed first is offered last: the chain prefers a later-declared filter over an
+    # earlier one of the same breadth, so an application never loses control of how its
+    # own timeouts are rendered by the framework having an answer of its own.
+    class ApplicationFilter(ExceptionFilter):
+        exception_types = (Exception,)
+
+        async def catch(self, exc: Exception, context: ExecutionContext) -> object:
+            return {"detail": "mine"}
+
+    application_filter = ApplicationFilter()
+    chain = _with_limit_filter((application_filter,))
+
+    assert chain[0] is not application_filter
+    assert isinstance(chain[0], RequestLimitExceptionFilter)
+    context = cast(Any, SimpleNamespace(request=SimpleNamespace(path="/slow")))
+    result = anyio.run(
+        handle_exception,
+        context,
+        RequestTimeoutError("The request exceeded the 0.25 second limit"),
+        chain,
+    )
+
+    assert result == {"detail": "mine"}
