@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, cast
 
 from starlette.requests import Request
@@ -18,9 +19,13 @@ from ...contracts import (
     Url,
     request_slots,
 )
+from ...runtime.execution import request_limits_of
+from ...runtime.params import RequestBodyTooLargeError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from ...runtime.params import RequestLimits
 
 
 class StarletteHttpRequest:
@@ -135,19 +140,66 @@ class StarletteHttpRequest:
         return self._request.app
 
     async def body(self) -> bytes:
-        """Read the whole request body."""
+        """Read the whole request body, refusing one larger than the limit allows.
 
-        return await self._request.body()
+        The refusal happens at the chunk that crosses the limit rather than after the
+        last one, so a body the application will not accept is never held here in full.
+        The limit is the one the application serving this request declared, read now
+        rather than when the request was wrapped, because an application declares its
+        limits after its routes are built.
+
+        What was read is handed to the Starlette request's own body cache, so form
+        parsing and anything reading that request directly see the same bytes and the
+        client is never asked for them twice.
+        """
+
+        limit = self._limits().max_body_bytes
+        if limit is None:
+            return await self._request.body()
+
+        chunks: list[bytes] = []
+        received = 0
+        stream = self._request.stream()
+        try:
+            async for chunk in stream:
+                received += len(chunk)
+                if received > limit:
+                    raise RequestBodyTooLargeError(
+                        f"The request body exceeds the {limit} byte limit"
+                    )
+                chunks.append(chunk)
+        finally:
+            # Whatever the client is still sending is left unread and the stream is
+            # closed: reading to the end to be polite about it would spend exactly the
+            # memory the limit exists to refuse. The server stops reading the connection
+            # once the response has been written.
+            await stream.aclose()
+
+        body = b"".join(chunks)
+        # This is the attribute Starlette's own body read fills, and filling it here is
+        # what makes this read the request's one read rather than a read beside it.
+        self._request._body = body
+        return body
 
     async def json(self) -> object:
-        """Read the request body and decode it as JSON."""
+        """Read the request body under the body limit and decode it as JSON."""
 
-        return await self._request.json()
+        return json.loads(await self.body())
 
     async def form(self) -> HttpFormData:
         """Read the request body as form data, uploaded files included."""
 
         return cast(HttpFormData, await self._request.form())
+
+    def _limits(self) -> RequestLimits:
+        """Return the limits the application serving this request reads it under.
+
+        A request that arrived without an application behind it is read under the
+        defaults rather than under no limit, because a wrapper with nothing to ask is
+        not a reason to let an unauthenticated caller size the buffer.
+        """
+
+        return request_limits_of(self._request.scope.get("app"))
 
 
 def from_starlette_request(request: HttpRequest | Request | object) -> HttpRequest:
