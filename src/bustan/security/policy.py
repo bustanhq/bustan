@@ -8,8 +8,11 @@ from typing import TypeVar, cast
 from ..kernel.errors import InvalidPipelineError
 from ..kernel.utils import _unwrap_handler
 from ..pipeline.metadata import (
+    AuditPolicy,
     AuthPolicy,
+    CachePolicy,
     DeprecationPolicy,
+    IdempotencyPolicy,
     RateLimitPolicy,
     extend_controller_policy_metadata,
     extend_handler_policy_metadata,
@@ -39,56 +42,15 @@ def RateLimit(*, limit: int, window: str) -> Callable[[DecoratedT], DecoratedT]:
 
 
 def Cache(*, ttl: int) -> Callable[[DecoratedT], DecoratedT]:
-    """Refuse to decorate: this framework does not cache responses.
-
-    Nothing in the request path stores or serves a cached response, so a route marked
-    as cached would be recomputed on every request while reading, to anyone who opens
-    the file, as though it were not. Declaring the policy therefore fails where it is
-    written rather than in production, and it fails while the application is being
-    built rather than once it is serving. Cache in front of the application, or inside
-    the handler, until this framework can do it.
-    """
-
-    raise InvalidPipelineError(
-        "Cache is not implemented: no response is cached, so the decorator would be "
-        "inert. Remove it and cache in front of the application or inside the handler."
-    )
+    return _policy_decorator(cache=CachePolicy(ttl=ttl))
 
 
 def Idempotent(*, key_header: str = "Idempotency-Key") -> Callable[[DecoratedT], DecoratedT]:
-    """Refuse to decorate: this framework does not deduplicate idempotency keys.
-
-    No key is stored and no repeated request is recognised, so a route marked as
-    idempotent would execute its side effect once per retry while reading as though it
-    executed once in total. Declaring the policy therefore fails where it is written
-    rather than in production, and it fails while the application is being built rather
-    than once it is serving. Deduplicate inside the handler, against whatever store
-    already holds the side effect, until this framework can do it.
-    """
-
-    raise InvalidPipelineError(
-        "Idempotent is not implemented: no idempotency key is stored or compared, so "
-        "the decorator would be inert. Remove it and deduplicate inside the handler."
-    )
+    return _policy_decorator(idempotency=IdempotencyPolicy(key_header=key_header))
 
 
 def Audit(*, event: str) -> Callable[[DecoratedT], DecoratedT]:
-    """Refuse to decorate: this framework writes no audit record.
-
-    Nothing observes the request and nothing writes anywhere, so a route marked as
-    audited would leave no trace of who called it while reading as though every call
-    were on record. That is the most expensive way for this gap to be discovered, which
-    is why declaring the policy fails where it is written rather than in production,
-    and fails while the application is being built rather than once it is serving.
-    Write the record from the handler, or from an interceptor of your own, until this
-    framework can do it.
-    """
-
-    raise InvalidPipelineError(
-        "Audit is not implemented: no audit record is written, so the decorator would "
-        "be inert and the route would leave no audit trail. Remove it and write the "
-        "record from the handler or from an interceptor."
-    )
+    return _policy_decorator(audit=AuditPolicy(event=event))
 
 
 def Owner(name: str) -> Callable[[DecoratedT], DecoratedT]:
@@ -117,6 +79,9 @@ def _policy_decorator(
     roles: tuple[str, ...] = (),
     permissions: tuple[str, ...] = (),
     rate_limit: RateLimitPolicy | None = None,
+    cache: CachePolicy | None = None,
+    idempotency: IdempotencyPolicy | None = None,
+    audit: AuditPolicy | None = None,
     owner: str | None = None,
     deprecation: DeprecationPolicy | None = None,
 ) -> Callable[[DecoratedT], DecoratedT]:
@@ -131,6 +96,9 @@ def _policy_decorator(
                     roles=roles,
                     permissions=permissions,
                     rate_limit=rate_limit,
+                    cache=cache,
+                    idempotency=idempotency,
+                    audit=audit,
                     owner=owner,
                     deprecation=deprecation,
                 ),
@@ -149,6 +117,9 @@ def _policy_decorator(
             roles=roles,
             permissions=permissions,
             rate_limit=rate_limit,
+            cache=cache,
+            idempotency=idempotency,
+            audit=audit,
             owner=owner,
             deprecation=deprecation,
         )

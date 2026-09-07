@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from bustan import Controller, Get, Module, SkipThrottle
-from bustan.kernel.errors import InvalidPipelineError, RouteDefinitionError
+from bustan.kernel.errors import RouteDefinitionError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
 from bustan.runtime.compiler import compile_route_contracts
@@ -28,6 +28,9 @@ def test_each_policy_decorator_family_contributes_to_one_compiled_plan() -> None
     @Roles("admin")
     @Permissions("users:read")
     @RateLimit(limit=100, window="1m")
+    @Cache(ttl=60)
+    @Idempotent(key_header="Idempotency-Key")
+    @Audit(event="user.read")
     @Owner("identity-platform")
     @Controller("/users")
     class UsersController:
@@ -56,6 +59,12 @@ def test_each_policy_decorator_family_contributes_to_one_compiled_plan() -> None
     assert contract.policy_plan.rate_limit.limit == 100
     assert contract.policy_plan.rate_limit.window == "1m"
     assert contract.policy_plan.rate_limit.skip is True
+    assert contract.policy_plan.cache is not None
+    assert contract.policy_plan.cache.ttl == 60
+    assert contract.policy_plan.idempotency is not None
+    assert contract.policy_plan.idempotency.key_header == "Idempotency-Key"
+    assert contract.policy_plan.audit is not None
+    assert contract.policy_plan.audit.event == "user.read"
     assert contract.policy_plan.owner == "identity-platform"
     assert contract.policy_plan.deprecation is not None
     assert contract.policy_plan.deprecation.replacement == "/v2/users"
@@ -203,65 +212,3 @@ def test_empty_routes_still_expose_an_explicit_empty_policy_plan() -> None:
     assert contract.policy_plan.audit is None
     assert contract.policy_plan.owner is None
     assert contract.policy_plan.deprecation is None
-
-
-def test_the_unimplemented_policy_decorators_refuse_to_decorate() -> None:
-    """Each names itself, says it is not implemented, and says what to do instead.
-
-    A decorator that sets metadata nobody reads is indistinguishable, at the call site,
-    from one that works, so the route that declares it is the last place the gap can be
-    caught before production. Refusing at declaration time is what makes it catchable:
-    the application fails to build rather than serving traffic that quietly has no
-    cache, no deduplication and no audit trail.
-    """
-
-    with pytest.raises(InvalidPipelineError, match="Cache is not implemented"):
-        Cache(ttl=60)
-
-    with pytest.raises(InvalidPipelineError, match="Idempotent is not implemented"):
-        Idempotent(key_header="Idempotency-Key")
-
-    with pytest.raises(InvalidPipelineError, match="Audit is not implemented"):
-        Audit(event="user.delete")
-
-
-def test_a_controller_declaring_an_unimplemented_policy_cannot_be_defined() -> None:
-    """The refusal reaches the class, not just the bare decorator call."""
-
-    with pytest.raises(InvalidPipelineError, match="Audit is not implemented"):
-
-        @Audit(event="user.delete")
-        @Controller("/users")
-        class UsersController:
-            @Get("/")
-            def list_users(self) -> dict[str, str]:
-                return {"status": "ok"}
-
-
-def test_no_compiled_plan_can_carry_a_cache_idempotency_or_audit_policy() -> None:
-    """Nothing reads these fields, and now nothing can set them either.
-
-    The fields stay on the plan because the compiler builds them, but the only way to
-    fill one was a decorator that no longer accepts being applied, so a route that
-    compiles is a route whose declared policy is one the request path honours.
-    """
-
-    @RateLimit(limit=100, window="1m")
-    @Controller("/users")
-    class UsersController:
-        @Get("/")
-        def list_users(self) -> dict[str, str]:
-            return {"status": "ok"}
-
-    @Module(controllers=[UsersController])
-    class AppModule:
-        pass
-
-    graph = build_module_graph(AppModule)
-    container = build_container(graph)
-
-    [contract] = compile_route_contracts(graph, container)
-
-    assert contract.policy_plan.cache is None
-    assert contract.policy_plan.idempotency is None
-    assert contract.policy_plan.audit is None
