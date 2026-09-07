@@ -12,7 +12,7 @@ Modules and providers can participate in application startup and shutdown. Busta
 
 Each hook may be synchronous or asynchronous.
 
-`signal` names the signal that asked the process to stop. No adapter supplies one yet, so it is always `None`; the parameter is part of the hook signature so that applications written against it keep working when an adapter starts passing a real signal name.
+`signal` names the signal that asked the process to stop, as the platform names it: `"SIGTERM"` or `"SIGINT"`. It is `None` when nothing signalled the process and a caller asked for the shutdown instead, which is what `await context.close()` and `await app.close()` do. The Starlette adapter supplies it; an adapter whose transport does not report a signal passes `None` always.
 
 ## Who Receives Provider Hooks
 
@@ -101,6 +101,25 @@ await context.init()
 service = context.get(DatabasePool)
 await context.close()
 ```
+
+## Graceful Shutdown
+
+A deployment replaces one process with another while callers are mid-request, so what a process does between being told to stop and exiting decides whether those callers see an answer or a dropped connection. `await app.listen(port)` installs that sequence for as long as it serves. On `SIGTERM` or `SIGINT`, in this order:
+
+1. **Readiness turns negative.** The server stops admitting requests the moment the signal arrives. Anything that arrives from then on is answered `503 Service Unavailable` with a problem-details body, and the connection is closed with it, so a load balancer polling this process learns to route elsewhere rather than sending it work it will not finish.
+2. **The requests already in flight are drained.** They keep running, and the shutdown waits for the last of them, for at most `drain_timeout` seconds.
+3. **The teardown hooks run**, in the order the stages above describe, and are told the name of the signal that arrived.
+4. **The listening port is released.** `listen()` returns once the server has let go of it, so the port can be bound again.
+
+A request that outlasts the drain window is cancelled rather than waited on, because a shutdown that waited indefinitely is a shutdown one slow caller could refuse to allow. The window is `drain_timeout` seconds, ten by default:
+
+```python
+await app.listen(8000, drain_timeout=30.0)
+```
+
+`await app.close()` runs exactly the same sequence for a caller rather than a signal: the server stops, in-flight requests drain, the hooks run with `signal` as `None`, and the call returns once the port is free. With no server running it is the teardown on its own, which is what `ApplicationContext.close()` has always been.
+
+The drain belongs to the adapter, because only the adapter knows what its transport is serving. An adapter whose transport cannot report that is stopped and torn down as two steps instead, which is all it can promise.
 
 ## After Shutdown
 
