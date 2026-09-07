@@ -25,7 +25,6 @@ src/
     app_service.py       # root provider
 tests/
   my_app/
-    __init__.py
     test_app_controller.py
     test_app_module.py
     test_app_service.py
@@ -139,21 +138,18 @@ Expected response:
 
 ## Add A First Test
 
-The scaffold includes a controller test built around `bustan.testing.create_test_app()` and Starlette's `TestClient`:
+The scaffold includes a controller test built around `bustan.testing.create_test_app()` and `bustan.testing.AsgiTestClient`. The client ships with Bustan, so the generated test runs against the packages the steps above installed and needs no HTTP client package of its own:
 
 ```python
-from starlette.testclient import TestClient
-
-from bustan.testing import create_test_app
+from bustan.testing import AsgiTestClient, create_test_app
 
 from my_app.app_module import AppModule
 
 
 def test_get_message_returns_200_with_expected_payload() -> None:
-    application = create_test_app(AppModule)
-    with TestClient(application) as client:
+    app = create_test_app(AppModule)
+    with AsgiTestClient(app) as client:
         response = client.get("/")
-
     assert response.status_code == 200
     assert response.json() == {"message": "Hello from My App"}
 ```
@@ -199,7 +195,7 @@ compiled = await (
 )
 ```
 
-Both replace the provider before the application starts, which is the only point at which a replacement is honoured in full. An override does not stand beside the provider it replaces; it replaces it for the whole application, including the singletons already built from it. A running application therefore refuses one and says so, rather than swapping a dependency that everything already holding it would keep. To serve requests against the replacement, build a client from the compiled module:
+Both replace the provider before the application starts, which is the only point at which a replacement is honoured in full. An override does not stand beside the provider it replaces; it replaces it for the whole application, including the singletons already built from it. A running application therefore refuses one and says so, rather than swapping a dependency that everything already holding it would keep. To serve requests against the replacement, build a client from the compiled module. It is the same `AsgiTestClient` the generated test uses:
 
 ```python
 with compiled.create_client() as client:

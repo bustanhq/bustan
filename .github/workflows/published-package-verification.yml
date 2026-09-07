@@ -78,14 +78,26 @@ jobs:
           python -c "import bustan; print(bustan.__version__)"
           bustan --help
 
+      # Presence is not the claim a release makes about "bustan init". The claim is that
+      # a project it scaffolds works, and the only way to know that is to run the tests
+      # the scaffolder just wrote, from the published artifact, with nothing installed
+      # beyond what the scaffolder tells a user to add.
       - name: Verify scaffolding from published artifact
         run: |
+          # The runner's default shell is bash -e, which leaves a failing command in a
+          # pipeline invisible because only the last exit status is read. The scaffolder
+          # output below is piped, so pipefail is what makes a failing "bustan init" fail
+          # the job; nounset catches a version that never resolved.
+          set -euo pipefail
           cli_smoke_root="$(mktemp -d)"
           mkdir "$cli_smoke_root/smoke-app"
           cd "$cli_smoke_root/smoke-app"
           uv init --package .
           uv add "bustan==${BUSTAN_VERSION}"
-          uv run bustan init
+          uv run bustan init | tee "$cli_smoke_root/init-output.txt"
+          # The file assertions stay. They are cheap, and when the scaffolder writes
+          # nothing at all they name the missing file, which a collection error reports
+          # far less clearly.
           test -f "$cli_smoke_root/smoke-app/pyproject.toml"
           test -f "$cli_smoke_root/smoke-app/README.md"
           test -f "$cli_smoke_root/smoke-app/src/smoke_app/__init__.py"
@@ -97,3 +109,31 @@ jobs:
           test -f "$cli_smoke_root/smoke-app/tests/smoke_app/test_app_module.py"
           grep -q 'start = "smoke_app:main"' "$cli_smoke_root/smoke-app/pyproject.toml"
           grep -q 'dev = "smoke_app:dev"' "$cli_smoke_root/smoke-app/pyproject.toml"
+          # No dependency below is chosen here. Both install lines are read back out of
+          # what "bustan init" printed under "Next steps", which is what a user actually
+          # types, so this step installs what the scaffolder asked for and cannot drift
+          # from it. A printed line this step cannot parse fails the job rather than
+          # falling back to a list that may be years old.
+          #
+          # The runtime line is read even though a version is already installed above,
+          # because it is where the scaffolder names the extras a scaffolded project
+          # needs, and the pinned install above carries none of them.
+          runtime_requirement="$(sed -n "s/^  uv add \('\{0,1\}bustan[^ ]*\)$/\1/p" "$cli_smoke_root/init-output.txt" | tr -d "\"'")"
+          case "$runtime_requirement" in
+            bustan | bustan\[*\]) ;;
+            *)
+              echo "bustan init printed no runtime install line this step understands" >&2
+              exit 1
+              ;;
+          esac
+          uv add "${runtime_requirement}==${BUSTAN_VERSION}"
+          dev_requirements="$(sed -n 's/^  uv add --dev \(.*\)$/\1/p' "$cli_smoke_root/init-output.txt")"
+          if [ -z "$dev_requirements" ]; then
+            echo "bustan init printed no dev install line" >&2
+            exit 1
+          fi
+          # Unquoted on purpose: the printed line names several packages and each has to
+          # reach uv as its own argument.
+          # shellcheck disable=SC2086
+          uv add --dev $dev_requirements
+          uv run pytest

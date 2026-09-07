@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
-
-from starlette.testclient import TestClient
 
 from bustan import Application, create_app
-from bustan.testing import CompiledTestingModule, create_test_app, create_testing_module
+from bustan.testing import (
+    AsgiTestClient,
+    CompiledTestingModule,
+    create_test_app,
+    create_testing_module,
+)
 
 from .app_module import AppModule
 from .fake_greeting_service import FakeGreetingService
@@ -56,7 +58,7 @@ def demo() -> None:
         AppModule,
         provider_overrides={GreetingService: FakeGreetingService("from create_test_app")},
     )
-    with TestClient(cast(Any, replaced_at_creation)) as client:
+    with AsgiTestClient(replaced_at_creation) as client:
         print(client.get("/greetings").json())
 
     compiled = compile_with_fake_greeting("from create_testing_module")
@@ -67,5 +69,5 @@ def demo() -> None:
         asyncio.run(compiled.close())
 
     untouched = create_test_app(AppModule)
-    with TestClient(cast(Any, untouched)) as client:
+    with AsgiTestClient(untouched) as client:
         print(client.get("/greetings").json())

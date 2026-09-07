@@ -3,7 +3,6 @@
 from typing import Annotated, Any, cast
 
 import pytest
-from starlette.testclient import TestClient
 
 from bustan import (
     Controller,
@@ -15,7 +14,12 @@ from bustan import (
     create_app_context,
 )
 from bustan.errors import ProviderResolutionError
-from bustan.testing import create_test_app, create_testing_module, override_provider
+from bustan.testing import (
+    AsgiTestClient,
+    create_test_app,
+    create_testing_module,
+    override_provider,
+)
 
 
 def test_create_test_app_applies_provider_overrides() -> None:
@@ -48,7 +52,7 @@ def test_create_test_app_applies_provider_overrides() -> None:
         provider_overrides={GreetingService: FakeGreetingService()},
     )
 
-    with TestClient(cast(Any, application)) as client:
+    with AsgiTestClient(cast(Any, application)) as client:
         response = client.get("/greetings")
 
     assert response.status_code == 200
@@ -150,7 +154,7 @@ def test_an_override_is_refused_while_a_test_client_is_serving() -> None:
 
     application = create_app(AppModule)
 
-    with TestClient(cast(Any, application)) as client:
+    with AsgiTestClient(cast(Any, application)) as client:
         assert client.get("/greetings").json() == {"message": "production"}
 
         with pytest.raises(ProviderResolutionError) as direct:

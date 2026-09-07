@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import fields
+from importlib.abc import MetaPathFinder
+from importlib.machinery import ModuleSpec
+from types import ModuleType
 from typing import cast
 
 import pytest
+from starlette.responses import Response
 
 from bustan import (
     APP_GUARD,
@@ -170,6 +177,99 @@ def test_route_contracts_resolve_stringified_return_annotations_for_response_str
 
     [contract] = compile_route_contracts(graph, container)
 
+    assert contract.response_plan.strategy is ResponseStrategy.RAW
+
+
+class _RefuseWebServerImports(MetaPathFinder):
+    """Import finder that answers for a package as the interpreter would if it were absent."""
+
+    def __init__(self, package: str) -> None:
+        self._package = package
+
+    def find_spec(
+        self,
+        fullname: str,
+        path: Sequence[str] | None = None,
+        target: ModuleType | None = None,
+    ) -> ModuleSpec | None:
+        if fullname.partition(".")[0] == self._package:
+            raise ModuleNotFoundError(f"No module named {fullname!r}", name=fullname)
+        return None
+
+
+@contextmanager
+def _package_uninstalled(package: str) -> Iterator[None]:
+    """Run a block as if a package were not installed in the environment at all.
+
+    The suite runs with every optional web server present, so a path that only works
+    because one of them is importable cannot be told from a path that does not need one
+    unless the absence is staged. Both halves of the absence are staged here: an already
+    imported module is taken back out of the module table, and a fresh import of one
+    raises the error a missing distribution raises.
+    """
+
+    hidden = {
+        name: module for name, module in sys.modules.items() if name.partition(".")[0] == package
+    }
+    for name in hidden:
+        del sys.modules[name]
+
+    finder = _RefuseWebServerImports(package)
+    sys.meta_path.insert(0, finder)
+    try:
+        yield
+    finally:
+        sys.meta_path.remove(finder)
+        sys.modules.update(hidden)
+
+
+def test_routes_compile_with_no_web_server_installed() -> None:
+    """A route compiles in an install that named no web server extra.
+
+    Compiling a route is on the startup path of every application, including one served
+    by an adapter the framework does not ship, so it may not need any particular web
+    server to be importable.
+    """
+
+    @Controller("/health")
+    class HealthController:
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[HealthController])
+    class AppModule:
+        pass
+
+    with _package_uninstalled("starlette"):
+        graph = build_module_graph(AppModule)
+        container = build_container(graph)
+
+        [contract] = compile_route_contracts(graph, container)
+
+    assert contract.full_path == "/health"
+    assert contract.response_plan.strategy is ResponseStrategy.STANDARD
+
+
+def test_a_route_declaring_a_web_server_response_type_compiles_to_the_raw_strategy() -> None:
+    """A declared transport response is still recognised where that transport is present."""
+
+    @Controller("/reports")
+    class ReportsController:
+        @Get("/")
+        def download(self) -> Response:
+            return Response(b"report", media_type="text/plain")
+
+    @Module(controllers=[ReportsController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+
+    [contract] = compile_route_contracts(graph, container)
+
+    assert contract.response_plan.declared_type is Response
     assert contract.response_plan.strategy is ResponseStrategy.RAW
 
 
