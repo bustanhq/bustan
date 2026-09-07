@@ -33,7 +33,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Protocol, cast
 
 from ..adapters.asgi import AsgiAdapter
 from ..app.bootstrap import create_app
@@ -46,6 +46,8 @@ from ..common.decorators.parameter import (
     Ip,
     Param,
     Query,
+    UploadedFile,
+    UploadedFiles,
     create_param_decorator,
 )
 from ..common.decorators.route import Get, Post
@@ -221,7 +223,7 @@ CurrentRequestPath = create_param_decorator(
 def _build_parameter_module(_fixtures: Path) -> type[object]:
     """An application with one route per parameter source the binder compiles."""
 
-    @Module(controllers=[_addressing_controller(), _payload_controller()])
+    @Module(controllers=[_addressing_controller(), _payload_controller(), _upload_controller()])
     class ParameterModule:
         pass
 
@@ -302,14 +304,96 @@ def _payload_controller() -> type[object]:
     return PayloadController
 
 
-# The two parameter sources the suite does not certify, named here because a coverage
-# gap nobody wrote down is indistinguishable from an oversight. Both read the form body
-# the adapter parsed, and the two adapters do not answer the same request the same way:
-# one parses a form from the standard library alone, the other delegates to a server
-# library that refuses every form body, urlencoded included, unless an optional package
-# this project does not depend on is installed. Certifying them would make the matrix
-# red for a difference no change to this file can close.
-UNCERTIFIED_PARAMETER_SOURCES = ("file", "files")
+class ConformanceUpload(Protocol):
+    """The part of one uploaded file the two form-body cases hold an adapter to.
+
+    A form's values are typed ``object`` at the request contract, because the framework
+    names no upload type of its own: what a handler receives is whatever the transport
+    parsed the body into. This protocol is what the cases assert those objects have in
+    common, so an adapter whose uploads carry a different name for the file name or the
+    part's media type fails the case rather than passing it by returning ``None``.
+    """
+
+    filename: str | None
+    content_type: str | None
+    size: int | None
+
+    async def read(self, size: int = -1) -> bytes:
+        raise NotImplementedError
+
+
+# The boundary and bodies the form-body cases post. They are written out rather than
+# built by a client library because every adapter's own test client sends them: a body
+# one client assembled would be certifying that client, not the adapter under it.
+UPLOAD_BOUNDARY = "bustanconformanceboundary"
+UPLOAD_MEDIA_TYPE = f"multipart/form-data; boundary={UPLOAD_BOUNDARY}"
+
+SINGLE_UPLOAD_BODY = (
+    f"--{UPLOAD_BOUNDARY}\r\n"
+    'Content-Disposition: form-data; name="document"; filename="note.txt"\r\n'
+    "Content-Type: text/plain\r\n"
+    "\r\n"
+    "conformance upload\r\n"
+    f"--{UPLOAD_BOUNDARY}--\r\n"
+).encode()
+
+MULTIPLE_UPLOAD_BODY = (
+    f"--{UPLOAD_BOUNDARY}\r\n"
+    'Content-Disposition: form-data; name="documents"; filename="first.txt"\r\n'
+    "Content-Type: text/plain\r\n"
+    "\r\n"
+    "first upload\r\n"
+    f"--{UPLOAD_BOUNDARY}\r\n"
+    'Content-Disposition: form-data; name="documents"; filename="second.txt"\r\n'
+    "Content-Type: text/plain\r\n"
+    "\r\n"
+    "second upload\r\n"
+    f"--{UPLOAD_BOUNDARY}--\r\n"
+).encode()
+
+
+def _upload_controller() -> type[object]:
+    """Routes for the two sources read from a parsed form body.
+
+    These are the sources a transport is most likely to differ on, because parsing a
+    form is work the framework hands to the adapter entirely: one adapter parses the
+    body itself and another delegates to its server library, which may not be able to.
+    The routes therefore report what the upload carries rather than only that one
+    arrived, so a difference in the file name, the part's media type or its length is a
+    failing case instead of an answer that happens to match.
+    """
+
+    @Controller("/parameters")
+    class UploadController:
+        @Post("/file")
+        async def read_file(
+            self, document: Annotated[ConformanceUpload, UploadedFile]
+        ) -> dict[str, object]:
+            return {
+                "filename": document.filename,
+                "content_type": document.content_type,
+                "size": document.size,
+                "content": (await document.read()).decode("utf-8"),
+            }
+
+        @Post("/files")
+        async def read_files(
+            self, documents: Annotated[list[ConformanceUpload], UploadedFiles]
+        ) -> dict[str, object]:
+            return {
+                "filenames": [document.filename for document in documents],
+                "contents": [(await document.read()).decode("utf-8") for document in documents],
+            }
+
+    return UploadController
+
+
+# The parameter sources the suite does not certify, named here because a coverage gap
+# nobody wrote down is indistinguishable from an oversight. It is empty, and the test
+# that adds it to the certified dimensions and expects every ParameterSource back is
+# what keeps it that way: a source dropped from the suite has to be admitted here
+# before the coverage test will pass again.
+UNCERTIFIED_PARAMETER_SOURCES: tuple[str, ...] = ()
 
 
 PARAMETER_CASES: tuple[ConformanceCase, ...] = (
@@ -340,6 +424,40 @@ PARAMETER_CASES: tuple[ConformanceCase, ...] = (
             method="POST", path="/parameters/body-field", json_body={"name": "Grace"}
         ),
         expected=_expect_json({"name": "Grace"}),
+    ),
+    ConformanceCase(
+        name="parameter_source_file",
+        dimension="parameter source: file",
+        request=ConformanceRequest(
+            method="POST",
+            path="/parameters/file",
+            headers=(("content-type", UPLOAD_MEDIA_TYPE),),
+            content=SINGLE_UPLOAD_BODY,
+        ),
+        expected=_expect_json(
+            {
+                "filename": "note.txt",
+                "content_type": "text/plain",
+                "size": 18,
+                "content": "conformance upload",
+            }
+        ),
+    ),
+    ConformanceCase(
+        name="parameter_source_files",
+        dimension="parameter source: files",
+        request=ConformanceRequest(
+            method="POST",
+            path="/parameters/files",
+            headers=(("content-type", UPLOAD_MEDIA_TYPE),),
+            content=MULTIPLE_UPLOAD_BODY,
+        ),
+        expected=_expect_json(
+            {
+                "filenames": ["first.txt", "second.txt"],
+                "contents": ["first upload", "second upload"],
+            }
+        ),
     ),
     ConformanceCase(
         name="parameter_source_header",
@@ -1093,6 +1211,7 @@ __all__ = (
     "ConformanceCheck",
     "ConformanceRequest",
     "ConformanceScenario",
+    "ConformanceUpload",
     "ResponseObservation",
     "SCENARIOS",
     "describe_difference",
