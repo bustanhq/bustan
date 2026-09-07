@@ -971,6 +971,41 @@ def test_coerce_value_covers_container_pydantic_and_scalar_error_paths() -> None
         )
 
 
+def test_coerce_value_composes_stable_messages_for_missing_dataclass_fields() -> None:
+    @dataclass(frozen=True, slots=True)
+    class RequiredPayload:
+        name: str
+        count: int
+        enabled: bool = True
+
+    with pytest.raises(ParameterBindingError) as single_info:
+        _coerce_value(
+            {"name": "Ada"},
+            annotation=RequiredPayload,
+            parameter_name="payload",
+            source_description="request body",
+        )
+
+    assert str(single_info.value) == (
+        "Could not bind request body 'payload' to RequiredPayload: missing required field 'count'"
+    )
+    assert "__init__" not in str(single_info.value)
+    assert "positional argument" not in str(single_info.value)
+
+    with pytest.raises(ParameterBindingError) as multiple_info:
+        _coerce_value(
+            {},
+            annotation=RequiredPayload,
+            parameter_name="payload",
+            source_description="request body",
+        )
+
+    assert str(multiple_info.value) == (
+        "Could not bind request body 'payload' to RequiredPayload: "
+        "missing required fields 'name', 'count'"
+    )
+
+
 def test_compile_parameter_source_covers_explicit_safe_unsafe_and_strict_modes() -> None:
     class StubController:
         pass
