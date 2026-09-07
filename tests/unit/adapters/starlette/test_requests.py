@@ -9,6 +9,7 @@ import pytest
 from starlette.datastructures import URL as StarletteURL
 from starlette.datastructures import QueryParams as StarletteQueryParams
 from starlette.datastructures import State as StarletteState
+from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.requests import Request
 
 from bustan.adapters.starlette import StarletteHttpRequest, from_starlette_request
@@ -269,3 +270,86 @@ def test_the_bounded_read_is_the_requests_one_read(
     assert body == b"name=Ada&name=Grace"
     assert names == ["Ada", "Grace"]
     assert sum(handed_out) == len(b"name=Ada&name=Grace")
+
+
+UPLOAD_BOUNDARY = "bustanteststarletteboundary"
+UPLOAD_MEDIA_TYPE = f"multipart/form-data; boundary={UPLOAD_BOUNDARY}"
+
+
+def _multipart(payload: bytes) -> bytes:
+    """One multipart body carrying *payload* as an uploaded file."""
+
+    head = (
+        f"--{UPLOAD_BOUNDARY}\r\n"
+        'Content-Disposition: form-data; name="document"; filename="note.txt"\r\n'
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+    ).encode()
+    return head + payload + f"\r\n--{UPLOAD_BOUNDARY}--\r\n".encode()
+
+
+def test_a_form_over_the_applications_upload_limit_is_refused_before_the_rest_arrives(
+    build_request: RequestFactory, build_app: AppFactory
+) -> None:
+    # Left to the transport, a multipart body has no total bound: its parser spools a
+    # part past a threshold onto disk, so the whole of a body no route will accept is
+    # written into this process before anything looks at the limit.
+    app = build_app()
+    set_request_limits(app, RequestLimits(max_upload_bytes=64))
+    request, handed_out = _chunked(
+        build_request(method="POST", path="/uploads", content_type=UPLOAD_MEDIA_TYPE, app=app),
+        _multipart(b"x" * 4096),
+        chunk_bytes=16,
+    )
+
+    with pytest.raises(RequestBodyTooLargeError, match="exceeds the 64 byte limit"):
+        anyio.run(StarletteHttpRequest(request).form)
+
+    assert sum(handed_out) <= 64 + 16
+
+
+def test_an_upload_within_the_applications_limit_is_still_served(
+    build_request: RequestFactory, build_app: AppFactory
+) -> None:
+    app = build_app()
+    set_request_limits(app, RequestLimits(max_upload_bytes=1024))
+    body = _multipart(b"conformance upload")
+    request, handed_out = _chunked(
+        build_request(method="POST", path="/uploads", content_type=UPLOAD_MEDIA_TYPE, app=app),
+        body,
+        chunk_bytes=16,
+    )
+
+    async def read_upload() -> tuple[str | None, bytes]:
+        form = await StarletteHttpRequest(request).form()
+        document = form.get("document")
+        assert isinstance(document, StarletteUploadFile)
+        return document.filename, await document.read()
+
+    filename, content = anyio.run(read_upload)
+
+    assert filename == "note.txt"
+    assert content == b"conformance upload"
+    assert sum(handed_out) == len(body)
+
+
+def test_a_form_is_read_under_the_upload_bound_and_not_the_body_bound(
+    build_request: RequestFactory, build_app: AppFactory
+) -> None:
+    # The two bounds are two figures for two different things, and a route that accepts
+    # uploads is expected to carry more than a body that binds ordinary parameters.
+    app = build_app()
+    set_request_limits(app, RequestLimits(max_body_bytes=16, max_upload_bytes=1024))
+    request, _ = _chunked(
+        build_request(method="POST", path="/uploads", content_type=UPLOAD_MEDIA_TYPE, app=app),
+        _multipart(b"conformance upload"),
+        chunk_bytes=16,
+    )
+
+    async def read_filename() -> object:
+        form = await StarletteHttpRequest(request).form()
+        document = form.get("document")
+        assert isinstance(document, StarletteUploadFile)
+        return document.filename
+
+    assert anyio.run(read_filename) == "note.txt"

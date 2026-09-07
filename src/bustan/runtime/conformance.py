@@ -830,14 +830,24 @@ FILTER_CASES: tuple[ConformanceCase, ...] = (
 )
 
 
-# What the request-limit scenario's application accepts, and a body two bytes past it.
-# The limit is the largest body the framework's own limits accept anywhere under their
-# defaults, so a body over it is past every bound the framework sets. That is what makes
-# these cases worth comparing: a transport keeping a byte ceiling of its own below this
-# answers them its own way, and the caller is told which of the two refused only by
+# What the request-limit scenario's application accepts as a body, and a body two bytes
+# past it. The limit is the largest body the framework's own limits accept anywhere under
+# their defaults, so a body over it is past every bound those defaults set. That is what
+# makes these cases worth comparing: a transport keeping a byte ceiling of its own below
+# this answers them its own way, and the caller is told which of the two refused only by
 # reading the status.
 REQUEST_LIMIT_MAX_BODY_BYTES = DEFAULT_MAX_UPLOAD_BYTES
 OVER_LIMIT_BODY_BYTES = REQUEST_LIMIT_MAX_BODY_BYTES + 2
+
+# What the same application accepts as an upload, and a form two bytes past it. It is
+# deliberately not the body figure: a form is read under the upload bound, so two figures
+# that differ are what make a transport reading a form under the wrong one fail these
+# cases rather than pass them by arithmetic. It is the higher of the two because a route
+# that accepts uploads is expected to carry more than one that binds a JSON document, and
+# it is only a megabyte higher so that a form past it is still inside any byte ceiling a
+# transport keeps of its own, leaving the application's figure to answer the caller.
+REQUEST_LIMIT_MAX_UPLOAD_BYTES = REQUEST_LIMIT_MAX_BODY_BYTES + 1024 * 1024
+OVER_LIMIT_FORM_BYTES = REQUEST_LIMIT_MAX_UPLOAD_BYTES + 2
 
 _OVER_LIMIT_BODY_PREFIX = b'{"title":"'
 _OVER_LIMIT_BODY_SUFFIX = b'"}'
@@ -855,14 +865,42 @@ def _over_limit_body() -> Iterator[bytes]:
     yield _OVER_LIMIT_BODY_PREFIX + b"x" * filler + _OVER_LIMIT_BODY_SUFFIX
 
 
+def _over_limit_form() -> Iterator[bytes]:
+    """Yield a multipart body past the upload limit, of undeclared length.
+
+    It carries one file part, because that is the part a transport delegating to a
+    parser of its own has no total bound on: such a parser bounds a part it holds in
+    memory and spools a file part onto disk instead, so a form nobody set a bound on is
+    a body of the caller's choosing written into the process. Like the body above it is
+    built when the case runs rather than held as a constant.
+    """
+
+    head = (
+        f"--{UPLOAD_BOUNDARY}\r\n"
+        'Content-Disposition: form-data; name="document"; filename="over.bin"\r\n'
+        "Content-Type: application/octet-stream\r\n"
+        "\r\n"
+    ).encode()
+    tail = f"\r\n--{UPLOAD_BOUNDARY}--\r\n".encode()
+    yield head
+    yield b"x" * (OVER_LIMIT_FORM_BYTES - len(head) - len(tail))
+    yield tail
+
+
 def _build_request_limit_module(_fixtures: Path) -> type[object]:
-    """An application with one route that binds a body, run under a raised body limit."""
+    """Routes that bind a body and an upload, run under the scenario's declared bounds."""
 
     @Controller("/limits")
     class RequestLimitController:
         @Post("/notes")
         def create_note(self, title: Annotated[str, Body("title")]) -> dict[str, object]:
             return {"length": len(title)}
+
+        @Post("/uploads")
+        async def receive_upload(
+            self, document: Annotated[ConformanceUpload, UploadedFile]
+        ) -> dict[str, object]:
+            return {"filename": document.filename, "content": (await document.read()).decode()}
 
     @Module(controllers=[RequestLimitController])
     class RequestLimitModule:
@@ -881,6 +919,12 @@ def _build_request_limit_module(_fixtures: Path) -> type[object]:
 # to refuse to spend.
 STREAMED_OVER_LIMIT_DETAIL = (
     f"The request body exceeds the {REQUEST_LIMIT_MAX_BODY_BYTES} byte limit"
+)
+
+# The same sentence for a form, which names the upload bound because that is the figure
+# a form is read under.
+STREAMED_OVER_UPLOAD_LIMIT_DETAIL = (
+    f"The request body exceeds the {REQUEST_LIMIT_MAX_UPLOAD_BYTES} byte limit"
 )
 
 
@@ -927,6 +971,30 @@ REQUEST_LIMIT_CASES: tuple[ConformanceCase, ...] = (
         ),
         expected=_expect_problem(
             413, "Content Too Large", STREAMED_OVER_LIMIT_DETAIL, "/limits/notes"
+        ),
+    ),
+    ConformanceCase(
+        name="request_limit_serves_a_form_within_the_limit",
+        dimension="request limit: form",
+        request=ConformanceRequest(
+            method="POST",
+            path="/limits/uploads",
+            headers=(("content-type", UPLOAD_MEDIA_TYPE),),
+            content=SINGLE_UPLOAD_BODY,
+        ),
+        expected=_expect_json({"filename": "note.txt", "content": "conformance upload"}),
+    ),
+    ConformanceCase(
+        name="request_limit_refuses_a_streamed_form_over_the_limit",
+        dimension="request limit: streamed form",
+        request=ConformanceRequest(
+            method="POST",
+            path="/limits/uploads",
+            headers=(("content-type", UPLOAD_MEDIA_TYPE),),
+            body_chunks=_over_limit_form,
+        ),
+        expected=_expect_problem(
+            413, "Content Too Large", STREAMED_OVER_UPLOAD_LIMIT_DETAIL, "/limits/uploads"
         ),
     ),
 )
@@ -1124,7 +1192,10 @@ SCENARIOS: tuple[ConformanceScenario, ...] = (
         "request limits",
         _build_request_limit_module,
         REQUEST_LIMIT_CASES,
-        limits=RequestLimits(max_body_bytes=REQUEST_LIMIT_MAX_BODY_BYTES),
+        limits=RequestLimits(
+            max_body_bytes=REQUEST_LIMIT_MAX_BODY_BYTES,
+            max_upload_bytes=REQUEST_LIMIT_MAX_UPLOAD_BYTES,
+        ),
     ),
     ConformanceScenario(
         "uri versioning",
