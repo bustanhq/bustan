@@ -197,7 +197,11 @@ def test_scaffolded_project_needs_no_reformatting(tmp_path: Path) -> None:
     # --isolated pins the run to the formatter's default settings, which is what a
     # scaffolded project gets: it carries no formatter configuration of its own, and
     # without this the result would depend on whatever configuration happens to sit
-    # above the temporary directory.
+    # above the temporary directory. Those defaults include a line length of 88, which
+    # is shorter than the one this repository formats itself at, so a template line
+    # between the two widths is rejected here and accepted everywhere else. That is the
+    # strictness a scaffolded project is actually measured by, and the templates have
+    # to be written to fit it rather than to fit this repository's own setting.
     completed = subprocess.run(
         [sys.executable, "-m", "ruff", "format", "--check", "--isolated", "."],
         cwd=tmp_path,
