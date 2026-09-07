@@ -25,15 +25,22 @@ if TYPE_CHECKING:
 
     from .types import Message, Receive, Scope
 
-# How many body bytes one request may send before it is refused. A body is read into
-# memory to be parsed, so an unauthenticated caller could otherwise grow that buffer
-# without limit; a deployment that genuinely serves larger bodies raises or removes the
-# limit when it builds the adapter.
-DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024
-
-
-class RequestBodyTooLarge(ValueError):
-    """Raised when a request body exceeds the limit the adapter was built with."""
+# How many body bytes this transport will read before it stops reading. A body is read
+# into memory to be parsed, so an unauthenticated caller could otherwise grow that
+# buffer without limit.
+#
+# The number is twice the largest body the framework's own request limits accept under
+# their defaults, and the doubling is the point rather than the value: a transport that
+# stopped reading below a limit the application had set would refuse a request the
+# application was configured to serve, and would answer it with a bound nobody chose.
+# The framework's limit is what answers a caller; this bounds only what a caller already
+# past every framework limit can make one process buffer. A deployment that raises the
+# framework's limits above this raises this too, by building the adapter with a
+# ``max_body_bytes`` of its own. The figure is written out rather than derived from the
+# framework's, because reading it from there would make this package import the
+# framework at module scope and it deliberately imports nothing but the request
+# contracts.
+DEFAULT_MAX_BODY_BYTES = 20 * 1024 * 1024
 
 
 class ClientDisconnected(ConnectionError):
@@ -207,8 +214,19 @@ class AsgiHttpRequest:
             chunk = cast(bytes, message.get("body", b""))
             received += len(chunk)
             if self._max_body_bytes is not None and received > self._max_body_bytes:
-                raise RequestBodyTooLarge(
-                    f"Request body exceeds the {self._max_body_bytes} byte limit"
+                # The framework's own refusal rather than one of this package's, so that
+                # the filter which renders a limit refusal recognises it: a caller who
+                # sent too much is told so, instead of being told the server broke and
+                # having the refusal logged as a fault. The import is made here rather
+                # than at module scope because this package imports nothing but the
+                # request contracts, and a body is only ever refused while the framework
+                # that owns this class is already running.
+                from ...runtime.params import RequestBodyTooLargeError
+
+                # The bytes already counted are not reported, because reading on to total
+                # them is the cost the limit exists to refuse to pay.
+                raise RequestBodyTooLargeError(
+                    f"The request body carries more than the {self._max_body_bytes} byte limit"
                 )
             chunks.append(chunk)
             more = bool(message.get("more_body", False))
@@ -249,6 +267,5 @@ __all__ = (
     "DEFAULT_MAX_BODY_BYTES",
     "AsgiHttpRequest",
     "ClientDisconnected",
-    "RequestBodyTooLarge",
     "from_asgi_request",
 )

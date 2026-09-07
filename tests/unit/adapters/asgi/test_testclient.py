@@ -31,6 +31,15 @@ async def _echo(request: HttpRequest) -> HttpResponse:
     )
 
 
+async def _declared_length(request: HttpRequest) -> HttpResponse:
+    return HttpResponse.json(
+        {
+            "declared": request.headers.get("content-length"),
+            "body": (await request.body()).decode(),
+        }
+    )
+
+
 async def _set_cookie(_request: HttpRequest) -> HttpResponse:
     return HttpResponse(status_code=204, headers={"set-cookie": "session=abc; Path=/"}, body=b"")
 
@@ -60,6 +69,7 @@ def _client(lifespan: Lifespan | None = None) -> AsgiTestClient:
                 methods=("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"),
                 handler=_echo,
             ),
+            AdapterRoute(path="/declared", methods=("POST",), handler=_declared_length),
             AdapterRoute(path="/cookie", methods=("GET",), handler=_set_cookie),
             AdapterRoute(path="/cookie/drop", methods=("GET",), handler=_drop_cookie),
             AdapterRoute(path="/redirect", methods=("GET", "POST"), handler=_redirect),
@@ -105,6 +115,23 @@ def test_a_body_can_be_sent_as_text_or_as_bytes() -> None:
 
     assert client.put("/echo", content="raw").json()["body"] == "raw"
     assert client.patch("/echo", content=b"raw").json()["body"] == "raw"
+
+
+def test_a_body_handed_over_whole_declares_the_length_it_will_send() -> None:
+    with _client() as client:
+        response = client.post("/declared", content=b"one two")
+
+    assert response.json() == {"declared": "7", "body": "one two"}
+
+
+def test_a_body_handed_over_as_chunks_declares_no_length_at_all() -> None:
+    # A caller with chunks has not said how many bytes will follow, and an application
+    # cannot judge such a body until it has read it. Sending one is the only way a test
+    # reaches what the application does then, so the client has to be able to send one.
+    with _client() as client:
+        response = client.post("/declared", content=iter([b"one ", b"two"]))
+
+    assert response.json() == {"declared": None, "body": "one two"}
 
 
 def test_every_method_the_client_offers_reaches_the_handler() -> None:

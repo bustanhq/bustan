@@ -49,9 +49,12 @@ class AsgiAdapter(AbstractHttpAdapter):
     ) -> None:
         """Wrap an existing ASGI application, or build one that runs ``lifespan``.
 
-        ``max_body_bytes`` bounds what one request may send, because a body is read into
-        memory before it is parsed; ``None`` removes the bound for a deployment that has
-        decided it wants that.
+        ``max_body_bytes`` bounds what this transport will read, because a body is read
+        into memory before it is parsed; ``None`` removes the bound for a deployment that
+        has decided it wants that. It is not the limit an application serves under: that
+        is the framework's own, declared on the application, and it is lower by default
+        so that it is what answers a caller. Raise this only for a deployment that has
+        raised the framework's limit above it.
         """
 
         self._app = application or AsgiApplication(lifespan=lifespan, max_body_bytes=max_body_bytes)
