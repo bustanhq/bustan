@@ -109,10 +109,31 @@ jobs:
           test -f "$cli_smoke_root/smoke-app/tests/smoke_app/test_app_module.py"
           grep -q 'start = "smoke_app:main"' "$cli_smoke_root/smoke-app/pyproject.toml"
           grep -q 'dev = "smoke_app:dev"' "$cli_smoke_root/smoke-app/pyproject.toml"
-          # The dev dependency list below is not chosen here. It is the line "bustan init"
-          # prints under "Next steps", which is what a user actually types, and the grep
-          # is what stops the two drifting: change the printed line and this step fails on
-          # the grep, naming the drift, rather than quietly installing a stale list.
-          grep -qx '  uv add --dev ty ruff pytest' "$cli_smoke_root/init-output.txt"
-          uv add --dev ty ruff pytest
+          # No dependency below is chosen here. Both install lines are read back out of
+          # what "bustan init" printed under "Next steps", which is what a user actually
+          # types, so this step installs what the scaffolder asked for and cannot drift
+          # from it. A printed line this step cannot parse fails the job rather than
+          # falling back to a list that may be years old.
+          #
+          # The runtime line is read even though a version is already installed above,
+          # because it is where the scaffolder names the extras a scaffolded project
+          # needs, and the pinned install above carries none of them.
+          runtime_requirement="$(sed -n "s/^  uv add \('\{0,1\}bustan[^ ]*\)$/\1/p" "$cli_smoke_root/init-output.txt" | tr -d "\"'")"
+          case "$runtime_requirement" in
+            bustan | bustan\[*\]) ;;
+            *)
+              echo "bustan init printed no runtime install line this step understands" >&2
+              exit 1
+              ;;
+          esac
+          uv add "${runtime_requirement}==${BUSTAN_VERSION}"
+          dev_requirements="$(sed -n 's/^  uv add --dev \(.*\)$/\1/p' "$cli_smoke_root/init-output.txt")"
+          if [ -z "$dev_requirements" ]; then
+            echo "bustan init printed no dev install line" >&2
+            exit 1
+          fi
+          # Unquoted on purpose: the printed line names several packages and each has to
+          # reach uv as its own argument.
+          # shellcheck disable=SC2086
+          uv add --dev $dev_requirements
           uv run pytest
