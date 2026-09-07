@@ -12,6 +12,7 @@ from typing import Protocol, runtime_checkable
 
 from ..common.decorators.injectable import Injectable
 from ..contracts import HttpResponse, RateLimitDecision
+from ..kernel.errors import InvalidPipelineError
 from ..kernel.ioc.tokens import APP_GUARD, InjectionToken
 from ..kernel.module.decorators import Module
 from ..kernel.module.dynamic import DynamicModule
@@ -31,6 +32,11 @@ DEFAULT_THROTTLER_MAX_KEYS = 10_000
 
 _FORWARDED_FOR_HEADER = "x-forwarded-for"
 _UNKNOWN_CLIENT_KEY = "throttle:unknown"
+
+# A route that declares its own window is counted apart from the application-wide one,
+# so the two cannot share a key and spend each other's allowance.
+_ROUTE_KEY_PREFIX = "route"
+_WINDOW_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
 ThrottlerKeyResolver = Callable[[ExecutionContext], str]
 
@@ -202,18 +208,43 @@ class ThrottlerGuard(Guard):
         if getattr(handler, SKIP_THROTTLE_ATTR, False):
             return True
 
-        key = self.key_resolver(context)
-        state = await self.storage.count_request(key, self.ttl, self.limit)
-        exceeded = state.count > self.limit
+        limit, ttl, key = self._resolve_budget(context, handler)
+        state = await self.storage.count_request(key, ttl, limit)
+        exceeded = state.count > limit
         request.slots.rate_limit = RateLimitDecision(
-            limit=self.limit,
-            remaining=max(0, self.limit - state.count),
+            limit=limit,
+            remaining=max(0, limit - state.count),
             reset=state.reset_after,
             exceeded=exceeded,
         )
         if exceeded:
             _set_retry_after(context, state.reset_after)
         return not exceeded
+
+    def _resolve_budget(self, context: ExecutionContext, handler: object) -> tuple[int, int, str]:
+        """Return the limit, the window and the key one request is counted against.
+
+        A route that declares its own limit and window is counted against those, under a
+        key of its own, instead of against the application-wide window rather than as
+        well as it. Counting one arriving request against both would spend two
+        allowances for it, which is not one request counted once; and a single key
+        cannot hold two windows of different lengths, since the window a key is measured
+        against is whichever one the caller counting against it named. A route that
+        declares no limit is counted exactly as it was before: the application-wide
+        limit and window, under the key the resolver returns.
+        """
+
+        caller_key = self.key_resolver(context)
+        policy = getattr(context.get_policy_plan(), "rate_limit", None)
+        limit = getattr(policy, "limit", None)
+        window = getattr(policy, "window", None)
+        if not isinstance(limit, int) or not isinstance(window, str):
+            return self.limit, self.ttl, caller_key
+
+        module_name = getattr(handler, "__module__", "")
+        qualified_name = getattr(handler, "__qualname__", "")
+        route_key = f"{caller_key}:{_ROUTE_KEY_PREFIX}:{module_name}.{qualified_name}"
+        return limit, _window_seconds(window), route_key
 
 
 @Module()
@@ -285,6 +316,31 @@ class ThrottlerModule:
             ),
             exports=(ThrottlerGuard, THROTTLER_STORAGE),
         )
+
+
+def _window_seconds(window: str) -> int:
+    """Return the length in seconds of a window a route declared.
+
+    A window is a whole number of seconds, or a whole number followed by ``s``, ``m``,
+    ``h`` or ``d``. One that cannot be read is refused rather than defaulted, because a
+    route whose declared window is unintelligible would otherwise be served as though it
+    had declared no limit at all, which is the outcome a declared limit exists to
+    prevent.
+    """
+
+    text = window.strip().lower()
+    unit = _WINDOW_UNIT_SECONDS.get(text[-1:])
+    digits = text[:-1] if unit is not None else text
+    if not digits.isascii() or not digits.isdigit():
+        raise InvalidPipelineError(
+            f"Rate limit window {window!r} is not a whole number of seconds, "
+            "optionally suffixed with s, m, h or d"
+        )
+
+    seconds = int(digits) * (unit if unit is not None else 1)
+    if seconds < 1:
+        raise InvalidPipelineError(f"Rate limit window {window!r} is not at least one second")
+    return seconds
 
 
 def _set_retry_after(context: ExecutionContext, reset_after: int) -> None:
