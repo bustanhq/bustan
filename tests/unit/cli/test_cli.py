@@ -1,13 +1,16 @@
 """Unit tests for the Bustan CLI init command."""
 
 import argparse
+import ast
 import builtins
 import importlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+from string import Template
 from types import SimpleNamespace
 from typing import cast
 from xml.etree import ElementTree
@@ -211,6 +214,93 @@ def test_scaffolded_project_needs_no_reformatting(tmp_path: Path) -> None:
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+_TEMPLATES_ROOT = _REPOSITORY_ROOT / "src" / "bustan" / "cli" / "templates"
+_STABILITY_GUIDE = _REPOSITORY_ROOT / "docs" / "STABILITY.md"
+
+
+def _documented_modules(section_heading: str) -> frozenset[str]:
+    """Collect the module names the stability guide bullets under one heading."""
+
+    collected: set[str] = set()
+    in_section = False
+    for line in _STABILITY_GUIDE.read_text(encoding="utf-8").splitlines():
+        if line.startswith("#"):
+            in_section = line.strip() == section_heading
+            continue
+        if not in_section:
+            continue
+        bullet = re.fullmatch(r"- `([A-Za-z0-9_.*]+)`", line.strip())
+        if bullet is not None:
+            collected.add(bullet.group(1).removesuffix(".*"))
+    return frozenset(collected)
+
+
+def _template_package_imports() -> tuple[tuple[Path, str], ...]:
+    """Return every bustan module the templates import, paired with the file doing it."""
+
+    # Three templates hold placeholders and are not parseable Python until they are
+    # substituted, so a stand-in is substituted here for the same reason the scaffolder
+    # substitutes the real one. The values only have to parse; nothing reads them back.
+    placeholders = {"project_name": "Example Project", "package_name": "example_app"}
+    imports: list[tuple[Path, str]] = []
+    for template_path in sorted(_TEMPLATES_ROOT.rglob("*.py")):
+        source = Template(template_path.read_text(encoding="utf-8")).safe_substitute(placeholders)
+        for node in ast.walk(ast.parse(source, filename=str(template_path))):
+            if isinstance(node, ast.Import):
+                imports.extend((template_path, alias.name) for alias in node.names)
+            # A relative import names a module inside the scaffolded project, never one
+            # of ours, so only absolute imports are of interest here.
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module is not None:
+                imports.append((template_path, node.module))
+    return tuple((path, module) for path, module in imports if module.split(".")[0] == "bustan")
+
+
+def _describe_unsupported_import(path: Path, module: str, internal: frozenset[str]) -> str:
+    """Name an unsupported import and, where the guide lists one, its internal namespace."""
+
+    # The guide's rule is that everything outside the supported modules is internal
+    # whether or not its hand-maintained list has caught up, so an import matching no
+    # listed namespace is still reported, just without one to point at.
+    namespace = next(
+        (name for name in sorted(internal) if module == name or module.startswith(f"{name}.")),
+        None,
+    )
+    location = f"{path.relative_to(_REPOSITORY_ROOT).as_posix()} imports {module}"
+    return location if namespace is None else f"{location} ({namespace} is internal)"
+
+
+def test_templates_import_only_the_supported_public_surface() -> None:
+    # Everything under the templates directory is shipped into a user's project and is
+    # excluded from this repository's own lint, type and coverage runs, so this is the
+    # only place the imports a user is handed are checked at all. The rule is the
+    # stability guide's: compatibility is promised for the modules it lists as
+    # supported, and every other namespace may be restructured without notice, so a
+    # template that reaches into one hands a new project a test that can break under an
+    # upgrade it did not ask for. The guide is read rather than restated here, so a
+    # namespace promoted or demoted there moves this check with it.
+    supported = _documented_modules("## Supported Public Surface")
+    internal = _documented_modules("## Internal Modules")
+    assert supported, "no supported module parsed out of the stability guide"
+    assert internal, "no internal namespace parsed out of the stability guide"
+    assert not supported & internal, "the stability guide lists a module as both"
+
+    package_imports = _template_package_imports()
+    assert package_imports, "no bustan import was found in the templates"
+
+    offenders = sorted(
+        _describe_unsupported_import(path, module, internal)
+        for path, module in package_imports
+        if module not in supported
+    )
+    assert offenders == [], (
+        "templates may only import "
+        + ", ".join(sorted(supported))
+        + "; found "
+        + "; ".join(offenders)
+    )
 
 
 def test_init_adds_scripts_to_pyproject(tmp_path: Path) -> None:
