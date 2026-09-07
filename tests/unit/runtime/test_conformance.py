@@ -68,6 +68,30 @@ def test_the_suite_covers_every_parameter_source_it_does_not_declare_uncertified
     }
 
 
+def test_the_form_body_sources_are_certified_rather_than_declared_uncertified() -> None:
+    """The two sources that read a parsed form are answered by cases, not written off."""
+
+    assert UNCERTIFIED_PARAMETER_SOURCES == ()
+    assert {"parameter source: file", "parameter source: files"} <= _dimensions()
+
+
+def test_the_form_body_cases_post_a_form_body() -> None:
+    """A case that never sends a form would certify form parsing without exercising it."""
+
+    cases = [
+        case
+        for scenario in conformance_module.SCENARIOS
+        for case in scenario.cases
+        if case.dimension in {"parameter source: file", "parameter source: files"}
+    ]
+
+    assert len(cases) == 2
+    for case in cases:
+        assert case.request.method == "POST"
+        assert dict(case.request.headers)["content-type"].startswith("multipart/form-data;")
+        assert case.request.content
+
+
 def test_the_suite_covers_every_response_strategy() -> None:
     covered = {
         dimension.removeprefix("response strategy: ")
