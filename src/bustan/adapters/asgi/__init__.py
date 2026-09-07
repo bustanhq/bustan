@@ -18,7 +18,6 @@ from .requests import (
     DEFAULT_MAX_BODY_BYTES,
     AsgiHttpRequest,
     ClientDisconnected,
-    RequestBodyTooLarge,
     from_asgi_request,
 )
 from .responses import (
@@ -56,7 +55,6 @@ __all__ = (
     "LifespanRunner",
     "Message",
     "Receive",
-    "RequestBodyTooLarge",
     "Scope",
     "Send",
     "UploadFile",

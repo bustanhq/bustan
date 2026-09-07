@@ -58,6 +58,8 @@ from ..pipeline.decorators import UseFilters
 from ..pipeline.filters import ExceptionFilter
 from ..pipeline.middleware import Middleware, MiddlewareConsumer
 from .adapter import AbstractHttpAdapter, AdapterCapabilities, AdapterRuntime
+from .execution import set_request_limits
+from .params import DEFAULT_MAX_UPLOAD_BYTES, RequestLimits
 from .versioning import VersioningOptions, VersioningType
 
 # The header every case compares, whatever else it names: a response's media type is
@@ -95,6 +97,11 @@ class ConformanceRequest:
     headers: tuple[tuple[str, str], ...] = ()
     json_body: object | None = None
     content: bytes | None = None
+    # A body sent as the chunks this returns, which is how a client sends one it has not
+    # measured: the request declares no length and the adapter cannot judge the body
+    # until it has read it. It is a callable rather than bytes because the one case that
+    # needs it sends ten megabytes, and a case is built when this module is imported.
+    body_chunks: Callable[[], Iterator[bytes]] | None = None
     follow_redirects: bool = False
 
 
@@ -166,6 +173,7 @@ class ConformanceScenario:
     build_module: Callable[[Path], type[object]]
     cases: tuple[ConformanceCase, ...]
     versioning: VersioningOptions | None = None
+    limits: RequestLimits | None = None
 
 
 def _observation(
@@ -199,6 +207,27 @@ def _expect_json(
         status_code,
         {"content-type": media_type, **dict(headers or {})},
         _canonical_json(payload),
+    )
+
+
+def _expect_problem(
+    status_code: int,
+    title: str,
+    detail: str,
+    instance: str,
+) -> ResponseObservation:
+    """The observation a problem-details refusal must produce."""
+
+    return _expect_json(
+        {
+            "type": "about:blank",
+            "title": title,
+            "status": status_code,
+            "detail": detail,
+            "instance": instance,
+        },
+        status_code=status_code,
+        media_type=PROBLEM_MEDIA_TYPE,
     )
 
 
@@ -747,6 +776,99 @@ FILTER_CASES: tuple[ConformanceCase, ...] = (
 )
 
 
+# What the request-limit scenario's application accepts, and a body two bytes past it.
+# The limit is the largest body the framework's own limits accept anywhere under their
+# defaults, so a body over it is past every bound the framework sets. That is what makes
+# these cases worth comparing: a transport keeping a byte ceiling of its own below this
+# answers them its own way, and the caller is told which of the two refused only by
+# reading the status.
+REQUEST_LIMIT_MAX_BODY_BYTES = DEFAULT_MAX_UPLOAD_BYTES
+OVER_LIMIT_BODY_BYTES = REQUEST_LIMIT_MAX_BODY_BYTES + 2
+
+_OVER_LIMIT_BODY_PREFIX = b'{"title":"'
+_OVER_LIMIT_BODY_SUFFIX = b'"}'
+
+
+def _over_limit_body() -> Iterator[bytes]:
+    """Yield a JSON body past the request limit, as one chunk of undeclared length.
+
+    It is built when the case runs rather than held as a constant, because it is ten
+    megabytes and one case needs it: importing this suite should not cost that to a
+    caller who never sends it.
+    """
+
+    filler = OVER_LIMIT_BODY_BYTES - len(_OVER_LIMIT_BODY_PREFIX) - len(_OVER_LIMIT_BODY_SUFFIX)
+    yield _OVER_LIMIT_BODY_PREFIX + b"x" * filler + _OVER_LIMIT_BODY_SUFFIX
+
+
+def _build_request_limit_module(_fixtures: Path) -> type[object]:
+    """An application with one route that binds a body, run under a raised body limit."""
+
+    @Controller("/limits")
+    class RequestLimitController:
+        @Post("/notes")
+        def create_note(self, title: Annotated[str, Body("title")]) -> dict[str, object]:
+            return {"length": len(title)}
+
+    @Module(controllers=[RequestLimitController])
+    class RequestLimitModule:
+        pass
+
+    return RequestLimitModule
+
+
+REQUEST_LIMIT_CASES: tuple[ConformanceCase, ...] = (
+    ConformanceCase(
+        name="request_limit_serves_a_body_within_the_limit",
+        dimension="request limit: body",
+        request=ConformanceRequest(
+            method="POST", path="/limits/notes", json_body={"title": "conformance"}
+        ),
+        expected=_expect_json({"length": 11}),
+    ),
+    ConformanceCase(
+        name="request_limit_refuses_a_declared_body_over_the_limit",
+        dimension="request limit: declared body",
+        request=ConformanceRequest(
+            method="POST",
+            path="/limits/notes",
+            # The declared length is the whole of what this case is about, so the body
+            # sent is two bytes: a refusal that arrives anyway is one made without
+            # reading, which is what refusing on the declared length is worth.
+            headers=(
+                ("content-type", JSON_MEDIA_TYPE),
+                ("content-length", str(OVER_LIMIT_BODY_BYTES)),
+            ),
+            content=b"{}",
+        ),
+        expected=_expect_problem(
+            413,
+            "Content Too Large",
+            f"The request body declares {OVER_LIMIT_BODY_BYTES} bytes, "
+            f"over the {REQUEST_LIMIT_MAX_BODY_BYTES} byte limit",
+            "/limits/notes",
+        ),
+    ),
+    ConformanceCase(
+        name="request_limit_refuses_a_streamed_body_over_the_limit",
+        dimension="request limit: streamed body",
+        request=ConformanceRequest(
+            method="POST",
+            path="/limits/notes",
+            headers=(("content-type", JSON_MEDIA_TYPE),),
+            body_chunks=_over_limit_body,
+        ),
+        expected=_expect_problem(
+            413,
+            "Content Too Large",
+            f"The request body carries {OVER_LIMIT_BODY_BYTES} bytes, "
+            f"over the {REQUEST_LIMIT_MAX_BODY_BYTES} byte limit",
+            "/limits/notes",
+        ),
+    ),
+)
+
+
 def _build_versioning_module(_fixtures: Path) -> type[object]:
     """Two versions of one route, dispatched by whichever strategy the scenario sets."""
 
@@ -936,6 +1058,12 @@ SCENARIOS: tuple[ConformanceScenario, ...] = (
     ConformanceScenario("middleware", _build_middleware_module, MIDDLEWARE_CASES),
     ConformanceScenario("exception filters", _build_filter_module, FILTER_CASES),
     ConformanceScenario(
+        "request limits",
+        _build_request_limit_module,
+        REQUEST_LIMIT_CASES,
+        limits=RequestLimits(max_body_bytes=REQUEST_LIMIT_MAX_BODY_BYTES),
+    ),
+    ConformanceScenario(
         "uri versioning",
         _build_versioning_module,
         URI_VERSIONING_CASES,
@@ -1020,9 +1148,14 @@ def _run_scenario(
     """Build one scenario's application on a fresh adapter and answer its cases."""
 
     adapter = _build_adapter(prototype)
-    # The application is not held onto: building it is what registers the compiled routes
-    # on the adapter, and the adapter is what the client below drives.
-    create_app(scenario.build_module(fixtures), adapter=adapter, versioning=scenario.versioning)
+    # The application is kept only long enough to declare the scenario's limits on it:
+    # building it is what registers the compiled routes on the adapter, and the adapter
+    # is what the client below drives.
+    application = create_app(
+        scenario.build_module(fixtures), adapter=adapter, versioning=scenario.versioning
+    )
+    if scenario.limits is not None:
+        set_request_limits(application, scenario.limits)
     with cast(Any, adapter.create_test_client()) as client:
         return tuple(_run_case(client, case) for case in scenario.cases)
 
@@ -1071,11 +1204,12 @@ def _run_case(client: Any, case: ConformanceCase) -> ConformanceCheck:
 def _send(client: Any, request: ConformanceRequest) -> Any:
     """Send one request through whichever test client the adapter handed over."""
 
+    content = request.content if request.body_chunks is None else request.body_chunks()
     return client.request(
         request.method,
         request.path,
         headers=dict(request.headers) or None,
-        content=request.content,
+        content=content,
         json=request.json_body,
         follow_redirects=request.follow_redirects,
     )

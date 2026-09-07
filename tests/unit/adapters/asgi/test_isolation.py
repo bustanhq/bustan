@@ -6,6 +6,13 @@ package itself, nor the shared contracts. The dynamic one loads the package in a
 interpreter, with the ``bustan`` package replaced by an empty stand-in so that importing
 the framework cannot be what satisfies an import, and asserts that no web framework and
 no framework module other than the contracts ended up in ``sys.modules``.
+
+One import is exempt from the static guard and named symbol by symbol below: the error
+the framework raises when a request body is over the limit, which the adapter has to
+raise by that name or a caller it refused is answered as though the server had broken.
+It is made inside the function that raises it rather than at module scope, so importing
+this package still pulls in nothing but the standard library and the contracts - which
+is the property the dynamic guard measures, and it is left measuring exactly that.
 """
 
 from __future__ import annotations
@@ -44,6 +51,13 @@ ALLOWED_ROOTS = frozenset(
 # The one package outside its own that the adapter may reach for: the vocabulary the
 # framework and every adapter are written against.
 ALLOWED_FRAMEWORK_PACKAGE = "contracts"
+
+# What the adapter may reach for from inside a function body, and nothing else. Each
+# entry is the module and the one name the adapter imports from it. An import listed
+# here still costs the adapter nothing to import, because it is not made until the line
+# that needs it runs; anything that wants to be imported when the package is loaded
+# belongs in the two allowances above, where the dynamic guard can see it.
+ALLOWED_DEFERRED_IMPORTS = frozenset({("...runtime.params", "RequestBodyTooLargeError")})
 
 _LOAD_IN_ISOLATION = """
 import importlib
@@ -99,6 +113,28 @@ def _package_modules() -> list[Path]:
     return sorted(ADAPTER_ROOT.glob("*.py"))
 
 
+def _deferred_import_nodes(tree: ast.Module) -> set[int]:
+    """Return the id of every import statement written inside a function body."""
+
+    deferred: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for inner in ast.walk(node):
+            if isinstance(inner, (ast.Import, ast.ImportFrom)):
+                deferred.add(id(inner))
+    return deferred
+
+
+def _is_allowed_deferred_import(node: ast.Import | ast.ImportFrom) -> bool:
+    """Whether one deferred import is a named exemption rather than a new dependency."""
+
+    if isinstance(node, ast.Import):
+        return False
+    module = f"{'.' * node.level}{node.module or ''}"
+    return all((module, alias.name) in ALLOWED_DEFERRED_IMPORTS for alias in node.names)
+
+
 def _offending_import(module_path: Path, node: ast.Import | ast.ImportFrom) -> list[str]:
     if isinstance(node, ast.Import):
         return [
@@ -126,11 +162,37 @@ def test_no_module_imports_anything_but_the_standard_library_and_the_contracts()
 
     for module_path in _package_modules():
         tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
+        deferred = _deferred_import_nodes(tree)
         for node in ast.walk(tree):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                offenders.extend(_offending_import(module_path, node))
+            if not isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            if id(node) in deferred and _is_allowed_deferred_import(node):
+                continue
+            offenders.extend(_offending_import(module_path, node))
 
     assert offenders == []
+
+
+def test_the_exempt_deferred_import_is_the_only_one_and_is_still_made() -> None:
+    """The exemption is worth nothing if it stops matching the code it was written for.
+
+    A deferred import that no longer exists means the adapter went back to raising an
+    error of its own, which is the defect the exemption was granted to close; a second
+    one means the list above was widened without the argument that widening it needs.
+    """
+
+    found: list[tuple[str, str]] = []
+
+    for module_path in _package_modules():
+        tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
+        deferred = _deferred_import_nodes(tree)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and id(node) in deferred:
+                module = f"{'.' * node.level}{node.module or ''}"
+                found.extend((module, alias.name) for alias in node.names)
+
+    assert set(found) == ALLOWED_DEFERRED_IMPORTS
+    assert len(found) == len(ALLOWED_DEFERRED_IMPORTS)
 
 
 def test_importing_the_package_in_a_fresh_interpreter_pulls_in_no_web_framework() -> None:
