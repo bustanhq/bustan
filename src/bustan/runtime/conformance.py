@@ -22,6 +22,15 @@ absent defaults, ``date``, ``server``, ``content-length``, ``etag`` and the tran
 encoding a streaming response is written with. A matrix that compared those would
 report a difference on the day a server library changed its defaults, and a matrix
 that reports differences nobody can act on is a matrix that gets switched off.
+
+One case narrows that comparison and it is the only one. A case may name body members it
+does not compare *between* adapters, and it must then say which adapter answers what, so
+that every adapter is still held to its own document member for member and only the
+comparison of one adapter against another steps over the named member. That is for a
+difference that is understood and written down rather than one nobody has looked at, and
+a case declaring one says whether it is a property of the transports or a defect being
+tracked. A body member nobody could name a reason for belongs in neither list: it belongs
+in a failing case.
 """
 
 from __future__ import annotations
@@ -58,6 +67,8 @@ from ..pipeline.decorators import UseFilters
 from ..pipeline.filters import ExceptionFilter
 from ..pipeline.middleware import Middleware, MiddlewareConsumer
 from .adapter import AbstractHttpAdapter, AdapterCapabilities, AdapterRuntime
+from .execution import set_request_limits
+from .params import DEFAULT_MAX_UPLOAD_BYTES, RequestLimits
 from .versioning import VersioningOptions, VersioningType
 
 # The header every case compares, whatever else it names: a response's media type is
@@ -70,6 +81,13 @@ PACKAGE_LOGGER = "bustan"
 
 JSON_MEDIA_TYPE = "application/json"
 PROBLEM_MEDIA_TYPE = "application/problem+json"
+
+# What a body member two adapters are not compared on becomes, in the reduced observation
+# the comparison between them is made over. It is a value rather than a deletion, so that
+# a member one adapter stopped sending still reads as a difference from one that sends it,
+# and so that a report of some other difference in the same body says on its face why this
+# member is not the one being argued about.
+UNCOMPARED_BODY_MEMBER = "<differs by adapter; each adapter is held to its own>"
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +113,11 @@ class ConformanceRequest:
     headers: tuple[tuple[str, str], ...] = ()
     json_body: object | None = None
     content: bytes | None = None
+    # A body sent as the chunks this returns, which is how a client sends one it has not
+    # measured: the request declares no length and the adapter cannot judge the body
+    # until it has read it. It is a callable rather than bytes because the one case that
+    # needs it sends ten megabytes, and a case is built when this module is imported.
+    body_chunks: Callable[[], Iterator[bytes]] | None = None
     follow_redirects: bool = False
 
 
@@ -106,6 +129,22 @@ class ConformanceCase:
     dimension: str
     request: ConformanceRequest
     expected: ResponseObservation
+    # What an adapter is held to where it legitimately answers differently, by name. An
+    # adapter named here is held to its own document in full, member for member, and an
+    # adapter not named is held to ``expected``. Naming one is a statement that the
+    # difference is understood and written down, so a case that names any adapter says
+    # where the difference comes from and whether it is a property or a tracked defect.
+    expected_by_adapter: tuple[tuple[str, ResponseObservation], ...] = ()
+    # JSON members of the body this case does not compare *between* adapters. It narrows
+    # nothing about what either adapter answers on its own: every adapter is still held
+    # to its whole document above, and the status, the headers and every other member
+    # are still compared between adapters exactly.
+    diverging_body_members: tuple[str, ...] = ()
+
+    def expected_for(self, adapter: str) -> ResponseObservation:
+        """Return what *adapter* is held to, which is ``expected`` unless the case names it."""
+
+        return dict(self.expected_by_adapter).get(adapter, self.expected)
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +156,11 @@ class ConformanceCheck:
     detail: str
     dimension: str = ""
     observation: ResponseObservation | None = None
+    # The same observation reduced to what the comparison between adapters is made over,
+    # which is the whole of it for every case that names no diverging member. It is kept
+    # beside the observation rather than in place of it, so a report still carries what
+    # the adapter actually answered.
+    cross_adapter_observation: ResponseObservation | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,9 +176,26 @@ class AdapterConformanceResult:
         return all(check.passed for check in self.checks)
 
     def observations(self) -> dict[str, ResponseObservation | None]:
-        """Return each case's observation by case name, for comparison across adapters."""
+        """Return each case's observation by case name, for comparison across adapters.
 
-        return {check.name: check.observation for check in self.checks}
+        What comes back is each observation reduced to what the comparison between
+        adapters is defined over. For every case that names no diverging body member,
+        which is all but one of them, that is the observation unchanged.
+
+        A check carrying no reduced observation is compared on the whole of what it
+        observed. That is the safe way round: a caller who built a check without one gets
+        the comparison it would have had before reductions existed, and a reduction is
+        only ever applied where a case asked for one.
+        """
+
+        return {
+            check.name: (
+                check.observation
+                if check.cross_adapter_observation is None
+                else check.cross_adapter_observation
+            )
+            for check in self.checks
+        }
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -166,6 +227,7 @@ class ConformanceScenario:
     build_module: Callable[[Path], type[object]]
     cases: tuple[ConformanceCase, ...]
     versioning: VersioningOptions | None = None
+    limits: RequestLimits | None = None
 
 
 def _observation(
@@ -199,6 +261,27 @@ def _expect_json(
         status_code,
         {"content-type": media_type, **dict(headers or {})},
         _canonical_json(payload),
+    )
+
+
+def _expect_problem(
+    status_code: int,
+    title: str,
+    detail: str,
+    instance: str,
+) -> ResponseObservation:
+    """The observation a problem-details refusal must produce."""
+
+    return _expect_json(
+        {
+            "type": "about:blank",
+            "title": title,
+            "status": status_code,
+            "detail": detail,
+            "instance": instance,
+        },
+        status_code=status_code,
+        media_type=PROBLEM_MEDIA_TYPE,
     )
 
 
@@ -747,6 +830,132 @@ FILTER_CASES: tuple[ConformanceCase, ...] = (
 )
 
 
+# What the request-limit scenario's application accepts, and a body two bytes past it.
+# The limit is the largest body the framework's own limits accept anywhere under their
+# defaults, so a body over it is past every bound the framework sets. That is what makes
+# these cases worth comparing: a transport keeping a byte ceiling of its own below this
+# answers them its own way, and the caller is told which of the two refused only by
+# reading the status.
+REQUEST_LIMIT_MAX_BODY_BYTES = DEFAULT_MAX_UPLOAD_BYTES
+OVER_LIMIT_BODY_BYTES = REQUEST_LIMIT_MAX_BODY_BYTES + 2
+
+_OVER_LIMIT_BODY_PREFIX = b'{"title":"'
+_OVER_LIMIT_BODY_SUFFIX = b'"}'
+
+
+def _over_limit_body() -> Iterator[bytes]:
+    """Yield a JSON body past the request limit, as one chunk of undeclared length.
+
+    It is built when the case runs rather than held as a constant, because it is ten
+    megabytes and one case needs it: importing this suite should not cost that to a
+    caller who never sends it.
+    """
+
+    filler = OVER_LIMIT_BODY_BYTES - len(_OVER_LIMIT_BODY_PREFIX) - len(_OVER_LIMIT_BODY_SUFFIX)
+    yield _OVER_LIMIT_BODY_PREFIX + b"x" * filler + _OVER_LIMIT_BODY_SUFFIX
+
+
+def _build_request_limit_module(_fixtures: Path) -> type[object]:
+    """An application with one route that binds a body, run under a raised body limit."""
+
+    @Controller("/limits")
+    class RequestLimitController:
+        @Post("/notes")
+        def create_note(self, title: Annotated[str, Body("title")]) -> dict[str, object]:
+            return {"length": len(title)}
+
+    @Module(controllers=[RequestLimitController])
+    class RequestLimitModule:
+        pass
+
+    return RequestLimitModule
+
+
+# The sentence each adapter gives when it refuses a body of undeclared length, and why
+# there are two of them.
+#
+# One adapter refuses inside itself, at the chunk that carries the body past the limit the
+# application declared. It never receives the rest, so it cannot say how many bytes were
+# sent and does not claim to. The other reads to a byte ceiling of its own, which is above
+# the limit this scenario sets, so the whole body is buffered and the refusal is made one
+# layer up by the runtime, which counted every byte and says so.
+#
+# That is a defect and not a property of either transport. An adapter that buffers past
+# the limit the application set is spending the memory the limit exists to protect, and
+# refusing afterwards is correct and useless; one of the two adapters has been changed to
+# stop doing it and the other has not yet. It is tracked as its own piece of work. Writing
+# both sentences out here holds each adapter to what it actually answers today and makes
+# the day either one changes a day this case has to be edited, which is the opposite of
+# letting the difference go unwatched.
+STREAMED_OVER_LIMIT_DETAIL: tuple[tuple[str, str], ...] = (
+    (
+        "starlette",
+        f"The request body exceeds the {REQUEST_LIMIT_MAX_BODY_BYTES} byte limit",
+    ),
+    (
+        "asgi",
+        f"The request body carries {OVER_LIMIT_BODY_BYTES} bytes, "
+        f"over the {REQUEST_LIMIT_MAX_BODY_BYTES} byte limit",
+    ),
+)
+
+
+REQUEST_LIMIT_CASES: tuple[ConformanceCase, ...] = (
+    ConformanceCase(
+        name="request_limit_serves_a_body_within_the_limit",
+        dimension="request limit: body",
+        request=ConformanceRequest(
+            method="POST", path="/limits/notes", json_body={"title": "conformance"}
+        ),
+        expected=_expect_json({"length": 11}),
+    ),
+    ConformanceCase(
+        name="request_limit_refuses_a_declared_body_over_the_limit",
+        dimension="request limit: declared body",
+        request=ConformanceRequest(
+            method="POST",
+            path="/limits/notes",
+            # The declared length is the whole of what this case is about, so the body
+            # sent is two bytes: a refusal that arrives anyway is one made without
+            # reading, which is what refusing on the declared length is worth.
+            headers=(
+                ("content-type", JSON_MEDIA_TYPE),
+                ("content-length", str(OVER_LIMIT_BODY_BYTES)),
+            ),
+            content=b"{}",
+        ),
+        expected=_expect_problem(
+            413,
+            "Content Too Large",
+            f"The request body declares {OVER_LIMIT_BODY_BYTES} bytes, "
+            f"over the {REQUEST_LIMIT_MAX_BODY_BYTES} byte limit",
+            "/limits/notes",
+        ),
+    ),
+    ConformanceCase(
+        name="request_limit_refuses_a_streamed_body_over_the_limit",
+        dimension="request limit: streamed body",
+        request=ConformanceRequest(
+            method="POST",
+            path="/limits/notes",
+            headers=(("content-type", JSON_MEDIA_TYPE),),
+            body_chunks=_over_limit_body,
+        ),
+        # No adapter is held to this document: every adapter the matrix knows is named
+        # below, and one that is not named fails this case until the sentence it gives is
+        # written out here, which is the point. What this document is, is the answer the
+        # two adapters do agree on, member for member, with the one they do not marked as
+        # such.
+        expected=_expect_problem(413, "Content Too Large", UNCOMPARED_BODY_MEMBER, "/limits/notes"),
+        expected_by_adapter=tuple(
+            (adapter, _expect_problem(413, "Content Too Large", detail, "/limits/notes"))
+            for adapter, detail in STREAMED_OVER_LIMIT_DETAIL
+        ),
+        diverging_body_members=("detail",),
+    ),
+)
+
+
 def _build_versioning_module(_fixtures: Path) -> type[object]:
     """Two versions of one route, dispatched by whichever strategy the scenario sets."""
 
@@ -936,6 +1145,12 @@ SCENARIOS: tuple[ConformanceScenario, ...] = (
     ConformanceScenario("middleware", _build_middleware_module, MIDDLEWARE_CASES),
     ConformanceScenario("exception filters", _build_filter_module, FILTER_CASES),
     ConformanceScenario(
+        "request limits",
+        _build_request_limit_module,
+        REQUEST_LIMIT_CASES,
+        limits=RequestLimits(max_body_bytes=REQUEST_LIMIT_MAX_BODY_BYTES),
+    ),
+    ConformanceScenario(
         "uri versioning",
         _build_versioning_module,
         URI_VERSIONING_CASES,
@@ -1020,11 +1235,16 @@ def _run_scenario(
     """Build one scenario's application on a fresh adapter and answer its cases."""
 
     adapter = _build_adapter(prototype)
-    # The application is not held onto: building it is what registers the compiled routes
-    # on the adapter, and the adapter is what the client below drives.
-    create_app(scenario.build_module(fixtures), adapter=adapter, versioning=scenario.versioning)
+    # The application is kept only long enough to declare the scenario's limits on it:
+    # building it is what registers the compiled routes on the adapter, and the adapter
+    # is what the client below drives.
+    application = create_app(
+        scenario.build_module(fixtures), adapter=adapter, versioning=scenario.versioning
+    )
+    if scenario.limits is not None:
+        set_request_limits(application, scenario.limits)
     with cast(Any, adapter.create_test_client()) as client:
-        return tuple(_run_case(client, case) for case in scenario.cases)
+        return tuple(_run_case(client, case, adapter=adapter.name) for case in scenario.cases)
 
 
 def _run_lifespan_scenario(prototype: AbstractHttpAdapter) -> tuple[ConformanceCheck, ...]:
@@ -1048,8 +1268,9 @@ def _run_lifespan_scenario(prototype: AbstractHttpAdapter) -> tuple[ConformanceC
             raise
         return (_failed_check(LIFESPAN_STARTUP_CASE, f"no lifespan on construction: {error}"),)
 
-    with cast(Any, application.get_http_adapter().create_test_client()) as client:
-        startup = _run_case(client, LIFESPAN_STARTUP_CASE)
+    served = application.get_http_adapter()
+    with cast(Any, served.create_test_client()) as client:
+        startup = _run_case(client, LIFESPAN_STARTUP_CASE, adapter=served.name)
 
     shutdown = _compare(
         LIFESPAN_SHUTDOWN_CASE, _observation(None, {}, _canonical_json(record.state()))
@@ -1057,25 +1278,30 @@ def _run_lifespan_scenario(prototype: AbstractHttpAdapter) -> tuple[ConformanceC
     return (startup, shutdown)
 
 
-def _run_case(client: Any, case: ConformanceCase) -> ConformanceCheck:
-    """Send one case's request and compare what came back with what it expects."""
+def _run_case(client: Any, case: ConformanceCase, *, adapter: str = "") -> ConformanceCheck:
+    """Send one case's request and compare what came back with what it expects.
+
+    *adapter* names which adapter is answering, because a case may hold one adapter to a
+    different document from another where the two legitimately differ.
+    """
 
     try:
         response = _send(client, case.request)
     except Exception as error:
         return _failed_check(case, f"{type(error).__name__}: {error}")
 
-    return _compare(case, _observe(response, case.expected))
+    return _compare(case, _observe(response, case.expected_for(adapter)), adapter=adapter)
 
 
 def _send(client: Any, request: ConformanceRequest) -> Any:
     """Send one request through whichever test client the adapter handed over."""
 
+    content = request.content if request.body_chunks is None else request.body_chunks()
     return client.request(
         request.method,
         request.path,
         headers=dict(request.headers) or None,
-        content=request.content,
+        content=content,
         json=request.json_body,
         follow_redirects=request.follow_redirects,
     )
@@ -1103,23 +1329,62 @@ def _canonical_body(content_type: str, content: bytes) -> str:
     return content.decode("utf-8", errors="replace")
 
 
-def _compare(case: ConformanceCase, observation: ResponseObservation) -> ConformanceCheck:
-    """Judge one observation against the case that produced it."""
+def _compare(
+    case: ConformanceCase, observation: ResponseObservation, *, adapter: str = ""
+) -> ConformanceCheck:
+    """Judge one observation against the document *adapter* is held to for this case."""
 
-    if observation == case.expected:
+    expected = case.expected_for(adapter)
+    compared = _reduce_for_comparison(case, observation)
+    if observation == expected:
         return ConformanceCheck(
             name=case.name,
             passed=True,
             detail=f"status={observation.status_code}",
             dimension=case.dimension,
             observation=observation,
+            cross_adapter_observation=compared,
         )
     return ConformanceCheck(
         name=case.name,
         passed=False,
-        detail="; ".join(describe_difference("expected", case.expected, "observed", observation)),
+        detail="; ".join(describe_difference("expected", expected, "observed", observation)),
         dimension=case.dimension,
         observation=observation,
+        cross_adapter_observation=compared,
+    )
+
+
+def _reduce_for_comparison(
+    case: ConformanceCase, observation: ResponseObservation
+) -> ResponseObservation:
+    """Reduce one observation to what the comparison between adapters is made over.
+
+    For a case that names no diverging member this is the observation itself, which is
+    every case but the one whose adapters refuse at different layers and can therefore
+    only report different detail. There, the members the case named are replaced on both
+    sides and everything else in the document is still compared exactly, so a divergence
+    anywhere but in the named member is still a failure rather than a silence.
+    """
+
+    if not case.diverging_body_members or not observation.body:
+        return observation
+    try:
+        payload = json.loads(observation.body)
+    except ValueError:
+        return observation
+    if not isinstance(payload, dict):
+        return observation
+    members = cast("dict[str, object]", payload)
+    return ResponseObservation(
+        status_code=observation.status_code,
+        headers=observation.headers,
+        body=_canonical_json(
+            {
+                name: (UNCOMPARED_BODY_MEMBER if name in case.diverging_body_members else value)
+                for name, value in members.items()
+            }
+        ),
     )
 
 
@@ -1130,6 +1395,7 @@ def _failed_check(case: ConformanceCase, detail: str) -> ConformanceCheck:
         detail=detail,
         dimension=case.dimension,
         observation=None,
+        cross_adapter_observation=None,
     )
 
 
@@ -1214,6 +1480,7 @@ __all__ = (
     "ConformanceUpload",
     "ResponseObservation",
     "SCENARIOS",
+    "UNCOMPARED_BODY_MEMBER",
     "describe_difference",
     "evaluate_adapter_conformance",
     "load_adapter",

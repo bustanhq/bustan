@@ -159,7 +159,7 @@ class AsgiTestClient:
         *,
         params: Mapping[str, str] | None = None,
         headers: Mapping[str, str] | None = None,
-        content: bytes | str | None = None,
+        content: bytes | str | Iterable[bytes] | None = None,
         data: Mapping[str, str] | None = None,
         json: object | None = None,
         cookies: Mapping[str, str] | None = None,
@@ -168,22 +168,31 @@ class AsgiTestClient:
         """Send one request and return what the application answered.
 
         The body is whichever of ``content``, ``data`` and ``json`` was supplied; the
-        last two also set the content type the application will parse them with.
+        last two also set the content type the application will parse them with. A
+        ``content`` that is an iterable of chunks rather than one string of bytes is sent
+        the way a client streams a body it has not measured: the chunks arrive one
+        message at a time and the request declares no length, which is the only way to
+        reach the checks an application makes on a body it could not judge in advance.
         """
 
-        body, body_headers = _encode_body(content, data, json)
+        body, body_headers, declares_length = _encode_body(content, data, json)
         request_headers = {**body_headers, **dict(headers or {})}
         target = _target(url, params)
-        response = self._run(self._call(method.upper(), target, request_headers, body, cookies))
+        response = self._run(
+            self._call(method.upper(), target, request_headers, body, declares_length, cookies)
+        )
         redirects = 0
         while follow_redirects and response.status_code in _REDIRECT_STATUSES:
             redirects += 1
             if redirects > _MAX_REDIRECTS:
                 raise RuntimeError(f"Exceeded {_MAX_REDIRECTS} redirects for {target}")
             if response.status_code in _REDIRECT_TO_GET:
-                method, body, request_headers = "GET", b"", dict(headers or {})
+                method, body, declares_length = "GET", (), True
+                request_headers = dict(headers or {})
             target = response.headers["location"]
-            response = self._run(self._call(method, target, request_headers, body, cookies))
+            response = self._run(
+                self._call(method, target, request_headers, body, declares_length, cookies)
+            )
         return response
 
     async def _call(
@@ -191,10 +200,11 @@ class AsgiTestClient:
         method: str,
         target: str,
         headers: Mapping[str, str],
-        body: bytes,
+        body: tuple[bytes, ...],
+        declares_length: bool,
         cookies: Mapping[str, str] | None,
     ) -> AsgiTestResponse:
-        scope = self._build_scope(method, target, headers, body, cookies)
+        scope = self._build_scope(method, target, headers, body, declares_length, cookies)
         messages: list[Message] = []
         channel = _RequestChannel(body)
 
@@ -210,7 +220,8 @@ class AsgiTestClient:
         method: str,
         target: str,
         headers: Mapping[str, str],
-        body: bytes,
+        body: tuple[bytes, ...],
+        declares_length: bool,
         cookies: Mapping[str, str] | None,
     ) -> Scope:
         split = urlsplit(target if "://" in target else f"{self._base_url}{target}")
@@ -224,8 +235,8 @@ class AsgiTestClient:
         jar = {**self.cookies, **dict(cookies or {})}
         if jar:
             sent["cookie"] = "; ".join(f"{name}={value}" for name, value in jar.items())
-        if body and "content-length" not in sent:
-            sent["content-length"] = str(len(body))
+        if body and declares_length and "content-length" not in sent:
+            sent["content-length"] = str(sum(len(chunk) for chunk in body))
         return {
             "type": "http",
             "asgi": {"version": "3.0", "spec_version": "2.3"},
@@ -292,24 +303,41 @@ def _target(url: str, params: Mapping[str, str] | None) -> str:
 
 
 def _encode_body(
-    content: bytes | str | None,
+    content: bytes | str | Iterable[bytes] | None,
     data: Mapping[str, str] | None,
     json: object | None,
-) -> tuple[bytes, dict[str, str]]:
+) -> tuple[tuple[bytes, ...], dict[str, str], bool]:
+    """Return the body as the chunks it is sent in, its headers, and whether it declares a length.
+
+    Everything a caller can hand over whole is sent as one chunk under a declared length,
+    which is what an ordinary client does. Only an iterable of chunks is sent without
+    one, because a caller passing chunks has not said how many bytes will follow.
+    """
+
     if json is not None:
-        return json_module.dumps(json).encode("utf-8"), {"content-type": "application/json"}
+        chunk = json_module.dumps(json).encode("utf-8")
+        return (chunk,), {"content-type": "application/json"}, True
     if data is not None:
         return (
-            urlencode(data).encode("utf-8"),
+            (urlencode(data).encode("utf-8"),),
             {"content-type": "application/x-www-form-urlencoded"},
+            True,
         )
     if content is None:
-        return b"", {}
-    return (content.encode("utf-8") if isinstance(content, str) else content), {}
+        return (), {}, True
+    if isinstance(content, str):
+        return (content.encode("utf-8"),), {}, True
+    if isinstance(content, bytes):
+        return (content,), {}, True
+    return tuple(content), {}, False
 
 
 class _RequestChannel:
     """The receive side of one request, kept open until the response has been written.
+
+    A body given as more than one chunk arrives as more than one message, which is how a
+    client that streams a body sends it; the last message is the one that says no more
+    follows.
 
     A connection that is still being answered is a connection the client is still on, so
     the disconnect is withheld until the application has finished writing its response.
@@ -322,19 +350,26 @@ class _RequestChannel:
     disconnect a real client causes by going away belongs.
     """
 
-    __slots__ = ("_body", "_body_taken", "_written")
+    __slots__ = ("_chunks", "_sent", "_written")
 
-    def __init__(self, body: bytes) -> None:
-        self._body = body
-        self._body_taken = False
+    def __init__(self, chunks: tuple[bytes, ...]) -> None:
+        # A body of no chunks is still one empty message, because an application reading
+        # a bodyless request has to be told the body is over rather than left waiting.
+        self._chunks = chunks or (b"",)
+        self._sent = 0
         self._written = asyncio.Event()
 
     async def receive(self) -> Message:
-        """Yield the request body once, then the disconnect the finished response causes."""
+        """Yield the request body chunk by chunk, then the disconnect a finished response causes."""
 
-        if not self._body_taken:
-            self._body_taken = True
-            return {"type": "http.request", "body": self._body, "more_body": False}
+        if self._sent < len(self._chunks):
+            chunk = self._chunks[self._sent]
+            self._sent += 1
+            return {
+                "type": "http.request",
+                "body": chunk,
+                "more_body": self._sent < len(self._chunks),
+            }
         await self._written.wait()
         return {"type": "http.disconnect"}
 

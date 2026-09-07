@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING
 
 import pytest
 
+from bustan import Controller, Module, Post, create_app
 from bustan.adapters.asgi import AsgiAdapter, AsgiApplication, AsgiTestClient
 from bustan.adapters.asgi.requests import AsgiHttpRequest
 from bustan.adapters.asgi.responses import AsgiResponse, AsgiStreamResponse
+from bustan.adapters.asgi.testclient import AsgiTestResponse
 from bustan.contracts import (
     AbstractHttpAdapter,
     AdapterCapabilities,
@@ -27,6 +30,34 @@ if TYPE_CHECKING:
 
 async def _ok(_request: HttpRequest) -> HttpResponse:
     return HttpResponse.json({"ok": True})
+
+
+def _notes_application(adapter: AsgiAdapter, served: list[str]) -> None:
+    """Build one application on *adapter* whose only route needs the request body."""
+
+    @Controller("/notes")
+    class NotesController:
+        @Post("/")
+        def create(self, title: str) -> dict[str, str]:
+            served.append(title)
+            return {"title": title}
+
+    @Module(controllers=[NotesController])
+    class AppModule:
+        pass
+
+    create_app(AppModule, adapter=adapter)
+
+
+def _post_streamed_body(adapter: AsgiAdapter, size: int) -> AsgiTestResponse:
+    """Post a JSON body of *size* filler bytes, sent without declaring a length."""
+
+    with adapter.create_test_client() as client:
+        return client.post(
+            "/notes",
+            headers={"content-type": "application/json"},
+            content=iter([b'{"title":"', b"x" * size, b'"}']),
+        )
 
 
 def test_the_adapter_names_the_transport_it_binds_and_what_it_can_serve() -> None:
@@ -68,6 +99,65 @@ def test_a_framework_response_becomes_the_response_this_transport_writes() -> No
     assert isinstance(
         adapter.to_native_response(HttpStreamResponse(body=[b""])), AsgiStreamResponse
     )
+
+
+def test_a_body_past_what_the_transport_reads_is_refused_with_the_status_it_deserves() -> None:
+    """The transport stopping is a refusal of the caller, and has to be answered as one.
+
+    The body declares no length, so nothing can refuse it before it is read and the
+    ceiling this adapter was built with is what stops it. What the caller is then told
+    has to be the 413 the application's own body limit produces: a caller who sent too
+    much has not caused a fault, and answering 500 both misreports what happened and
+    hides that this transport is the one that refused.
+    """
+
+    served: list[str] = []
+    adapter = AsgiAdapter(max_body_bytes=32)
+    _notes_application(adapter, served)
+
+    response = _post_streamed_body(adapter, 200)
+
+    assert response.status_code == 413
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Content Too Large",
+        "status": 413,
+        "detail": "The request body carries more than the 32 byte limit",
+        "instance": "/notes",
+    }
+    assert served == []
+
+
+def test_a_refused_body_is_reported_as_a_refusal_rather_than_as_an_unhandled_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    served: list[str] = []
+    adapter = AsgiAdapter(max_body_bytes=32)
+    _notes_application(adapter, served)
+
+    with caplog.at_level(logging.DEBUG, logger="bustan"):
+        response = _post_streamed_body(adapter, 200)
+
+    assert response.status_code == 413
+    assert [record.message for record in caplog.records if record.levelno >= logging.ERROR] == []
+    assert [record.exc_info for record in caplog.records if record.exc_info is not None] == []
+    assert any(
+        record.levelno == logging.WARNING and "32 byte limit" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_a_body_within_what_the_transport_reads_is_served_as_before() -> None:
+    served: list[str] = []
+    adapter = AsgiAdapter(max_body_bytes=1024)
+    _notes_application(adapter, served)
+
+    response = _post_streamed_body(adapter, 200)
+
+    assert response.status_code == 200
+    assert response.json() == {"title": "x" * 200}
+    assert served == ["x" * 200]
 
 
 def test_registering_routes_puts_them_on_the_application_in_order() -> None:

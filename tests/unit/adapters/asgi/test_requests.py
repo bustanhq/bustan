@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from bustan.adapters.asgi.requests import (
+    DEFAULT_MAX_BODY_BYTES,
     AsgiHttpRequest,
     ClientDisconnected,
-    RequestBodyTooLarge,
     from_asgi_request,
 )
 from bustan.contracts import (
@@ -21,6 +21,8 @@ from bustan.contracts import (
     RequestState,
     Url,
 )
+from bustan.runtime import params as framework_limits
+from bustan.runtime.params import RequestBodyTooLargeError
 
 if TYPE_CHECKING:
     from bustan.adapters.asgi.types import Message
@@ -222,10 +224,28 @@ async def test_a_form_body_is_parsed_according_to_its_content_type(
 async def test_a_body_beyond_the_limit_is_refused_rather_than_buffered(
     build_scope: ScopeFactory, build_receive: ReceiveFactory
 ) -> None:
+    # The framework's own refusal, not one of the transport's, so that the filter which
+    # renders a limit refusal recognises it and the caller is told they sent too much
+    # rather than that the server broke.
     request = AsgiHttpRequest(build_scope(), build_receive(b"x" * 64, chunks=8), max_body_bytes=32)
 
-    with pytest.raises(RequestBodyTooLarge, match="32 byte limit"):
+    with pytest.raises(RequestBodyTooLargeError, match="more than the 32 byte limit"):
         await request.body()
+
+
+def test_the_transport_ceiling_stays_above_every_body_the_framework_accepts() -> None:
+    """Two numbers in two places, so something has to hold the order between them.
+
+    A transport that stopped reading below a limit the application had set would refuse
+    a request the application was configured to serve, and would answer it with a bound
+    nobody chose; the two adapters would then disagree about the same request. The
+    ceiling cannot be derived from the framework's numbers, because reading them would
+    make this package import the framework, so this is what keeps the two from drifting
+    past each other.
+    """
+
+    assert DEFAULT_MAX_BODY_BYTES > framework_limits.DEFAULT_MAX_BODY_BYTES
+    assert DEFAULT_MAX_BODY_BYTES > framework_limits.DEFAULT_MAX_UPLOAD_BYTES
 
 
 @pytest.mark.anyio

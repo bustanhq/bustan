@@ -1731,11 +1731,15 @@ and then asks for something stays logged in.
   Send a PATCH request.
 - `delete(self, url: str, **options: Any) -> AsgiTestResponse`
   Send a DELETE request.
-- `request(self, method: str, url: str, *, params: Mapping[str, str] | None = None, headers: Mapping[str, str] | None = None, content: bytes | str | None = None, data: Mapping[str, str] | None = None, json: object | None = None, cookies: Mapping[str, str] | None = None, follow_redirects: bool = True) -> AsgiTestResponse`
+- `request(self, method: str, url: str, *, params: Mapping[str, str] | None = None, headers: Mapping[str, str] | None = None, content: bytes | str | Iterable[bytes] | None = None, data: Mapping[str, str] | None = None, json: object | None = None, cookies: Mapping[str, str] | None = None, follow_redirects: bool = True) -> AsgiTestResponse`
   Send one request and return what the application answered.
 
 The body is whichever of ``content``, ``data`` and ``json`` was supplied; the
-last two also set the content type the application will parse them with.
+last two also set the content type the application will parse them with. A
+``content`` that is an iterable of chunks rather than one string of bytes is sent
+the way a client streams a body it has not measured: the chunks arrive one
+message at a time and the request declares no length, which is the only way to
+reach the checks an application makes on a body it could not judge in advance.
 
 #### `AsgiTestResponse`
 
