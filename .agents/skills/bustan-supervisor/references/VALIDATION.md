@@ -342,3 +342,42 @@ striking a path through while leaving its backticks, and once by anchoring on a 
 
 And run the gate after every amendment, against any pull request, purely to read back the parsed
 pattern line. All three of those were caught that way and none was visible in the rendered issue.
+
+## A check that says the tree broke a convention is usually a broken check
+
+Validating a ticket whose whole premise was "every package declares an explicit `__all__`", I
+walked the tree with `ast` and got fifteen of twenty seven packages reported as missing one. The
+premise looked false and the ticket looked unsendable.
+
+The tree was fine. My walk looked at `ast.Assign` nodes, and every one of those fifteen packages
+writes `__all__: tuple[str, ...] = ()`, which parses as `ast.AnnAssign`. Handling both forms, all
+twenty seven declare one, exactly as the ticket said.
+
+Had I trusted the first answer I would have told an agent its work order rested on something
+untrue, and it would have spent a round proving me wrong about a repository it can see and I had
+already stopped looking at.
+
+The tell is the proportion. A convention a recent ticket applied deliberately across the tree does
+not decay in half of it at once, and a check that reports a widespread violation of a recent
+decision is claiming that decision was never carried out. Before reporting that the tree is wrong,
+break the check on purpose: feed it one case you know passes and confirm it says so. A parser that
+reads a declaration has to handle every form the declaration is written in, and the forms it misses
+are invisible to it by construction - it cannot report what it never looked at.
+
+## Re-measure the brief's numbers into the dispatch prompt
+
+Agents are told to read a shared context brief before their own ticket. It says the suite is 397
+tests and `bustan.__all__` is a 128-element tuple. On the commit I dispatched from, the suite is
+1211 and `__all__` is 117 entries.
+
+Nothing had gone wrong yet, because an agent measures its own checkout and finds the truth. But two
+of the three tickets in that batch turn on exactly those two numbers - one asserts the suite count
+moves only by tests added, one may have to edit that tuple - and an agent that trusts a document
+over its checkout will report a discrepancy it caused, or worse, reconcile it.
+
+A document does not know when it stopped being true, and the brief is the one document every agent
+reads. So every number a ticket's acceptance depends on gets re-measured at dispatch and written
+into the dispatch prompt against the commit it was taken from, with the stale figure named as
+stale. That is cheap, it is dated, and it puts the correction in the one place the agent cannot
+skip. Correcting the document is a separate ticket with its own owner; correcting the agent is
+today's job.
