@@ -24,17 +24,29 @@ turn a server library's next release into a failing build with nothing to fix, a
 check that fails for reasons nobody can act on is a check that gets switched off. What
 is compared is what an application written against this framework can observe and would
 have to rewrite if it changed adapters.
+
+A case may narrow that comparison further, by naming body members it does not compare
+*between* adapters. It narrows nothing about what either adapter answers on its own:
+every adapter is still held to its own document member for member, the status and the
+headers and every other member are still compared exactly, and only the comparison of
+one adapter against another steps over the named member. A case that does it says where
+the difference comes from and whether it is a property of the transports or a defect
+being tracked. The success line below names every such case and the members it steps
+over, because a green run that claims more than it compared is how a suite loses its
+meaning slowly; a run where no case narrows anything makes the claim unqualified.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 from bustan.runtime.conformance import (
     ADAPTER_NAMES,
+    SCENARIOS,
     AdapterConformanceResult,
+    ConformanceCase,
     describe_difference,
     evaluate_adapter_conformance,
     load_adapter,
@@ -67,10 +79,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     case_count = len(next(iter(results.values())).checks)
-    print(
-        f"{case_count} conformance cases over {', '.join(adapters)}: "
-        "every case passed and every adapter answered identically."
-    )
+    print(_success_line(adapters, case_count, _narrowed_cases(_suite_cases())))
     return 0
 
 
@@ -91,6 +100,54 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=f"Adapters to run the matrix over. Default: {' '.join(ADAPTER_NAMES)}",
     )
     return parser.parse_args(argv)
+
+
+def _suite_cases() -> tuple[ConformanceCase, ...]:
+    """Return every case the suite runs, across all of its scenarios."""
+
+    return tuple(case for scenario in SCENARIOS for case in scenario.cases)
+
+
+def _narrowed_cases(cases: Iterable[ConformanceCase]) -> tuple[ConformanceCase, ...]:
+    """Return, in the order the suite declares them, the cases that narrow the comparison.
+
+    A case narrows it by naming body members that are not compared between adapters. The
+    suite may contain none, and a run over such a suite has nothing to qualify.
+    """
+
+    return tuple(case for case in cases if case.diverging_body_members)
+
+
+def _success_line(
+    adapters: Sequence[str], case_count: int, narrowed: Sequence[ConformanceCase]
+) -> str:
+    """Report a clean run, qualified by whatever the comparison between adapters stepped over.
+
+    With nothing narrowed the claim is unqualified, because nothing was exempt. Where a
+    case named body members the comparison steps over, the same sentence says how many
+    cases did it and names each one and its members, so that the line a reader sees on a
+    green check is a description of what was actually compared.
+    """
+
+    line = (
+        f"{case_count} conformance cases over {', '.join(adapters)}: "
+        "every case passed and every adapter answered identically"
+    )
+    if not narrowed:
+        return f"{line}."
+    subject = "1 case narrows" if len(narrowed) == 1 else f"{len(narrowed)} cases narrow"
+    narrowings = "; ".join(
+        f"{case.name} steps over {_as_english(case.diverging_body_members)}" for case in narrowed
+    )
+    return f"{line}, except that {subject} the comparison: {narrowings}."
+
+
+def _as_english(names: Sequence[str]) -> str:
+    """Join names the way a sentence does: ``a``, ``a and b``, ``a, b and c``."""
+
+    if len(names) < 3:
+        return " and ".join(names)
+    return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def _failures(results: dict[str, AdapterConformanceResult]) -> list[str]:

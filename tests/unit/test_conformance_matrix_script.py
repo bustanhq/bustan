@@ -10,7 +10,9 @@ from types import ModuleType
 from bustan.runtime.adapter import AdapterCapabilities
 from bustan.runtime.conformance import (
     AdapterConformanceResult,
+    ConformanceCase,
     ConformanceCheck,
+    ConformanceRequest,
     ResponseObservation,
 )
 
@@ -22,6 +24,78 @@ def test_the_matrix_passes_over_every_adapter_it_knows(capsys) -> None:
 
     assert exit_code == 0
     assert "every case passed and every adapter answered identically" in capsys.readouterr().out
+
+
+def test_the_success_line_over_the_live_suite_matches_what_that_suite_narrows(capsys) -> None:
+    # The suite may or may not contain a narrowed case, and both states are correct, so
+    # what is pinned here is that the line agrees with the suite it was printed for.
+    matrix = _load_matrix_module()
+
+    assert matrix.main([]) == 0
+
+    line = capsys.readouterr().out.splitlines()[-1]
+    narrowed = matrix._narrowed_cases(matrix._suite_cases())
+    if not narrowed:
+        assert line.endswith("every case passed and every adapter answered identically.")
+    else:
+        assert ", except that " in line
+        for case in narrowed:
+            assert case.name in line
+            for member in case.diverging_body_members:
+                assert member in line
+
+
+def test_a_run_narrowing_nothing_claims_identical_answers_without_qualifying_it() -> None:
+    matrix = _load_matrix_module()
+
+    line = matrix._success_line(
+        ("starlette", "asgi"), 40, matrix._narrowed_cases((_case("first"), _case("second")))
+    )
+
+    assert line == (
+        "40 conformance cases over starlette, asgi: "
+        "every case passed and every adapter answered identically."
+    )
+
+
+def test_a_narrowed_case_is_named_in_the_success_line_with_the_member_it_steps_over() -> None:
+    matrix = _load_matrix_module()
+    cases = (_case("compared"), _case("narrowed", diverging=("detail",)))
+
+    line = matrix._success_line(("starlette", "asgi"), 40, matrix._narrowed_cases(cases))
+
+    assert line == (
+        "40 conformance cases over starlette, asgi: "
+        "every case passed and every adapter answered identically, "
+        "except that 1 case narrows the comparison: narrowed steps over detail."
+    )
+
+
+def test_every_narrowed_case_and_every_member_it_steps_over_is_named() -> None:
+    matrix = _load_matrix_module()
+    cases = (
+        _case("first", diverging=("detail", "title")),
+        _case("compared"),
+        _case("second", diverging=("detail", "title", "type")),
+    )
+
+    line = matrix._success_line(("starlette", "asgi"), 7, matrix._narrowed_cases(cases))
+
+    assert line == (
+        "7 conformance cases over starlette, asgi: "
+        "every case passed and every adapter answered identically, "
+        "except that 2 cases narrow the comparison: "
+        "first steps over detail and title; second steps over detail, title and type."
+    )
+
+
+def test_only_the_cases_that_name_a_diverging_member_are_reported_as_narrowed() -> None:
+    matrix = _load_matrix_module()
+    narrowed = _case("narrowed", diverging=("detail",))
+
+    assert matrix._narrowed_cases((_case("compared"), narrowed, _case("also_compared"))) == (
+        narrowed,
+    )
 
 
 def test_the_matrix_refuses_to_run_with_one_adapter(capsys) -> None:
@@ -88,6 +162,23 @@ def test_a_case_both_adapters_fail_the_same_way_is_still_reported() -> None:
         "response_strategy_standard: starlette failed the case: status: expected=200, observed=500",
         "response_strategy_standard: asgi failed the case: status: expected=200, observed=500",
     ]
+
+
+def _case(name: str, *, diverging: tuple[str, ...] = ()) -> ConformanceCase:
+    """Build a case for the reporting to describe, rather than borrowing one the suite runs.
+
+    The suite's own membership is not this file's subject and changes with the adapters'
+    behaviour, so a test that read a narrowed case out of it would be asserting against a
+    moving target.
+    """
+
+    return ConformanceCase(
+        name=name,
+        dimension="reporting",
+        request=ConformanceRequest(path=f"/{name}"),
+        expected=_observation(200, "{}"),
+        diverging_body_members=diverging,
+    )
 
 
 def _observation(status_code: int, body: str) -> ResponseObservation:
