@@ -639,3 +639,31 @@ The same ticket carried a second negative claim - that the version lives in seve
 which came from an exhaustive enumeration and held up, except that the list under it had
 eight entries. The enumeration was right and the summary of it was wrong. Count from the list
 rather than from memory of it.
+
+## Measure on the tree the ticket will be cut from
+
+Wave 5's tickets were validated from the supervisor's own working directory, which sat on a
+branch ninety commits behind `main`. Two claims came out of it. The harness figure happened
+to be identical on both trees, so it survived. The other did not: a grep for `redact` across
+`src/` returned nothing, and a ticket was nearly written saying the observability redaction
+its scope depends on had not landed. It had. `logger.py` on `main` exports `redact`,
+`DEFAULT_REDACTED_KEYS`, `REDACTED` and `MAX_REDACTION_DEPTH`, and had done for a release.
+
+The grep was correct. It was correct about the wrong tree.
+
+What makes this worth an entry is that the failure is silent in exactly the direction that
+costs most. A path that exists on the stale tree and not on `main` produces a ticket the
+agent cannot deliver, and it blocks and says so. A path that exists on `main` and not on the
+stale tree produces a ticket that tells the agent to build something already built, and it
+will: the instruction is specific, the ground supports it, and nothing in the pull request
+looks wrong. The blind agent has no way to catch this one, because the ticket is the only
+thing it can see and the ticket is confidently mistaken.
+
+So before validating a ticket, pin a tree to the revision the agent will branch from and run
+every measurement there. A detached worktree costs seconds. And when a figure goes into a
+ticket, name the revision beside it, so a later reader can tell a stale number from a wrong
+one - the first is expected and the second is a defect.
+
+The reason a supervisor drifts here is worth naming too: the working directory is where the
+supervisor's own commits live, so it is never at `main` for long, and every check run in it
+is answering a question about the supervisor's branch rather than about the programme.
