@@ -307,3 +307,40 @@ def _joining_binding(bindings: tuple[Binding, ...]) -> Binding:
 
 class _OwnerModule:
     pass
+
+
+def test_a_factory_inject_entry_that_cannot_name_a_provider_is_refused_by_name() -> None:
+    # A mapping written where a token belongs is the NestJS spelling of an optional
+    # dependency. Every table that says what a token means is keyed by the token, so
+    # left alone it reaches the visibility lookup as a builtin TypeError naming neither
+    # the module nor the entry.
+    @Module(
+        providers=[
+            {
+                "provide": "settings",
+                "use_factory": lambda value: value,
+                "inject": ({"token": "missing", "optional": True},),
+            }
+        ]
+    )
+    class AppModule:
+        pass
+
+    with pytest.raises(InvalidProviderError, match="'inject' entry at position 0"):
+        validate_module_compiled(expand_module_input(AppModule, instance_id="0"))
+
+
+def test_a_factory_inject_entry_that_can_name_a_provider_is_left_alone() -> None:
+    @Module(
+        providers=[
+            {"provide": "value", "use_value": 1},
+            {"provide": "settings", "use_factory": lambda value: value, "inject": ("value",)},
+        ]
+    )
+    class AppModule:
+        pass
+
+    bindings = validate_module_compiled(expand_module_input(AppModule, instance_id="0"))
+    _factory, inject = cast("tuple[object, tuple[object, ...]]", bindings[1].target)
+
+    assert inject == ("value",)

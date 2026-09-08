@@ -183,6 +183,7 @@ def _normalized_bindings(
 
     for provider_entry in provider_entries:
         binding = normalize_provider(provider_entry, owner)
+        _reject_unusable_inject_entries(owner, binding)
         # A multi-provider token accumulates instead of colliding: a second declaration
         # for it adds a component to a slot that runs all of them, so there is no losing
         # binding to warn about.
@@ -192,6 +193,30 @@ def _normalized_bindings(
         bindings.append(binding)
 
     return tuple(bindings)
+
+
+def _reject_unusable_inject_entries(owner: ModuleKey, binding: Binding) -> None:
+    """Refuse a factory dependency that can never name a provider.
+
+    Every table that says what a token means is keyed by the token, so an entry nothing
+    can hash - a mapping written where a token belongs - reaches the lookup as a builtin
+    ``TypeError`` naming neither the module nor the entry. It is refused here instead,
+    where both are still known.
+    """
+
+    if binding.resolver_kind != "factory":
+        return
+
+    _factory, inject = cast("tuple[object, tuple[object, ...]]", binding.target)
+    for position, entry in enumerate(inject):
+        try:
+            hash(entry)
+        except TypeError:
+            raise InvalidProviderError(
+                f"Invalid provider in {_display_name(owner)}: {binding.token!r} declares an "
+                f"'inject' entry at position {position} that cannot name a provider: {entry!r}. "
+                "Every entry must be the token itself"
+            ) from None
 
 
 def _accumulates(token: object) -> bool:
