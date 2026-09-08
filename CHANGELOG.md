@@ -15,7 +15,7 @@ deployment actually served.
 The candidate also closes the last of the request-binding gaps: a handler is no longer handed
 a value whose type contradicts its own annotation.
 
-**This candidate carries seven breaking changes.** Each is stated in full on the commit that
+**This candidate carries six breaking changes.** Each is stated in full on the commit that
 made it; in brief:
 
 * A request body whose field values do not match their declared types is answered `400`
@@ -25,7 +25,7 @@ made it; in brief:
   upload over ten, more than twenty parts bound to one parameter, or a request running longer
   than thirty seconds is refused where it previously was not. `bustan.adapters.asgi` no longer
   exports `RequestBodyTooLarge`, and an oversized body is answered `413` rather than `500`.
-* `bustan.errors` exports sixteen new names. A request refused for want of an identity is
+* `bustan.errors` exports nineteen new names. A request refused for want of an identity is
   answered `401` with a `WWW-Authenticate` header where it was answered `403`, and an
   application whose authenticated route cannot see an authenticator registry is refused at
   build time.
@@ -38,8 +38,14 @@ made it; in brief:
 * `Application.close()` stops a running server, drains it and waits for its port to be
   released, where before it ran the lifecycle teardown alone and left the server serving.
   Shutdown hooks receive the name of the signal that stopped the process.
-* `Cache`, `Idempotent` and `Audit` raise `InvalidPipelineError` when applied. They previously
-  accepted every argument and did nothing.
+
+Not a breaking change, and stated here because it changes what a reader should expect:
+`Cache`, `Idempotent` and `Audit` now say in their own docstrings that nothing in the
+request path acts on them. All three still accept every argument and still record their
+policy on the route's compiled plan, exactly as they did in `2.0.0-rc.3`. What changed is
+that the absence is stated where a reader meets it - the first line of each docstring,
+which is what an editor's hover shows - together with what to do instead until the
+behaviour lands.
 
 Every entry below is a closed issue from the 2.0.0-rc.4 milestone, grouped by the
 classification label it carries. All 26 are listed. Fourteen carry two classification labels;
