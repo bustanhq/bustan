@@ -72,6 +72,13 @@ from bustan.contracts import HttpQueryParams as InternalHttpQueryParams
 from bustan.contracts import HttpRequest as InternalHttpRequest
 from bustan.contracts import HttpResponse as InternalHttpResponse
 from bustan.contracts import HttpUrl as InternalHttpUrl
+from bustan.health import HealthIndicator as InternalHealthIndicator
+from bustan.health import HealthIndicatorResult as InternalHealthIndicatorResult
+from bustan.health import HealthModule as InternalHealthModule
+from bustan.health import HealthReport as InternalHealthReport
+from bustan.health import HealthService as InternalHealthService
+from bustan.health import HealthStatus as InternalHealthStatus
+from bustan.health import ReadinessState as InternalReadinessState
 from bustan.kernel.errors import (
     BadRequestException,
     BustanError,
@@ -266,6 +273,12 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "Guard",
         "GuardRejectedError",
         "Header",
+        "HealthIndicator",
+        "HealthIndicatorResult",
+        "HealthModule",
+        "HealthReport",
+        "HealthService",
+        "HealthStatus",
         "HostParam",
         "HttpArgumentsHost",
         "HttpFormData",
@@ -312,6 +325,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "ProviderResolutionError",
         "Put",
         "Query",
+        "ReadinessState",
         "Reflector",
         "REQUEST",
         "RESPONSE",
@@ -369,6 +383,12 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.ExceptionFilter is InternalExceptionFilter
     assert bustan.Guard is InternalGuard
     assert bustan.Global is InternalGlobal
+    assert bustan.HealthIndicator is InternalHealthIndicator
+    assert bustan.HealthIndicatorResult is InternalHealthIndicatorResult
+    assert bustan.HealthModule is InternalHealthModule
+    assert bustan.HealthReport is InternalHealthReport
+    assert bustan.HealthService is InternalHealthService
+    assert bustan.HealthStatus is InternalHealthStatus
     assert bustan.HostParam is InternalHostParam
     assert bustan.HttpArgumentsHost is InternalHttpArgumentsHost
     assert bustan.HttpFormData is InternalHttpFormData
@@ -423,6 +443,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.Post is InternalPost
     assert bustan.Put is InternalPut
     assert bustan.Scope is ProviderScope
+    assert bustan.ReadinessState is InternalReadinessState
     assert bustan.Reflector is InternalReflector
     assert bustan.REQUEST is InternalRequestToken
     assert bustan.RESPONSE is InternalResponseToken
