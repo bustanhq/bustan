@@ -1,6 +1,8 @@
 # Documentation
 
-These guides sit on top of the main [README.md](../README.md). Start there for the project overview, installation, supported public modules, and the CLI scaffold. Then use the guides below to go deeper into routing, the request pipeline, request scope, lifecycle hooks, platform access, and release policy.
+These guides sit on top of the main [README.md](../README.md). Start there for the project overview, installation, supported public modules, and the CLI scaffold. Then use the guides below to go deeper into routing, the request pipeline, request scope, lifecycle hooks, platform access, operations, and release policy.
+
+Upgrading from 1.x? Start at [MIGRATION_1x_to_2x.md](MIGRATION_1x_to_2x.md). 2.0 is a clean break and a 1.x application will not start on it until it is corrected.
 
 ## Recommended Reading Order
 
@@ -17,6 +19,12 @@ These guides sit on top of the main [README.md](../README.md). Start there for t
 - [REQUEST_PIPELINE.md](REQUEST_PIPELINE.md): execution order, `ExecutionContext`, automatic validation, and custom pipeline components.
 - [REQUEST_SCOPED_PROVIDERS.md](REQUEST_SCOPED_PROVIDERS.md): request-scoped providers, request-scoped controllers, and safe dependency direction.
 - [LIFECYCLE.md](LIFECYCLE.md): `on_module_init`, `on_application_bootstrap`, shutdown hooks, and `create_app_context()`.
+- [CLI.md](CLI.md): the `bustan` command line tool - `init`, `doctor`, `graph`, `config`, `routes`, and `governance`.
+
+## Upgrading
+
+- [MIGRATION_1x_to_2x.md](MIGRATION_1x_to_2x.md): what `bustan doctor` finds, what only you can find, and a worked migration validated against a real 1.x application.
+- [../CHANGELOG.md](../CHANGELOG.md): every change, release by release, with the issue each one closed.
 
 ## Examples
 
@@ -33,12 +41,21 @@ The checked-in examples now mirror the standalone mini-project layout rather tha
 ## Platform And Operations
 
 - [PLATFORM_INTEGRATION.md](PLATFORM_INTEGRATION.md): `Application`, `ApplicationContext`, accessors for the underlying adapter, and runtime artifacts.
+- [DEPLOYMENT.md](DEPLOYMENT.md): installing, serving, choosing an adapter, health probes, draining, workers, and gating a release.
+- [OBSERVABILITY.md](OBSERVABILITY.md): structured logging, correlation and trace context, the metrics and tracing protocols, and the two health probes.
+- [SECURITY_HARDENING.md](SECURITY_HARDENING.md): request limits, throttling, authentication policy, what a refusal is allowed to say, and what the framework does not do.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md): the common module graph, binding, scope, and lifecycle failures.
 - [COMPARISONS.md](COMPARISONS.md): how Bustan fits beside Starlette, FastAPI, and NestJS-style architecture.
+
+## Architecture And Performance
+
+- [ARCHITECTURE.md](ARCHITECTURE.md): the package layering rule, why crossing it is a defect, why the check is advisory for now, and the violations still open.
+- [BENCHMARKS.md](BENCHMARKS.md): what is measured, how run-to-run variation is divided out, and the CI gate that fails a regression.
 
 ## Audits
 
 - [audits/di-container-2026-09/REPORT.md](audits/di-container-2026-09/REPORT.md): adversarial audit of the dependency-injection container (findings, executable repros, and the maintenance roadmap).
+- [audits/di-container-2026-09/repros/evidence/README.md](audits/di-container-2026-09/repros/evidence/README.md): the captured output the audit's repro scripts are checked against.
 
 ## Stability And Release
 
@@ -47,3 +64,7 @@ The checked-in examples now mirror the standalone mini-project layout rather tha
 - [API_REFERENCE.md](API_REFERENCE.md): generated reference for `bustan`, `bustan.errors`, and `bustan.testing`.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): release validation, automation prerequisites, and post-publish smoke checks.
 - [../GOVERNANCE.md](../GOVERNANCE.md): maintainer roles, release ownership, and pause policy.
+
+## Delivery
+
+- [delivery/BUSTAN_2_0_BACKLOG.md](delivery/BUSTAN_2_0_BACKLOG.md): the 2.0 programme's ticket-by-ticket specification, its orchestration rules, and the shared context every delivery agent works from.
