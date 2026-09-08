@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import anyio
+import pytest
 from starlette.applications import Starlette
 
 from bustan import (
@@ -23,21 +24,28 @@ from bustan import (
     create_app,
 )
 from bustan.contracts import HttpRequest
+from bustan.errors import GuardRejectedError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
 from bustan.pipeline.filters import handle_exception
 from bustan.runtime.compiler import GlobalPipelineProvider, compile_route_contracts
+from bustan.runtime.controller_factory import ControllerFactory
 from bustan.runtime.execution import (
+    HttpExecutionResult,
     RequestLimitExceptionFilter,
     RequestTimeoutError,
     _application_runtime,
     _with_limit_filter,
     compile_execution_plans,
+    execute_http_route,
     request_limits_of,
     set_request_limits,
 )
 from bustan.runtime.params import RequestBodyTooLargeError, RequestLimits
 from bustan.testing import AsgiTestClient
+
+if TYPE_CHECKING:
+    from tests.conftest import HttpRequestFactory
 
 
 class AllowEveryone(Guard):
@@ -238,6 +246,106 @@ def test_a_request_that_is_served_keeps_the_durable_partitions_it_created() -> N
 
     assert response.status_code == 200
     assert "acme" in partitions
+
+
+@pytest.mark.anyio
+async def test_a_refusal_leaves_the_durable_partition_a_concurrent_request_created(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    constructions: list[object] = []
+    refusal_pending = anyio.Event()
+    admitted_partition_built = anyio.Event()
+
+    @Injectable(scope=Scope.DURABLE)
+    class RefusedTenantGuard(Guard):
+        def __init__(self) -> None:
+            constructions.append(object())
+
+        @classmethod
+        def get_durable_context_key(cls, request: HttpRequest | None) -> object:
+            return request.headers.get("x-tenant") if request is not None else None
+
+        async def can_activate(self, context: ExecutionContext) -> bool:
+            # The refusal is held open until the other request has cached a partition
+            # of its own, which is the interleaving this test is about: the second
+            # partition appears after the first request began deciding.
+            refusal_pending.set()
+            await admitted_partition_built.wait()
+            return False
+
+    @Injectable(scope=Scope.DURABLE)
+    class TenantPool:
+        @classmethod
+        def get_durable_context_key(cls, request: HttpRequest | None) -> object:
+            return request.headers.get("x-tenant") if request is not None else None
+
+    class AdmitOnceTheRefusalIsPending(Guard):
+        async def can_activate(self, context: ExecutionContext) -> bool:
+            await refusal_pending.wait()
+            return True
+
+    @Controller("/refused")
+    class RefusedController:
+        @UseGuards(RefusedTenantGuard)
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    @Controller("/admitted", scope=Scope.REQUEST)
+    class AdmittedController:
+        def __init__(self, pool: TenantPool) -> None:
+            self._pool = pool
+
+        @UseGuards(AdmitOnceTheRefusalIsPending())
+        @Get("/")
+        async def read(self) -> dict[str, str]:
+            admitted_partition_built.set()
+            return {"status": "ok"}
+
+    @Module(
+        controllers=[RefusedController, AdmittedController],
+        providers=[RefusedTenantGuard, TenantPool],
+    )
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+    factory = ControllerFactory(container)
+    plans = {
+        plan.controller_cls: plan
+        for plan in compile_execution_plans(compile_route_contracts(graph, container))
+    }
+    results: dict[str, HttpExecutionResult] = {}
+
+    async def serve(name: str, controller_cls: type[object], tenant: bytes) -> None:
+        results[name] = await execute_http_route(
+            application_runtime=None,
+            container=container,
+            factory=factory,
+            execution_plan=plans[controller_cls],
+            request=build_http_request(
+                path=plans[controller_cls].path,
+                headers=[(b"x-tenant", tenant)],
+            ),
+        )
+
+    # A deadline, because each request waits on the other and a regression that stops
+    # one of them from getting there would otherwise hang the suite rather than fail.
+    with anyio.fail_after(5):
+        async with anyio.create_task_group() as requests:
+            requests.start_soon(serve, "refused", RefusedController, b"refused-corp")
+            requests.start_soon(serve, "admitted", AdmittedController, b"admitted-corp")
+
+    partitions = [key[2] for key in container.scope_manager.durable_instances]
+
+    assert isinstance(results["refused"].error, GuardRejectedError)
+    assert results["admitted"].error is None
+    # The refusal built its own partition and undid it.
+    assert len(constructions) == 1
+    assert "refused-corp" not in partitions
+    # And left alone the one the other request created while it was deciding.
+    assert "admitted-corp" in partitions
 
 
 def test_guards_run_before_the_controller_and_its_providers_are_constructed() -> None:
