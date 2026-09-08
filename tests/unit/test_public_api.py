@@ -119,6 +119,7 @@ from bustan.pipeline.decorators import UseInterceptors as InternalUseInterceptor
 from bustan.pipeline.decorators import UsePipes as InternalUsePipes
 from bustan.pipeline.middleware import Middleware as InternalMiddleware
 from bustan.pipeline.middleware import MiddlewareConsumer as InternalMiddlewareConsumer
+from bustan.runtime.params import RequestLimits as InternalRequestLimits
 from bustan.runtime.versioning import VERSION_NEUTRAL as InternalVersionNeutral
 from bustan.runtime.versioning import VersioningOptions as InternalVersioningOptions
 from bustan.runtime.versioning import VersioningType as InternalVersioningType
@@ -231,6 +232,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "Reflector",
         "REQUEST",
         "RESPONSE",
+        "RequestLimits",
         "RequestTracer",
         "RouteDefinitionError",
         "Scope",
@@ -322,6 +324,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.ParseIntPipe is InternalParseIntPipe
     assert bustan.ParseUUIDPipe is InternalParseUUIDPipe
     assert bustan.Pipe is InternalPipe
+    assert bustan.RequestLimits is InternalRequestLimits
     assert bustan.RequestTracer is InternalRequestTracer
     assert bustan.SpanContext is InternalSpanContext
     assert bustan.SpanKind is InternalSpanKind

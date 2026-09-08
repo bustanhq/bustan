@@ -180,6 +180,51 @@ Common fixes:
 
 By default, unhandled binding errors become HTTP `400` responses with structured `field` and `source` metadata.
 
+## `RequestBodyTooLargeError`
+
+Cause: the request carried more body bytes, or more uploaded parts, than the limits the application serves under allow. The caller sees `413` with the title `Content Too Large`, and the `detail` names the figure that was measured against the figure that was allowed, in one of four shapes:
+
+- `The request body declares N bytes, over the M byte limit`, or `The upload declares ...` - the refusal came from the declared `Content-Length` and the body was never read, so a request that announces a large body is refused before it costs anything to receive. The two wordings separate the ordinary body bound from the multipart one.
+- `The request body exceeds the M byte limit` - the body was sent without a declared length and the adapter stopped reading at the byte that crossed the limit.
+- `The request body carries N bytes, over the M byte limit` - the same undeclared body, refused after it was read in full because the adapter serving it bounds nothing itself. What this decides is what the handler is handed, not what receiving the request cost.
+- `The request uploads N files for 'field', over the M file limit` - a multipart form bound more parts to one parameter than `max_upload_files` allows.
+
+Fix: send less, or raise the bound the application serves under. The three bounds are `max_body_bytes` for an ordinary body, `max_upload_bytes` for a multipart one and `max_upload_files` for the number of parts, and they are set together:
+
+```python
+from bustan import RequestLimits, create_app
+
+app = create_app(AppModule, request_limits=RequestLimits(max_body_bytes=4 * 1024 * 1024))
+```
+
+Every bound has a finite default, so an application that configures nothing still refuses something; `None` removes one bound for a deployment that has measured that it needs to.
+
+Catch the class to answer the refusal yourself. A filter declaring `exception_types = (RequestBodyTooLargeError,)` is preferred over the framework's own, which is what renders the `413` when no application filter answers it.
+
+## `RequestTimeoutError`
+
+Cause: one request ran longer than `timeout_seconds`, the wall clock the application allows a single request, and was abandoned. The caller sees `504` with the title `Gateway Timeout`; the message naming the budget goes to the log rather than to the caller, because it tells an unauthenticated caller how long to hold a connection to exhaust the workers.
+
+Fix: make the request faster, or give it longer:
+
+```python
+from bustan import RequestLimits, create_app
+
+app = create_app(AppModule, request_limits=RequestLimits(timeout_seconds=60.0))
+```
+
+A synchronous handler is a special case. It runs on a thread, Python cannot interrupt one, and so the budget is enforced for it only once it returns. What bounds a synchronous handler that never returns is `sync_handler_threads`, which caps how many of them may occupy threads at the same time; a timeout that never fires on a blocking handler is that distinction rather than a broken limit.
+
+Catch the class to answer the timeout with a status of your own - a `503` while the application sheds load reads differently to a caller than the framework's `504`:
+
+```python
+from bustan import ExceptionFilter
+from bustan.errors import RequestTimeoutError
+
+class BusyFilter(ExceptionFilter):
+    exception_types = (RequestTimeoutError,)
+```
+
 ## `BadRequestException`
 
 Cause: a request failed explicit validation. The built-in pipes raise it for a value they cannot parse - `Validation failed (integer expected)` and its siblings for `float`, `boolean`, `UUID` and enum members - and application code raises it for validation the framework cannot do itself.
@@ -254,7 +299,7 @@ Fix: re-read the resource and retry against what it says now.
 
 Cause: raised by an application to answer `413` when the request body is larger than the route accepts.
 
-The framework's own body limit answers `413` through its request-limit filter rather than through this class, so a refusal that names no `code` at all came from that limit and not from application code.
+The framework's own body limit answers `413` through its request-limit filter rather than through this class, so a refusal that names no `code` at all came from that limit and not from application code; see [`RequestBodyTooLargeError`](#requestbodytoolargeerror).
 
 Fix: send a smaller body, or raise the limit the deployment sets.
 
@@ -304,7 +349,7 @@ Fix: retry later. Pass `headers={"Retry-After": ...}` to say how much later.
 
 ## `GatewayTimeoutException`
 
-Cause: raised by an application to answer `504` when a service it depends on did not answer in time. The framework's own request timeout answers `504` through its request-limit filter rather than through this class.
+Cause: raised by an application to answer `504` when a service it depends on did not answer in time. The framework's own request timeout answers `504` through its request-limit filter rather than through this class; see [`RequestTimeoutError`](#requesttimeouterror).
 
 Fix: the fault is downstream, or the budget is too small for it.
 

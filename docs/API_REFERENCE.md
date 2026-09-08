@@ -355,7 +355,7 @@ Current value: `Cookies`
 #### `create_app`
 
 ```python
-def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | AdapterFactory | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None, observability: ObservabilityHooks | None = None) -> Application
+def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | AdapterFactory | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None, observability: ObservabilityHooks | None = None, request_limits: RequestLimits | None = None) -> Application
 ```
 
 Defined in `bustan.app.bootstrap`.
@@ -375,6 +375,15 @@ application serves is counted, timed and traced through them. The hooks belong t
 this application rather than to the process, so a second application in the same
 process can report somewhere else. Left out, requests are still measured and still
 correlated; there is simply nothing listening.
+
+``request_limits`` chooses what this application will spend on a single request:
+how many body bytes it reads, how many uploaded parts it binds, how long it runs
+and how many synchronous handlers it runs at once. Build it with the bounds you
+have measured - ``RequestLimits(max_body_bytes=...)`` - and a request over one of
+them is refused with the status the limit implies rather than served. The limits
+belong to this application rather than to the process, so a second application in
+the same process can serve under different ones. Left out, requests are served
+under bounds that are finite already; there is no way to end up with none.
 
 #### `create_app_context`
 
@@ -1649,6 +1658,33 @@ the container never matches two tokens by comparing names.
 
 Current value: `InjectionToken('RESPONSE')`
 
+#### `RequestLimits`
+
+```python
+class RequestLimits
+```
+
+Defined in `bustan.runtime.params`.
+
+What one application will spend on a single request.
+
+``max_body_bytes`` bounds the body read to bind ordinary parameters and
+``max_upload_bytes`` the body read to parse a multipart form; they are separate
+because a route that accepts uploads is expected to carry more than a JSON
+document, and giving both the larger bound would raise the ceiling on every route.
+``max_upload_files`` bounds how many parts of a form may bind to one parameter.
+``timeout_seconds`` is the wall clock one request may take before it is abandoned
+and answered through the route's exception filters. ``sync_handler_threads`` is how
+many synchronous handlers may run at once.
+
+Every bound has a finite default. ``None`` removes one for a deployment that has
+measured that it needs to, and is never what an application gets by not choosing.
+
+A synchronous handler runs on a thread and Python cannot interrupt one, so
+``timeout_seconds`` is enforced for such a handler only once it returns; what bounds
+a synchronous handler that never returns is ``sync_handler_threads``, which caps how
+many of them can be occupying threads at the same time.
+
 #### `RequestTracer`
 
 ```python
@@ -2587,6 +2623,26 @@ class ProviderResolutionError(BustanError)
 Defined in `bustan.kernel.errors`.
 
 Raised when dependency resolution fails.
+
+#### `RequestBodyTooLargeError`
+
+```python
+class RequestBodyTooLargeError(BustanError)
+```
+
+Defined in `bustan.runtime.params`.
+
+Raised when a request carries more body bytes or parts than the limit allows.
+
+#### `RequestTimeoutError`
+
+```python
+class RequestTimeoutError(BustanError)
+```
+
+Defined in `bustan.runtime.execution`.
+
+Raised when one request took longer than the time its application allows it.
 
 #### `RouteDefinitionError`
 

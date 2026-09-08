@@ -17,7 +17,11 @@ from ..runtime.adapter import (
     compile_adapter_routes,
 )
 from ..runtime.compiler import compile_route_contracts
-from ..runtime.execution import compile_execution_plans, set_observability_hooks
+from ..runtime.execution import (
+    compile_execution_plans,
+    set_observability_hooks,
+    set_request_limits,
+)
 from .application import Application, ApplicationContext
 from .lifespan import build_lifespan
 
@@ -25,6 +29,7 @@ if TYPE_CHECKING:
     from ..kernel.ioc.container import Container
     from ..observability import ObservabilityHooks
     from ..openapi import SwaggerOptions
+    from ..runtime.params import RequestLimits
     from ..runtime.versioning import VersioningOptions
     from ..testing.overrides import PipelineOverrideRegistry
 
@@ -38,6 +43,7 @@ def create_app(
     versioning: VersioningOptions | None = None,
     swagger: SwaggerOptions | None = None,
     observability: ObservabilityHooks | None = None,
+    request_limits: RequestLimits | None = None,
 ) -> Application:
     """Create a fully assembled Bustan application from the root module.
 
@@ -54,6 +60,15 @@ def create_app(
     this application rather than to the process, so a second application in the same
     process can report somewhere else. Left out, requests are still measured and still
     correlated; there is simply nothing listening.
+
+    ``request_limits`` chooses what this application will spend on a single request:
+    how many body bytes it reads, how many uploaded parts it binds, how long it runs
+    and how many synchronous handlers it runs at once. Build it with the bounds you
+    have measured - ``RequestLimits(max_body_bytes=...)`` - and a request over one of
+    them is refused with the status the limit implies rather than served. The limits
+    belong to this application rather than to the process, so a second application in
+    the same process can serve under different ones. Left out, requests are served
+    under bounds that are finite already; there is no way to end up with none.
     """
     return _create_app(
         root_module,
@@ -63,6 +78,7 @@ def create_app(
         versioning=versioning,
         swagger=swagger,
         observability=observability,
+        request_limits=request_limits,
         no_lifespan=False,
     )
 
@@ -76,6 +92,7 @@ def _create_app(
     versioning: VersioningOptions | None = None,
     swagger: SwaggerOptions | None = None,
     observability: ObservabilityHooks | None = None,
+    request_limits: RequestLimits | None = None,
     no_lifespan: bool = False,
 ) -> Application:
     """Internal application factory used for alternate lifecycle wiring."""
@@ -123,6 +140,11 @@ def _create_app(
     # a provider is injected with can still report the routes the application compiled.
     # The assembler is the only writer; everything else reads the context's accessor.
     application_context._http_application = application
+    # The limits are seated on the assembled application because that is where the
+    # request path and the transport adapter both look for what one application -
+    # rather than the process it happens to share - serves its requests under.
+    if request_limits is not None:
+        set_request_limits(application, request_limits)
     # The hooks are seated on the assembled application, next to the request limits,
     # because that is where the request path looks for what one application - rather
     # than the process it happens to share - serves its requests through.
