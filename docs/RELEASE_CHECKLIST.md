@@ -16,8 +16,8 @@ so a stale root lockfile repairs itself in place before any later command could 
 and the repair is silent.
 
 1. Run `uv lock --check`.
-2. Run `uv lock --check --project <example>` for each project directory under
-   [examples](../examples), or run the loop in step 2 of
+2. Run `uv lock --check --project <project>` for each project directory under
+   [examples](../examples) and for [benchmarks](../benchmarks), or run the loop in step 2 of
    [Prepare The Release Commit](#prepare-the-release-commit) with `--check` added.
 3. Run `uv run python scripts/generate_api_reference.py --check`.
 4. Run `uv run python scripts/check_markdown_links.py`.
@@ -54,16 +54,24 @@ issues carry the classification labels the notes are grouped by.
    classification labels. Every issue in the milestone appears, or the entry says why it
    does not.
 2. Set the version in [pyproject.toml](../pyproject.toml) and then re-lock. The version is
-   written in `pyproject.toml` and repeated in every lockfile: `uv.lock` and
-   `examples/*/uv.lock`. That glob is the definition, not a count to memorise - each project
-   directory under [examples](../examples) is a standalone `uv` project that depends on
-   `bustan` by path, so its lockfile records the version too, and adding an example adds a
-   file that has to move with the release. Editing `pyproject.toml` alone leaves every
-   lockfile behind.
+   written in `pyproject.toml` and repeated in every lockfile in the repository: `uv.lock`,
+   `examples/*/uv.lock`, and `benchmarks/uv.lock`. The rule behind that list, and not the
+   list itself, is what to carry: **every standalone `uv` project that depends on `bustan`
+   by path records the version in its lockfile**, so adding one adds a file that has to move
+   with the release. `benchmarks/` is the proof that the rule matters more than the list -
+   it arrived after this section was last corrected, and a release cut from the older
+   wording would have left its lockfile stale. Before bumping, find them rather than trust
+   this paragraph:
+
+   ```bash
+   ls pyproject.toml */pyproject.toml */*/pyproject.toml 2>/dev/null
+   ```
+
+   Editing `pyproject.toml` alone leaves every lockfile behind.
 
    ```bash
    uv lock
-   for manifest in examples/*/pyproject.toml; do
+   for manifest in examples/*/pyproject.toml benchmarks/pyproject.toml; do
      uv lock --project "$(dirname "$manifest")"
    done
    ```
@@ -79,12 +87,13 @@ issues carry the classification labels the notes are grouped by.
    root lockfile therefore fails a tag that has already been pushed, which is the most
    expensive place to find it - the run publishes nothing and leaves no GitHub release, but
    the tag stands, and re-cutting means force-moving a pushed tag or burning a version
-   number. The example lockfiles are outside that workflow and cannot fail it.
+   number. The example and benchmark lockfiles are outside that workflow and cannot fail it.
 
    Every lockfile is still worth updating, and none of them reaches `main` stale by accident.
-   [ci.yml](../.github/workflows/ci.yml) checks the root in its `Quality` job and the
-   examples in its `Example Execution` job, and both steps block, so a release pull request
-   that bumps the version without re-locking is red at review rather than after the tag. The
+   [ci.yml](../.github/workflows/ci.yml) checks the root in its `Quality` job, the examples in
+   its `Example Execution` job, and `benchmarks/uv.lock` in its `Benchmarks and regression
+   gate` job, and all three steps block, so a release pull request that bumps the version
+   without re-locking is red at review rather than after the tag. The
    `pre-commit` hook in [lefthook.yml](../lefthook.yml) runs `uv lock --check` on the root
    before that, so the same mistake usually fails at `git commit`. Beyond those gates,
    `scripts/run_examples.py` rewrites the example lockfiles when it runs, so a stale one also

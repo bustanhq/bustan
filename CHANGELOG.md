@@ -3,6 +3,62 @@
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. These releases contain the core framework but should be treated as early alpha orphans. The first production-ready release will be `2.0.0`.
 
+## [2.0.0-rc.5](https://github.com/bustanhq/bustan/compare/v2.0.0rc4...v2.0.0rc5) (2026-09-08)
+
+The candidate that closes the audit. Every defect the September dependency-injection audit
+demonstrated is now fixed and held there by the script that used to reproduce it, and the CI job
+that runs those scripts stopped being advisory: it is a regression gate, and a finding that comes
+back fails the build rather than appearing in a summary nobody reads.
+
+The rest of the candidate is what an application built on this framework needs from it that had no
+answer before. A route's pipeline is resolved once instead of once per request. The framework can
+be measured, and a regression in what it costs fails CI. Five extension points an enterprise must
+customise reached the supported surface, and the surface now derives from a written policy rather
+than drifting alongside one. The command-line tool can answer questions about the application in
+front of it.
+
+**This candidate carries two breaking changes**, both to `ModuleRef` and both stated in full on the
+commit that made them:
+
+* A `ModuleRef` injected into a provider or a controller now names the module that class was
+  declared in, not the root module. A reference asked of the application directly still names the
+  root. Code reading `ModuleRef.module_key`, or relying on an injected reference resolving through
+  the root, sees a different module.
+* `strict=False` now widens a token its own module cannot see into a search of every module in the
+  application, and refuses to choose when more than one declares it, naming `for_module()` as the
+  way to say which. It previously fell back to what the root module could see, which widened
+  nothing. A lookup that used to return a root-visible provider may now return a different one or
+  raise.
+
+Not a breaking change, and worth knowing: a mapping written where a factory's `inject` token
+belongs is now refused while the module is compiled, naming the module, the token and the entry.
+It previously reached the visibility lookup as `TypeError: unhashable type: 'dict'`. And a dynamic
+registration may now replace a provider its base module declares rather than colliding with it.
+
+`INQUIRER` yields the requesting class rather than the requesting instance. That is documented in
+[COMPARISONS.md](docs/COMPARISONS.md) as a deliberate difference from NestJS: this framework injects
+through the constructor only, so at the moment the token is answered the consumer's `__init__` has
+not run and no instance of it exists.
+
+Every entry below is a closed issue from the 2.0.0-rc.5 milestone, grouped by the classification
+label it carries. All six are listed; two carry `follow-up` as well and appear under their
+classification.
+
+### Correctness
+
+* the pipeline is resolved from the container on every request, and a singleton can be built twice ([#156](https://github.com/bustanhq/bustan/issues/156))
+* `ModuleRef` is always root-scoped, so a child module cannot resolve its own providers ([#158](https://github.com/bustanhq/bustan/issues/158))
+* refusing one request evicts durable partitions other requests are still using ([#206](https://github.com/bustanhq/bustan/issues/206))
+
+### Architecture
+
+* six extension points an enterprise must customise live in namespaces declared internal ([#159](https://github.com/bustanhq/bustan/issues/159))
+
+### Operability
+
+* the repository has no benchmark of any kind, so a performance regression is invisible ([#157](https://github.com/bustanhq/bustan/issues/157))
+* the CLI has no diagnostics, no `--version`, and leaks tracebacks on a resolution error ([#160](https://github.com/bustanhq/bustan/issues/160))
+
 ## [2.0.0-rc.4](https://github.com/bustanhq/bustan/compare/v2.0.0rc3...v2.0.0rc4) (2026-09-08)
 
 The request contract and operability. A request now has one error contract from the edge to
