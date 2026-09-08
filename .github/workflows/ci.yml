@@ -3,6 +3,9 @@ name: CI
 on:
   pull_request:
   push:
+  # Manual only, for the benchmark job's baseline capture. Every other job behaves the
+  # same on a dispatch as on a push; the capture step is the one that checks the event.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -466,16 +469,17 @@ jobs:
             echo '### Benchmark regression gate'
             echo
             echo '```'
-            cat gate-report.txt
+            cat gate-report.txt 2>/dev/null || echo 'The gate did not run. An earlier step failed.'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # TEMPORARY, to be removed before this pull request is reviewed. The gate compares
-      # ratios so that the capture machine does not have to be the gate machine; whether
-      # that holds is a claim about this runner, and this step is how it gets measured
-      # rather than assumed. Runs after the gate so that overwriting baseline.json in the
-      # workspace cannot affect the verdict above.
+      # A baseline is captured on the runner class the gate runs on, so this step is how a
+      # new one is produced: dispatch the workflow, read the baseline it prints, commit
+      # that. It is skipped on every other event because it costs eight further passes and
+      # a baseline is moved deliberately, not on each push. It runs after the gate so that
+      # overwriting baseline.json in the workspace cannot affect the verdict above.
       - name: Capture a baseline on this runner
+        if: github.event_name == 'workflow_dispatch'
         run: |
           for pass in 3 4 5 6 7 8 9 10; do
             uv run pytest -q --benchmark-json=".benchmark-results/capture-$pass.json" > /dev/null
@@ -488,13 +492,19 @@ jobs:
             --result .benchmark-results/capture-7.json \
             --result .benchmark-results/capture-8.json \
             --result .benchmark-results/capture-9.json \
-            --result .benchmark-results/capture-10.json
-          cat baseline.json
+            --result .benchmark-results/capture-10.json | tee capture-report.txt
           {
             echo '### Baseline captured on this runner'
             echo
+            echo 'Commit this as `benchmarks/baseline.json`. The spread table below is the'
+            echo 'evidence its threshold has to be chosen against.'
+            echo
             echo '```json'
             cat baseline.json
+            echo '```'
+            echo
+            echo '```'
+            cat capture-report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 

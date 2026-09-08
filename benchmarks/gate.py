@@ -22,6 +22,7 @@ supported way to move it.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import statistics
 import sys
@@ -110,7 +111,30 @@ def write_baseline(paths: list[Path], threshold: float) -> None:
     BASELINE_PATH.write_text(
         json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    print(f"wrote {BASELINE_PATH} from {len(passes)} pass(es)")
+    print(f"wrote {BASELINE_PATH} from {len(passes)} pass(es)\n")
+    report_spread(passes, document["ratios"])
+
+
+def report_spread(passes: list[dict[str, float]], baseline: dict[str, float]) -> None:
+    """Print the run-to-run spread the capture saw, which is what a threshold is chosen from.
+
+    The column to read is the last one, because the gate judges the lowest ratio across two
+    passes rather than one pass on its own. A threshold has to clear that number with room
+    to spare on a runner busier than the one the capture ran on, and it has to stay well
+    under the smallest regression worth catching. Both halves are a judgement; this table
+    is the evidence the judgement is made against.
+    """
+
+    header = f"{'benchmark':32} {'baseline':>9} {'lowest':>8} {'highest':>8} {'spread':>7}"
+    print(header + f" {'worst pass':>11} {'worst of two':>13}")
+    for name in sorted(baseline):
+        seen = [one_pass[name] for one_pass in passes if name in one_pass]
+        pairs = [min(pair) for pair in itertools.combinations(seen, 2)] or seen
+        print(
+            f"{name:32} {baseline[name]:9.4f} {min(seen):8.4f} {max(seen):8.4f} "
+            f"{max(seen) / min(seen) - 1:6.1%} {max(seen) / baseline[name] - 1:+10.1%} "
+            f"{max(pairs) / baseline[name] - 1:+12.1%}"
+        )
 
 
 def report(baseline: dict[str, float], observed: dict[str, float], threshold: float) -> list[str]:
