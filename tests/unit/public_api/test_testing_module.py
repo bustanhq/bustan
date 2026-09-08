@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import bustan.testing as bustan_testing
+from bustan import testing as bustan_testing
 from bustan.testing import AsgiTestClient as InternalAsgiTestClient
 from bustan.testing import AsgiTestResponse as InternalAsgiTestResponse
 from bustan.testing import CompiledTestingModule as InternalCompiledTestingModule
