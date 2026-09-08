@@ -222,10 +222,11 @@ a caller tells the two apart without inspecting either.
 - `get(self, token: object) -> Any`
   Resolve a provider as though no request were being served.
 
-An ``InjectionToken[T]`` types what comes back: resolving through one yields a
-``T``, and assigning it to anything else is a type error rather than something
-a cast has to assert. Every other token - a class, a bare string, an enum
-member - resolves unchecked, exactly as it did before.
+The token types what comes back: a class yields an instance of itself, and an
+``InjectionToken[T]`` yields a ``T``. Either way, assigning the result to
+something else is a type error rather than something a cast has to assert. A
+token that carries no type - a bare string, an enum member - names nothing a
+checker can read, so resolving through one is unchecked.
 
 Anything scoped to a request is refused here, whether or not a request happens
 to be in flight, so a provider resolved this way can never capture one caller's

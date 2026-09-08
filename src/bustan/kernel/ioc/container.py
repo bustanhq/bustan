@@ -181,6 +181,15 @@ class Container:
     ) -> T: ...
 
     @overload
+    def resolve[T](
+        self,
+        token: type[T],
+        *,
+        module: ModuleKey,
+        request: HttpRequest | None = None,
+    ) -> T: ...
+
+    @overload
     def resolve(
         self,
         token: object,
@@ -198,8 +207,9 @@ class Container:
     ) -> object:
         """Resolve a provider visible from the given module.
 
-        An ``InjectionToken[T]`` resolves to a ``T``. Every other token resolves to
-        ``object``, because nothing about it says what a caller may do with the result.
+        A class resolves to an instance of itself and an ``InjectionToken[T]`` resolves
+        to a ``T``. A token that carries no type resolves to ``object``, because nothing
+        about it says what a caller may do with the result.
 
         Passing no request resolves as though none were in flight, so an imperative
         resolution never captures a request that merely happens to be active further
@@ -223,6 +233,15 @@ class Container:
     ) -> T: ...
 
     @overload
+    async def resolve_async[T](
+        self,
+        token: type[T],
+        *,
+        module: ModuleKey,
+        request: HttpRequest | None = None,
+    ) -> T: ...
+
+    @overload
     async def resolve_async(
         self,
         token: object,
@@ -240,8 +259,8 @@ class Container:
     ) -> object:
         """Resolve a provider, awaiting async factories when required.
 
-        An ``InjectionToken[T]`` types what comes back here exactly as it does for the
-        synchronous resolution.
+        The token types what comes back here exactly as it does for the synchronous
+        resolution.
         """
 
         self._refuse_while_shut_down(token)

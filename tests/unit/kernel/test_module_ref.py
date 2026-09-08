@@ -131,7 +131,9 @@ def test_module_ref_create_and_helper_error_paths_are_covered() -> None:
 
     application = create_app(AppModule)
     module_ref = application.get(ModuleRef).for_module(FeatureModule)
-    consumer = module_ref.create(GreetingConsumer)
+    # ModuleRef.create builds any class the caller names and is declared to return
+    # object, so the type it built has to be restated here to reach its attributes.
+    consumer = cast(GreetingConsumer, module_ref.create(GreetingConsumer))
 
     assert consumer.greeting_service.greet() == "hello"
     assert module_ref.resolve(GreetingService) is module_ref.get(GreetingService)

@@ -109,11 +109,11 @@ What a caller may rely on: the token you write is the token the container matche
 
 Token names carry no meaning to the container. They exist so that errors and the generated API reference can name the dependency, and changing one changes no behaviour.
 
-An `InjectionToken[T]` also says what resolving it produces. `app.get(token)` and
-`app.resolve(token)` return a `T`, so assigning the result to something else is a type
-error rather than a cast a reader has to trust. A token that carries no type - a bare
-string, an enum member - says nothing a checker can read, and resolving through one is
-unchecked.
+A token also says what resolving it produces. `app.get(token)` and `app.resolve(token)`
+return an instance of the class you asked for, or the `T` of an `InjectionToken[T]`, so
+assigning the result to something else is a type error rather than a cast a reader has
+to trust. A token that carries no type - a bare string, an enum member - says nothing a
+checker can read, and resolving through one is unchecked.
 
 ## When A Provider May Be Overridden
 

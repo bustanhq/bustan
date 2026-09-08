@@ -440,7 +440,7 @@ class ProbeModule:
 def test_the_application_token_answers_with_the_context_through_create_app_context() -> None:
     context = create_app_context(ProbeModule)
 
-    resolved = cast(ApplicationProbe, context.get(ApplicationProbe)).application
+    resolved = context.get(ApplicationProbe).application
 
     assert type(resolved) is ApplicationContext
     assert resolved is context
@@ -449,7 +449,7 @@ def test_the_application_token_answers_with_the_context_through_create_app_conte
 def test_the_application_token_answers_with_the_context_through_create_app() -> None:
     application = create_app(ProbeModule)
 
-    resolved = cast(ApplicationProbe, application.get(ApplicationProbe)).application
+    resolved = application.get(ApplicationProbe).application
 
     # An application that serves HTTP is a context and a server wrapper around one
     # container; the token names the context, so the HTTP wrapper is not the answer.
@@ -466,7 +466,7 @@ def test_the_application_token_answers_with_the_context_on_a_request_being_serve
     with TestClient(cast(Any, application)) as client:
         assert client.get("/probe/").status_code == 200
         served = ProbeController.seen[-1]
-        entered_directly = cast(ApplicationProbe, application.get(ApplicationProbe)).application
+        entered_directly = application.get(ApplicationProbe).application
 
     assert type(served) is ApplicationContext
     assert served is entered_directly
@@ -478,15 +478,14 @@ def test_the_application_token_answers_with_the_context_when_entered_with_a_requ
     application = create_app(ProbeModule)
     request = build_http_request(path="/probe/", app=application.get_http_server())
 
-    resolved = cast(
-        ApplicationProbe,
-        application.container.resolve(ApplicationProbe, module=ProbeModule, request=request),
+    resolved = application.container.resolve(
+        ApplicationProbe, module=ProbeModule, request=request
     ).application
 
     # Entering the container with a request and nothing pushed used to answer with the
     # transport's own server object, which is not an application at all.
     assert type(resolved) is ApplicationContext
-    assert resolved is cast(ApplicationProbe, application.get(ApplicationProbe)).application
+    assert resolved is application.get(ApplicationProbe).application
 
 
 def test_an_application_is_not_retained_once_the_caller_drops_it() -> None:
