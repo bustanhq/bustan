@@ -1,11 +1,11 @@
 """Guard that requires a request-scoped user id."""
 
-from bustan import ExecutionContext, Guard, Injectable
+from bustan import ExecutionContext, Guard, Injectable, Scope
 
 from .request_identity import RequestIdentity
 
 
-@Injectable(scope="request")
+@Injectable(scope=Scope.REQUEST)
 class AuthenticatedGuard(Guard):
     def __init__(self, request_identity: RequestIdentity) -> None:
         self.request_identity = request_identity

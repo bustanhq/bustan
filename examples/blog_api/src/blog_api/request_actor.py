@@ -1,11 +1,11 @@
 """Request-local actor context for the blog API example."""
 
-from starlette.requests import Request
+from typing import Annotated
 
-from bustan import Injectable
+from bustan import REQUEST, HttpRequest, Inject, Injectable, Scope
 
 
-@Injectable(scope="request")
+@Injectable(scope=Scope.REQUEST)
 class RequestActor:
-    def __init__(self, request: Request) -> None:
+    def __init__(self, request: Annotated[HttpRequest, Inject(REQUEST)]) -> None:
         self.user_id = request.headers.get("x-user-id", "anonymous")
