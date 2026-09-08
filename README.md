@@ -2,7 +2,7 @@
 
 Bustan is a modular architecture engine for building scalable, testable ASGI applications. Inspired by NestJS, it gives Python projects explicit composition boundaries, constructor injection, lifecycle hooks, and a predictable request pipeline while still exposing the underlying platform directly.
 
-Starlette is the default HTTP engine today. Bustan adds structure on top of it rather than replacing it.
+The HTTP transport sits behind an adapter port. Bustan ships two adapters - Starlette, which is the default, and a raw ASGI one that needs no third-party web framework - and both are held to the same conformance suite. An application that serves no HTTP at all needs neither.
 
 ## Why Bustan
 
@@ -17,11 +17,10 @@ Starlette is the default HTTP engine today. Bustan adds structure on top of it r
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`.
 
-- `bustan` is currently in the early `1.1.x` alpha series.
+- The release being prepared is the `version` field in `pyproject.toml`; read it there rather than from a list that cannot notice it moved.
 - The supported Python floor is currently `>=3.13`.
-- Compatibility promises apply only to `bustan`, `bustan.errors`, and `bustan.testing`.
-- Internal modules such as `bustan.kernel.*`, `bustan.app.*`, and `bustan.runtime.*` are still implementation details.
-- The public PascalCase API is already being treated as the intended long-term contract, even though alpha behavior may still move.
+- Compatibility promises apply only to `bustan`, `bustan.errors`, and `bustan.testing`. [docs/STABILITY.md](docs/STABILITY.md) is the authority on what is inside that boundary, and the export sets derive from it.
+- Internal modules such as `bustan.kernel.*`, `bustan.app.*`, `bustan.runtime.*` and `bustan.adapters.*` are implementation details and may be restructured without notice.
 
 ## Installation
 
@@ -111,21 +110,36 @@ For the full walkthrough, generated file contents, and first test, see [docs/FIR
 
 ## What You Get Today
 
-The current implementation already includes:
+Composition and injection:
 
 - module discovery, validation, and export-based provider visibility
-- constructor injection for providers and controllers
-- controller route compilation into Starlette
+- constructor injection for providers and controllers, with the scope rules enforced while the application is built rather than on the request that trips them
+- singleton, request, durable and transient lifetimes, plus request-scoped controllers
+- dynamic modules, `ConfigurableModuleBuilder`, and module-level configuration
+
+Serving requests:
+
+- controller route compilation onto either shipped adapter, behind one adapter port
 - inferred and explicit request binding with `Annotated[...]` markers
-- response coercion for Starlette responses, `HttpResponse`, dataclasses, iterators, `Path`, and `None`
-- request-scoped providers plus request-scoped controllers
-- guards, pipes, interceptors, and exception filters
+- response coercion for the neutral `HttpResponse`, the transport's own responses, dataclasses, iterators, `Path`, and `None`
+- route middleware, guards, pipes, interceptors, and exception filters, in a documented order
 - automatic Pydantic validation in `validation_mode="auto"`
-- module and provider lifecycle hooks wired through the platform lifespan
+- an `HttpException` family covering the fifteen statuses an application answers with, rendered as problem details
+- finite request limits - body bytes, upload bytes, upload files, wall clock, synchronous handler threads - that an application serves under whether or not it configures them
+
+Running in production:
+
+- module and provider lifecycle hooks wired through the serving adapter's lifespan
+- graceful shutdown: readiness turns negative, in-flight requests drain, teardown hooks run with the signal's name, the port is released
+- a health module with liveness and readiness reporting
+- correlation ids, request timing, and pluggable metrics and tracing sinks
+- config, OpenAPI, throttling, CORS, and testing helpers
+
+Tooling:
+
 - `Application` and `ApplicationContext` bootstrapping
 - route snapshots, route diffs, and runtime discovery support
-- config, OpenAPI, throttling, CORS, and testing helpers
-- a CLI (`bustan init`) for scaffolding new applications inside `uv` projects
+- a CLI: `bustan init`, `doctor`, `graph`, `routes`, `config`, and `governance`
 
 ## Supported Public API
 
@@ -156,6 +170,8 @@ The generated reference for those stable modules lives in [docs/API_REFERENCE.md
 - [docs/REQUEST_SCOPED_PROVIDERS.md](docs/REQUEST_SCOPED_PROVIDERS.md)
 - [docs/LIFECYCLE.md](docs/LIFECYCLE.md)
 - [docs/PLATFORM_INTEGRATION.md](docs/PLATFORM_INTEGRATION.md)
+- [docs/CLI.md](docs/CLI.md)
+- [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
 - [docs/STABILITY.md](docs/STABILITY.md)
 - [docs/VERSIONING.md](docs/VERSIONING.md)
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
@@ -197,30 +213,107 @@ uv run python -m blog_api.app
 Use `create_test_app()` to start an app with one or more providers replaced:
 
 ```python
-from bustan.testing import create_test_app
+from typing import Any, cast
+
+from bustan import Controller, Get, Injectable, Module
+from bustan.testing import AsgiTestClient, create_test_app
+
+
+@Injectable()
+class GreetingService:
+    def greet(self) -> str:
+        return "hello from the real service"
+
+
+class FakeGreetingService:
+    def greet(self) -> str:
+        return "hello from the fake"
+
+
+@Controller("/greetings")
+class GreetingsController:
+    def __init__(self, greeting_service: GreetingService) -> None:
+        self.greeting_service = greeting_service
+
+    @Get("/")
+    def index(self) -> dict[str, str]:
+        return {"message": self.greeting_service.greet()}
+
+
+@Module(controllers=[GreetingsController], providers=[GreetingService])
+class AppModule:
+    pass
 
 
 application = create_test_app(
     AppModule,
     provider_overrides={GreetingService: FakeGreetingService()},
 )
+
+with AsgiTestClient(cast(Any, application)) as client:
+    print(client.get("/greetings").json())
+```
+
+```text
+{'message': 'hello from the fake'}
 ```
 
 Use `create_testing_module()` when you want the test to assemble and start the application itself:
 
 ```python
+import asyncio
+
+from bustan import Controller, Get, Injectable, Module
 from bustan.testing import create_testing_module
 
 
-compiled = await (
-    create_testing_module(AppModule)
-    .override_provider(GreetingService)
-    .use_value(FakeGreetingService())
-    .compile()
-)
+@Injectable()
+class GreetingService:
+    def greet(self) -> str:
+        return "hello from the real service"
 
-with compiled.create_client() as client:
-    response = client.get("/greetings")
+
+class FakeGreetingService:
+    def greet(self) -> str:
+        return "hello from the fake"
+
+
+@Controller("/greetings")
+class GreetingsController:
+    def __init__(self, greeting_service: GreetingService) -> None:
+        self.greeting_service = greeting_service
+
+    @Get("/")
+    def index(self) -> dict[str, str]:
+        return {"message": self.greeting_service.greet()}
+
+
+@Module(controllers=[GreetingsController], providers=[GreetingService])
+class AppModule:
+    pass
+
+
+async def main() -> None:
+    compiled = await (
+        create_testing_module(AppModule)
+        .override_provider(GreetingService)
+        .use_value(FakeGreetingService())
+        .compile()
+    )
+    try:
+        # The client is synchronous. Used as a context manager it runs the application
+        # on a loop of its own, which is what lets it be driven from inside this one.
+        with compiled.create_client() as client:
+            print(client.get("/greetings").json())
+    finally:
+        await compiled.close()
+
+
+asyncio.run(main())
+```
+
+```text
+{'message': 'hello from the fake'}
 ```
 
 Both register the replacement before the application starts, which is the only point at which an override is honoured in full. An override does not stand beside the provider it replaces; it replaces it for the whole application, including the singletons already built from it. A running application therefore refuses one and says so, rather than swapping a dependency that everything already holding it would keep.
@@ -258,13 +351,18 @@ For contributor expectations, see [CONTRIBUTING.md](CONTRIBUTING.md).
 Run the main checks with:
 
 ```bash
+uv sync --group dev --frozen
+uv run ruff format --check . && uv run ruff check .
+uv run ty check src tests scripts
+uv run pytest --cov=bustan --cov-report=term-missing
+uv run python scripts/check_layering.py
+uv run python scripts/conformance_matrix.py
 uv run python scripts/generate_api_reference.py --check
 uv run python scripts/check_markdown_links.py
-uv run ruff check .
-uv run ty check src tests scripts
-uv run pytest
-uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml
+uv run python scripts/run_examples.py
 ```
+
+`conformance_matrix.py` runs the adapter conformance suite over both shipped adapters and fails when they answer any case differently; `check_layering.py` fails when the kernel reaches into a transport.
 
 If you change public docstrings in the stable modules, regenerate the API reference with:
 

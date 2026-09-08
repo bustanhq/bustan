@@ -4,18 +4,30 @@
 
 ## Execution Order
 
-1. Guards
-2. Parameter binding
-3. Pipes
-4. Interceptors
-5. Handler
-6. Response coercion
+One request runs these stages, in this order:
+
+1. **Route middleware**, outermost first, up to its `call_next`.
+2. **Guards.** A guard that refuses ends the request here.
+3. **Construction** of the controller and of every request-scoped provider the route needs, the pipeline components included.
+4. **Parameter binding**, then the **pipes** attached to each bound parameter.
+5. **Interceptors**, in declaration order, up to their `await next.handle()`.
+6. **The handler.**
+7. **Interceptors** again, unwinding in reverse order.
+8. **Response coercion**, turning what the handler returned into a response.
+9. **Route middleware** again, unwinding outermost last.
+
+Two consequences are worth stating on their own, because applications are written against them.
+
+**Nothing is constructed for a request a guard refuses.** Authentication happens before the controller, its request-scoped dependencies and any durable partition the route names exist, so a rejected caller costs the application a guard and nothing else. It also means a request-scoped provider can read what a guard wrote on `request.state` in its own constructor.
+
+**The request scope spans the whole of that list, middleware included.** It opens before stage 1 and closes after stage 9, so a middleware resolving a request-scoped provider after `call_next` gets the instance the handler used rather than a fresh one. [REQUEST_SCOPED_PROVIDERS.md](REQUEST_SCOPED_PROVIDERS.md#what-request-scope-gives-you) states the rest of that contract.
 
 Exception filters wrap the downstream path. A filter can translate binding errors, guard rejections, interceptor failures, or handler exceptions into a normal response payload.
 
 ## Choose The Right Hook
 
-- Use a guard to allow or block request execution before the handler runs.
+- Use route middleware to wrap the entire request, including the guards, and to see the response on the way out.
+- Use a guard to allow or block request execution before anything is constructed for it.
 - Use a pipe to transform or validate already bound parameter values.
 - Use an interceptor to wrap handler execution and shape the result.
 - Use an exception filter to convert exceptions into a response payload or platform response.
@@ -26,14 +38,14 @@ When building custom pipeline components, stay on the stable exports from `busta
 
 - `ExecutionContext` is the primary request-time context object.
 - `CallHandler` is the continuation contract passed into interceptors.
-- `Guard`, `Pipe`, `Interceptor`, and `ExceptionFilter` are the public base classes.
+- `Guard`, `Pipe`, `Interceptor`, `ExceptionFilter` and `Middleware` are the public base classes.
 
-Older code may reference compatibility shims from internal modules. Prefer `ExecutionContext` and `CallHandler` for new code.
+`bustan`, `bustan.errors` and `bustan.testing` are the whole supported surface; every other import path is an implementation detail that may be restructured without notice. [STABILITY.md](STABILITY.md) is the authority on which side of that line a symbol is on.
 
 ## Example
 
 ```python
-from starlette.responses import JSONResponse
+from typing import Any, cast
 
 from bustan import (
     CallHandler,
@@ -42,6 +54,7 @@ from bustan import (
     ExecutionContext,
     Get,
     Guard,
+    HttpResponse,
     Interceptor,
     Module,
     Pipe,
@@ -49,7 +62,9 @@ from bustan import (
     UseGuards,
     UseInterceptors,
     UsePipes,
+    create_app,
 )
+from bustan.testing import AsgiTestClient
 
 
 class AuthGuard(Guard):
@@ -74,7 +89,7 @@ class ValueErrorFilter(ExceptionFilter):
     exception_types = (ValueError,)
 
     async def catch(self, exc: Exception, context: ExecutionContext) -> object:
-        return JSONResponse(
+        return HttpResponse.json(
             {"detail": str(exc), "path": context.request.path},
             status_code=422,
         )
@@ -96,7 +111,23 @@ class MessagesController:
 @Module(controllers=[MessagesController])
 class AppModule:
     pass
+
+
+app = create_app(AppModule)
+with AsgiTestClient(cast(Any, app)) as client:
+    identified = {"x-user-id": "ada"}
+    print(client.get("/messages/ada?excited=true", headers=identified).json())
+    print(client.get("/messages/Error", headers=identified).status_code)
+    print(client.get("/messages/ada").status_code)
 ```
+
+```text
+{'path': '/messages/ada', 'data': {'message': 'hello Ada', 'excited': True}}
+422
+403
+```
+
+The interceptor wrapped the handler's dictionary, the pipe title-cased the bound `name` before the handler saw it, the filter turned a `ValueError` into a `422`, and the guard refused the request that carried no identity - the last of these without constructing the controller at all.
 
 ## What `ExecutionContext` Gives You
 
@@ -116,9 +147,12 @@ When a controller or route uses `validation_mode="auto"`, Bustan appends `Valida
 That means this route rejects invalid payloads before the handler runs:
 
 ```python
+from typing import Any, cast
+
 from pydantic import BaseModel
 
-from bustan import Controller, Module, Post
+from bustan import Controller, Module, Post, create_app
+from bustan.testing import AsgiTestClient
 
 
 class CreateUserPayload(BaseModel):
@@ -136,6 +170,17 @@ class UsersController:
 @Module(controllers=[UsersController])
 class AppModule:
     pass
+
+
+app = create_app(AppModule)
+with AsgiTestClient(cast(Any, app)) as client:
+    print(client.post("/users/", json={"name": "Ada", "admin": True}).json())
+    print(client.post("/users/", json={"name": "Ada"}).status_code)
+```
+
+```text
+{'name': 'Ada'}
+400
 ```
 
 ## Global Pipeline Components
@@ -150,27 +195,58 @@ Use the global provider tokens when a component should apply to every compiled r
 Example pattern:
 
 ```python
-from bustan import APP_GUARD, Guard, Module
+from typing import Any, cast
+
+from bustan import (
+    APP_GUARD,
+    Controller,
+    ExecutionContext,
+    Get,
+    Guard,
+    Module,
+    create_app,
+)
+from bustan.testing import AsgiTestClient
 
 
-class RejectAllGuard(Guard):
+class RejectAnonymousGuard(Guard):
     async def can_activate(self, context: ExecutionContext) -> bool:
-        return False
+        return context.request.headers.get("x-user-id") is not None
+
+
+@Controller("/reports")
+class ReportsController:
+    @Get("/")
+    def index(self) -> dict[str, str]:
+        return {"reports": "all"}
 
 
 @Module(
-    providers=[{"provide": APP_GUARD, "use_class": RejectAllGuard}],
+    controllers=[ReportsController],
+    providers=[{"provide": APP_GUARD, "use_class": RejectAnonymousGuard}],
 )
 class AppModule:
     pass
+
+
+app = create_app(AppModule)
+with AsgiTestClient(cast(Any, app)) as client:
+    print(client.get("/reports/", headers={"x-user-id": "ada"}).status_code)
+    print(client.get("/reports/").status_code)
 ```
 
-Global components are resolved through the container **once per request**, not once
-while routes are compiled. Three things follow:
+```text
+200
+403
+```
+
+**What a global token means is decided on the request, not while routes are compiled.**
+The compiled route holds the token; the component behind it is read from the container
+when a request arrives. Three things follow:
 
 - A global component may declare any lifetime a provider can. A request-scoped global
-  guard is built for each request and may inject `Request` or any other request-scoped
-  provider.
+  guard is built for each request and may inject `HttpRequest` or any other
+  request-scoped provider.
 - A global component may be built by an asynchronous factory, because the request path
   awaits every provider it builds.
 - A global component registered under a token that an override replaces is built from
@@ -179,6 +255,13 @@ while routes are compiled. Three things follow:
   application starts, through `bustan.testing`, and every request the application then
   serves runs the replacement.
 
+**How often it is built is decided by its lifetime, as it is for any other provider.**
+A running application refuses new overrides, so a global bound as a singleton or a
+`use_value` can never answer differently again: the route keeps what the first request
+resolved and reuses it, rather than asking the container once per request for an object
+it already has. Everything else - request-scoped, durable, transient - is partitioned by
+something the request carries and is resolved afresh every time.
+
 Register more than one component under one token by binding a list, or by writing a
 separate entry for each component. Both spellings run `APP_GUARD`, `APP_PIPE` and
 `APP_INTERCEPTOR` components in the order they were declared, and the components of
@@ -186,22 +269,71 @@ every declaring module run in the order the modules were registered. `APP_FILTER
 ordered by the precedence rule below instead:
 
 ```python
+from typing import Any, cast
+
+from bustan import (
+    APP_GUARD,
+    Controller,
+    ExecutionContext,
+    Get,
+    Guard,
+    Module,
+    create_app,
+)
+from bustan.testing import AsgiTestClient
+
+ran: list[str] = []
+
+
+class AuditGuard(Guard):
+    async def can_activate(self, context: ExecutionContext) -> bool:
+        ran.append("audit")
+        return True
+
+
+class RejectAllGuard(Guard):
+    async def can_activate(self, context: ExecutionContext) -> bool:
+        ran.append("reject")
+        return False
+
+
+@Controller("/reports")
+class ReportsController:
+    @Get("/")
+    def index(self) -> dict[str, str]:
+        return {"reports": "all"}
+
+
+# One entry binding a list, and a separate entry per component, run the same way.
 @Module(
+    controllers=[ReportsController],
     providers=[{"provide": APP_GUARD, "use_value": [AuditGuard(), RejectAllGuard()]}],
 )
-class AppModule:
+class ListedModule:
     pass
-```
 
-```python
+
 @Module(
+    controllers=[ReportsController],
     providers=[
         {"provide": APP_GUARD, "use_value": AuditGuard()},
         {"provide": APP_GUARD, "use_class": RejectAllGuard},
     ],
 )
-class AppModule:
+class SeparateModule:
     pass
+
+
+for module in (ListedModule, SeparateModule):
+    ran.clear()
+    with AsgiTestClient(cast(Any, create_app(module))) as client:
+        status = client.get("/reports/").status_code
+    print(module.__name__, status, ran)
+```
+
+```text
+ListedModule 403 ['audit', 'reject']
+SeparateModule 403 ['audit', 'reject']
 ```
 
 A module may mix the two spellings under one token, and the result is one flat list in
@@ -224,8 +356,31 @@ handler, a guard or an interceptor, inject `ModuleRef` and call its `get()`: it 
 against the request currently in flight and returns the same instance the rest of that
 request sees.
 
+`ModuleRef` is an ordinary provider, so a module that injects it declares it, either in
+its own `providers` or by importing `DiscoveryModule`, which exports it. A class that
+asks for one without either is refused while the application is built, in the same words
+as any other unreachable dependency.
+
 ```python
-from bustan import Controller, Get, ModuleRef, Scope
+from typing import Any, cast
+
+from bustan import (
+    Controller,
+    Get,
+    HttpRequest,
+    Injectable,
+    Module,
+    ModuleRef,
+    Scope,
+    create_app,
+)
+from bustan.testing import AsgiTestClient
+
+
+@Injectable(scope="request")
+class RequestIdentity:
+    def __init__(self, request: HttpRequest) -> None:
+        self.user = request.headers.get("x-user-id", "anonymous")
 
 
 @Controller("/orders", scope=Scope.REQUEST)
@@ -235,9 +390,40 @@ class OrdersController:
 
     @Get("/")
     def index(self) -> dict[str, str]:
-        identity = self.module_ref.get(RequestIdentity)
+        identity = cast(RequestIdentity, self.module_ref.get(RequestIdentity))
         return {"user": identity.user}
+
+
+@Module(
+    controllers=[OrdersController],
+    providers=[RequestIdentity, ModuleRef],
+)
+class AppModule:
+    pass
+
+
+app = create_app(AppModule)
+with AsgiTestClient(cast(Any, app)) as client:
+    print(client.get("/orders/", headers={"x-user-id": "ada"}).json())
+    print(client.get("/orders/").json())
 ```
+
+```text
+{'user': 'ada'}
+{'user': 'anonymous'}
+```
+
+`get()` resolves synchronously, which bounds what it can build: a token behind an
+asynchronous factory cannot be awaited from inside it and is refused with `is an async
+factory and cannot be called during synchronous resolution`. Declare such a dependency
+in the constructor instead, where the request path awaits it.
+
+Two more things a reference does. `get(token, strict=False)` widens a lookup its own
+module cannot answer into a search of every module in the application, refusing rather
+than guessing when more than one declares the token; `for_module(SomeModule)` returns a
+reference that resolves through another module instead. Both keep the default - a
+reference sees exactly what the class holding it sees - as the thing you have to ask to
+leave.
 
 ## Request Limits
 
@@ -389,7 +575,8 @@ that needs two different thread ceilings needs two event loops to hold them.
 - If no exception filter handles a `GuardRejectedError`, Bustan returns HTTP `403`.
 - If no exception filter handles a `RequestBodyTooLargeError`, Bustan returns HTTP `413` with a structured payload.
 - If no exception filter handles a `RequestTimeoutError`, Bustan returns HTTP `504` with a structured payload.
-- Request-scoped pipeline components can inject `starlette.requests.Request` and other request-scoped providers.
+- If no exception filter handles an `HttpException` an application raised - `NotFoundException`, `ConflictException` and the rest - it renders as that class's status and problem-details body.
+- Request-scoped pipeline components can inject `HttpRequest`, the serving transport's own request object, and any other request-scoped provider.
 - Interceptors execute in declaration order on the way in and unwind in reverse order on the way out.
 
 See [REQUEST_SCOPED_PROVIDERS.md](REQUEST_SCOPED_PROVIDERS.md) for the rules that make request-local guards, interceptors, and controllers safe.
