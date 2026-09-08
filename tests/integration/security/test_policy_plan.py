@@ -38,7 +38,18 @@ def test_create_app_attaches_compiled_policy_plans_to_routes() -> None:
         def read_secure(self) -> dict[str, str]:
             return {"status": "ok"}
 
-    @Module(controllers=[SecureController])
+    # An application whose authenticated route cannot see an authenticator registry is
+    # refused while it is built, so the module declares one to reach the compiled plan
+    # this test is about. No request is served here and nothing authenticates.
+    @Module(
+        controllers=[SecureController],
+        providers=[
+            {
+                "provide": AUTHENTICATOR_REGISTRY,
+                "use_value": {"jwt": AuthenticatorStub(None)},
+            }
+        ],
+    )
     class AppModule:
         pass
 
@@ -128,7 +139,11 @@ def test_public_controller_does_not_bypass_handler_level_auth() -> None:
 
     assert open_response.status_code == 200
     assert open_response.json() == {"status": "open"}
-    assert locked_response.status_code == 403
+    # Still refused, and refused for the same reason: the authenticator returned no
+    # principal. The status says which refusal it is, and a caller carrying no identity
+    # is told how to present one rather than told that presenting one would not help.
+    assert locked_response.status_code == 401
+    assert locked_response.headers["www-authenticate"] == "Bearer"
 
 
 def test_create_app_returns_deterministic_policy_denial_responses() -> None:
