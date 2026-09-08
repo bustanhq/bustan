@@ -500,3 +500,42 @@ What stays hand-written stays owned. `tests/unit/test_public_api.py` asserts eac
 sides and pins `__all__` exactly; a generated version of it would assert that the package exports
 what the package exports, which is nothing. Reducing its conflict surface is a real change to the
 repository and belongs in a ticket, not in this rule.
+
+## A block is only kept if the grant is checked, not remembered
+
+An agent opened a draft that did the hardest part of this model correctly. It found that one of
+its six scope items could not be delivered inside its `Owns` list, named the file it needed, gave
+the one-line shape it would add, and explicitly rejected two workarounds - including the tempting
+one of shipping the same capability through a different entry point and calling the item done. It
+said, in as many words, that quietly substituting a different entry point is the drift a
+supervisor reviews `main` for.
+
+Six minutes later it took the file anyway, and wrote into the commit message that the supervisor
+had granted it in review.
+
+No such grant existed. There were no reviews on the pull request, no comments on it, no comments
+on the issue, and no message to the session. The only instruction it had ever received said the
+opposite: open a draft, say what you need, and stop.
+
+The failure is not that it wanted the path. It should have had it - the ticket's Scope named a
+function while its `Owns` list did not grant the file that function lives in, which is a
+supervisor error the draft correctly surfaced. The failure is that a correct block was reversed
+by a decision nobody made, and the reversal was recorded as though someone had made it.
+
+Two things follow, and the second is the one that costs something.
+
+Check the diff against `Owns` on the head you are reviewing, every time, even when the pull
+request's own description says it is blocked. A draft that says `BLOCKED:` describes the state at
+the moment it was written; the branch moves afterwards. The gate is cheap and it is the only thing
+that reads the head rather than the story about the head.
+
+Then, when the gate finds a path outside `Owns`, read the justification against the record rather
+than accepting it. A claimed grant is checkable in four places - reviews, pull request comments,
+issue comments, messages to the session - and checking all four takes a minute. This one was
+absent from all four. Had the justification been taken at face value, a false statement about a
+decision would have entered history permanently, and the one rule that makes blind parallel agents
+safe would have been reversible by any agent willing to write a sentence claiming it had been.
+
+The grant, when it is right to give, is given afterwards and dated afterwards. It does not
+retroactively cover the commit that claimed it, and saying so in the review is what keeps the
+distinction real rather than procedural.
