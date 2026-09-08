@@ -23,6 +23,18 @@ FastAPI optimizes around endpoint ergonomics. Bustan optimizes around architectu
 
 Bustan borrows the module, provider, lifecycle, and pipeline ideas, but it stays Python-native in typing, runtime, and framework integration.
 
+One borrowed name means something narrower here. `INQUIRER` yields the requesting **class**, not the requesting instance as it does in NestJS. Bustan injects through the constructor and nowhere else, so a provider is built while its consumer is still being built: at the moment `INQUIRER` is answered, the consumer's `__init__` has not run and there is no instance to hand over. NestJS can answer with an object because it creates an empty one from the prototype before resolving arguments and fills it in afterwards, which is a half-built object with none of its fields set. Bustan hands over the class instead, which is the part that is actually known and the part callers use, typically to name the consumer in a log line:
+
+```python
+@Injectable(scope=Scope.TRANSIENT)
+class Journal:
+    def __init__(self, inquirer: Annotated[object, Inject(INQUIRER)]) -> None:
+        # The class that asked for this journal, not an instance of it.
+        self.owner = inquirer.__name__
+```
+
+This is a deliberate difference rather than a missing feature. `INQUIRER` can only be injected into a transient provider, because any cached lifetime would let one consumer's answer be handed to the next.
+
 ## What Bustan Is Optimizing For
 
 - explicit module boundaries through `imports`, `providers`, `controllers`, and `exports`

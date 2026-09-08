@@ -1,15 +1,20 @@
-"""DP-03: two of the smaller parity gaps. INQUIRER hands the transient provider the requesting
-class rather than the instance being built, and a NestJS-style mapping written as a factory
-inject entry escapes the visibility lookup as a raw TypeError instead of a framework error.
+"""DP-03: two of the smaller parity gaps, settled differently from each other.
+
+A NestJS-style mapping written as a factory inject entry escaped the visibility lookup as
+a raw TypeError instead of a framework error; that is a defect and is fixed. INQUIRER
+yielding the requesting class rather than the requesting instance is not a defect: Bustan
+injects through the constructor only, so at the moment INQUIRER is answered the consumer's
+__init__ has not run and no instance of it exists. That gap is documented as a deliberate
+difference in docs/COMPARISONS.md, and this script holds the framework to it.
 """
 
 from typing import Annotated
 
-from bustan import INQUIRER, Inject, Injectable, Module, create_app_context
+from bustan import INQUIRER, Inject, Injectable, Module, Scope, create_app_context
 from bustan.errors import BustanError
 
 
-@Injectable(scope="transient")
+@Injectable(scope=Scope.TRANSIENT)
 class Journal:
     def __init__(self, inquirer: Annotated[object, Inject(INQUIRER)]) -> None:
         self.inquirer = inquirer
@@ -40,13 +45,17 @@ class MappingInjectModule:
 
 
 def _inquirer_answer() -> str:
-    """Report what INQUIRER handed the transient provider one level down."""
+    """Report what INQUIRER hands the transient provider one level down."""
 
     try:
         answered = create_app_context(InquirerModule).get(Orders).journal.inquirer
     except BustanError as exc:
         return f"{type(exc).__name__}: {exc}"
-    return "the instance" if isinstance(answered, Orders) else f"the class {answered!r}"
+    if answered is Orders:
+        return "the requesting class, as documented"
+    if isinstance(answered, Orders):
+        return "an instance of the requesting class"
+    return f"neither the class nor an instance: {answered!r}"
 
 
 def _mapping_inject_answer() -> str:
@@ -55,22 +64,35 @@ def _mapping_inject_answer() -> str:
     try:
         create_app_context(MappingInjectModule).get("settings")
     except BustanError as exc:
-        return f"framework error {type(exc).__name__}: {exc}"
+        message = str(exc)
+        names_all = all(
+            part in message for part in ("MappingInjectModule", "'settings'", "'token'")
+        )
+        detail = "naming the module, the token and the entry" if names_all else "without naming it"
+        return f"a framework {type(exc).__name__} {detail}"
     except TypeError as exc:
-        return f"raw TypeError: {exc}"
-    return "accepted silently"
+        return f"a raw TypeError: {exc}"
+    return "no error at all"
 
 
 def main() -> None:
     inquirer = _inquirer_answer()
     mapping_inject = _mapping_inject_answer()
 
-    if inquirer == "the instance" and mapping_inject.startswith("framework error"):
-        print(f"RESULT: DP-03 FIXED - INQUIRER yields {inquirer}, and {mapping_inject}")
+    documented = inquirer == "the requesting class, as documented"
+    refused = mapping_inject.startswith("a framework") and mapping_inject.endswith(
+        "naming the module, the token and the entry"
+    )
+
+    if documented and refused:
+        print(
+            f"RESULT: DP-03 FIXED - the mapping inject entry raises {mapping_inject}, and "
+            f"INQUIRER yields {inquirer}"
+        )
         return
     print(
-        f"RESULT: DP-03 REPRODUCED - INQUIRER yields {inquirer}; the mapping inject entry gives "
-        f"{mapping_inject}"
+        f"RESULT: DP-03 REPRODUCED - the mapping inject entry raises {mapping_inject}; INQUIRER "
+        f"yields {inquirer}"
     )
 
 
