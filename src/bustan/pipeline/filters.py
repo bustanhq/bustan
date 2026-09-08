@@ -6,10 +6,18 @@ import inspect
 import logging
 from collections.abc import Awaitable
 from dataclasses import asdict, dataclass
-from typing import cast
 
 from ..contracts import HttpResponse
-from ..kernel.errors import BadRequestException, GuardRejectedError, ParameterBindingError
+from ..kernel.errors import (
+    AuthenticationRequiredError,
+    BadRequestException,
+    ForbiddenException,
+    GuardRejectedError,
+    HttpException,
+    ParameterBindingError,
+    TooManyRequestsException,
+    UnauthorizedException,
+)
 from .context import ExecutionContext
 
 _LOGGER = logging.getLogger(__name__)
@@ -17,12 +25,13 @@ _INTERNAL_SERVER_ERROR_DETAIL = "Internal server error"
 
 # The exceptions whose message is written for the caller rather than about the
 # application: a failed validation names the caller's own field, where it was read from
-# and what was expected there, and none of it is true of anything but the request that
-# was just sent. Every other message is written for whoever operates the application and
-# is replaced by a fixed reason before it leaves the process, so a type added later is
-# masked until it is listed here deliberately.
+# and what was expected there, and an author who raises one of the status exceptions
+# deliberately is writing its message for whoever will read it. Every other message is
+# written for whoever operates the application and is replaced by a fixed reason before
+# it leaves the process, so a type added later is masked until it is listed here
+# deliberately.
 _CALLER_FACING_EXCEPTIONS: tuple[type[Exception], ...] = (
-    BadRequestException,
+    HttpException,
     ParameterBindingError,
 )
 
@@ -38,6 +47,58 @@ class ProblemDetails:
     instance: str | None = None
     code: str | None = None
     errors: list[dict[str, object]] | None = None
+
+
+# The problem type of a refusal the framework has no name for. It is what the standard
+# defines for a problem carrying no meaning beyond its status, which is the truth about
+# an exception the framework did not raise and cannot classify, and it is why such a
+# problem also carries no code: a caller cannot branch on a condition nobody named.
+_UNCLASSIFIED_PROBLEM_TYPE = "about:blank"
+
+
+@dataclass(frozen=True, slots=True)
+class _ProblemKind:
+    """How one failure is reported: the status, and the names that go with it.
+
+    Every field but ``headers`` is read off the exception class that models the status,
+    so the payload a caller receives and the class an application raises to produce it
+    can never say different things.
+    """
+
+    status: int
+    title: str
+    type: str
+    code: str | None = None
+    headers: tuple[tuple[str, str], ...] = ()
+
+
+def _kind_of(
+    exception_type: type[HttpException],
+    headers: tuple[tuple[str, str], ...] = (),
+) -> _ProblemKind:
+    """Return the reporting kind one status exception class stands for."""
+
+    return _ProblemKind(
+        status=exception_type.status_code,
+        title=exception_type.title,
+        type=exception_type.problem_type,
+        code=exception_type.code,
+        headers=headers,
+    )
+
+
+# A refusal the framework raises itself carries no message written for the caller, so
+# the kinds it reports with are built once from the classes that define them.
+_SERVER_FAULT = _ProblemKind(
+    status=500,
+    title="Internal Server Error",
+    type=_UNCLASSIFIED_PROBLEM_TYPE,
+)
+_UNCLASSIFIED_BAD_REQUEST = _ProblemKind(
+    status=400,
+    title="Bad Request",
+    type=_UNCLASSIFIED_PROBLEM_TYPE,
+)
 
 
 class ExceptionFilter:
@@ -61,10 +122,15 @@ class ProblemDetailsExceptionFilter(ExceptionFilter):
     exception_types = (Exception,)
 
     async def catch(self, exc: Exception, context: ExecutionContext) -> HttpResponse:
-        problem = _build_problem_details(exc, context)
-        if cast(int, problem["status"]) >= 500:
+        kind = _problem_kind(exc, context)
+        problem = _build_problem_details(exc, context, kind)
+        if kind.status >= 500:
             _LOGGER.exception("Unhandled exception during request processing", exc_info=exc)
-        response = HttpResponse.json(problem, status_code=cast(int, problem["status"]))
+        response = HttpResponse.json(
+            problem,
+            status_code=kind.status,
+            headers=dict(kind.headers),
+        )
         response.media_type = "application/problem+json"
         return response
 
@@ -146,16 +212,20 @@ def _exception_distance(
         return len(exception_type.__mro__)
 
 
-def _build_problem_details(exc: Exception, context: ExecutionContext) -> dict[str, object]:
-    status_code, title = _problem_status(exc, context)
+def _build_problem_details(
+    exc: Exception,
+    context: ExecutionContext,
+    kind: _ProblemKind,
+) -> dict[str, object]:
     request = context.request
     payload = asdict(
         ProblemDetails(
-            type="about:blank",
-            title=title,
-            status=status_code,
-            detail=_client_visible_detail(exc, status_code, title),
+            type=kind.type,
+            title=kind.title,
+            status=kind.status,
+            detail=_client_visible_detail(exc, kind.status, kind.title),
             instance=request.path if request is not None else None,
+            code=kind.code,
             errors=_problem_errors(exc),
         )
     )
@@ -189,16 +259,31 @@ def _client_visible_detail(exc: Exception, status_code: int, title: str) -> str:
     return title
 
 
-def _problem_status(exc: Exception, context: ExecutionContext) -> tuple[int, str]:
+def _problem_kind(exc: Exception, context: ExecutionContext) -> _ProblemKind:
+    """Decide how one exception is reported, without deciding anything about the caller.
+
+    A guard has already refused whoever it refused by the time this runs. What is chosen
+    here is only which refusal the caller is shown: one it can retry after presenting an
+    identity, one it cannot retry at all, and one it may retry later. A request refused
+    for want of an identity is answered 401 with the challenge that says how to present
+    one, which is what a client renewing an expired token waits for; a request from a
+    caller the application has already identified is answered 403, because presenting
+    the same identity again would change nothing.
+    """
+
     request = context.request
-    if isinstance(exc, (BadRequestException, ParameterBindingError)):
-        return 400, "Bad Request"
+    if isinstance(exc, ParameterBindingError):
+        return _UNCLASSIFIED_BAD_REQUEST
     if isinstance(exc, GuardRejectedError):
         rate_limit = request.slots.rate_limit if request is not None else None
         if rate_limit is not None and rate_limit.exceeded:
-            return 429, "Too Many Requests"
-        return 403, "Forbidden"
-    return 500, "Internal Server Error"
+            return _kind_of(TooManyRequestsException)
+        if isinstance(exc, AuthenticationRequiredError):
+            return _kind_of(UnauthorizedException, UnauthorizedException.default_headers)
+        return _kind_of(ForbiddenException)
+    if isinstance(exc, HttpException):
+        return _kind_of(type(exc), tuple(exc.headers.items()))
+    return _SERVER_FAULT
 
 
 def _problem_errors(exc: Exception) -> list[dict[str, object]] | None:

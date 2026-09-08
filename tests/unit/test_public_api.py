@@ -73,19 +73,35 @@ from bustan.contracts import HttpRequest as InternalHttpRequest
 from bustan.contracts import HttpResponse as InternalHttpResponse
 from bustan.contracts import HttpUrl as InternalHttpUrl
 from bustan.kernel.errors import (
+    AuthenticationRequiredError,
+    AuthenticatorRegistryError,
+    BadGatewayException,
     BadRequestException,
     BustanError,
+    ConflictException,
     ExportViolationError,
+    ForbiddenException,
+    GatewayTimeoutException,
     GuardRejectedError,
+    HttpException,
+    InternalServerErrorException,
     InvalidControllerError,
     InvalidModuleError,
     InvalidPipelineError,
     InvalidProviderError,
     LifecycleError,
+    MethodNotAllowedException,
     ModuleCycleError,
+    NotFoundException,
+    NotImplementedException,
     ParameterBindingError,
     ProviderResolutionError,
     RouteDefinitionError,
+    ServiceUnavailableException,
+    TooManyRequestsException,
+    UnauthorizedException,
+    UnprocessableEntityException,
+    UnsupportedMediaTypeException,
 )
 from bustan.kernel.ioc.scopes import DurableProvider as InternalDurableProvider
 from bustan.kernel.ioc.tokens import (
@@ -473,18 +489,34 @@ def test_testing_module_exposes_the_supported_helpers() -> None:
 
 def test_errors_module_exposes_the_supported_exception_types() -> None:
     assert bustan_errors.__all__ == (
+        "AuthenticationRequiredError",
+        "AuthenticatorRegistryError",
+        "BadGatewayException",
+        "ConflictException",
         "ExportViolationError",
+        "ForbiddenException",
+        "GatewayTimeoutException",
         "GuardRejectedError",
+        "HttpException",
+        "InternalServerErrorException",
         "InvalidControllerError",
         "InvalidModuleError",
         "InvalidPipelineError",
         "InvalidProviderError",
         "LifecycleError",
+        "MethodNotAllowedException",
         "ModuleCycleError",
+        "NotFoundException",
+        "NotImplementedException",
         "BadRequestException",
         "ParameterBindingError",
         "ProviderResolutionError",
         "RouteDefinitionError",
+        "ServiceUnavailableException",
+        "TooManyRequestsException",
+        "UnauthorizedException",
+        "UnprocessableEntityException",
+        "UnsupportedMediaTypeException",
         "BustanError",
     )
     assert bustan_errors.BadRequestException is BadRequestException
@@ -500,3 +532,19 @@ def test_errors_module_exposes_the_supported_exception_types() -> None:
     assert bustan_errors.ProviderResolutionError is ProviderResolutionError
     assert bustan_errors.RouteDefinitionError is RouteDefinitionError
     assert bustan_errors.BustanError is BustanError
+    assert bustan_errors.AuthenticationRequiredError is AuthenticationRequiredError
+    assert bustan_errors.AuthenticatorRegistryError is AuthenticatorRegistryError
+    assert bustan_errors.BadGatewayException is BadGatewayException
+    assert bustan_errors.ConflictException is ConflictException
+    assert bustan_errors.ForbiddenException is ForbiddenException
+    assert bustan_errors.GatewayTimeoutException is GatewayTimeoutException
+    assert bustan_errors.HttpException is HttpException
+    assert bustan_errors.InternalServerErrorException is InternalServerErrorException
+    assert bustan_errors.MethodNotAllowedException is MethodNotAllowedException
+    assert bustan_errors.NotFoundException is NotFoundException
+    assert bustan_errors.NotImplementedException is NotImplementedException
+    assert bustan_errors.ServiceUnavailableException is ServiceUnavailableException
+    assert bustan_errors.TooManyRequestsException is TooManyRequestsException
+    assert bustan_errors.UnauthorizedException is UnauthorizedException
+    assert bustan_errors.UnprocessableEntityException is UnprocessableEntityException
+    assert bustan_errors.UnsupportedMediaTypeException is UnsupportedMediaTypeException

@@ -11,7 +11,13 @@ from starlette.requests import Request
 from bustan.adapters.starlette import StarletteHttpRequest
 from bustan.common.types import RouteMetadata
 from bustan.contracts import HttpResponse, RateLimitDecision
-from bustan.kernel.errors import BadRequestException, GuardRejectedError, ParameterBindingError
+from bustan.kernel.errors import (
+    AuthenticationRequiredError,
+    BadRequestException,
+    GuardRejectedError,
+    NotFoundException,
+    ParameterBindingError,
+)
 from bustan.kernel.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.context import ExecutionContext, RequestContext
 from bustan.pipeline.filters import (
@@ -19,7 +25,7 @@ from bustan.pipeline.filters import (
     _exception_distance,
     _matching_filters,
     _problem_errors,
-    _problem_status,
+    _problem_kind,
     handle_exception,
 )
 from bustan.runtime.metadata import ControllerRouteDefinition
@@ -149,11 +155,12 @@ async def test_a_guard_rejection_body_carries_a_fixed_reason() -> None:
         assert isinstance(result, HttpResponse)
         assert result.status_code == 403
         assert json.loads(result.body) == {
-            "type": "about:blank",
+            "type": "https://bustan.dev/problems/forbidden",
             "title": "Forbidden",
             "status": 403,
             "detail": "Forbidden",
             "instance": "/secret",
+            "code": "forbidden",
         }
         assert reason not in result.body.decode("utf-8")
 
@@ -210,16 +217,71 @@ def test_filter_matching_and_problem_helpers_cover_remaining_branches() -> None:
         (catch_all_filter, value_error_filter),
     ) == (value_error_filter, catch_all_filter)
     assert _exception_distance(ValueError, KeyError) == len(ValueError.__mro__)
-    assert _problem_status(
-        GuardRejectedError("limited"),
-        context,
-    ) == (429, "Too Many Requests")
+    throttled = _problem_kind(GuardRejectedError("limited"), context)
+    assert (throttled.status, throttled.title) == (429, "Too Many Requests")
+    assert throttled.code == "too-many-requests"
     assert _problem_errors(RuntimeError("boom")) is None
 
     bad_request = BadRequestException("invalid", field="name", source="body", reason="missing")
     assert _problem_errors(bad_request) == [
         {"field": "name", "source": "body", "reason": "missing"}
     ]
+
+
+@pytest.mark.anyio
+async def test_a_caller_with_no_identity_is_answered_401_with_a_challenge() -> None:
+    result = await handle_exception(
+        _request_context("/secret"),
+        AuthenticationRequiredError("Authentication required"),
+        (),
+    )
+
+    assert isinstance(result, HttpResponse)
+    assert result.status_code == 401
+    assert result.headers["WWW-Authenticate"] == "Bearer"
+    assert json.loads(result.body) == {
+        "type": "https://bustan.dev/problems/unauthorized",
+        "title": "Unauthorized",
+        "status": 401,
+        "detail": "Unauthorized",
+        "instance": "/secret",
+        "code": "unauthorized",
+    }
+
+
+@pytest.mark.anyio
+async def test_a_caller_that_is_known_and_refused_anyway_gets_no_challenge() -> None:
+    # A 401 invites the client to authenticate and try again. A caller the application
+    # has already identified would only present the same identity, so it is not invited.
+    result = await handle_exception(
+        _request_context("/secret"),
+        GuardRejectedError("Policy denied: missing roles ('warehouse-supervisor',)"),
+        (),
+    )
+
+    assert isinstance(result, HttpResponse)
+    assert result.status_code == 403
+    assert "WWW-Authenticate" not in result.headers
+
+
+@pytest.mark.anyio
+async def test_a_status_an_application_raised_reaches_the_caller_as_that_status() -> None:
+    result = await handle_exception(
+        _request_context("/orders/17"),
+        NotFoundException("No order with that number"),
+        (),
+    )
+
+    assert isinstance(result, HttpResponse)
+    assert result.status_code == 404
+    assert json.loads(result.body) == {
+        "type": "https://bustan.dev/problems/not-found",
+        "title": "Not Found",
+        "status": 404,
+        "detail": "No order with that number",
+        "instance": "/orders/17",
+        "code": "not-found",
+    }
 
 
 def _request_context(path: str) -> RequestContext:

@@ -306,16 +306,19 @@ No user-facing documentation provided.
 #### `BadRequestException`
 
 ```python
-class BadRequestException(BustanError)
+class BadRequestException(HttpException)
 ```
 
 Defined in `bustan.kernel.errors`.
 
 Raised when a request fails explicit validation.
 
+The message reaches the caller, because it is about the request that was just
+sent: which field was wrong, where it was read from and what was expected there.
+
 ##### Methods
 
-- `to_payload(self) -> dict`
+- `to_payload(self) -> dict[str, str]`
 
 #### `Body`
 
@@ -1115,7 +1118,7 @@ Raised when request parameters cannot be bound.
 
 ##### Methods
 
-- `to_payload(self) -> dict`
+- `to_payload(self) -> dict[str, str]`
 
 #### `ParseArrayPipe`
 
@@ -1909,6 +1912,58 @@ from bustan.errors import ProviderResolutionError, RouteDefinitionError, BustanE
 
 ### Exports
 
+#### `AuthenticationRequiredError`
+
+```python
+class AuthenticationRequiredError(GuardRejectedError)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raised when a route needs an authenticated caller and the request has none.
+
+It refuses exactly the requests a guard already refused; it says only that the
+refusal was for want of an identity rather than for want of a permission, which is
+what separates a 401 the caller can retry after authenticating from a 403 it cannot.
+
+#### `AuthenticatorRegistryError`
+
+```python
+class AuthenticatorRegistryError(BustanError)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raised when the authenticator wiring a route needs is missing or unusable.
+
+A route that authenticates its callers reads its authenticators out of a registry
+bound under ``AUTHENTICATOR_REGISTRY``. A registry no module visible to the route
+provides, or one that cannot be built without awaiting it, cannot authenticate
+anybody, so every caller of that route would be refused however good its
+credentials. That is a mistake in the application rather than in the request, so it
+is raised while the application is being built, and separately from the errors that
+report a refused caller.
+
+#### `BadGatewayException`
+
+```python
+class BadGatewayException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 502 when a service this one depends on answered unusably.
+
+#### `ConflictException`
+
+```python
+class ConflictException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 409 when the request contradicts the resource's current state.
+
 #### `ExportViolationError`
 
 ```python
@@ -1919,6 +1974,29 @@ Defined in `bustan.kernel.errors`.
 
 Raised when a module exports a provider it does not declare.
 
+#### `ForbiddenException`
+
+```python
+class ForbiddenException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 403 when an identified caller is not allowed to do this.
+
+Say what is refused, never why in terms of the application's own roles or
+permissions: the caller being refused is the one party those names must not reach.
+
+#### `GatewayTimeoutException`
+
+```python
+class GatewayTimeoutException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 504 when a service this one depends on did not answer in time.
+
 #### `GuardRejectedError`
 
 ```python
@@ -1928,6 +2006,42 @@ class GuardRejectedError(BustanError)
 Defined in `bustan.kernel.errors`.
 
 Raised when a guard blocks request execution.
+
+#### `HttpException`
+
+```python
+class HttpException(BustanError)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Base class for an exception that names the response its caller receives.
+
+Raise one of its subclasses from a handler, a pipe, an interceptor or a filter to
+answer the caller with a status the route would not otherwise return. Each subclass
+fixes the status, the problem type and the code the response carries, so the same
+condition is always reported the same way, and the message passed in is returned to
+the caller as the problem's ``detail``.
+
+A message given to a subclass whose status is 500 or above is not shown to the
+caller. Those statuses report a fault in the application rather than anything the
+caller can act on, and their messages routinely name internal detail, so the status
+reason is returned in place of the message and the message is kept in the log.
+
+``headers`` adds response headers the status needs, such as the challenge a 401
+carries. Passing a header the subclass also sets by default replaces that default.
+
+#### `InternalServerErrorException`
+
+```python
+class InternalServerErrorException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 500 when the application cannot serve the request.
+
+The message reaches the log and not the caller, so write it for whoever is on call.
 
 #### `InvalidControllerError`
 
@@ -1979,6 +2093,16 @@ Defined in `bustan.kernel.errors`.
 
 Raised when application lifecycle hooks fail.
 
+#### `MethodNotAllowedException`
+
+```python
+class MethodNotAllowedException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 405 when the resource exists but not for this method.
+
 #### `ModuleCycleError`
 
 ```python
@@ -1989,19 +2113,42 @@ Defined in `bustan.kernel.errors`.
 
 Raised when a module import cycle is detected.
 
+#### `NotFoundException`
+
+```python
+class NotFoundException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 404 when the addressed resource does not exist.
+
+#### `NotImplementedException`
+
+```python
+class NotImplementedException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 501 when the route exists but the behaviour is not written yet.
+
 #### `BadRequestException`
 
 ```python
-class BadRequestException(BustanError)
+class BadRequestException(HttpException)
 ```
 
 Defined in `bustan.kernel.errors`.
 
 Raised when a request fails explicit validation.
 
+The message reaches the caller, because it is about the request that was just
+sent: which field was wrong, where it was read from and what was expected there.
+
 ##### Methods
 
-- `to_payload(self) -> dict`
+- `to_payload(self) -> dict[str, str]`
 
 #### `ParameterBindingError`
 
@@ -2015,7 +2162,7 @@ Raised when request parameters cannot be bound.
 
 ##### Methods
 
-- `to_payload(self) -> dict`
+- `to_payload(self) -> dict[str, str]`
 
 #### `ProviderResolutionError`
 
@@ -2036,6 +2183,67 @@ class RouteDefinitionError(BustanError)
 Defined in `bustan.kernel.errors`.
 
 Raised when route metadata is malformed or duplicated.
+
+#### `ServiceUnavailableException`
+
+```python
+class ServiceUnavailableException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 503 when the application is up but cannot serve requests now.
+
+#### `TooManyRequestsException`
+
+```python
+class TooManyRequestsException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 429 when the caller has exceeded a rate it is held to.
+
+#### `UnauthorizedException`
+
+```python
+class UnauthorizedException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 401 when the request carries no usable credentials.
+
+The response carries a ``WWW-Authenticate`` challenge, because a 401 without one
+tells a client it must authenticate without telling it how. The default names the
+bearer scheme; pass ``headers`` to state the scheme the application really uses.
+
+Use this when the caller is unknown. A caller the application has identified and is
+refusing anyway is answered with :class:`ForbiddenException`.
+
+#### `UnprocessableEntityException`
+
+```python
+class UnprocessableEntityException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 422 when a well-formed body asks for something impossible.
+
+A body the framework could not read at all is a 400 the caller is told about
+through :class:`BadRequestException`; this status is for one that parsed and then
+failed a rule the application enforces.
+
+#### `UnsupportedMediaTypeException`
+
+```python
+class UnsupportedMediaTypeException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 415 when the body is in a format the handler cannot read.
 
 #### `BustanError`
 

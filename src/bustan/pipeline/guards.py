@@ -8,7 +8,12 @@ from collections.abc import Awaitable
 from typing import Any, cast
 from uuid import uuid4
 
-from ..kernel.errors import GuardRejectedError, ProviderResolutionError
+from ..kernel.errors import (
+    AuthenticationRequiredError,
+    AuthenticatorRegistryError,
+    GuardRejectedError,
+    ProviderResolutionError,
+)
 from ..kernel.utils import _qualname
 from .auth import AUTHENTICATOR_REGISTRY, Principal
 from .context import ExecutionContext
@@ -48,15 +53,15 @@ class PolicyGuard(Guard):
         if auth_policy is not None:
             principal = await self._authenticate(context, auth_policy.strategy)
             if principal is None:
-                raise _rejected(context, "Authentication required")
+                raise _authentication_required(context)
             request = context.request
             if request is None:
-                raise _rejected(context, "Authentication required")
+                raise _authentication_required(context)
             request.state.principal = principal
 
         if getattr(policy_plan, "roles", ()):
             if principal is None:
-                raise _rejected(context, "Authentication required")
+                raise _authentication_required(context)
             missing_roles = [
                 role for role in policy_plan.roles if role not in getattr(principal, "roles", ())
             ]
@@ -65,7 +70,7 @@ class PolicyGuard(Guard):
 
         if getattr(policy_plan, "permissions", ()):
             if principal is None:
-                raise _rejected(context, "Authentication required")
+                raise _authentication_required(context)
             missing_permissions = [
                 permission
                 for permission in policy_plan.permissions
@@ -86,13 +91,13 @@ class PolicyGuard(Guard):
                 request=context.request,
             )
         except ProviderResolutionError as exc:
-            raise _rejected(
+            raise _misconfigured(
                 context, f"Unknown authenticator registry for strategy {strategy!r}"
             ) from exc
 
         authenticator = getattr(registry, "get", lambda _key, _default=None: None)(strategy, None)
         if authenticator is None:
-            raise _rejected(context, f"Unknown authenticator {strategy!r}")
+            raise _misconfigured(context, f"Unknown authenticator {strategy!r}")
 
         result = authenticator.authenticate(context)
         if inspect.isawaitable(result):
@@ -125,6 +130,41 @@ def _rejected(context: ExecutionContext, reason: str) -> GuardRejectedError:
 
     _LOGGER.warning("Request rejected [correlation_id=%s]: %s", _correlation_id(context), reason)
     return GuardRejectedError(reason)
+
+
+def _authentication_required(context: ExecutionContext) -> AuthenticationRequiredError:
+    """Refuse a request that reached a route needing an identity without carrying one.
+
+    The same requests are refused as before this error existed, and for the same reason.
+    Naming that reason in the type is what lets the answer say so: a caller refused for
+    want of an identity is told to present one, rather than being told, as one holding
+    an identity that is merely insufficient is, that presenting it again is pointless.
+    """
+
+    _LOGGER.warning(
+        "Request rejected [correlation_id=%s]: %s",
+        _correlation_id(context),
+        "Authentication required",
+    )
+    return AuthenticationRequiredError("Authentication required")
+
+
+def _misconfigured(context: ExecutionContext, reason: str) -> AuthenticatorRegistryError:
+    """Refuse a request whose route cannot authenticate anybody, and say it is a fault.
+
+    Nothing about the request reached this point: the wiring the route authenticates
+    with is missing or unusable, so every caller of the route is refused whatever it
+    sends. Reporting that as a refusal of the caller hides the mistake behind the answer
+    a wrong password would get, so it is raised as the application fault it is, which
+    the error model answers with a 500 and this line explains to whoever is on call.
+    """
+
+    _LOGGER.error(
+        "Request refused by unusable authenticator wiring [correlation_id=%s]: %s",
+        _correlation_id(context),
+        reason,
+    )
+    return AuthenticatorRegistryError(reason)
 
 
 def _correlation_id(context: ExecutionContext) -> str:
