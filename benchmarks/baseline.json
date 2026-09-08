@@ -1,0 +1,33 @@
+{
+  "calibration": "bench_calibration",
+  "captured_on": {
+    "cpu_brand": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cpu_count": 4,
+    "machine": "x86_64",
+    "node": "vm",
+    "processor": "x86_64",
+    "python_compiler": "GCC 13.3.0",
+    "python_hash_seed": "0",
+    "python_implementation": "CPython",
+    "python_version": "3.13.12",
+    "release": "6.18.44-fc-v24",
+    "system": "Linux"
+  },
+  "medians_seconds": {
+    "bench_calibration": 0.000848,
+    "bench_container_resolution": 2.399e-05,
+    "bench_pipeline_route": 0.0009117,
+    "bench_request_scoped_chain": 0.000977,
+    "bench_simple_route": 0.0008326
+  },
+  "passes": 8,
+  "ratios": {
+    "bench_container_resolution": 0.02838,
+    "bench_pipeline_route": 1.07157,
+    "bench_request_scoped_chain": 1.1602,
+    "bench_simple_route": 0.96833
+  },
+  "schema": 1,
+  "statistic": "median",
+  "threshold": 0.3
+}

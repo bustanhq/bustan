@@ -391,3 +391,88 @@ jobs:
 
       - name: Smoke install wheel
         run: uv run python scripts/package_smoke_check.py
+
+  benchmarks:
+    name: Benchmarks and regression gate
+    runs-on: ubuntu-latest
+
+    # Pinned because dictionary layout follows the hash seed and the request path is
+    # dictionaries, so an unpinned seed costs several percent of run-to-run spread that
+    # the gate's threshold would otherwise have to absorb. The baseline records the seed
+    # it was captured under and the gate says so when a run disagrees.
+    env:
+      PYTHONHASHSEED: "0"
+
+    # The benchmark suite is a standalone uv project with its own lockfile, kept out of
+    # the root one so that a benchmark-only dependency cannot invalidate what any other
+    # project in this repository resolves.
+    defaults:
+      run:
+        working-directory: benchmarks
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      # Before any `uv run`, which re-locks the project as a side effect and would
+      # repair a stale lockfile in place before this step could see it. This project
+      # depends on the root one by path, so the root's own metadata is recorded here and
+      # a root dependency edit makes this lockfile stale the way it makes the example
+      # lockfiles stale. Regenerate it with `uv lock` in `benchmarks/`.
+      - name: Check the benchmark lockfile is current
+        run: uv lock --check
+
+      - name: Install the benchmark project
+        run: uv sync --frozen
+
+      # Two passes. The gate takes the lower ratio each benchmark reached, so a single
+      # pass that shared a runner with a noisy neighbour cannot fail the build alone.
+      # Measurement settings are in benchmarks/pyproject.toml rather than here, because
+      # a run under different settings is not comparable with the baseline and there
+      # would be no way to tell that from the numbers.
+      - name: Run the benchmark suite (first pass)
+        run: |
+          mkdir -p .benchmark-results
+          uv run pytest --benchmark-json=.benchmark-results/pass-1.json
+
+      - name: Run the benchmark suite (second pass)
+        run: uv run pytest --benchmark-json=.benchmark-results/pass-2.json
+
+      # Blocking. Every measurement is divided by the calibration workload measured in
+      # the same run, so what is compared against the baseline is a ratio and the speed
+      # of whichever runner this landed on cancels out.
+      - name: Compare against the published baseline
+        run: |
+          uv run python gate.py \
+            --result .benchmark-results/pass-1.json \
+            --result .benchmark-results/pass-2.json | tee gate-report.txt
+
+      # On the run summary as well as in the step log, because a number nobody reads is
+      # a number nobody notices drifting. Written whether the gate passed or failed: the
+      # margin a passing run had is what says whether the threshold is still the right
+      # one.
+      - name: Summarise the regression gate
+        if: always()
+        run: |
+          {
+            echo '### Benchmark regression gate'
+            echo
+            echo '```'
+            cat gate-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results
+          path: benchmarks/.benchmark-results/

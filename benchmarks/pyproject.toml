@@ -1,0 +1,45 @@
+# A standalone uv project, deliberately not part of the root one.
+#
+# The root project's dependency-group metadata is recorded in every lockfile that
+# depends on bustan by path, so adding a benchmark-only dependency to the root `dev`
+# group invalidates all six example lockfiles as well as the root one. Keeping the
+# benchmark dependencies here means the benchmark suite can be installed, pinned and
+# run without touching what any other project resolves.
+[project]
+name = "bustan-benchmarks"
+version = "0"
+description = "Throughput and latency benchmarks for the bustan framework"
+requires-python = ">=3.13"
+dependencies = [
+    "bustan",
+    "pytest>=9.0.3,<10.0.0",
+    "pytest-benchmark>=5.1.0,<6.0.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+bustan = { path = "../", editable = true }
+
+# The measurement settings live here rather than on the CI command line, because a
+# benchmark run that used different settings from the baseline is not comparable with it
+# and there would be no way to tell from the numbers. A local run and the gated run are
+# therefore the same run.
+#
+# 1500 rounds because the run-to-run spread of the normalized median stops improving
+# past roughly that many; garbage collection off because a collection landing inside a
+# round is the single largest source of spread that is not the machine; warmup on so the
+# first rounds are not measuring the first execution of a code path.
+[tool.pytest.ini_options]
+addopts = """\
+-ra \
+--benchmark-min-rounds=1500 \
+--benchmark-warmup=on \
+--benchmark-disable-gc \
+--benchmark-sort=name \
+--benchmark-columns=min,median,mean,stddev,rounds\
+"""
+python_files = ["bench_*.py"]
+python_functions = ["bench_*"]
+testpaths = ["."]
