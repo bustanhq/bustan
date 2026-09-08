@@ -11,13 +11,15 @@ from types import NoneType
 from typing import cast, get_origin, get_type_hints
 
 from ..common.types import ControllerMetadata
-from ..kernel.errors import RouteDefinitionError
+from ..kernel.errors import AuthenticatorRegistryError, RouteDefinitionError
 from ..kernel.ioc.container import Container
 from ..kernel.ioc.registry import Binding
 from ..kernel.ioc.tokens import APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, InjectionToken
 from ..kernel.module.compiler import _in_declaration_order
 from ..kernel.module.dynamic import ModuleKey
 from ..kernel.module.graph import ModuleGraph
+from ..kernel.utils import _display_name
+from ..pipeline.auth import AUTHENTICATOR_REGISTRY
 from ..pipeline.guards import PolicyGuard
 from ..pipeline.metadata import (
     PipelineMetadata,
@@ -280,6 +282,7 @@ class RouteCompiler:
             owner=merged_policy.owner,
             deprecation=merged_policy.deprecation,
         )
+        self._validate_authenticator_registry(scanned_handler, policy_plan)
         guards = merged_pipeline.guards
         if _has_policy(policy_plan):
             guards = (PolicyGuard, *guards)
@@ -312,6 +315,64 @@ class RouteCompiler:
             versions=route_versions or controller_versions,
             hosts=route_hosts or controller_hosts,
         )
+
+    def _validate_authenticator_registry(
+        self,
+        scanned_handler: ScannedHandler,
+        policy_plan: PolicyPlan,
+    ) -> None:
+        """Refuse a route that authenticates callers with wiring that cannot authenticate.
+
+        A route carrying an authentication policy reads its authenticators out of the
+        registry bound under the authenticator registry token. That registry has to be
+        visible from the module the route is declared in, and has to be buildable without
+        being awaited, because the guard reads it synchronously in the middle of the
+        request. Neither fact can be seen from the route itself: both are settled by which
+        module binds the token and how it binds it.
+
+        Left to the request, a registry that fails either test refuses every caller of the
+        route with the same answer a wrong credential gets, on every request the route
+        will ever serve, which is a mistake in the application wearing the face of a
+        mistake by the caller. It is refused here instead, while the application is being
+        built, where it is still somebody's to fix and nobody has been misinformed yet.
+
+        A route whose policy resolved to public never reaches the registry, so it is not
+        held to this.
+        """
+
+        if policy_plan.auth is None or policy_plan.public:
+            return
+
+        module = scanned_handler.module_key
+        binding = self._visible_authenticator_registry(module)
+        route_label = (
+            f"{scanned_handler.controller_cls.__qualname__}."
+            f"{scanned_handler.route_definition.handler_name}"
+        )
+        if binding is None:
+            raise AuthenticatorRegistryError(
+                f"{route_label} authenticates its callers, and no provider for "
+                f"{AUTHENTICATOR_REGISTRY.name} is visible to {_display_name(module)}. "
+                "Declare one in that module, or import a module that exports it"
+            )
+        if _resolves_only_by_awaiting(binding):
+            raise AuthenticatorRegistryError(
+                f"{route_label} authenticates its callers, and the provider for "
+                f"{AUTHENTICATOR_REGISTRY.name} visible to {_display_name(module)} is built "
+                "by an async factory, which the guard that reads it cannot await. Declare "
+                "it as a value or build it with a synchronous factory"
+            )
+
+    def _visible_authenticator_registry(self, module: ModuleKey) -> Binding | None:
+        """Return the authenticator registry binding one module can see, if it can see one."""
+
+        visibility = self._container.registry.module_visibility.get(module)
+        if visibility is None:
+            return None
+        declaring_module = visibility.get(AUTHENTICATOR_REGISTRY)
+        if declaring_module is None:
+            return None
+        return self._container.registry.get_binding((declaring_module, AUTHENTICATOR_REGISTRY))
 
     def _compile_response_plan(self, route_definition: ControllerRouteDefinition) -> ResponsePlan:
         declared_type = _resolve_declared_return_type(route_definition)
@@ -457,6 +518,16 @@ def _has_policy(policy_plan: PolicyPlan) -> bool:
             policy_plan.deprecation is not None,
         )
     )
+
+
+def _resolves_only_by_awaiting(binding: Binding) -> bool:
+    """Report whether a binding can be built only by awaiting the factory behind it."""
+
+    if binding.resolver_kind != "factory":
+        return False
+    target = binding.target
+    factory = target[0] if isinstance(target, tuple) else target
+    return inspect.iscoroutinefunction(factory)
 
 
 def _component_name(component: object) -> str:

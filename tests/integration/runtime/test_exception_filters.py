@@ -248,7 +248,7 @@ def test_an_exception_a_constructor_raised_is_mapped_without_any_declared_filter
     assert response.status_code == 400
     assert response.headers["content-type"].startswith("application/problem+json")
     assert response.json() == {
-        "type": "about:blank",
+        "type": "https://bustan.dev/problems/bad-request",
         "title": "Bad Request",
         "status": 400,
         "detail": "missing header",
@@ -256,6 +256,7 @@ def test_an_exception_a_constructor_raised_is_mapped_without_any_declared_filter
         "errors": [{"field": "x-user", "source": "header"}],
         "field": "x-user",
         "source": "header",
+        "code": "bad-request",
     }
 
 

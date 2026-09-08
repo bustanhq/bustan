@@ -10,6 +10,7 @@ from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
 from bustan.runtime.compiler import compile_route_contracts
 from bustan.security import (
+    AUTHENTICATOR_REGISTRY,
     Audit,
     Auth,
     Cache,
@@ -111,7 +112,13 @@ def test_public_controller_does_not_disable_handler_access_requirements() -> Non
         def read_locked(self) -> dict[str, str]:
             return {"status": "ok"}
 
-    @Module(controllers=[MixedController])
+    # A route that authenticates its callers compiles only where the registry it reads
+    # its authenticators out of is visible to it. This test compiles routes rather than
+    # serving them, so what the registry holds never comes up.
+    @Module(
+        controllers=[MixedController],
+        providers=[{"provide": AUTHENTICATOR_REGISTRY, "use_value": {}}],
+    )
     class AppModule:
         pass
 

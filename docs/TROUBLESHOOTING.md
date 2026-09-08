@@ -186,11 +186,133 @@ Cause: a request failed explicit validation. The built-in pipes raise it for a v
 
 Fix: correct the request. Like `ParameterBindingError`, it carries `field`, `source` and `reason`, renders as a `400`, and is the exception to raise from a pipe or a handler when you want that shape without writing a filter.
 
+It is also the `400` member of the `HttpException` family below, so its response carries the problem type `https://bustan.dev/problems/bad-request` and the code `bad-request` alongside those fields.
+
+## `HttpException`
+
+Cause: nothing in the framework raises it directly. It is the base class of the fifteen status exceptions below, which an application raises from a handler, a pipe, an interceptor or a filter to answer a caller with a status the route would not otherwise return.
+
+Each subclass fixes three values that are a published contract, so a client may branch on them and a runbook may grep for them:
+
+| Class | Status | `type` | `code` |
+| --- | --- | --- | --- |
+| `BadRequestException` | 400 | `https://bustan.dev/problems/bad-request` | `bad-request` |
+| `UnauthorizedException` | 401 | `https://bustan.dev/problems/unauthorized` | `unauthorized` |
+| `ForbiddenException` | 403 | `https://bustan.dev/problems/forbidden` | `forbidden` |
+| `NotFoundException` | 404 | `https://bustan.dev/problems/not-found` | `not-found` |
+| `MethodNotAllowedException` | 405 | `https://bustan.dev/problems/method-not-allowed` | `method-not-allowed` |
+| `ConflictException` | 409 | `https://bustan.dev/problems/conflict` | `conflict` |
+| `ContentTooLargeException` | 413 | `https://bustan.dev/problems/content-too-large` | `content-too-large` |
+| `UnsupportedMediaTypeException` | 415 | `https://bustan.dev/problems/unsupported-media-type` | `unsupported-media-type` |
+| `UnprocessableEntityException` | 422 | `https://bustan.dev/problems/unprocessable-entity` | `unprocessable-entity` |
+| `TooManyRequestsException` | 429 | `https://bustan.dev/problems/too-many-requests` | `too-many-requests` |
+| `InternalServerErrorException` | 500 | `https://bustan.dev/problems/internal-server-error` | `internal-server-error` |
+| `NotImplementedException` | 501 | `https://bustan.dev/problems/not-implemented` | `not-implemented` |
+| `BadGatewayException` | 502 | `https://bustan.dev/problems/bad-gateway` | `bad-gateway` |
+| `ServiceUnavailableException` | 503 | `https://bustan.dev/problems/service-unavailable` | `service-unavailable` |
+| `GatewayTimeoutException` | 504 | `https://bustan.dev/problems/gateway-timeout` | `gateway-timeout` |
+
+The message becomes the problem's `detail`, except at 500 and above: those statuses report a fault in the application rather than anything the caller can act on, and their messages routinely name internal detail, so the caller is shown `Internal server error` and the message is kept in the log. Passing `headers=` adds response headers, which is how a 401 states a challenge other than the default.
+
+An exception that is not one of these and not otherwise modelled still renders as a `500` whose `type` is `about:blank` and which carries no `code`, because that is what the standard defines that value to mean: a problem with no semantics beyond its status.
+
+Fix: nothing to fix. Raise the subclass whose status says what happened.
+
+## `UnauthorizedException`
+
+Cause: raised by an application to answer `401` when the request carries no usable credentials.
+
+The response carries a `WWW-Authenticate` challenge, defaulting to `Bearer`, because a 401 without one tells a client that it must authenticate without telling it how. Pass `headers={"WWW-Authenticate": ...}` to state the scheme the application really uses.
+
+Fix: present credentials. A caller the application has already identified and is refusing anyway is answered with `ForbiddenException` instead, because presenting the same identity again would change nothing.
+
+## `ForbiddenException`
+
+Cause: raised by an application to answer `403` when an identified caller is not allowed to do this.
+
+Fix: say what is refused, never why in terms of the application's own roles or permissions. The caller being refused is the one party those names must not reach.
+
+## `NotFoundException`
+
+Cause: raised by an application to answer `404` when the addressed resource does not exist. Before this class existed a 404 was only reachable by returning a raw response, outside the framework's error model.
+
+Fix: check the identifier in the path.
+
+## `MethodNotAllowedException`
+
+Cause: raised by an application to answer `405` when the resource exists but not for this method.
+
+Fix: use a method the route serves.
+
+## `ConflictException`
+
+Cause: raised by an application to answer `409` when the request contradicts the resource's current state, such as a create that collides with an existing record or an update against a stale version.
+
+Fix: re-read the resource and retry against what it says now.
+
+## `ContentTooLargeException`
+
+Cause: raised by an application to answer `413` when the request body is larger than the route accepts.
+
+The framework's own body limit answers `413` through its request-limit filter rather than through this class, so a refusal that names no `code` at all came from that limit and not from application code.
+
+Fix: send a smaller body, or raise the limit the deployment sets.
+
+## `UnsupportedMediaTypeException`
+
+Cause: raised by an application to answer `415` when the body is in a format the handler cannot read.
+
+Fix: send a `Content-Type` the route accepts.
+
+## `UnprocessableEntityException`
+
+Cause: raised by an application to answer `422` when a well-formed body asks for something impossible.
+
+Fix: a body the framework could not read at all is a `400` reported through `BadRequestException`; this status is for one that parsed and then failed a rule the application enforces, so the rule is what to look at.
+
+## `TooManyRequestsException`
+
+Cause: raised by an application to answer `429` when the caller has exceeded a rate it is held to. The built-in throttler produces its own `429` through `GuardRejectedError` rather than through this class.
+
+Fix: slow down, or raise the limit.
+
+## `InternalServerErrorException`
+
+Cause: raised by an application to answer `500` when it cannot serve the request.
+
+The message reaches the log and not the caller, so write it for whoever is on call.
+
+Fix: read the log line, not the response body.
+
+## `NotImplementedException`
+
+Cause: raised by an application to answer `501` when the route exists but the behaviour is not written yet.
+
+Fix: nothing the caller can do. It marks unfinished work on the server.
+
+## `BadGatewayException`
+
+Cause: raised by an application to answer `502` when a service it depends on answered unusably.
+
+Fix: the fault is downstream. The message names which service, in the log.
+
+## `ServiceUnavailableException`
+
+Cause: raised by an application to answer `503` when it is up but cannot serve requests now, such as while draining or while a dependency is being replaced.
+
+Fix: retry later. Pass `headers={"Retry-After": ...}` to say how much later.
+
+## `GatewayTimeoutException`
+
+Cause: raised by an application to answer `504` when a service it depends on did not answer in time. The framework's own request timeout answers `504` through its request-limit filter rather than through this class.
+
+Fix: the fault is downstream, or the budget is too small for it.
+
 ## `GuardRejectedError`
 
-Cause: a guard returned a falsey value or raised `GuardRejectedError` during request execution. The built-in guards raise it as `Authentication required`, `Policy denied: missing roles ...`, `Policy denied: missing permissions ...`, or `Unknown authenticator ...` when a strategy name has no registered authenticator.
+Cause: a guard returned a falsey value or raised `GuardRejectedError` during request execution. The built-in guards raise it as `Policy denied: missing roles ...` or `Policy denied: missing permissions ...`, and as `Authentication required` through the subclass `AuthenticationRequiredError` below.
 
-**The caller is not shown any of that.** The rejection renders as a `403` whose `detail` is the fixed string `Forbidden`, or a `429` whose `detail` is `Too Many Requests` when the request was refused for exceeding a rate limit. The message would otherwise hand an unauthenticated caller the dotted class path of the guard that refused it, the identifier of the authentication strategy the route expects, or the roles and permissions it does not hold, none of which it can act on and each of which narrows the search for someone probing the application.
+**The caller is not shown any of that.** The rejection renders as a `403` whose `detail` is the fixed string `Forbidden`, a `401` when it was refused for want of an identity, or a `429` whose `detail` is `Too Many Requests` when the request was refused for exceeding a rate limit. The message would otherwise hand an unauthenticated caller the dotted class path of the guard that refused it, the identifier of the authentication strategy the route expects, or the roles and permissions it does not hold, none of which it can act on and each of which narrows the search for someone probing the application.
 
 The message is written to the log instead, at `WARNING` on the `bustan.pipeline.guards` logger, in this shape:
 
@@ -201,6 +323,27 @@ Request rejected [correlation_id=1f9c0b1e4c1d4c8f9a2b6d7e8f0a1b2c]: Guard app.se
 The identifier is the request's own, the same value `request_context_id(request).value` returns anywhere else in that request, so a rejection in the log can be joined to everything else recorded for the request that caused it. A guard rejection is the only thing that mints it when nothing else has, so it is always present on this line.
 
 Fix: read the log line for the reason, then inspect the request state or headers the guard expects. Add an exception filter for `GuardRejectedError` if you want a rejection payload of your own shape; a filter sees the full message, so decide deliberately what of it you put in the response.
+
+## `AuthenticationRequiredError`
+
+Cause: a route needing an authenticated caller was reached by a request carrying no identity. It is a subclass of `GuardRejectedError`, so `except GuardRejectedError` still catches it, and it refuses exactly the requests that were refused before it existed.
+
+What it changes is the answer. A refusal for want of an identity renders as a `401` carrying `WWW-Authenticate: Bearer`, which is what an OAuth or OIDC client waits for before starting a refresh; a caller the application has identified and refused anyway still renders as a `403` with no challenge. The `detail` on both is the status reason and nothing else.
+
+Fix: send credentials the route's authentication strategy accepts. A `401` on a request that did send them means the strategy rejected them, which the log line records.
+
+## `AuthenticatorRegistryError`
+
+Cause: a route carrying an authentication policy cannot reach a usable authenticator registry. It is not a `GuardRejectedError` and never reports a caller: it reports the application.
+
+It is raised while the application is being built, from the route compiler, in two conditions:
+
+- `... authenticates its callers, and no provider for AUTHENTICATOR_REGISTRY is visible to M` - no module visible to the route declares the registry. Declare it in that module's `providers`, or import a module that exports it.
+- `... is built by an async factory, which the guard that reads it cannot await` - the guard resolves the registry synchronously in the middle of a request, so a `use_factory` that is a coroutine function can never be read. Declare it with `use_value`, or build it with a synchronous factory.
+
+It is also raised at request time, and rendered as a masked `500`, for the misconfiguration the compiler cannot see: a registry that resolves but holds no authenticator under the strategy the route names, reported as `Unknown authenticator '<strategy>'` on the `bustan.pipeline.guards` logger at `ERROR`.
+
+Fix: wire the registry. Before this error existed all three conditions reached the caller as a `403`, so an authenticated route that refused every caller looked exactly like a caller sending a wrong password.
 
 ## `LifecycleError`
 
