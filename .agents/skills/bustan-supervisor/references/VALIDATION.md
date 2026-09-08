@@ -611,3 +611,31 @@ When the overlap is real but the diffs are known not to touch, say so and narrow
 rather than pretending the check passed: name the single file it may create in that directory and
 put the rest of the directory in its `Must not touch`. That keeps the claim honest and keeps the
 next comparison correct.
+
+## Finding one gate is not establishing there is only one
+
+A ticket asserted that `ci.yml` checked the root lockfile and nothing else, and drew a
+conclusion from that absence: six other lockfiles "break no gate". The delivering agent found
+a second blocking step in the same workflow that checks all six, and showed it had already
+turned a real release pull request red three days earlier.
+
+The search that produced the wrong claim was a real search. It found the root check, and the
+absence of a second hit was read as absence of a second gate. One grep over one workflow is
+evidence about that grep, not about the repository.
+
+The same shape as the earlier entry on channels, and worth stating separately because the
+failure looks different: there, a channel was reported as checked when it could not be read
+at all. Here, the reading was real and partial, and the partiality was invisible. A negative
+claim - "nothing else does this", "no other gate covers that", "this is the only place" - is
+the expensive kind, because it is the one a reader cannot check by looking where you looked.
+
+So: before writing that something is the only one of its kind, search for the kind rather
+than for the instance. Grep for `uv lock --check` across all workflows, not for the job you
+already have in mind. And when the claim survives, say what was searched, so the next reader
+can see the shape of the hole rather than trusting there is none.
+
+The counter-case is what makes this worth the entry rather than a resolution to be careful.
+The same ticket carried a second negative claim - that the version lives in seven places -
+which came from an exhaustive enumeration and held up, except that the list under it had
+eight entries. The enumeration was right and the summary of it was wrong. Count from the list
+rather than from memory of it.
