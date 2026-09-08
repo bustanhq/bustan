@@ -1,11 +1,11 @@
 """Interceptor that adds request metadata around a handler result."""
 
-from bustan import CallHandler, ExecutionContext, Injectable, Interceptor
+from bustan import CallHandler, ExecutionContext, Injectable, Interceptor, Scope
 
 from .request_identity import RequestIdentity
 
 
-@Injectable(scope="request")
+@Injectable(scope=Scope.REQUEST)
 class RequestEnvelopeInterceptor(Interceptor):
     def __init__(self, request_identity: RequestIdentity) -> None:
         self.request_identity = request_identity

@@ -365,8 +365,30 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --frozen
 
-      - name: Run checked-in examples
-        run: uv run python scripts/run_examples.py
+      # Each example ships its own test file, and until this job ran it, nothing did:
+      # the root suite's testpaths stop at `tests/`. The script runs each example's
+      # application and then that example's suite, and fails a suite that collects
+      # nothing, so an example whose tests stop being collected is a red build rather
+      # than a silently shorter log.
+      - name: Run checked-in examples and their own test suites
+        run: |
+          set -o pipefail
+          uv run python scripts/run_examples.py | tee example-report.txt
+
+      # On the run summary as well as in the step log, because the collected count per
+      # example is the number that says the suites are still being run at all, and a
+      # number nobody reads is a number nobody notices going to zero.
+      - name: Summarise the example run
+        if: always()
+        run: |
+          {
+            echo '### Examples'
+            echo
+            echo '```'
+            tail -n 20 example-report.txt 2>/dev/null \
+              || echo 'The examples did not run. An earlier step failed.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   package:
     name: Package Verification
