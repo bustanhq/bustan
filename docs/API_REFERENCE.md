@@ -355,7 +355,7 @@ Current value: `Cookies`
 #### `create_app`
 
 ```python
-def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | AdapterFactory | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None) -> Application
+def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | AdapterFactory | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None, observability: ObservabilityHooks | None = None) -> Application
 ```
 
 Defined in `bustan.app.bootstrap`.
@@ -368,6 +368,13 @@ adapter, that adapter serves as it stands. Given a callable, the framework calls
 with an :class:`AdapterRuntime` and serves through what it returns, which is how an
 adapter other than the default is handed ``debug`` and the lifespan that starts and
 stops the module graph.
+
+``observability`` attaches a metrics backend and a tracer. Build it with the sinks
+you have - ``ObservabilityHooks(metrics=..., tracer=...)`` - and every request this
+application serves is counted, timed and traced through them. The hooks belong to
+this application rather than to the process, so a second application in the same
+process can report somewhere else. Left out, requests are still measured and still
+correlated; there is simply nothing listening.
 
 #### `create_app_context`
 
@@ -1077,7 +1084,16 @@ class Logger
 
 Defined in `bustan.observability.logger`.
 
-NestJS-style logger with context labels and level filtering.
+NestJS-style logger with context labels, level filtering and structured fields.
+
+Every call emits exactly one record, whatever the message contains. A record
+carries the time, the framework level, the context label, the message, the
+correlation and trace ids of the request in flight when there is one, and whatever
+structured ``fields`` the caller passed, with configured keys redacted.
+
+An override installed with :meth:`override_logger` or :meth:`scoped_override`
+replaces the destination for the context that installed it and for nothing else,
+so a test that redirects records does not redirect another request's.
 
 ##### Methods
 
@@ -1086,9 +1102,30 @@ NestJS-style logger with context labels and level filtering.
 - `error(self, message: str, trace: str | None = None, context: str | None = None) -> None`
 - `debug(self, message: str, context: str | None = None) -> None`
 - `verbose(self, message: str, context: str | None = None) -> None`
+- `record(self, level: LogLevel, message: str, context: str | None = None, *, fields: Mapping[str, object] | None = None) -> None`
+  Write one record at *level*, carrying *fields* as structured data.
+
+This is the call that takes structured fields, rather than a keyword added to
+each of the five level methods above. Those five are overridden by
+applications and by this framework's own tests, and a parameter added to a
+method someone else has already overridden turns their subclass into one that
+no longer satisfies its base class - a breaking change bought for a keyword.
+
+Field names are the caller's, and their values are redacted at every depth
+against the configured keys before anything is written.
 - `set_global_level(cls, level: LogLevel) -> None`
+- `set_redacted_keys(cls, keys: frozenset[str] | set[str] | tuple[str, ...]) -> None`
+  Replace the field names whose values are withheld from every record.
 - `override_logger(cls, target: object) -> None`
+  Send records to *target* for the context that calls this.
+
+The binding is a context variable, so a second task that installs its own
+override neither sees this one nor takes this one's records, and a task that
+installs none keeps writing where it was writing before.
+- `scoped_override(cls, target: object) -> Iterator[object]`
+  Send records to *target* for the duration of the block.
 - `reset_logger(cls) -> None`
+  Undo the most recent override, and restore the default level and redaction.
 
 #### `LoggerService`
 
@@ -1099,6 +1136,23 @@ class LoggerService(Logger)
 Defined in `bustan.observability.logger_service`.
 
 Injectable wrapper around the framework logger.
+
+#### `MetricsSink`
+
+```python
+class MetricsSink(Protocol)
+```
+
+Defined in `bustan.observability.observability`.
+
+Metric sink used by the observability hooks.
+
+One call per finished request, carrying the route labels, the status it was
+answered with, and how long it took in seconds.
+
+##### Methods
+
+- `record_request(self, *, labels: Mapping[str, str], duration_seconds: float) -> None`
 
 #### `Middleware`
 
@@ -1219,6 +1273,43 @@ class ModuleCycleError(InvalidModuleError)
 Defined in `bustan.kernel.errors`.
 
 Raised when a module import cycle is detected.
+
+#### `ObservabilityHooks`
+
+```python
+class ObservabilityHooks
+```
+
+Defined in `bustan.observability.observability`.
+
+Route-aware metrics and tracing hooks around request execution.
+
+##### Methods
+
+- `current(cls) -> ObservabilityHooks`
+- `resolve(cls, configured: ObservabilityHooks | None) -> ObservabilityHooks`
+  Return the hooks one request is served under.
+
+An override installed for the calling context wins, because that is what an
+override is for: a test that redirects a request's metrics has to be able to
+do so whatever the application it is testing was assembled with. Otherwise
+the application serves under the hooks it was given, and an application given
+none serves under hooks that record nothing rather than under no hooks at all.
+- `override_global(cls, hooks: ObservabilityHooks) -> None`
+- `scoped_override(cls, hooks: ObservabilityHooks) -> Iterator[ObservabilityHooks]`
+- `reset_global(cls) -> None`
+- `start_request(self, context: ExecutionContext) -> ActiveObservation`
+  Begin observing one request, and start its server span when it is sampled.
+
+An unsampled request is still measured and still counted; what head sampling
+decides is whether a span is started for it, because the metric is what every
+request costs and the span is what one request is worth keeping.
+- `finish_request(self, observation: ActiveObservation, *, status_code: int, error: Exception | None = None) -> None`
+  Close one request's observation, whatever it was answered with.
+
+The duration is the elapsed time since the observation began, so it covers
+everything the request paid for - the guards, the provider resolution, the
+body, the handler and rendering the answer - and not merely the handler.
 
 #### `OptionalDep`
 
@@ -1558,6 +1649,24 @@ the container never matches two tokens by comparing names.
 
 Current value: `InjectionToken('RESPONSE')`
 
+#### `RequestTracer`
+
+```python
+class RequestTracer(Protocol)
+```
+
+Defined in `bustan.observability.observability`.
+
+Tracer contract used by the runtime.
+
+``context`` names the trace the span belongs to and the caller's span when the
+request arrived inside a trace, so a span this process starts continues the
+caller's trace rather than beginning one beside it.
+
+##### Methods
+
+- `start_span(self, name: str, *, kind: SpanKind, attributes: Mapping[str, str], context: SpanContext) -> TraceSpan`
+
 #### `RouteDefinitionError`
 
 ```python
@@ -1577,6 +1686,60 @@ class Scope(StrEnum)
 Defined in `bustan.common.types`.
 
 Supported provider lifetimes.
+
+#### `SpanContext`
+
+```python
+class SpanContext
+```
+
+Defined in `bustan.observability.observability`.
+
+The identity of one span and the trace it belongs to.
+
+``sampled`` is the head sampling decision, made once when the span starts and true
+for the whole trace: a caller that sampled a request is honoured, and a request
+that arrived without a decision gets one from the configured ratio.
+
+#### `SpanKind`
+
+```python
+class SpanKind(StrEnum)
+```
+
+Defined in `bustan.observability.observability`.
+
+Where a span sits in a call, in OpenTelemetry's terms.
+
+#### `SpanStatus`
+
+```python
+class SpanStatus(StrEnum)
+```
+
+Defined in `bustan.observability.observability`.
+
+The outcome a finished span reports.
+
+#### `TraceSpan`
+
+```python
+class TraceSpan(Protocol)
+```
+
+Defined in `bustan.observability.observability`.
+
+A span, in OpenTelemetry's terms: attributes, a status, and an end.
+
+The runtime sets attributes while the request runs, records the exception when
+there was one, sets the status once, and ends the span exactly once.
+
+##### Methods
+
+- `set_attribute(self, key: str, value: object) -> None`
+- `set_status(self, status: SpanStatus, *, description: str | None = None) -> None`
+- `record_exception(self, error: BaseException) -> None`
+- `end(self) -> None`
 
 #### `DefaultValuePipe`
 

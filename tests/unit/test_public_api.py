@@ -80,6 +80,13 @@ from bustan.kernel.module.graph import ModuleNode as InternalModuleNode
 from bustan.observability import Logger as InternalLogger
 from bustan.observability import LoggerService as InternalLoggerService
 from bustan.observability import LogLevel as InternalLogLevel
+from bustan.observability import MetricsSink as InternalMetricsSink
+from bustan.observability import ObservabilityHooks as InternalObservabilityHooks
+from bustan.observability import RequestTracer as InternalRequestTracer
+from bustan.observability import SpanContext as InternalSpanContext
+from bustan.observability import SpanKind as InternalSpanKind
+from bustan.observability import SpanStatus as InternalSpanStatus
+from bustan.observability import TraceSpan as InternalTraceSpan
 from bustan.openapi import ApiBearerAuth as InternalApiBearerAuth
 from bustan.openapi import ApiBody as InternalApiBody
 from bustan.openapi import ApiOperation as InternalApiOperation
@@ -192,6 +199,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "LogLevel",
         "Logger",
         "LoggerService",
+        "MetricsSink",
         "Middleware",
         "MiddlewareConsumer",
         "ModuleRef",
@@ -199,6 +207,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "ModuleGraph",
         "ModuleNode",
         "ModuleCycleError",
+        "ObservabilityHooks",
         "OptionalDep",
         "OnApplicationBootstrap",
         "OnApplicationShutdown",
@@ -222,8 +231,13 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "Reflector",
         "REQUEST",
         "RESPONSE",
+        "RequestTracer",
         "RouteDefinitionError",
         "Scope",
+        "SpanContext",
+        "SpanKind",
+        "SpanStatus",
+        "TraceSpan",
         "DefaultValuePipe",
         "UploadedFile",
         "UploadedFiles",
@@ -297,6 +311,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.LogLevel is InternalLogLevel
     assert bustan.Logger is InternalLogger
     assert bustan.LoggerService is InternalLoggerService
+    assert bustan.MetricsSink is InternalMetricsSink
     assert bustan.Middleware is InternalMiddleware
     assert bustan.MiddlewareConsumer is InternalMiddlewareConsumer
     assert bustan.ModuleRef is InternalModuleRef
@@ -307,6 +322,11 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.ParseIntPipe is InternalParseIntPipe
     assert bustan.ParseUUIDPipe is InternalParseUUIDPipe
     assert bustan.Pipe is InternalPipe
+    assert bustan.RequestTracer is InternalRequestTracer
+    assert bustan.SpanContext is InternalSpanContext
+    assert bustan.SpanKind is InternalSpanKind
+    assert bustan.SpanStatus is InternalSpanStatus
+    assert bustan.TraceSpan is InternalTraceSpan
     assert bustan.Controller is InternalController
     assert bustan.ConfigurableModuleBuilder is InternalConfigurableModuleBuilder
     assert bustan.ConfigModule is InternalConfigModule
@@ -327,6 +347,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.Module is InternalModule
     assert bustan.ModuleGraph is InternalModuleGraph
     assert bustan.ModuleNode is InternalModuleNode
+    assert bustan.ObservabilityHooks is InternalObservabilityHooks
     assert bustan.OptionalDep is InternalOptionalDep
     assert bustan.OnApplicationBootstrap is InternalOnApplicationBootstrap
     assert bustan.OnApplicationShutdown is InternalOnApplicationShutdown

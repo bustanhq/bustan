@@ -17,12 +17,13 @@ from ..runtime.adapter import (
     compile_adapter_routes,
 )
 from ..runtime.compiler import compile_route_contracts
-from ..runtime.execution import compile_execution_plans
+from ..runtime.execution import compile_execution_plans, set_observability_hooks
 from .application import Application, ApplicationContext
 from .lifespan import build_lifespan
 
 if TYPE_CHECKING:
     from ..kernel.ioc.container import Container
+    from ..observability import ObservabilityHooks
     from ..openapi import SwaggerOptions
     from ..runtime.versioning import VersioningOptions
     from ..testing.overrides import PipelineOverrideRegistry
@@ -36,6 +37,7 @@ def create_app(
     pipeline_override_registry: PipelineOverrideRegistry | None = None,
     versioning: VersioningOptions | None = None,
     swagger: SwaggerOptions | None = None,
+    observability: ObservabilityHooks | None = None,
 ) -> Application:
     """Create a fully assembled Bustan application from the root module.
 
@@ -45,6 +47,13 @@ def create_app(
     with an :class:`AdapterRuntime` and serves through what it returns, which is how an
     adapter other than the default is handed ``debug`` and the lifespan that starts and
     stops the module graph.
+
+    ``observability`` attaches a metrics backend and a tracer. Build it with the sinks
+    you have - ``ObservabilityHooks(metrics=..., tracer=...)`` - and every request this
+    application serves is counted, timed and traced through them. The hooks belong to
+    this application rather than to the process, so a second application in the same
+    process can report somewhere else. Left out, requests are still measured and still
+    correlated; there is simply nothing listening.
     """
     return _create_app(
         root_module,
@@ -53,6 +62,7 @@ def create_app(
         pipeline_override_registry=pipeline_override_registry,
         versioning=versioning,
         swagger=swagger,
+        observability=observability,
         no_lifespan=False,
     )
 
@@ -65,6 +75,7 @@ def _create_app(
     pipeline_override_registry: PipelineOverrideRegistry | None = None,
     versioning: VersioningOptions | None = None,
     swagger: SwaggerOptions | None = None,
+    observability: ObservabilityHooks | None = None,
     no_lifespan: bool = False,
 ) -> Application:
     """Internal application factory used for alternate lifecycle wiring."""
@@ -112,6 +123,11 @@ def _create_app(
     # a provider is injected with can still report the routes the application compiled.
     # The assembler is the only writer; everything else reads the context's accessor.
     application_context._http_application = application
+    # The hooks are seated on the assembled application, next to the request limits,
+    # because that is where the request path looks for what one application - rather
+    # than the process it happens to share - serves its requests through.
+    if observability is not None:
+        set_observability_hooks(application, observability)
     _attach_runtime_artifacts(
         application,
         module_graph,

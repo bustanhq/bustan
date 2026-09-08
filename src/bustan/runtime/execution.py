@@ -19,6 +19,11 @@ from ..kernel.errors import BustanError, GuardRejectedError
 from ..kernel.ioc.container import Container
 from ..kernel.ioc.scopes import BoundedInstanceStore
 from ..kernel.module.dynamic import ModuleKey
+from ..observability.correlation import (
+    bind_correlation,
+    correlation_from_headers,
+    reset_correlation,
+)
 from ..observability.observability import ObservabilityHooks
 from ..pipeline.context import ExecutionContext
 from ..pipeline.filters import ExceptionFilter, ProblemDetails, handle_exception
@@ -64,6 +69,9 @@ _INTERNAL_SERVER_ERROR_DETAIL = "Internal server error"
 # Reserved on the application object for the limits it serves requests under, following
 # the framework's convention that a name it owns on someone else's namespace says so.
 REQUEST_LIMITS_ATTR = "bustan_request_limits"
+# Reserved on the application object for the observability hooks it serves requests
+# through, under the same convention as the limits above.
+OBSERVABILITY_HOOKS_ATTR = "bustan_observability_hooks"
 
 
 class RequestTimeoutError(BustanError):
@@ -218,6 +226,11 @@ def create_route_handler(
         return result.response
 
     async def handle(request: HttpRequest) -> RuntimeResponse:
+        # The request is named before anything runs for it, and the name is bound for
+        # as long as the request is, so every log record and every span it produces
+        # carries the same correlation id - including the ones a middleware writes
+        # before the route is reached and the ones a failure writes after it is left.
+        correlation_token = bind_correlation(correlation_from_headers(request.headers))
         request_token = container.scope_manager.push_request(request)
         application_token = container.scope_manager.push_application(
             _application_runtime(request.app)
@@ -236,6 +249,7 @@ def create_route_handler(
             container.scope_manager.clear_request_state(request)
             container.scope_manager.pop_application(application_token)
             container.scope_manager.pop_request(request_token)
+            reset_correlation(correlation_token)
 
     return handle
 
@@ -303,7 +317,7 @@ async def execute_http_route(
     response_context = HttpResponse()
     response_token = container.scope_manager.push_response(response_context)
     response_handler = ResponseHandler()
-    observability = ObservabilityHooks.current()
+    observability = observability_hooks_of(application_runtime)
     limits = request_limits_of(application_runtime)
     context: ExecutionContext | None = None
     filters: tuple[ExceptionFilter, ...] | None = None
@@ -479,7 +493,7 @@ async def execute_http_exception(
     response_context = HttpResponse()
     response_token = container.scope_manager.push_response(response_context)
     response_handler = ResponseHandler()
-    observability = ObservabilityHooks.current()
+    observability = observability_hooks_of(application_runtime)
     observation = None
     context: ExecutionContext | None = None
     filters: tuple[ExceptionFilter, ...] | None = None
@@ -759,6 +773,25 @@ def request_limits_of(application_runtime: object) -> RequestLimits:
     return limits if isinstance(limits, RequestLimits) else RequestLimits()
 
 
+def set_observability_hooks(application_runtime: object, hooks: ObservabilityHooks) -> None:
+    """Declare the hooks *application_runtime* serves its requests through.
+
+    The hooks belong to an application rather than to the process, so two applications
+    in one process can report to two different backends, and neither has to agree with
+    the other about which one that is. An application that declares none is served
+    through hooks that record nothing.
+    """
+
+    setattr(_application_runtime(application_runtime), OBSERVABILITY_HOOKS_ATTR, hooks)
+
+
+def observability_hooks_of(application_runtime: object) -> ObservabilityHooks:
+    """Return the hooks *application_runtime* serves its requests through."""
+
+    hooks = getattr(_application_runtime(application_runtime), OBSERVABILITY_HOOKS_ATTR, None)
+    return ObservabilityHooks.resolve(hooks if isinstance(hooks, ObservabilityHooks) else None)
+
+
 def _sync_handler_limiter(limits: RequestLimits) -> CapacityLimiter:
     """Return the limiter that bounds how many synchronous handlers run at once.
 
@@ -867,6 +900,7 @@ def _merge_response_context(
 
 
 __all__ = [
+    "OBSERVABILITY_HOOKS_ATTR",
     "REQUEST_LIMITS_ATTR",
     "ExecutionPlan",
     "HttpExecutionResult",
@@ -879,7 +913,9 @@ __all__ = [
     "create_route_handler",
     "execute_http_exception",
     "execute_http_route",
+    "observability_hooks_of",
     "request_limits_of",
     "run_middleware_chain",
+    "set_observability_hooks",
     "set_request_limits",
 ]

@@ -103,7 +103,18 @@ from .kernel.module.builder import ConfigurableModuleBuilder
 from .kernel.module.decorators import Global, Module
 from .kernel.module.dynamic import DynamicModule
 from .kernel.module.graph import ModuleGraph, ModuleNode
-from .observability import Logger, LoggerService, LogLevel
+from .observability import (
+    Logger,
+    LoggerService,
+    LogLevel,
+    MetricsSink,
+    ObservabilityHooks,
+    RequestTracer,
+    SpanContext,
+    SpanKind,
+    SpanStatus,
+    TraceSpan,
+)
 from .openapi import (
     ApiBearerAuth,
     ApiBody,
@@ -210,6 +221,7 @@ __all__ = (
     "LogLevel",
     "Logger",
     "LoggerService",
+    "MetricsSink",
     "Middleware",
     "MiddlewareConsumer",
     "ModuleRef",
@@ -217,6 +229,7 @@ __all__ = (
     "ModuleGraph",
     "ModuleNode",
     "ModuleCycleError",
+    "ObservabilityHooks",
     "OptionalDep",
     "OnApplicationBootstrap",
     "OnApplicationShutdown",
@@ -240,8 +253,13 @@ __all__ = (
     "Reflector",
     "REQUEST",
     "RESPONSE",
+    "RequestTracer",
     "RouteDefinitionError",
     "Scope",
+    "SpanContext",
+    "SpanKind",
+    "SpanStatus",
+    "TraceSpan",
     "DefaultValuePipe",
     "UploadedFile",
     "UploadedFiles",

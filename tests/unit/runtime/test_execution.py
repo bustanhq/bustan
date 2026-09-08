@@ -27,6 +27,7 @@ from bustan.contracts import HttpRequest
 from bustan.errors import GuardRejectedError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
+from bustan.observability.correlation import current_correlation_id
 from bustan.pipeline.filters import handle_exception
 from bustan.runtime.compiler import GlobalPipelineProvider, compile_route_contracts
 from bustan.runtime.controller_factory import ControllerFactory
@@ -490,3 +491,32 @@ def test_the_limit_filter_is_offered_the_exception_after_the_applications_own() 
     )
 
     assert result == {"detail": "mine"}
+
+
+def test_the_request_entry_point_names_the_request_and_releases_the_name() -> None:
+    """Correlation is bound around the whole request and unbound when it is over.
+
+    The binding is what every log record and every span the request produces reads,
+    so it has to be in place before a middleware runs and gone once the outermost one
+    has returned; a binding that outlived a request would name the next one wrongly.
+    """
+
+    seen: list[str | None] = []
+
+    @Controller("/orders")
+    class OrdersController:
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            seen.append(current_correlation_id())
+            return {"status": "ok"}
+
+    @Module(controllers=[OrdersController])
+    class AppModule:
+        pass
+
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/orders", headers={"x-correlation-id": "req-42"})
+
+    assert response.status_code == 200
+    assert seen == ["req-42"]
+    assert current_correlation_id() is None
