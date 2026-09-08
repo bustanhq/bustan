@@ -19,6 +19,11 @@ from ..kernel.errors import BustanError, GuardRejectedError
 from ..kernel.ioc.container import Container
 from ..kernel.ioc.scopes import BoundedInstanceStore
 from ..kernel.module.dynamic import ModuleKey
+from ..observability.correlation import (
+    bind_correlation,
+    correlation_from_headers,
+    reset_correlation,
+)
 from ..observability.observability import ObservabilityHooks
 from ..pipeline.context import ExecutionContext
 from ..pipeline.filters import ExceptionFilter, ProblemDetails, handle_exception
@@ -218,6 +223,11 @@ def create_route_handler(
         return result.response
 
     async def handle(request: HttpRequest) -> RuntimeResponse:
+        # The request is named before anything runs for it, and the name is bound for
+        # as long as the request is, so every log record and every span it produces
+        # carries the same correlation id - including the ones a middleware writes
+        # before the route is reached and the ones a failure writes after it is left.
+        correlation_token = bind_correlation(correlation_from_headers(request.headers))
         request_token = container.scope_manager.push_request(request)
         application_token = container.scope_manager.push_application(
             _application_runtime(request.app)
@@ -236,6 +246,7 @@ def create_route_handler(
             container.scope_manager.clear_request_state(request)
             container.scope_manager.pop_application(application_token)
             container.scope_manager.pop_request(request_token)
+            reset_correlation(correlation_token)
 
     return handle
 
