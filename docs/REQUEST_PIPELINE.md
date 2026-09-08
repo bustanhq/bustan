@@ -239,10 +239,156 @@ class OrdersController:
         return {"user": identity.user}
 ```
 
+## Request Limits
+
+Every application serves under finite bounds on what one request may spend, and an
+application that configures nothing gets them anyway. There is no setting that turns
+limits on: what a deployment chooses is which figures to serve under, not whether to
+have any. A request over one of them is refused with the status the bound implies
+rather than served.
+
+Five bounds, with the defaults an unconfigured application runs under:
+
+| Bound | Default | What it bounds | What raising it costs |
+| --- | --- | --- | --- |
+| `max_body_bytes` | `1048576` (1 MiB) | The body read to bind ordinary parameters | Peak memory, at roughly the bound times the number of requests in flight |
+| `max_upload_bytes` | `10485760` (10 MiB) | The body read to parse a multipart form | The same memory, on the routes that accept uploads; it is a separate bound so that accepting uploads does not raise the ceiling on every other route |
+| `max_upload_files` | `20` | How many parts of a form may bind to one parameter | The length of a list the caller chooses, and whatever the handler does per element |
+| `timeout_seconds` | `30.0` | The wall clock one request may take before it is abandoned | How long a caller can hold a worker, so the number of connections it takes to exhaust the process scales with it |
+| `sync_handler_threads` | `40` | How many synchronous handlers run at once | One operating-system thread each, and the memory of its stack |
+
+Read the defaults back out of the version you are running rather than trusting this
+table:
+
+```python
+from bustan import RequestLimits
+
+print(RequestLimits())
+```
+
+```text
+RequestLimits(max_body_bytes=1048576, max_upload_bytes=10485760, max_upload_files=20, timeout_seconds=30.0, sync_handler_threads=40)
+```
+
+### Setting Them
+
+`RequestLimits` is passed to `create_app`, and every bound left unnamed keeps its
+default:
+
+```python
+from typing import Any, cast
+
+from bustan import Controller, Module, Post, RequestLimits, create_app
+from bustan.testing import AsgiTestClient
+
+
+@Controller("/notes")
+class NotesController:
+    @Post("/")
+    def create(self, title: str) -> dict[str, str]:
+        return {"title": title}
+
+
+@Module(controllers=[NotesController])
+class AppModule:
+    pass
+
+
+app = create_app(
+    AppModule,
+    request_limits=RequestLimits(max_body_bytes=1024, timeout_seconds=60.0),
+)
+
+body = b'{"title": "' + b"a" * 4085 + b'"}'
+headers = {"content-type": "application/json", "content-length": str(len(body))}
+
+with AsgiTestClient(cast(Any, app)) as client:
+    refused = client.post("/notes", content=body, headers=headers)
+
+print(refused.status_code, refused.json()["detail"])
+```
+
+```text
+413 The request body declares 4098 bytes, over the 1024 byte limit
+```
+
+The limits belong to one application rather than to the process, so two applications
+assembled in one process serve under their own figures and neither has to agree with
+the other. The one exception is `sync_handler_threads`, which is per event loop; see
+below.
+
+Four of the five bounds accept `None`, which removes that bound for a deployment that
+has measured that it needs to, and `None` is never what an application gets by leaving
+a bound out. `sync_handler_threads` is an `int` and has no `None`, because a thread
+ceiling is the only thing bounding a synchronous handler that never returns and there
+is nothing safe to remove it to. Every bound must be greater than zero; `RequestLimits`
+refuses a smaller one where it is written rather than once per request in a log:
+
+```python
+from bustan import RequestLimits
+
+print(RequestLimits(max_body_bytes=None, max_upload_bytes=None))
+
+try:
+    RequestLimits(timeout_seconds=0)
+except ValueError as error:
+    print(error)
+```
+
+```text
+RequestLimits(max_body_bytes=None, max_upload_bytes=None, max_upload_files=20, timeout_seconds=30.0, sync_handler_threads=40)
+timeout_seconds must be greater than zero, got 0
+```
+
+A body over a byte bound raises `RequestBodyTooLargeError`, and a request over the
+budget raises `RequestTimeoutError`. Both are exported from `bustan.errors`, so an
+application can catch either in an exception filter and answer it with a status of its
+own. What a caller sees for each, and the four message shapes a body refusal takes, are
+in [`RequestBodyTooLargeError`](TROUBLESHOOTING.md#requestbodytoolargeerror) and
+[`RequestTimeoutError`](TROUBLESHOOTING.md#requesttimeouterror); the problem-details
+contract those responses are rendered into is described under
+[`HttpException`](TROUBLESHOOTING.md#httpexception).
+
+One property to hold while sizing the byte bounds: a body that declares a
+`Content-Length` is refused before it is read, but a body sent without one can only be
+judged once it has arrived. For an undeclared body the bound decides what the handler is
+handed, not what receiving the request cost, and what that cost is bounded by is
+whatever the serving adapter bounds a body at on its own.
+
+### The Timeout Does Not Interrupt A Synchronous Handler
+
+A synchronous handler runs on a thread and Python cannot interrupt a running thread, so
+`timeout_seconds` is enforced for one only once it returns. A synchronous handler that
+blocks for ten minutes runs for ten minutes whatever the budget says, and the timeout is
+observed when it finishes rather than at the deadline. An asynchronous handler is
+cancelled at the deadline.
+
+What bounds a synchronous handler that never returns is therefore `sync_handler_threads`
+and nothing else. It caps how many of them may occupy threads at the same time, which
+makes it the figure deciding how many stuck handlers it takes to stop the application
+from serving. Size it with that in mind rather than as a throughput dial, and prefer an
+asynchronous handler wherever the work can be awaited.
+
+### The Thread Ceiling Is Per Event Loop
+
+`sync_handler_threads` is the one bound that is not per application. It sets the running
+event loop's own default thread limiter rather than a second limiter beside it, because
+a private limiter would bound the handlers while the total number of threads stayed
+whatever the two limiters happened to add up to, which is not a ceiling anyone set.
+
+Two applications serving on one loop therefore share it, and **the last of them to serve
+a request is the one whose figure stands** - including for the other application's later
+requests. An application configured for four threads that shares a loop with one
+configured for sixty is serving under sixty from the moment that second application
+serves a request, and back under four the next time the first one does. A deployment
+that needs two different thread ceilings needs two event loops to hold them.
+
 ## Operational Notes
 
 - If no exception filter handles a `ParameterBindingError`, Bustan returns HTTP `400` with a structured payload.
 - If no exception filter handles a `GuardRejectedError`, Bustan returns HTTP `403`.
+- If no exception filter handles a `RequestBodyTooLargeError`, Bustan returns HTTP `413` with a structured payload.
+- If no exception filter handles a `RequestTimeoutError`, Bustan returns HTTP `504` with a structured payload.
 - Request-scoped pipeline components can inject `starlette.requests.Request` and other request-scoped providers.
 - Interceptors execute in declaration order on the way in and unwind in reverse order on the way out.
 
