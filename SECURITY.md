@@ -22,7 +22,9 @@ You should receive an acknowledgement within 5 business days.
 
 ## Supported Versions
 
-While Bustan is currently in alpha (`v1.x`), security support is best-effort for:
+Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`. The release being prepared is the `version` field in `pyproject.toml`; read it there rather than from a list that cannot notice it moved.
+
+Security support is best-effort for:
 
 - the default branch
 - the most recent tagged pre-`1.0` release, once releases begin

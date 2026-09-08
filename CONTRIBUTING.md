@@ -2,7 +2,7 @@
 
 Thanks for contributing to Bustan.
 
-`Bustan` is currently in alpha (`v1.x`). Versions `1.0.0` and `1.0.1` were released unintentionally during CI/CD setup and should be treated as early alpha orphans. The first production-ready release will be `2.0.0`.
+Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`. The release being prepared is the `version` field in `pyproject.toml`; read it there rather than from a list that cannot notice it moved.
 
 ## Development Setup
 

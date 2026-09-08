@@ -1,6 +1,6 @@
 # Versioning Policy
 
-`bustan` is currently in alpha (`v1.1.x`). Versions `1.0.0` and `1.0.1` were early accidental releases. The first production-ready release is still targeted at `2.0.0`.
+Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`. The release being prepared is the `version` field in `pyproject.toml`; read it there rather than from a list that cannot notice it moved.
 
 ## Public Compatibility Boundary
 

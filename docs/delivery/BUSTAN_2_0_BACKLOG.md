@@ -257,7 +257,7 @@ deliberately deferred with that decision written down.
 `run_repros.py` is the objective referee for the whole programme, and it lives in the
 repository, so both the agent and the supervisor run the same check. When a ticket
 claims a finding, its repro flipping to `FIXED` is the evidence; when the supervisor
-reviews `main`, the same harness catches anything a merge broke. From T-503 it is a
+reviews `main`, the same harness catches anything a merge broke. From T-500 it is a
 blocking CI job, at which point the review gate for regressions becomes automatic and
 the supervisor's judgement is spent on design rather than on detection.
 
@@ -420,7 +420,7 @@ and `uv lock --check` to CI and `lefthook.yml`. Delete the dead script. Align th
 `ty` path lists. Add a `commit-msg` lefthook job enforcing Conventional Commits,
 since 33 of 98 historical commits are non-conventional and 7 produced no changelog
 entry. Add `CODEOWNERS`. Add an advisory (non-blocking) CI job running
-`docs/audits/di-container-2026-09/run_repros.py`; it becomes blocking in T-503.
+`docs/audits/di-container-2026-09/run_repros.py`; it becomes blocking in T-500.
 
 **Acceptance.** Coverage gate fails on a deliberate one-line coverage drop, proven in
 the PR body. `uv lock --check` passes. A non-conventional commit message is rejected
@@ -1336,7 +1336,7 @@ CI, so the next contributor understands the constraint before working against it
 `release/manifest.json`.
 
 **Context.** The "1.0.0 and 1.0.1 were accidental, 2.0.0 is the real one" statement
-appears in four files plus the README and must now change everywhere at once.
+appears in six files, the README among them, and must now change everywhere at once.
 `CHANGELOG.md` has a hand-written tail below the content the retired release bot
 generated. The `bustan-governance` release-gate configuration in the release files is
 read by the `bustan governance release-gate` command and by no workflow.
@@ -1364,7 +1364,7 @@ carried by T-001, where the lint sweep surfaces it.
 
 `run_repros.py --expect-fixed` is the arbiter, not that table. A finding is closed
 when its script reports `FIXED` and a regression test has replaced it. The harness
-runs advisory from T-002 and blocking from T-503, so drift between this plan and
+runs advisory from T-002 and blocking from T-500, so drift between this plan and
 reality surfaces immediately.
 
 ## Risks

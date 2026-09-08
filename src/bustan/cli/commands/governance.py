@@ -1,4 +1,4 @@
-"""Governance reporting and release-gate command handlers."""
+"""Governance reporting command handlers."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ...app.bootstrap import _create_app
 from ...runtime.registry import diff_route_snapshots
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 def register_governance_commands(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    parser = subparsers.add_parser("governance", help="Render governance and release-gate reports.")
+    parser = subparsers.add_parser("governance", help="Render governance reports.")
     governance_subparsers = parser.add_subparsers(dest="governance_command")
 
     ownership_parser = governance_subparsers.add_parser(
@@ -51,27 +51,6 @@ def register_governance_commands(
     )
     conformance_parser.add_argument("adapter", help="Adapter name to evaluate.")
 
-    gate_parser = governance_subparsers.add_parser(
-        "release-gate",
-        help="Evaluate route diff and adapter conformance release gates.",
-    )
-    gate_parser.add_argument(
-        "target", help="Root module import path in the form package.module:RootModule"
-    )
-    gate_parser.add_argument(
-        "--snapshot", required=True, help="Path to the previous route snapshot JSON file."
-    )
-    gate_parser.add_argument(
-        "--config",
-        default="release/config.json",
-        help="Path to the release-gate policy config JSON file.",
-    )
-    gate_parser.add_argument(
-        "--manifest",
-        default="release/manifest.json",
-        help="Path to the release-gate manifest JSON file.",
-    )
-
 
 def run_governance_command(arguments: argparse.Namespace) -> int:
     command = getattr(arguments, "governance_command", None)
@@ -81,8 +60,6 @@ def run_governance_command(arguments: argparse.Namespace) -> int:
         return _run_json_command(_build_diff_report, arguments.target, arguments.snapshot)
     if command == "conformance":
         return _run_json_command(_build_conformance_report, arguments.adapter)
-    if command == "release-gate":
-        return _run_release_gate(arguments)
 
     print("A governance subcommand is required.", file=sys.stderr)
     return 1
@@ -96,21 +73,6 @@ def _run_json_command(builder: Callable[..., dict[str, object]], *args: str) -> 
 
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
-
-
-def _run_release_gate(arguments: argparse.Namespace) -> int:
-    try:
-        payload = _build_release_gate_report(
-            arguments.target,
-            arguments.snapshot,
-            arguments.config,
-            arguments.manifest,
-        )
-    except COMMAND_FAILURES as exc:
-        return report_failure(exc)
-
-    print(json.dumps(payload, indent=2, sort_keys=True))
-    return 0 if payload["passed"] else 1
 
 
 def _build_ownership_report(target: str) -> dict[str, object]:
@@ -157,49 +119,6 @@ def _build_conformance_report(adapter_name: str) -> dict[str, object]:
     from ...runtime.conformance import evaluate_adapter_conformance, load_adapter
 
     return evaluate_adapter_conformance(load_adapter(adapter_name)).to_dict()
-
-
-def _build_release_gate_report(
-    target: str,
-    snapshot_path: str,
-    config_path: str,
-    manifest_path: str,
-) -> dict[str, object]:
-    diff_report = _build_diff_report(target, snapshot_path)
-    summary = cast(dict[str, int], diff_report["summary"])
-    config = json.loads(Path(config_path).read_text(encoding="utf-8"))
-    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
-    policy = config.get("bustan-governance", {}).get("release-gate", {})
-    expected_conformance = manifest.get("bustan-governance", {}).get("adapter-conformance", {})
-
-    errors: list[str] = []
-    if summary["removed"] > policy.get("max_removed_routes", 0):
-        errors.append("removed routes exceed the configured release gate")
-    if summary["changed"] > policy.get("max_changed_routes", 0):
-        errors.append("changed routes exceed the configured release gate")
-
-    conformance_reports: dict[str, dict[str, object]] = {}
-    if policy.get("require_adapter_conformance", False):
-        for adapter_name in policy.get("adapters", []):
-            report = _build_conformance_report(adapter_name)
-            conformance_reports[adapter_name] = report
-            if not report["passed"]:
-                errors.append(f"adapter {adapter_name} failed conformance")
-            expected_capabilities = expected_conformance.get(adapter_name)
-            if (
-                expected_capabilities is not None
-                and report["capabilities"] != expected_capabilities
-            ):
-                errors.append(
-                    f"adapter {adapter_name} capabilities drifted from the release manifest"
-                )
-
-    return {
-        "passed": not errors,
-        "errors": tuple(errors),
-        "diff": diff_report,
-        "conformance": conformance_reports,
-    }
 
 
 def _create_compiled_app(target: str) -> Application:

@@ -172,10 +172,10 @@ routes added, removed and changed, with the fields that changed named.
 ## `bustan governance`
 
 ```
-usage: bustan governance [-h] {ownership,diff,conformance,release-gate} ...
+usage: bustan governance [-h] {ownership,diff,conformance} ...
 ```
 
-Four reports, each printed as JSON:
+Three reports, each printed as JSON:
 
 - `ownership <target>` - every route with the owner and deprecation metadata declared on
   it.
@@ -183,10 +183,6 @@ Four reports, each printed as JSON:
   what was added, removed and changed.
 - `conformance <adapter>` - the conformance result for one adapter, and the capabilities
   it declares.
-- `release-gate <target> --snapshot FILE [--config FILE] [--manifest FILE]` - evaluates
-  the route diff and adapter conformance against the policy in the config file and the
-  capabilities in the manifest. Exits `1` when a gate fails, with the reasons in the
-  `errors` array, so it can stand in a release pipeline.
 
 ## The `--format` Option
 
