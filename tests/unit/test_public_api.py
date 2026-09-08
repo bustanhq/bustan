@@ -116,6 +116,9 @@ from bustan.pipeline import ParseIntPipe as InternalParseIntPipe
 from bustan.pipeline import ParseUUIDPipe as InternalParseUUIDPipe
 from bustan.pipeline import Pipe as InternalPipe
 from bustan.pipeline import ValidationPipe as InternalValidationPipe
+from bustan.pipeline.auth import AUTHENTICATOR_REGISTRY as InternalAuthenticatorRegistry
+from bustan.pipeline.auth import Authenticator as InternalAuthenticator
+from bustan.pipeline.auth import Principal as InternalPrincipal
 from bustan.pipeline.decorators import UseFilters as InternalUseFilters
 from bustan.pipeline.decorators import UseGuards as InternalUseGuards
 from bustan.pipeline.decorators import UseInterceptors as InternalUseInterceptors
@@ -175,6 +178,8 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "ApiTags",
         "Audit",
         "Auth",
+        "AUTHENTICATOR_REGISTRY",
+        "Authenticator",
         "BadRequestException",
         "Body",
         "BeforeApplicationShutdown",
@@ -255,6 +260,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "Permissions",
         "Pipe",
         "Post",
+        "Principal",
         "ProblemDetails",
         "ProblemDetailsExceptionFilter",
         "ProviderResolutionError",
@@ -326,6 +332,9 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.AdapterRuntime is InternalAdapterRuntime
     assert bustan.Audit is InternalAudit
     assert bustan.Auth is InternalAuth
+    assert bustan.AUTHENTICATOR_REGISTRY is InternalAuthenticatorRegistry
+    assert bustan.Authenticator is InternalAuthenticator
+    assert bustan.Principal is InternalPrincipal
     assert bustan.Cache is InternalCache
     assert bustan.DeprecatedRoute is InternalDeprecatedRoute
     assert bustan.Idempotent is InternalIdempotent

@@ -58,6 +58,7 @@ deprecation window.
 | Extension point | Supported symbols | How an application installs one |
 | --- | --- | --- |
 | Transport adapter | `AbstractHttpAdapter`, `AdapterCapabilities`, `AdapterRoute`, `AdapterRuntime` | `create_app(adapter=...)`, with either a built adapter or a callable the framework calls with an `AdapterRuntime` |
+| Authentication strategy | `Authenticator`, `Principal`, `AUTHENTICATOR_REGISTRY` | a provider bound under `AUTHENTICATOR_REGISTRY`, mapping each strategy name to an authenticator |
 | Client-visible error payload | `ProblemDetailsExceptionFilter`, `ProblemDetails` | a subclass registered with `UseFilters`, or a provider bound under `APP_FILTER` |
 | Route policy | `Auth`, `Public`, `Roles`, `Permissions`, `RateLimit`, `Cache`, `Idempotent`, `Audit`, `Owner`, `DeprecatedRoute` | written on a controller class or on a handler |
 | Response serialization | `ResponseSerializer` | nothing yet installs one; see the note below |
@@ -71,11 +72,11 @@ matter of taste:
   `create_app`. It is one keyword per configuration point, and the setter that seats
   the value on the assembled application stays internal, so there is exactly one
   supported way in and it is visible at the place the application is built.
-- **A contract the application implements** needs no keyword. An adapter, an exception
-  filter and a policy decorator are each installed by writing something and pointing
-  the framework at it - through the `adapter` keyword, a filter registration, a
-  decorator - so a second mechanism beside those would be a second way to say the same
-  thing.
+- **A contract the application implements** needs no keyword. An adapter, an
+  authenticator, an exception filter and a policy decorator are each installed by
+  writing something and pointing the framework at it - through the `adapter` keyword, a
+  provider binding, a filter registration, a decorator - so a second mechanism beside
+  those would be a second way to say the same thing.
 
 `ResponseSerializer` is exported as a contract you may implement and type against, and
 it is the one entry in the table with no way to install one. The framework builds its

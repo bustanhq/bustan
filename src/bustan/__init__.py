@@ -152,6 +152,9 @@ from .pipeline import (
     Pipe,
     ValidationPipe,
 )
+
+# Authentication Contracts
+from .pipeline.auth import AUTHENTICATOR_REGISTRY, Authenticator, Principal
 from .pipeline.decorators import UseFilters, UseGuards, UseInterceptors, UsePipes
 from .pipeline.filters import ProblemDetails, ProblemDetailsExceptionFilter
 from .pipeline.middleware import Middleware, MiddlewareConsumer
@@ -200,6 +203,8 @@ __all__ = (
     "ApiTags",
     "Audit",
     "Auth",
+    "AUTHENTICATOR_REGISTRY",
+    "Authenticator",
     "BadRequestException",
     "Body",
     "BeforeApplicationShutdown",
@@ -280,6 +285,7 @@ __all__ = (
     "Permissions",
     "Pipe",
     "Post",
+    "Principal",
     "ProblemDetails",
     "ProblemDetailsExceptionFilter",
     "ProviderResolutionError",

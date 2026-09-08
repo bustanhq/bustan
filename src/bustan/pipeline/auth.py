@@ -10,6 +10,8 @@ from .context import ExecutionContext
 
 @runtime_checkable
 class Principal(Protocol):
+    """The caller a request is being served for: who they are, and what they may do."""
+
     id: str
     roles: tuple[str, ...]
     permissions: tuple[str, ...]
@@ -17,6 +19,8 @@ class Principal(Protocol):
 
 @runtime_checkable
 class Authenticator(Protocol):
+    """Identifies the caller behind one request, answering None when it cannot."""
+
     async def authenticate(self, context: ExecutionContext) -> Principal | None:
         pass
 
