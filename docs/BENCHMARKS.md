@@ -91,6 +91,22 @@ Every gated number is a ratio: the benchmark's median divided by the median of
 a runner was and which processor it drew from the fleet - `ubuntu-latest` is not one
 machine, and two consecutive runs of this job landed on an EPYC 7763 and an EPYC 9V74.
 
+**That it works within the fleet has been measured.** The run that gated this benchmark
+suite drew a different runner VM from the one the baseline was captured on, same processor
+model. In absolute terms the two runs disagreed by 21% - the calibration workload measured
+161.9 us on the capture and 195.1 us on the gate run - and after dividing that out, every
+gated ratio landed within 3.3% of its baseline:
+
+| Benchmark | Baseline ratio | Gate run ratio | Difference |
+| --- | --- | --- | --- |
+| `bench_simple_route` | 0.5854 | 0.6013 | +2.7% |
+| `bench_pipeline_route` | 0.8164 | 0.8396 | +2.8% |
+| `bench_request_scoped_chain` | 1.0118 | 1.0448 | +3.3% |
+| `bench_container_resolution` | 0.1118 | 0.1145 | +2.4% |
+
+A 21% swing in what the machine cost, reduced to 3% in what the gate reads, is the whole
+reason the ratio is there.
+
 **It does not make a number portable between machine classes, and that was measured
 rather than assumed.** Between the delivery container and a CI runner, on identical code:
 
@@ -131,11 +147,13 @@ The CI job runs the suite twice and the gate takes the lower ratio each benchmar
 reached, so the column that matters is the last one. The worst excursion under that rule
 was +2.0%, and 20% is ten times it.
 
-Ten times may look generous against that table, and it is deliberate. The table is eight
-passes on one runner instance; the fleet is known to be heterogeneous, and how much a
-different processor moves a ratio once the calibration has cancelled what it can has not
-yet been measured over enough runs to quote. The margin is for that, and it should come
-down as runs accumulate.
+Ten times may look generous against that table, and it is deliberate. Those eight passes
+share one runner VM, so they measure less than a real gate run faces. The first
+independent run - a different VM, a 21% swing in absolute cost - came in at +3.3%, which
+is the number to weigh, and 20% is six times it. Two data points is still not a
+distribution, and the fleet mixes processor models: the two capture runs on this branch
+drew an EPYC 7763 and an EPYC 9V74. The margin covers what has not been seen yet, and it
+should come down as runs accumulate.
 
 What the threshold buys, and what it does not: a change that makes a request 20% slower
 is caught, and one that makes it 5% slower is not. A gate that tripped on 5% would trip
