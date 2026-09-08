@@ -420,7 +420,7 @@ and `uv lock --check` to CI and `lefthook.yml`. Delete the dead script. Align th
 `ty` path lists. Add a `commit-msg` lefthook job enforcing Conventional Commits,
 since 33 of 98 historical commits are non-conventional and 7 produced no changelog
 entry. Add `CODEOWNERS`. Add an advisory (non-blocking) CI job running
-`docs/audits/di-container-2026-09/run_repros.py`; it becomes blocking in T-503.
+`docs/audits/di-container-2026-09/run_repros.py`; it becomes blocking in T-500.
 
 **Acceptance.** Coverage gate fails on a deliberate one-line coverage drop, proven in
 the PR body. `uv lock --check` passes. A non-conventional commit message is rejected
@@ -1336,7 +1336,7 @@ CI, so the next contributor understands the constraint before working against it
 `release/manifest.json`.
 
 **Context.** The "1.0.0 and 1.0.1 were accidental, 2.0.0 is the real one" statement
-appears in four files plus the README and must now change everywhere at once.
+appears in six files, the README among them, and must now change everywhere at once.
 `CHANGELOG.md` has a hand-written tail below the content the retired release bot
 generated. The `bustan-governance` release-gate configuration in the release files is
 read by the `bustan governance release-gate` command and by no workflow.

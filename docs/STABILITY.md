@@ -2,9 +2,9 @@
 
 This guide says what `bustan` promises not to break, what it reserves the right to
 change without notice, and how a symbol moves from the second group to the first. The
-release the promises attach to is the `version` field in `pyproject.toml`; versions
-`1.0.0` and `1.0.1` were released unintentionally during CI/CD setup and should be
-treated as early alpha orphans.
+release the promises attach to is the `version` field in `pyproject.toml`.
+
+Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`.
 
 ## Supported Public Surface
 

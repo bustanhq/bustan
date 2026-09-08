@@ -1,7 +1,7 @@
 # Changelog
 
 > [!IMPORTANT]
-> Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. These releases contain the core framework but should be treated as early alpha orphans. The first production-ready release will be `2.0.0`.
+> Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`.
 
 ## [2.0.0-rc.5](https://github.com/bustanhq/bustan/compare/v2.0.0rc4...v2.0.0rc5) (2026-09-08)
 
@@ -363,15 +363,3 @@ of another in the same milestone.
 
 * unblock release-please pull request creation ([2127063](https://github.com/bustanhq/bustan/commit/21270638b813c1838c7b5a5c09e181261a799f53))
 * unblock release-please pull request creation ([d84986f](https://github.com/bustanhq/bustan/commit/d84986f5367e34b7c8c24def8d2b92b09dfcf79d))
-
-## Changelog
-
-All notable changes to this project will be documented in this file.
-
-The changelog is intended to be generated and maintained from Conventional Commits by CI-driven release automation.
-
-## Unreleased
-
-### Added
-
-- Open source adoption baseline: licensing, trust docs, contributor guidance, templates, and stronger CI packaging checks.
