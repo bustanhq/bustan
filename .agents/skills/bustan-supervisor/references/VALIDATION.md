@@ -579,3 +579,35 @@ it is a question rather than a finding: it establishes that no grant is visible 
 supposed to live, and the next step is to ask, not to conclude. Write the review so that it says
 what was checked, and so that being wrong about the cause costs a correction rather than an
 accusation.
+
+## Colour the batch with glob semantics, not string equality
+
+Two tickets were checked for collision by intersecting their `Owns` lists as sets of strings. The
+intersection came back empty and the second was nearly dispatched on that basis. One ticket claimed
+`tests/integration/runtime/**` and the other claimed
+`tests/integration/runtime/test_body_binding.py`. A set intersection over strings cannot see that
+the first contains the second, and the check that is supposed to prevent two blind agents writing
+one file reported the file as unclaimed.
+
+The overlap is only visible to a comparison that expands globs:
+
+```
+  #239 wants tests/integration/runtime/test_body_binding.py
+  #209 claims it via tests/integration/runtime/**
+```
+
+The ownership gate itself has always matched patterns against paths correctly - that is what it is
+for. The defect was in the supervisor's own batching check, which is a different piece of work done
+by hand and which had quietly degraded to string equality because most `Owns` lists are literal
+paths and it kept giving the right answer.
+
+So: a batching check that compares `Owns` lists must expand `**` on both sides before intersecting,
+and a directory glob must be read as claiming everything under it, including files that do not exist
+yet. The interesting case is exactly the one string equality misses - a ticket that creates a new
+file inside a directory another ticket has claimed wholesale. Neither path exists in the other's
+list, and both agents would write the same directory.
+
+When the overlap is real but the diffs are known not to touch, say so and narrow the second ticket
+rather than pretending the check passed: name the single file it may create in that directory and
+put the rest of the directory in its `Must not touch`. That keeps the claim honest and keeps the
+next comparison correct.
