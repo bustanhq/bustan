@@ -27,6 +27,7 @@ class ConfigurableModuleDefinition[OptionsT]:
         use_class: type[object] | None = None,
         use_existing: object | None = None,
         inject: tuple[object, ...] = (),
+        imports: tuple[type[object] | DynamicModule, ...] = (),
         is_global: bool = False,
     ) -> DynamicModule:
         raise NotImplementedError
@@ -38,6 +39,7 @@ class ConfigurableModuleDefinition[OptionsT]:
         use_class: type[object] | None = None,
         use_existing: object | None = None,
         inject: tuple[object, ...] = (),
+        imports: tuple[type[object] | DynamicModule, ...] = (),
         is_global: bool = False,
     ) -> DynamicModule:
         raise NotImplementedError
@@ -106,6 +108,7 @@ class ConfigurableModuleBuilder[OptionsT]:
                 use_class: type[object] | None = None,
                 use_existing: object | None = None,
                 inject: tuple[object, ...] = (),
+                imports: tuple[type[object] | DynamicModule, ...] = (),
                 is_global: bool = False,
             ) -> DynamicModule:
                 if use_factory is not None:
@@ -126,6 +129,7 @@ class ConfigurableModuleBuilder[OptionsT]:
                 return DynamicModule(
                     module=GeneratedModule,
                     providers=(provider, *extras),
+                    imports=imports,
                     exports=(token,),
                     is_global=is_global,
                 )
@@ -137,6 +141,7 @@ class ConfigurableModuleBuilder[OptionsT]:
                 use_class: type[object] | None = None,
                 use_existing: object | None = None,
                 inject: tuple[object, ...] = (),
+                imports: tuple[type[object] | DynamicModule, ...] = (),
                 is_global: bool = False,
             ) -> DynamicModule:
                 return GeneratedModule.for_root_async(
@@ -144,6 +149,7 @@ class ConfigurableModuleBuilder[OptionsT]:
                     use_class=use_class,
                     use_existing=use_existing,
                     inject=inject,
+                    imports=imports,
                     is_global=is_global,
                 )
 

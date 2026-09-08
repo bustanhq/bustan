@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from bustan import ConfigurableModuleBuilder, Module
+from bustan import ConfigurableModuleBuilder, Injectable, Module, create_app_context
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.builder import ConfigurableModuleDefinition
 from bustan.kernel.module.dynamic import DynamicModule
@@ -96,3 +96,69 @@ def test_configurable_module_definition_base_methods_and_token_reuse_are_stable(
 
     with pytest.raises(NotImplementedError):
         ConfigurableModuleDefinition.register_async(use_existing="CONFIG")
+
+
+def test_for_root_async_takes_imports_so_its_factory_can_reach_the_host() -> None:
+    # The generated module declares only the options provider, so without an import of
+    # its own the factory's inject list can name nothing the application provides.
+    @Injectable()
+    class HostConfig:
+        url = "redis://host"
+
+    @Module(providers=[HostConfig], exports=[HostConfig])
+    class HostModule:
+        pass
+
+    def build_options(config: HostConfig) -> dict[str, str]:
+        return {"url": config.url}
+
+    CacheModule, options_token = ConfigurableModuleBuilder[dict[str, str]]().build()
+    registration = CacheModule.for_root_async(
+        use_factory=build_options,
+        inject=(HostConfig,),
+        imports=(HostModule,),
+    )
+
+    @Module(imports=[registration])
+    class AppModule:
+        pass
+
+    assert create_app_context(AppModule).get(options_token) == {"url": "redis://host"}
+
+
+def test_register_async_forwards_its_imports_to_the_registration() -> None:
+    @Injectable()
+    class HostConfig:
+        name = "primary"
+
+    @Module(providers=[HostConfig], exports=[HostConfig])
+    class HostModule:
+        pass
+
+    CacheModule, options_token = ConfigurableModuleBuilder[str]().build()
+    registration = CacheModule.register_async(
+        use_factory=lambda config: config.name,
+        inject=(HostConfig,),
+        imports=(HostModule,),
+    )
+
+    assert registration.imports == (HostModule,)
+
+    @Module(imports=[registration])
+    class AppModule:
+        pass
+
+    assert create_app_context(AppModule).get(options_token) == "primary"
+
+
+def test_the_async_builders_still_generate_a_registration_with_no_imports() -> None:
+    CacheModule, options_token = ConfigurableModuleBuilder[str]().build()
+    registration = CacheModule.for_root_async(use_factory=lambda: "standalone")
+
+    assert registration.imports == ()
+
+    @Module(imports=[registration])
+    class AppModule:
+        pass
+
+    assert create_app_context(AppModule).get(options_token) == "standalone"

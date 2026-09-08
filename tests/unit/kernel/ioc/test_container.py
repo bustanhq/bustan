@@ -834,13 +834,13 @@ def test_an_override_reaches_a_dependent_that_holds_the_token_through_an_alias()
 
 
 def test_an_override_survives_a_graph_naming_a_token_nothing_can_hash() -> None:
-    # A factory may name anything in its inject list, and a token nothing can hash is
-    # refused when it is resolved. Reading the graph to evict must not be what turns
-    # that mistake into a failure in an unrelated place.
+    # A factory may name a token no module declares, and that is refused when it is
+    # resolved. Reading the graph to evict must not be what turns that mistake into a
+    # failure in an unrelated place.
     @Module(
         providers=[
             {"provide": "config", "use_value": "real"},
-            {"provide": "broken", "use_factory": lambda value: value, "inject": [["unhashable"]]},
+            {"provide": "broken", "use_factory": lambda value: value, "inject": ["missing"]},
         ]
     )
     class AppModule:
