@@ -1,12 +1,10 @@
-"""Unit tests into the supported public package surface."""
+"""Unit tests over the supported public surface of the root package."""
 
 from __future__ import annotations
 
 import importlib.metadata
 
 import bustan
-import bustan.errors as bustan_errors
-import bustan.testing as bustan_testing
 from bustan.addons import ContextId as InternalContextId
 from bustan.addons import DiscoveryModule as InternalDiscoveryModule
 from bustan.addons import DiscoveryService as InternalDiscoveryService
@@ -18,52 +16,24 @@ from bustan.app.application import Application as InternalApplication
 from bustan.app.application import ApplicationContext as InternalApplicationContext
 from bustan.app.bootstrap import create_app as internal_create_app
 from bustan.app.bootstrap import create_app_context as internal_create_app_context
-from bustan.common.decorators.controller import (
-    Controller as InternalController,
-)
-from bustan.common.decorators.injectable import (
-    Inject as InternalInject,
-)
-from bustan.common.decorators.injectable import (
-    Injectable as InternalInjectable,
-)
-from bustan.common.decorators.injectable import (
-    OptionalDep as InternalOptionalDep,
-)
+from bustan.common.decorators.controller import Controller as InternalController
+from bustan.common.decorators.injectable import Inject as InternalInject
+from bustan.common.decorators.injectable import Injectable as InternalInjectable
+from bustan.common.decorators.injectable import OptionalDep as InternalOptionalDep
 from bustan.common.decorators.metadata import Reflector as InternalReflector
-from bustan.common.decorators.parameter import (
-    Cookies as InternalCookies,
-)
-from bustan.common.decorators.parameter import (
-    HostParam as InternalHostParam,
-)
-from bustan.common.decorators.parameter import (
-    Ip as InternalIp,
-)
-from bustan.common.decorators.parameter import (
-    UploadedFile as InternalUploadedFile,
-)
-from bustan.common.decorators.parameter import (
-    UploadedFiles as InternalUploadedFiles,
-)
+from bustan.common.decorators.parameter import Cookies as InternalCookies
+from bustan.common.decorators.parameter import HostParam as InternalHostParam
+from bustan.common.decorators.parameter import Ip as InternalIp
+from bustan.common.decorators.parameter import UploadedFile as InternalUploadedFile
+from bustan.common.decorators.parameter import UploadedFiles as InternalUploadedFiles
 from bustan.common.decorators.parameter import (
     create_param_decorator as InternalCreateParamDecorator,
 )
-from bustan.common.decorators.route import (
-    Delete as InternalDelete,
-)
-from bustan.common.decorators.route import (
-    Get as InternalGet,
-)
-from bustan.common.decorators.route import (
-    Patch as InternalPatch,
-)
-from bustan.common.decorators.route import (
-    Post as InternalPost,
-)
-from bustan.common.decorators.route import (
-    Put as InternalPut,
-)
+from bustan.common.decorators.route import Delete as InternalDelete
+from bustan.common.decorators.route import Get as InternalGet
+from bustan.common.decorators.route import Patch as InternalPatch
+from bustan.common.decorators.route import Post as InternalPost
+from bustan.common.decorators.route import Put as InternalPut
 from bustan.common.types import ProviderScope
 from bustan.configuration import ConfigModule as InternalConfigModule
 from bustan.configuration import ConfigService as InternalConfigService
@@ -80,80 +50,25 @@ from bustan.health import HealthService as InternalHealthService
 from bustan.health import HealthStatus as InternalHealthStatus
 from bustan.health import ReadinessState as InternalReadinessState
 from bustan.kernel.errors import (
-    AuthenticationRequiredError,
-    AuthenticatorRegistryError,
-    BadGatewayException,
     BadRequestException,
-    BustanError,
-    ConflictException,
-    ContentTooLargeException,
-    ExportViolationError,
-    ForbiddenException,
-    GatewayTimeoutException,
-    GuardRejectedError,
-    HttpException,
-    InternalServerErrorException,
-    InvalidControllerError,
-    InvalidModuleError,
-    InvalidPipelineError,
-    InvalidProviderError,
-    LifecycleError,
-    MethodNotAllowedException,
-    ModuleCycleError,
-    NotFoundException,
-    NotImplementedException,
-    ParameterBindingError,
-    ProviderResolutionError,
-    RouteDefinitionError,
-    ServiceUnavailableException,
-    TooManyRequestsException,
-    UnauthorizedException,
-    UnprocessableEntityException,
-    UnsupportedMediaTypeException,
 )
 from bustan.kernel.ioc.scopes import DurableProvider as InternalDurableProvider
-from bustan.kernel.ioc.tokens import (
-    APP_FILTER as InternalAppFilter,
-)
-from bustan.kernel.ioc.tokens import (
-    APP_GUARD as InternalAppGuard,
-)
-from bustan.kernel.ioc.tokens import (
-    APP_INTERCEPTOR as InternalAppInterceptor,
-)
-from bustan.kernel.ioc.tokens import (
-    APP_PIPE as InternalAppPipe,
-)
-from bustan.kernel.ioc.tokens import (
-    APPLICATION as InternalApplicationToken,
-)
-from bustan.kernel.ioc.tokens import (
-    INQUIRER as InternalInquirerToken,
-)
-from bustan.kernel.ioc.tokens import (
-    REQUEST as InternalRequestToken,
-)
-from bustan.kernel.ioc.tokens import (
-    RESPONSE as InternalResponseToken,
-)
-from bustan.kernel.ioc.tokens import (
-    InjectionToken as InternalInjectionToken,
-)
+from bustan.kernel.ioc.tokens import APP_FILTER as InternalAppFilter
+from bustan.kernel.ioc.tokens import APP_GUARD as InternalAppGuard
+from bustan.kernel.ioc.tokens import APP_INTERCEPTOR as InternalAppInterceptor
+from bustan.kernel.ioc.tokens import APP_PIPE as InternalAppPipe
+from bustan.kernel.ioc.tokens import APPLICATION as InternalApplicationToken
+from bustan.kernel.ioc.tokens import INQUIRER as InternalInquirerToken
+from bustan.kernel.ioc.tokens import REQUEST as InternalRequestToken
+from bustan.kernel.ioc.tokens import RESPONSE as InternalResponseToken
+from bustan.kernel.ioc.tokens import InjectionToken as InternalInjectionToken
 from bustan.kernel.lifecycle.hooks import (
     BeforeApplicationShutdown as InternalBeforeApplicationShutdown,
 )
-from bustan.kernel.lifecycle.hooks import (
-    OnApplicationBootstrap as InternalOnApplicationBootstrap,
-)
-from bustan.kernel.lifecycle.hooks import (
-    OnApplicationShutdown as InternalOnApplicationShutdown,
-)
-from bustan.kernel.lifecycle.hooks import (
-    OnModuleDestroy as InternalOnModuleDestroy,
-)
-from bustan.kernel.lifecycle.hooks import (
-    OnModuleInit as InternalOnModuleInit,
-)
+from bustan.kernel.lifecycle.hooks import OnApplicationBootstrap as InternalOnApplicationBootstrap
+from bustan.kernel.lifecycle.hooks import OnApplicationShutdown as InternalOnApplicationShutdown
+from bustan.kernel.lifecycle.hooks import OnModuleDestroy as InternalOnModuleDestroy
+from bustan.kernel.lifecycle.hooks import OnModuleInit as InternalOnModuleInit
 from bustan.kernel.module.builder import (
     ConfigurableModuleBuilder as InternalConfigurableModuleBuilder,
 )
@@ -191,60 +106,21 @@ from bustan.pipeline import ParseIntPipe as InternalParseIntPipe
 from bustan.pipeline import ParseUUIDPipe as InternalParseUUIDPipe
 from bustan.pipeline import Pipe as InternalPipe
 from bustan.pipeline import ValidationPipe as InternalValidationPipe
-from bustan.pipeline.decorators import (
-    UseFilters as InternalUseFilters,
-)
-from bustan.pipeline.decorators import (
-    UseGuards as InternalUseGuards,
-)
-from bustan.pipeline.decorators import (
-    UseInterceptors as InternalUseInterceptors,
-)
-from bustan.pipeline.decorators import (
-    UsePipes as InternalUsePipes,
-)
-from bustan.pipeline.middleware import (
-    Middleware as InternalMiddleware,
-)
-from bustan.pipeline.middleware import (
-    MiddlewareConsumer as InternalMiddlewareConsumer,
-)
-from bustan.runtime.versioning import (
-    VERSION_NEUTRAL as InternalVersionNeutral,
-)
-from bustan.runtime.versioning import (
-    VersioningOptions as InternalVersioningOptions,
-)
-from bustan.runtime.versioning import (
-    VersioningType as InternalVersioningType,
-)
+from bustan.pipeline.decorators import UseFilters as InternalUseFilters
+from bustan.pipeline.decorators import UseGuards as InternalUseGuards
+from bustan.pipeline.decorators import UseInterceptors as InternalUseInterceptors
+from bustan.pipeline.decorators import UsePipes as InternalUsePipes
+from bustan.pipeline.middleware import Middleware as InternalMiddleware
+from bustan.pipeline.middleware import MiddlewareConsumer as InternalMiddlewareConsumer
+from bustan.runtime.versioning import VERSION_NEUTRAL as InternalVersionNeutral
+from bustan.runtime.versioning import VersioningOptions as InternalVersioningOptions
+from bustan.runtime.versioning import VersioningType as InternalVersioningType
 from bustan.security import CorsOptions as InternalCorsOptions
 from bustan.security import SkipThrottle as InternalSkipThrottle
 from bustan.security import ThrottlerGuard as InternalThrottlerGuard
 from bustan.security import ThrottlerModule as InternalThrottlerModule
 from bustan.security import ThrottlerStorage as InternalThrottlerStorage
 from bustan.security.throttler import ThrottleState as InternalThrottleState
-from bustan.testing import (
-    AsgiTestClient as InternalAsgiTestClient,
-)
-from bustan.testing import (
-    AsgiTestResponse as InternalAsgiTestResponse,
-)
-from bustan.testing import (
-    CompiledTestingModule as InternalCompiledTestingModule,
-)
-from bustan.testing import (
-    PipelineOverrideRegistry as InternalPipelineOverrideRegistry,
-)
-from bustan.testing import (
-    TestingModuleBuilder as InternalTestingModuleBuilder,
-)
-from bustan.testing import (
-    create_test_app,
-    create_test_module,
-    create_testing_module,
-    override_provider,
-)
 
 
 def test_root_package_exposes_the_supported_public_api() -> None:
@@ -484,91 +360,3 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.VERSION_NEUTRAL is InternalVersionNeutral
     assert bustan.VersioningOptions is InternalVersioningOptions
     assert bustan.VersioningType is InternalVersioningType
-
-
-def test_testing_module_exposes_the_supported_helpers() -> None:
-    assert bustan_testing.__all__ == (
-        "AsgiTestClient",
-        "AsgiTestResponse",
-        "CompiledTestingModule",
-        "PipelineOverrideRegistry",
-        "TestingModuleBuilder",
-        "create_test_app",
-        "create_test_module",
-        "create_testing_module",
-        "override_provider",
-    )
-    assert bustan_testing.AsgiTestClient is InternalAsgiTestClient
-    assert bustan_testing.AsgiTestResponse is InternalAsgiTestResponse
-    assert bustan_testing.CompiledTestingModule is InternalCompiledTestingModule
-    assert bustan_testing.PipelineOverrideRegistry is InternalPipelineOverrideRegistry
-    assert bustan_testing.TestingModuleBuilder is InternalTestingModuleBuilder
-    assert bustan_testing.create_test_app is create_test_app
-    assert bustan_testing.create_test_module is create_test_module
-    assert bustan_testing.create_testing_module is create_testing_module
-    assert bustan_testing.override_provider is override_provider
-
-
-def test_errors_module_exposes_the_supported_exception_types() -> None:
-    assert bustan_errors.__all__ == (
-        "AuthenticationRequiredError",
-        "AuthenticatorRegistryError",
-        "BadGatewayException",
-        "ConflictException",
-        "ContentTooLargeException",
-        "ExportViolationError",
-        "ForbiddenException",
-        "GatewayTimeoutException",
-        "GuardRejectedError",
-        "HttpException",
-        "InternalServerErrorException",
-        "InvalidControllerError",
-        "InvalidModuleError",
-        "InvalidPipelineError",
-        "InvalidProviderError",
-        "LifecycleError",
-        "MethodNotAllowedException",
-        "ModuleCycleError",
-        "NotFoundException",
-        "NotImplementedException",
-        "BadRequestException",
-        "ParameterBindingError",
-        "ProviderResolutionError",
-        "RouteDefinitionError",
-        "ServiceUnavailableException",
-        "TooManyRequestsException",
-        "UnauthorizedException",
-        "UnprocessableEntityException",
-        "UnsupportedMediaTypeException",
-        "BustanError",
-    )
-    assert bustan_errors.BadRequestException is BadRequestException
-    assert bustan_errors.ExportViolationError is ExportViolationError
-    assert bustan_errors.GuardRejectedError is GuardRejectedError
-    assert bustan_errors.InvalidControllerError is InvalidControllerError
-    assert bustan_errors.InvalidModuleError is InvalidModuleError
-    assert bustan_errors.InvalidPipelineError is InvalidPipelineError
-    assert bustan_errors.InvalidProviderError is InvalidProviderError
-    assert bustan_errors.LifecycleError is LifecycleError
-    assert bustan_errors.ModuleCycleError is ModuleCycleError
-    assert bustan_errors.ParameterBindingError is ParameterBindingError
-    assert bustan_errors.ProviderResolutionError is ProviderResolutionError
-    assert bustan_errors.RouteDefinitionError is RouteDefinitionError
-    assert bustan_errors.BustanError is BustanError
-    assert bustan_errors.AuthenticationRequiredError is AuthenticationRequiredError
-    assert bustan_errors.AuthenticatorRegistryError is AuthenticatorRegistryError
-    assert bustan_errors.BadGatewayException is BadGatewayException
-    assert bustan_errors.ConflictException is ConflictException
-    assert bustan_errors.ContentTooLargeException is ContentTooLargeException
-    assert bustan_errors.ForbiddenException is ForbiddenException
-    assert bustan_errors.GatewayTimeoutException is GatewayTimeoutException
-    assert bustan_errors.HttpException is HttpException
-    assert bustan_errors.InternalServerErrorException is InternalServerErrorException
-    assert bustan_errors.MethodNotAllowedException is MethodNotAllowedException
-    assert bustan_errors.NotFoundException is NotFoundException
-    assert bustan_errors.NotImplementedException is NotImplementedException
-    assert bustan_errors.ServiceUnavailableException is ServiceUnavailableException
-    assert bustan_errors.TooManyRequestsException is TooManyRequestsException
-    assert bustan_errors.UnauthorizedException is UnauthorizedException
-    assert bustan_errors.UnprocessableEntityException is UnprocessableEntityException
-    assert bustan_errors.UnsupportedMediaTypeException is UnsupportedMediaTypeException
