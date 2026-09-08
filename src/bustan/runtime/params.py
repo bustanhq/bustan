@@ -953,6 +953,93 @@ def _is_pydantic_model_type(annotation: object) -> bool:
     return issubclass(annotation, BaseModel)
 
 
+@dataclass(frozen=True, slots=True)
+class _BodyShapeMismatch:
+    """The keyword names a mapping omits and the ones the target does not declare."""
+
+    missing: tuple[str, ...]
+    unexpected: tuple[str, ...]
+
+    @property
+    def found(self) -> bool:
+        """Whether either set holds a name, so a composed message is owed."""
+        return bool(self.missing or self.unexpected)
+
+
+def _body_shape_mismatch(
+    annotation: type[object], raw_value_mapping: dict[str, object]
+) -> _BodyShapeMismatch:
+    """Compare a mapping's keys against the keyword parameters a target declares.
+
+    The constructor signature is the source of truth rather than the field list,
+    because a pseudo-field that only ``__post_init__`` consumes is accepted by the
+    constructor and absent from the field list; diffing against the field list would
+    report such a key as one the target does not declare and refuse a body the target
+    accepts. A parameter carrying any default is not required, which covers a default
+    computed per instance, since the constructor supplies its own sentinel there.
+
+    A target whose constructor collects surplus keywords declares no key unexpected.
+    """
+
+    try:
+        parameters = inspect.signature(annotation).parameters
+    except (TypeError, ValueError):
+        return _BodyShapeMismatch(missing=(), unexpected=())
+
+    keyword_parameters = {
+        name: parameter
+        for name, parameter in parameters.items()
+        if parameter.kind
+        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    }
+    collects_surplus = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+    )
+    return _BodyShapeMismatch(
+        missing=tuple(
+            name
+            for name, parameter in keyword_parameters.items()
+            if parameter.default is inspect.Parameter.empty and name not in raw_value_mapping
+        ),
+        unexpected=(
+            ()
+            if collects_surplus
+            else tuple(key for key in raw_value_mapping if key not in keyword_parameters)
+        ),
+    )
+
+
+def _mismatch_clauses(mismatch: _BodyShapeMismatch) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    clauses: list[tuple[str, tuple[str, ...]]] = []
+    if mismatch.missing:
+        clauses.append(("missing required field", mismatch.missing))
+    if mismatch.unexpected:
+        clauses.append(("unexpected field", mismatch.unexpected))
+    return tuple(clauses)
+
+
+def _describe_mismatch(mismatch: _BodyShapeMismatch) -> str:
+    """Render both sets as one sentence, so a caller repairs the body in one attempt."""
+
+    return " and ".join(
+        f"{label}{'' if len(names) == 1 else 's'} {', '.join(repr(name) for name in names)}"
+        for label, names in _mismatch_clauses(mismatch)
+    )
+
+
+def _mismatch_reason(mismatch: _BodyShapeMismatch) -> str:
+    """Render both sets for the machine-readable field, kept parseable.
+
+    Names within one set are separated by a comma and the two sets by a semicolon, so
+    the two levels stay distinguishable to a caller that splits the string.
+    """
+
+    return "; ".join(
+        f"{label}{'' if len(names) == 1 else 's'}: {', '.join(names)}"
+        for label, names in _mismatch_clauses(mismatch)
+    )
+
+
 def _coerce_value(
     raw_value: object,
     *,
@@ -1004,12 +1091,30 @@ def _coerce_value(
         try:
             return annotation(**raw_value_mapping)
         except TypeError as exc:
+            # A TypeError here is either the call being shaped wrongly or the target
+            # objecting to a value it was handed. The two are told apart by comparing
+            # the body's keys with what the target declares rather than by reading the
+            # exception, whose text is written by the interpreter and is not the
+            # caller's to see. Only a mismatch found there is the call's shape; with
+            # none, the target raised from inside its own construction and says why.
+            mismatch = _body_shape_mismatch(annotation, raw_value_mapping)
+            if mismatch.found:
+                message = (
+                    f"Could not bind {source_description} {parameter_name!r} to "
+                    f"{_display_annotation(annotation)}: {_describe_mismatch(mismatch)}"
+                )
+                reason = _mismatch_reason(mismatch)
+            else:
+                message = (
+                    f"Could not bind {source_description} {parameter_name!r} to "
+                    f"{_display_annotation(annotation)}: {exc}"
+                )
+                reason = str(exc)
             raise _parameter_error(
-                f"Could not bind {source_description} {parameter_name!r} to "
-                f"{_display_annotation(annotation)}: {exc}",
+                message,
                 field=parameter_name,
                 source=source_description,
-                reason=str(exc),
+                reason=reason,
             ) from exc
 
     if _is_pydantic_model_type(annotation):
