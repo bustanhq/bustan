@@ -18,8 +18,15 @@ pre-commit:
             run: uv run ruff check .
           - name: ty
             run: uv run ty check src tests scripts
+          # The only job here that writes. Without the add, an author who changes a
+          # public docstring commits the source alone and leaves the regenerated
+          # reference behind, so a tree that passed this hook still fails the drift
+          # check. The add cannot capture an author's own edit to that path: the
+          # generator has already overwritten the file by the time it runs. It is
+          # also the only write to the git index in this group - the sibling jobs
+          # never invoke git - so it contends with nothing.
           - name: api-ref
-            run: uv run python scripts/generate_api_reference.py
+            run: uv run python scripts/generate_api_reference.py && git add docs/API_REFERENCE.md
 
 commit-msg:
   # A rebase rewrites messages that were already accepted, and a merge subject is
