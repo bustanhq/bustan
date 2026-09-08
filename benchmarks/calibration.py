@@ -24,7 +24,7 @@ import json
 # Chosen so that one run of the workload costs roughly what one simple request costs.
 # Sizing the normalizer like the thing it normalizes keeps the same relative resolution
 # on both sides of the division, so the ratio is no noisier than its worse half.
-ITERATIONS = 540
+ITERATIONS = 125
 
 
 class _Item:

@@ -4,6 +4,12 @@ Each application is the smallest one that exercises the thing its benchmark is n
 for, and the simple and pipelined routes are deliberately identical apart from the
 pipeline components, so the difference between those two measurements is the pipeline
 and nothing else.
+
+Every handler is a coroutine. A synchronous handler is dispatched to a worker thread, and
+a thread hand-off costs several times what the whole framework path costs and varies by
+more between two machines than any regression would; a benchmark written that way reports
+the thread pool under a route's name. What a synchronous handler costs is worth measuring
+one day, but it is a benchmark of its own, not a tax on these four.
 """
 
 from __future__ import annotations
@@ -54,7 +60,7 @@ class SimpleController:
         self.catalog = catalog
 
     @Get("/{item_id}")
-    def read_item(self, item_id: Annotated[int, Param]) -> dict[str, object]:
+    async def read_item(self, item_id: Annotated[int, Param]) -> dict[str, object]:
         return self.catalog.read(item_id)
 
 
@@ -92,7 +98,7 @@ class PipelineController:
         self.catalog = catalog
 
     @Get("/{item_id}")
-    def read_item(self, item_id: Annotated[int, Param]) -> dict[str, object]:
+    async def read_item(self, item_id: Annotated[int, Param]) -> dict[str, object]:
         return self.catalog.read(item_id)
 
 
@@ -135,7 +141,7 @@ class RequestScopedController:
         self.reporter = reporter
 
     @Get("/{item_id}")
-    def read_item(self, item_id: Annotated[int, Param]) -> dict[str, object]:
+    async def read_item(self, item_id: Annotated[int, Param]) -> dict[str, object]:
         return self.reporter.read(item_id)
 
 
