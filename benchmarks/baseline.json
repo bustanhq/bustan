@@ -1,0 +1,33 @@
+{
+  "calibration": "bench_calibration",
+  "captured_on": {
+    "cpu_brand": "AMD EPYC 9V74 80-Core Processor",
+    "cpu_count": 4,
+    "machine": "x86_64",
+    "node": "runnervmlun5p",
+    "processor": "x86_64",
+    "python_compiler": "GCC 13.3.0",
+    "python_hash_seed": "0",
+    "python_implementation": "CPython",
+    "python_version": "3.13.15",
+    "release": "6.17.0-1022-azure",
+    "system": "Linux"
+  },
+  "medians_seconds": {
+    "bench_calibration": 0.0001619,
+    "bench_container_resolution": 1.803e-05,
+    "bench_pipeline_route": 0.0001324,
+    "bench_request_scoped_chain": 0.0001639,
+    "bench_simple_route": 9.454e-05
+  },
+  "passes": 8,
+  "ratios": {
+    "bench_container_resolution": 0.11176,
+    "bench_pipeline_route": 0.81635,
+    "bench_request_scoped_chain": 1.01183,
+    "bench_simple_route": 0.58539
+  },
+  "schema": 1,
+  "statistic": "median",
+  "threshold": 0.2
+}
