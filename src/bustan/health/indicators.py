@@ -66,11 +66,13 @@ class HealthIndicator(Protocol):
     @property
     def name(self) -> str:
         """Key this indicator's result is reported under, unique within one probe."""
-        ...
+
+        raise NotImplementedError
 
     async def check(self) -> HealthIndicatorResult:
         """Answer for the one dependency this indicator watches."""
-        ...
+
+        raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
