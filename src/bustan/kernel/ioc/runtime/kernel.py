@@ -26,6 +26,7 @@ from ..planning.plan import (
 )
 from ..planning.scopes import entered_request_scope
 from ..scopes import CACHE_MISS, DurableProvider, ScopeManager
+from .locks import shared_construction
 from .steps import NO_CACHE, Guarded, InstanceCache, Invoke, Machine, Resolve, Site, Step
 
 if TYPE_CHECKING:
@@ -218,7 +219,7 @@ class ResolutionKernel:
             except ProviderResolutionError as exc:
                 raise self._dependency_failure(step, exc) from exc
         if isinstance(step, Guarded):
-            async with self.scope_manager.get_async_construction_lock(step.key):
+            async with shared_construction(self.scope_manager, step.key):
                 return await self._run_async(step.machine)
         result = step.factory(*step.arguments)
         if inspect.isawaitable(result):
@@ -256,19 +257,21 @@ class ResolutionKernel:
     def _cached_construction(
         self, binding: Binding, key: tuple[ModuleKey, object], cache: InstanceCache
     ) -> Machine:
-        """Build a binding's instance and keep it, re-reading a shared slot first.
+        """Build a binding's instance and keep it, reading the slot again either side.
 
-        The second read matters only for a shared slot: the caller that waited on the
-        lock must see what the caller that held it built, or the two would both build
-        and one instance would be orphaned.
+        A caller that waited on a shared slot's lock must see what the caller that
+        held it built, which is what the read before construction is for. The write
+        afterwards is a check and set, for the slot no lock covers: a request-scoped
+        provider is private to one request and is not serialized process-wide, so two
+        resolutions inside that request can build at once and only the first to arrive
+        may be kept, or the request would hold two of what it is promised one of.
         """
 
         cached = cache.get()
         if cached is not CACHE_MISS:
             return cached
         instance = yield from self._construct_steps(binding, key)
-        cache.set(instance)
-        return instance
+        return cache.keep(instance)
 
     def _construct_steps(self, binding: Binding, key: tuple[ModuleKey, object]) -> Machine:
         """Build one binding's instance according to the kind of binding it is."""

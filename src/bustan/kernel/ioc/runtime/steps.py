@@ -101,11 +101,24 @@ class InstanceCache:
             return CACHE_MISS
         return self.store.get(self.key, CACHE_MISS)
 
-    def set(self, instance: object) -> None:
-        """Keep an instance for every later caller this slot serves."""
+    def keep(self, instance: object) -> object:
+        """Keep an instance for every later caller this slot serves, or yield to one.
 
-        if self.store is not None:
-            self.store[self.key] = instance
+        The write is a check and set: a slot that has been filled since this caller
+        found it empty keeps what it holds, and the instance built second is answered
+        with the first. Two callers building at once is the whole reason the slot has
+        to be re-read - without it a request holding two instances of one
+        request-scoped provider would be handed both, and only one of them would be
+        the one everything else in that request sees.
+        """
+
+        if self.store is None:
+            return instance
+        cached = self.store.get(self.key, CACHE_MISS)
+        if cached is not CACHE_MISS:
+            return cached
+        self.store[self.key] = instance
+        return instance
 
 
 # The slot a transient binding has: none at all. A transient is built afresh for

@@ -833,7 +833,7 @@ def test_an_override_reaches_a_dependent_that_holds_the_token_through_an_alias()
     assert container.resolve("stamp", module=AppModule) == "fake"
 
 
-def test_an_override_survives_a_graph_naming_a_token_nothing_can_hash() -> None:
+def test_an_override_survives_a_graph_naming_a_token_no_module_declares() -> None:
     # A factory may name a token no module declares, and that is refused when it is
     # resolved. Reading the graph to evict must not be what turns that mistake into a
     # failure in an unrelated place.

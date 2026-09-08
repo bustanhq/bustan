@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from ..common.decorators.injectable import get_provider_metadata
 from ..common.types import ProviderScope
 from ..contracts import HttpRequest
 from ..kernel.errors import InvalidControllerError, InvalidPipelineError
 from ..kernel.ioc.container import Container
+from ..kernel.ioc.registry import TokenKey, token_identity
+from ..kernel.ioc.runtime.locks import shared_construction
 from ..kernel.module.dynamic import ModuleKey
 from ..kernel.utils import _qualname
 from ..pipeline.filters import ExceptionFilter
@@ -24,6 +26,58 @@ if TYPE_CHECKING:
     from ..testing.overrides import PipelineOverrideRegistry
 
 ComponentT = TypeVar("ComponentT")
+
+# What a resolved component is filed under: the module it is resolved through, the
+# token's own type-aware identity, the contract its slot requires it to implement, and
+# whether it came from a global token, which is the one case where a single token may
+# stand for several components.
+type _ComponentKey = tuple[ModuleKey, TokenKey, type[object], bool]
+
+
+class PipelineMemo:
+    """The pipeline components one route may hand to every request it serves.
+
+    A component is kept here only when resolving it again could not answer with
+    anything else. That is settled by the rule that an override replaces a provider for
+    the whole application and may only be registered before that application starts:
+    once it is running, a singleton and a fixed value are what they will be for the
+    rest of the run. Every other lifetime is partitioned by something a request
+    carries, so none of them is kept and each request resolves its own.
+
+    The instances belong to one container's set. A shutdown destroys that set and the
+    next startup builds another from the same graph, so what is kept is remembered
+    alongside the container and the generation it came out of, and is dropped rather
+    than served once either has moved on.
+    """
+
+    __slots__ = ("_container", "_entries", "_generation")
+
+    def __init__(self) -> None:
+        self._entries: dict[_ComponentKey, tuple[object, ...]] = {}
+        self._container: Container | None = None
+        self._generation = -1
+
+    def get(self, container: Container, key: _ComponentKey) -> tuple[object, ...] | None:
+        """Return the instances kept under a key, or ``None`` when none are."""
+
+        self._follow(container)
+        return self._entries.get(key)
+
+    def keep(self, container: Container, key: _ComponentKey, instances: tuple[object, ...]) -> None:
+        """Keep the instances a key resolved to for every request that follows."""
+
+        self._follow(container)
+        self._entries[key] = instances
+
+    def _follow(self, container: Container) -> None:
+        """Empty the memo when it is holding instances a container no longer has."""
+
+        generation = container.instance_generation
+        if container is self._container and generation == self._generation:
+            return
+        self._entries.clear()
+        self._container = container
+        self._generation = generation
 
 
 class ControllerFactory:
@@ -66,16 +120,18 @@ class ControllerFactory:
                 instance = await self.container.instantiate_class_async(
                     controller_cls, module=module, request=request
                 )
-                request_cache[controller_key] = instance
+                # A check and set, because two stages of one request can build at the
+                # same time and the request is promised one controller, not two.
+                instance = request_cache.setdefault(controller_key, instance)
             return instance
 
         instance = self.container.scope_manager.get_controller_singleton(controller_key)
         if instance is not None:
             return instance
 
-        # A threading lock held across an await would stop the event loop, so the
-        # awaited driver serializes on the awaited lock table under the same key.
-        async with self.container.scope_manager.get_async_construction_lock(controller_key):
+        # The lock a synchronous construction would take, taken here without stalling
+        # the loop, so one controller cannot be built twice by two different drivers.
+        async with shared_construction(self.container.scope_manager, controller_key):
             instance = self.container.scope_manager.get_controller_singleton(controller_key)
             if instance is None:
                 instance = await self.container.instantiate_class_async(
@@ -108,15 +164,23 @@ class ControllerFactory:
         *,
         module: ModuleKey,
         request: HttpRequest,
+        memo: PipelineMemo | None = None,
     ) -> ResolvedPipeline:
-        """Resolve a route's pipeline for one request, awaiting asynchronous factories."""
+        """Resolve a route's pipeline for one request, awaiting asynchronous factories.
+
+        ``memo`` is where a route keeps the components that cannot come out differently
+        for the next request, so a route whose pipeline is entirely settled resolves
+        nothing from the container after the first request that reaches it. Passing
+        none resolves everything afresh, which is what an unsettled pipeline does
+        anyway; the answer is the same either way.
+        """
         metadata = self._overridden(metadata)
         return ResolvedPipeline(
             guards=await self.resolve_components_async(
-                metadata.guards, Guard, module=module, request=request, kind="guard"
+                metadata.guards, Guard, module=module, request=request, kind="guard", memo=memo
             ),
             pipes=await self.resolve_components_async(
-                metadata.pipes, Pipe, module=module, request=request, kind="pipe"
+                metadata.pipes, Pipe, module=module, request=request, kind="pipe", memo=memo
             ),
             interceptors=await self.resolve_components_async(
                 metadata.interceptors,
@@ -124,9 +188,15 @@ class ControllerFactory:
                 module=module,
                 request=request,
                 kind="interceptor",
+                memo=memo,
             ),
             filters=await self.resolve_components_async(
-                metadata.filters, ExceptionFilter, module=module, request=request, kind="filter"
+                metadata.filters,
+                ExceptionFilter,
+                module=module,
+                request=request,
+                kind="filter",
+                memo=memo,
             ),
         )
 
@@ -161,21 +231,66 @@ class ControllerFactory:
         module: ModuleKey,
         request: HttpRequest,
         kind: str,
+        memo: PipelineMemo | None = None,
     ) -> tuple[ComponentT, ...]:
         """Resolve pipeline components for one request, awaiting asynchronous factories."""
         resolved: list[ComponentT] = []
         for component in components:
             source = self._container_source(component, module)
             if source is None:
-                instances: tuple[object, ...] = (self._build_unmanaged(component, kind),)
-            else:
-                token, owner = source
-                instances = self._expanded(
+                unmanaged = self._build_unmanaged(component, kind)
+                resolved.append(self._verified(unmanaged, expected_type, kind))
+                continue
+
+            token, owner = source
+            key: _ComponentKey = (
+                owner,
+                token_identity(token),
+                expected_type,
+                isinstance(component, GlobalPipelineProvider),
+            )
+            kept = memo.get(self.container, key) if memo is not None else None
+            if kept is not None:
+                resolved.extend(cast("tuple[ComponentT, ...]", kept))
+                continue
+
+            instances = tuple(
+                self._verified(instance, expected_type, kind)
+                for instance in self._expanded(
                     component,
                     await self.container.resolve_async(token, module=owner, request=request),
                 )
-            resolved.extend(self._verified(instance, expected_type, kind) for instance in instances)
+            )
+            if memo is not None and self._settled(token, owner):
+                memo.keep(self.container, key, instances)
+            resolved.extend(instances)
         return tuple(resolved)
+
+    def _settled(self, token: object, owner: ModuleKey) -> bool:
+        """Report whether resolving a token again would answer with the same object.
+
+        An override replaces a provider for the whole application, and registering one
+        is refused once that application has started, so a running application's
+        singletons and its fixed values are what they will be until it stops. Anything
+        built for a shorter lifetime is partitioned by something a request carries -
+        the request itself, the partition a durable provider derives from it, or
+        nothing at all for a transient - so it is a different object each time and is
+        never treated as settled.
+        """
+
+        container = self.container
+        if not container.override_manager.started:
+            return False
+        visibility = container.registry.module_visibility.get(owner)
+        if visibility is None:
+            return False
+        declaring_module = visibility.get(token)
+        if declaring_module is None:
+            return False
+        binding = container.registry.get_binding((declaring_module, token))
+        if binding is None:
+            return False
+        return binding.scope is ProviderScope.SINGLETON or binding.resolver_kind == "value"
 
     def _overridden(self, metadata: PipelineMetadata) -> PipelineMetadata:
         if self.pipeline_override_registry is None:
