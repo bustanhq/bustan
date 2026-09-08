@@ -2,7 +2,7 @@ from typing import cast
 
 import pytest
 
-from bustan import Controller, Get, Injectable, Module, create_app
+from bustan import APP_GUARD, Controller, Get, Injectable, InjectionToken, Module, create_app
 from bustan.kernel.errors import (
     InvalidModuleError,
     ModuleCycleError,
@@ -301,3 +301,120 @@ def test_registrations_holding_a_value_nothing_can_hash_stay_apart() -> None:
     second = DynamicModule(SharedModule, providers=({"provide": "tags", "use_value": {"a", "b"}},))
 
     assert first is not second
+
+
+def test_a_registration_replaces_a_provider_its_base_module_declares() -> None:
+    options = InjectionToken[str]("OPTIONS")
+
+    @Module(providers=[{"provide": options, "use_value": "default"}], exports=[options])
+    class BaseModule:
+        pass
+
+    registration = DynamicModule(
+        BaseModule, providers=({"provide": options, "use_value": "configured"},)
+    )
+    container = build_container(build_module_graph(registration))
+
+    assert container.resolve(options, module=container.module_graph.root_key) == "configured"
+
+
+def test_a_base_module_keeps_the_providers_a_registration_does_not_name() -> None:
+    kept = InjectionToken[str]("KEPT")
+    replaced = InjectionToken[str]("REPLACED")
+
+    @Module(
+        providers=[
+            {"provide": kept, "use_value": "base"},
+            {"provide": replaced, "use_value": "base"},
+        ],
+        exports=[kept, replaced],
+    )
+    class BaseModule:
+        pass
+
+    registration = DynamicModule(
+        BaseModule, providers=({"provide": replaced, "use_value": "overlay"},)
+    )
+    container = build_container(build_module_graph(registration))
+    root = container.module_graph.root_key
+
+    assert container.resolve(kept, module=root) == "base"
+    assert container.resolve(replaced, module=root) == "overlay"
+
+
+def test_a_registration_adds_to_a_global_pipeline_token_rather_than_replacing_it() -> None:
+    @Injectable
+    class BaseGuard:
+        def can_activate(self, context: object) -> bool:
+            return True
+
+    @Injectable
+    class OverlayGuard:
+        def can_activate(self, context: object) -> bool:
+            return True
+
+    @Module(providers=[{"provide": APP_GUARD, "use_class": BaseGuard}])
+    class BaseModule:
+        pass
+
+    registration = DynamicModule(
+        BaseModule, providers=({"provide": APP_GUARD, "use_class": OverlayGuard},)
+    )
+    container = build_container(build_module_graph(registration))
+    guards = container.resolve(APP_GUARD, module=container.module_graph.root_key)
+
+    assert [type(guard).__name__ for guard in cast(list[object], guards)] == [
+        "BaseGuard",
+        "OverlayGuard",
+    ]
+
+
+def test_a_registration_may_name_an_import_its_base_module_already_names() -> None:
+    @Module(providers=[{"provide": "shared", "use_value": "shared"}], exports=["shared"])
+    class SharedModule:
+        pass
+
+    @Module(imports=[SharedModule], exports=["shared"])
+    class BaseModule:
+        pass
+
+    registration = DynamicModule(BaseModule, imports=(SharedModule,))
+    container = build_container(build_module_graph(registration))
+
+    assert container.resolve("shared", module=container.module_graph.root_key) == "shared"
+
+
+def test_a_registration_may_name_a_controller_its_base_module_already_names() -> None:
+    @Controller("/shared")
+    class SharedController:
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {}
+
+    @Module(controllers=[SharedController])
+    class BaseModule:
+        pass
+
+    registration = DynamicModule(BaseModule, controllers=(SharedController,))
+    graph = build_module_graph(registration)
+
+    assert graph.nodes[0].controllers == (SharedController,)
+
+
+def test_a_registration_that_names_one_token_twice_is_still_refused() -> None:
+    options = InjectionToken[str]("OPTIONS")
+
+    @Module()
+    class BaseModule:
+        pass
+
+    registration = DynamicModule(
+        BaseModule,
+        providers=(
+            {"provide": options, "use_value": "first"},
+            {"provide": options, "use_value": "second"},
+        ),
+    )
+
+    with pytest.raises(InvalidModuleError, match="duplicate entries in providers"):
+        build_module_graph(registration)

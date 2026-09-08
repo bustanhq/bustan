@@ -708,6 +708,13 @@ it and two sets of their singletons. Constructing one therefore returns the
 registration that already describes those values whenever there is one, so identity
 follows the declaration rather than the order the objects were created in.
 
+What the overlay declares wins over the base module. A provider here replaces the
+base module's provider for the same token, which is what lets a base module declare
+a default and a registration configure it away; a global pipeline token is the one
+exception, because a second declaration of one of those adds a component to a slot
+that runs them all. An import or a controller the base module already names is one
+entry rather than two, so naming it again here adds nothing and is not an error.
+
 #### `DocumentBuilder`
 
 ```python
@@ -1426,7 +1433,13 @@ Resolve providers through the finalized public application semantics.
 ##### Methods
 
 - `(property) module_key`
+  The module this reference resolves against.
+
+A reference injected into a provider or a controller names the module that
+class was declared in, so it sees exactly what the class's own constructor
+sees. One asked of the application itself names the root module.
 - `for_module(self, module: ModuleKey | type[object]) -> ModuleRef`
+  Return a reference that resolves against another module of this application.
 - `get(self, token: object, *, strict: bool = True) -> object`
   Resolve a provider, against the request being served when there is one.
 
@@ -1435,8 +1448,12 @@ an interceptor it reaches request-scoped providers and returns the same instance
 the rest of that request sees. Called with no request in flight it resolves as
 `ApplicationContext.get` does, and a request-scoped provider is refused.
 
-`strict` keeps the lookup inside the module this reference names; pass `False`
-to fall back to what the root module can see.
+`strict` keeps the lookup inside the module this reference names, which is the
+module the class holding the reference was declared in. Pass `False` to widen a
+token that module cannot see into a search of every module in the application,
+so a provider another module declares privately is still reachable. The search
+refuses to guess: a token more than one module declares raises rather than
+picking one, and `for_module()` names the one to resolve through.
 - `resolve(self, token: object, *, strict: bool = True) -> object`
   Alias for `get()`, with the same request-aware semantics.
 - `create(self, cls: type[object]) -> object`
