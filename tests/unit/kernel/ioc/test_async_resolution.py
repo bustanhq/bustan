@@ -7,6 +7,8 @@ decisions are taken once and only the waiting differs.
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import anyio
@@ -187,3 +189,165 @@ def test_an_async_provider_that_returns_none_starts_a_standalone_context() -> No
         return context.get("client")
 
     assert anyio.run(start) is None
+
+
+def test_a_singleton_built_from_both_drivers_at_once_is_built_once() -> None:
+    # The two drivers wait in different ways and must still wait for each other. A
+    # sequential pair of resolutions cannot show this: the second one finds the first
+    # one's instance in the cache and never reaches the lock at all.
+    constructions: list[object] = []
+
+    @Injectable
+    class ConnectionPool:
+        def __init__(self) -> None:
+            constructions.append(object())
+            # Long enough that the awaited resolution below starts while this one is
+            # still inside the constructor, which is the only moment the two can race.
+            time.sleep(0.3)
+
+    @Module(providers=[ConnectionPool], exports=[ConnectionPool])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    built: dict[str, object] = {}
+
+    def resolve_synchronously() -> None:
+        built["sync"] = container.resolve(ConnectionPool, module=AppModule)
+
+    async def race() -> None:
+        thread = threading.Thread(target=resolve_synchronously)
+        thread.start()
+        await anyio.sleep(0.05)
+        built["async"] = await container.resolve_async(ConnectionPool, module=AppModule)
+        thread.join()
+
+    anyio.run(race)
+
+    assert len(constructions) == 1
+    assert built["sync"] is built["async"]
+
+
+def test_waiting_for_a_singleton_another_thread_is_building_leaves_the_loop_running() -> None:
+    # Both drivers hold the same lock, and the awaited one must hold it without
+    # stalling the event loop it is running on, or one slow constructor in a worker
+    # thread would stop every other request the process is serving.
+    @Injectable
+    class SlowService:
+        def __init__(self) -> None:
+            time.sleep(0.3)
+
+    @Module(providers=[SlowService], exports=[SlowService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    ticks: list[int] = []
+    waited: list[float] = []
+
+    def resolve_synchronously() -> None:
+        container.resolve(SlowService, module=AppModule)
+
+    async def tick() -> None:
+        while True:
+            await anyio.sleep(0.01)
+            ticks.append(len(ticks))
+
+    async def race() -> None:
+        thread = threading.Thread(target=resolve_synchronously)
+        thread.start()
+        await anyio.sleep(0.05)
+        async with anyio.create_task_group() as task_group:
+            task_group.start_soon(tick)
+            started = time.perf_counter()
+            await container.resolve_async(SlowService, module=AppModule)
+            waited.append(time.perf_counter() - started)
+            task_group.cancel_scope.cancel()
+        thread.join()
+
+    anyio.run(race)
+
+    # It really waited for the other driver rather than building its own instance.
+    assert waited[0] > 0.1
+    # And the loop kept running while it waited. A tenth of a second of waiting at a
+    # ten-millisecond tick is around ten of them; three is the floor a loaded machine
+    # still clears, and a loop stalled on the lock produces none at all.
+    assert len(ticks) >= 3
+
+
+def test_two_resolutions_at_once_inside_one_request_share_one_instance(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    # A request-scoped provider is private to its request, so nothing serializes the
+    # two resolutions against each other; the cache is what has to refuse the second
+    # instance, or the request holds two of what it was promised one of. The factory is
+    # awaited, which is what lets the second resolution start while the first is still
+    # inside it and find the same empty cache.
+    async def open_identity() -> object:
+        await anyio.sleep(0.05)
+        return object()
+
+    @Module(
+        providers=[{"provide": "identity", "use_factory": open_identity, "scope": Scope.REQUEST}],
+        exports=["identity"],
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    request = build_http_request(path="/me")
+    resolved: list[object] = []
+
+    async def resolve() -> None:
+        resolved.append(
+            await container.resolve_async("identity", module=AppModule, request=request)
+        )
+
+    async def race() -> None:
+        async with anyio.create_task_group() as task_group:
+            task_group.start_soon(resolve)
+            task_group.start_soon(resolve)
+
+    anyio.run(race)
+
+    assert len(resolved) == 2
+    assert resolved[0] is resolved[1]
+
+
+def test_a_resolution_cancelled_while_it_waits_gives_the_lock_back() -> None:
+    # Waiting for the other driver happens off the event loop, and a cancellation
+    # reaches the waiter only once that wait has finished - by which time the waiter
+    # may hold the lock. Giving it back is what keeps a caller that walked away from
+    # leaving the provider unbuildable for everyone after it.
+    @Injectable
+    class SlowService:
+        def __init__(self) -> None:
+            time.sleep(0.3)
+
+    @Module(providers=[SlowService], exports=[SlowService])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    def resolve_synchronously() -> None:
+        container.resolve(SlowService, module=AppModule)
+
+    async def resolve_and_walk_away() -> None:
+        await container.resolve_async(SlowService, module=AppModule)
+
+    async def abandon() -> None:
+        thread = threading.Thread(target=resolve_synchronously)
+        thread.start()
+        await anyio.sleep(0.05)
+        async with anyio.create_task_group() as task_group:
+            task_group.start_soon(resolve_and_walk_away)
+            await anyio.sleep(0.05)
+            task_group.cancel_scope.cancel()
+        thread.join()
+
+    async def resolve_after() -> object:
+        await abandon()
+        return await container.resolve_async(SlowService, module=AppModule)
+
+    assert isinstance(anyio.run(resolve_after), SlowService)

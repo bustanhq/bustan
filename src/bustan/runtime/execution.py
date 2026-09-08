@@ -7,7 +7,7 @@ import logging
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from functools import partial
 from inspect import iscoroutinefunction
 from typing import TYPE_CHECKING, Any, cast
@@ -38,7 +38,7 @@ from .compiler import (
     ResponsePlan,
     RouteContract,
 )
-from .controller_factory import ControllerFactory
+from .controller_factory import ControllerFactory, PipelineMemo
 from .metadata import ControllerRouteDefinition
 from .params import (
     BoundParameter,
@@ -121,11 +121,21 @@ class RequestLimitExceptionFilter(ExceptionFilter):
 
 
 _REQUEST_LIMIT_FILTER = RequestLimitExceptionFilter()
+# The writer that turns a handler's return value into a response. It reads the plan it
+# is handed and keeps nothing of its own between calls, so one writer serves every
+# request rather than each request building one to use once.
+_RESPONSE_HANDLER = ResponseHandler()
 
 
 @dataclass(frozen=True, slots=True)
 class ExecutionPlan:
-    """Compiled runtime plan consumed by HTTP adapters."""
+    """Compiled runtime plan consumed by HTTP adapters.
+
+    A route is compiled once and served many times, so everything a request would
+    otherwise rebuild for itself is built here instead: the three slices of the
+    pipeline the runtime resolves at different points, and the memo the components it
+    resolves are kept in.
+    """
 
     route_contract: RouteContract
     module_key: ModuleKey
@@ -136,6 +146,30 @@ class ExecutionPlan:
     response_plan: ResponsePlan
     policy_plan: PolicyPlan
     is_async_handler: bool
+    # What decides whether the request is served at all, and what renders that verdict.
+    gate_plan: PipelinePlan = field(init=False, compare=False, repr=False)
+    # What the request consumes once it has been admitted.
+    remainder_plan: PipelinePlan = field(init=False, compare=False, repr=False)
+    # What renders a failure, which is all the error path needs.
+    filter_plan: PipelinePlan = field(init=False, compare=False, repr=False)
+    # Resolved pipeline components this route may serve every request from. It holds
+    # only what cannot come out differently for the next one, so it is a record of how
+    # often the container is asked rather than of what it answers.
+    pipeline_memo: PipelineMemo = field(
+        init=False, compare=False, repr=False, default_factory=PipelineMemo
+    )
+
+    def __post_init__(self) -> None:
+        plan = self.pipeline_plan
+        object.__setattr__(
+            self, "gate_plan", PipelinePlan(guards=plan.guards, filters=plan.filters)
+        )
+        object.__setattr__(
+            self,
+            "remainder_plan",
+            PipelinePlan(pipes=plan.pipes, interceptors=plan.interceptors),
+        )
+        object.__setattr__(self, "filter_plan", PipelinePlan(filters=plan.filters))
 
     @property
     def handler_name(self) -> str:
@@ -316,7 +350,6 @@ async def execute_http_route(
     )
     response_context = HttpResponse()
     response_token = container.scope_manager.push_response(response_context)
-    response_handler = ResponseHandler()
     observability = observability_hooks_of(application_runtime)
     limits = request_limits_of(application_runtime)
     context: ExecutionContext | None = None
@@ -352,12 +385,10 @@ async def execute_http_route(
             with _durable_partitions_created(container, execution_plan) as created:
                 created_durable_partitions = created
                 gate = await factory.resolve_pipeline_async(
-                    PipelinePlan(
-                        guards=execution_plan.pipeline_plan.guards,
-                        filters=execution_plan.pipeline_plan.filters,
-                    ),
+                    execution_plan.gate_plan,
                     module=execution_plan.module_key,
                     request=request,
+                    memo=execution_plan.pipeline_memo,
                 )
                 filters = gate.filters
 
@@ -383,12 +414,10 @@ async def execute_http_route(
             )
 
             remainder = await factory.resolve_pipeline_async(
-                PipelinePlan(
-                    pipes=execution_plan.pipeline_plan.pipes,
-                    interceptors=execution_plan.pipeline_plan.interceptors,
-                ),
+                execution_plan.remainder_plan,
                 module=execution_plan.module_key,
                 request=request,
+                memo=execution_plan.pipeline_memo,
             )
 
             bound_parameters = await bind_handler_parameters(
@@ -418,7 +447,7 @@ async def execute_http_route(
                 remainder.interceptors,
                 final_handler,
             )
-            response = response_handler.write(
+            response = _RESPONSE_HANDLER.write(
                 result=result, response_plan=execution_plan.response_plan
             )
             response = _merge_response_context(
@@ -447,7 +476,6 @@ async def execute_http_route(
             filters=filters,
             factory=factory,
             execution_plan=execution_plan,
-            response_handler=response_handler,
             response_context=response_context,
             request=request,
         )
@@ -492,7 +520,6 @@ async def execute_http_exception(
     )
     response_context = HttpResponse()
     response_token = container.scope_manager.push_response(response_context)
-    response_handler = ResponseHandler()
     observability = observability_hooks_of(application_runtime)
     observation = None
     context: ExecutionContext | None = None
@@ -510,14 +537,15 @@ async def execute_http_exception(
             controller=None,
         )
         resolved_pipeline = await factory.resolve_pipeline_async(
-            PipelinePlan(filters=execution_plan.pipeline_plan.filters),
+            execution_plan.filter_plan,
             module=execution_plan.module_key,
             request=request,
+            memo=execution_plan.pipeline_memo,
         )
         filters = resolved_pipeline.filters
         observation = observability.start_request(context)
         filtered_result = await handle_exception(context, error, _with_limit_filter(filters))
-        response = response_handler.write(
+        response = _RESPONSE_HANDLER.write(
             result=filtered_result,
             response_plan=_EXCEPTION_RESPONSE_PLAN,
         )
@@ -540,7 +568,6 @@ async def execute_http_exception(
             filters=filters,
             factory=factory,
             execution_plan=execution_plan,
-            response_handler=response_handler,
             response_context=response_context,
             request=request,
         )
@@ -564,7 +591,6 @@ async def _render_failure(
     filters: tuple[ExceptionFilter, ...] | None,
     factory: ControllerFactory,
     execution_plan: ExecutionPlan,
-    response_handler: ResponseHandler,
     response_context: HttpResponse,
     request: HttpRequest,
 ) -> RuntimeResponse:
@@ -583,7 +609,7 @@ async def _render_failure(
         if filters is None:
             filters = await _global_filters(factory, execution_plan, request)
         filtered_result = await handle_exception(context, exc, _with_limit_filter(filters))
-        response = response_handler.write(
+        response = _RESPONSE_HANDLER.write(
             result=filtered_result,
             response_plan=_EXCEPTION_RESPONSE_PLAN,
         )
@@ -656,6 +682,7 @@ async def _global_filters(
             PipelinePlan(filters=global_filters),
             module=execution_plan.module_key,
             request=request,
+            memo=execution_plan.pipeline_memo,
         )
     except Exception:
         _LOGGER.exception("Could not resolve the application-wide exception filters")

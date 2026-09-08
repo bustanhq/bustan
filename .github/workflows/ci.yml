@@ -178,12 +178,13 @@ jobs:
         run: uv run python scripts/conformance_matrix.py
 
   audit-repros:
-    name: Audit repro harness (advisory)
+    name: Audit repro harness
     runs-on: ubuntu-latest
-    # Advisory only. The harness reports defects this branch has not fixed yet, so
-    # a red result here is a signal and must not block a merge. It becomes a
-    # blocking gate once the harness is expected to report zero reproductions.
-    continue-on-error: true
+    # A regression gate. Every finding the audit demonstrated is fixed, and each one
+    # is held there by the script that used to reproduce it, so a reproduction here
+    # is a defect coming back rather than one not addressed yet. `--expect-fixed` is
+    # what makes the job fail on one: without it the runner exits zero on a
+    # reproduction and reports it in the summary alone.
 
     steps:
       - name: Check out repository
@@ -201,7 +202,7 @@ jobs:
         run: uv sync --group dev --frozen
 
       - name: Run audit repro harness
-        run: uv run python docs/audits/di-container-2026-09/run_repros.py
+        run: uv run python docs/audits/di-container-2026-09/run_repros.py --expect-fixed
 
   dependency-audit:
     name: Dependency audit (advisory)

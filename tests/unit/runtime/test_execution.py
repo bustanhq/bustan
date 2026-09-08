@@ -11,7 +11,9 @@ import pytest
 from starlette.applications import Starlette
 
 from bustan import (
+    APP_FILTER,
     APP_GUARD,
+    APP_PIPE,
     Controller,
     ExceptionFilter,
     ExecutionContext,
@@ -19,13 +21,14 @@ from bustan import (
     Guard,
     Injectable,
     Module,
+    Pipe,
     Scope,
     UseGuards,
     create_app,
 )
 from bustan.contracts import HttpRequest
 from bustan.errors import GuardRejectedError
-from bustan.kernel.ioc.container import build_container
+from bustan.kernel.ioc.container import Container, build_container
 from bustan.kernel.module.graph import build_module_graph
 from bustan.observability.correlation import current_correlation_id
 from bustan.pipeline.filters import handle_exception
@@ -520,3 +523,155 @@ def test_the_request_entry_point_names_the_request_and_releases_the_name() -> No
     assert response.status_code == 200
     assert seen == ["req-42"]
     assert current_correlation_id() is None
+
+
+def _counting_resolutions(container: Container, resolutions: list[object]) -> None:
+    """Record every token the container is asked to resolve, and answer as before."""
+
+    resolve_async = container.resolve_async
+    resolve = container.resolve
+
+    async def counted_async(token: object, *, module: Any, request: Any = None) -> object:
+        resolutions.append(token)
+        return await resolve_async(token, module=module, request=request)
+
+    def counted(token: object, *, module: Any, request: Any = None) -> object:
+        resolutions.append(token)
+        return resolve(token, module=module, request=request)
+
+    counting = cast(Any, container)
+    counting.resolve_async = counted_async
+    counting.resolve = counted
+
+
+def test_a_settled_pipeline_is_resolved_from_the_container_once_and_never_again() -> None:
+    ran: list[str] = []
+
+    class NoopPipe(Pipe):
+        def transform(self, value: object, context: ExecutionContext) -> object:
+            ran.append("pipe")
+            return value
+
+    @Injectable
+    class FirstGuard(Guard):
+        def can_activate(self, context: ExecutionContext) -> bool:
+            ran.append("first-guard")
+            return True
+
+    @Injectable
+    class SecondGuard(Guard):
+        def can_activate(self, context: ExecutionContext) -> bool:
+            ran.append("second-guard")
+            return True
+
+    class NeverCatches(ExceptionFilter):
+        exception_types = (RuntimeError,)
+
+        async def catch(self, exc: Exception, context: ExecutionContext) -> None:
+            return None
+
+    @Controller("/users")
+    class UsersController:
+        @UseGuards(FirstGuard, SecondGuard)
+        @Get("/{name}")
+        def read(self, name: str) -> dict[str, str]:
+            return {"name": name}
+
+    @Module(
+        controllers=[UsersController],
+        providers=[
+            FirstGuard,
+            SecondGuard,
+            {"provide": APP_PIPE, "use_class": NoopPipe},
+            {"provide": APP_FILTER, "use_class": NeverCatches},
+        ],
+    )
+    class AppModule:
+        pass
+
+    application = create_app(AppModule)
+    resolutions: list[object] = []
+    _counting_resolutions(application.container, resolutions)
+
+    with AsgiTestClient(cast(Any, application)) as client:
+        # What starting the application resolved is not what this is counting.
+        resolutions.clear()
+        first = client.get("/users/ada")
+        first_count = len(resolutions)
+        ran.clear()
+        resolutions.clear()
+        second = client.get("/users/ada")
+
+    assert first.json() == {"name": "ada"} == second.json()
+    # A global pipe, two guards and a filter: four resolutions the first request pays
+    # for, and none any request after it does.
+    assert first_count == 4
+    assert resolutions == []
+    # The components still run; only the asking for them stopped.
+    assert ran == ["first-guard", "second-guard", "pipe"]
+
+
+def test_a_pipeline_component_scoped_to_the_request_is_resolved_for_every_request() -> None:
+    # Only what cannot come out differently for the next request is kept. A guard with
+    # a lifetime of one request is a different guard for each of them, so it is
+    # resolved again every time however often the route is served.
+    constructions: list[object] = []
+
+    @Injectable(scope=Scope.REQUEST)
+    class RequestScopedGuard(Guard):
+        def __init__(self) -> None:
+            constructions.append(object())
+
+        def can_activate(self, context: ExecutionContext) -> bool:
+            return True
+
+    @Controller("/users")
+    class UsersController:
+        @UseGuards(RequestScopedGuard)
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController], providers=[RequestScopedGuard])
+    class AppModule:
+        pass
+
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        constructions.clear()
+        assert client.get("/users/").status_code == 200
+        assert client.get("/users/").status_code == 200
+
+    assert len(constructions) == 2
+
+
+def test_a_pipeline_kept_from_one_run_is_dropped_when_the_application_starts_again() -> None:
+    # A shutdown destroys every instance the container built and the next startup
+    # builds a fresh set. What a route kept from the previous run belongs to instances
+    # that no longer exist, so it is dropped rather than served.
+    seen: list[object] = []
+
+    @Injectable
+    class RecordingGuard(Guard):
+        def can_activate(self, context: ExecutionContext) -> bool:
+            seen.append(self)
+            return True
+
+    @Controller("/users")
+    class UsersController:
+        @UseGuards(RecordingGuard)
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController], providers=[RecordingGuard])
+    class AppModule:
+        pass
+
+    application = create_app(AppModule)
+    with AsgiTestClient(cast(Any, application)) as client:
+        assert client.get("/users/").status_code == 200
+    with AsgiTestClient(cast(Any, application)) as client:
+        assert client.get("/users/").status_code == 200
+
+    assert len(seen) == 2
+    assert seen[0] is not seen[1]

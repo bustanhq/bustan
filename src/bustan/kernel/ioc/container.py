@@ -38,6 +38,7 @@ class Container:
         self.scope_manager = ScopeManager()
         self.override_manager = OverrideManager(self.registry)
         self._shut_down = False
+        self._instance_generation = 0
 
         self._build_bindings()
         self.plan = plan_container(
@@ -145,11 +146,23 @@ class Container:
         a startup would hand back providers whose initialization hooks never ran.
         """
         self._shut_down = True
+        self._instance_generation += 1
 
     @property
     def is_shut_down(self) -> bool:
         """Report whether a completed shutdown is still waiting for the next startup."""
         return self._shut_down
+
+    @property
+    def instance_generation(self) -> int:
+        """How many times this container has discarded everything it had built.
+
+        Anything holding an instance resolved out of this container is holding it only
+        for as long as this figure is unchanged. A shutdown destroys every instance the
+        container built and the next startup builds a fresh set from the same graph, so
+        a cache filled before one would serve destroyed objects afterwards.
+        """
+        return self._instance_generation
 
     def _refuse_while_shut_down(self, subject: object) -> None:
         """Refuse to build anything between a completed shutdown and the next startup.
