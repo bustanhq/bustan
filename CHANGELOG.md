@@ -42,7 +42,7 @@ made it; in brief:
   accepted every argument and did nothing.
 
 Every entry below is a closed issue from the 2.0.0-rc.4 milestone, grouped by the
-classification label it carries. All 24 are listed. Thirteen carry two classification labels;
+classification label it carries. All 26 are listed. Fourteen carry two classification labels;
 each appears once, under the more severe of them.
 
 ### Security
@@ -83,6 +83,8 @@ each appears once, under the more severe of them.
 ### Documentation
 
 * nothing in the documentation says an application has request limits, or what its defaults are ([#210](https://github.com/bustanhq/bustan/issues/210))
+* the troubleshooting guide's binding-error causes predate body type checking and no longer describe it ([#243](https://github.com/bustanhq/bustan/issues/243))
+* the release checklist says the version lives in one place; it lives in seven, and following it produces a tag that fails ([#245](https://github.com/bustanhq/bustan/issues/245))
 
 ## [2.0.0-rc.3](https://github.com/bustanhq/bustan/compare/v2.0.0rc2...v2.0.0rc3) (2026-09-07)
 
