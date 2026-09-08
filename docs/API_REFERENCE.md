@@ -637,6 +637,195 @@ and as a call (``Annotated[str, Body("field")]``).
 
 Current value: `Header`
 
+#### `HealthIndicator`
+
+```python
+class HealthIndicator(Protocol)
+```
+
+Defined in `bustan.health.indicators`.
+
+One question a probe asks about one dependency, and the name it answers under.
+
+An implementation watches exactly one thing, so that a probe reporting ``down``
+names which thing is down rather than only that something is. ``name`` is the key
+its result appears under in the report and must be unique within a probe.
+
+``check`` is allowed to fail, in every way an ``await`` can fail: it may raise, and
+it may never return. Neither reaches the caller of the probe. A raise is recorded
+as a down result under this indicator's name, and an indicator that does not answer
+in time is recorded the same way, because a probe that one broken dependency can
+crash or hang is worse than no probe at all: it gets the process killed for a fault
+that was never the process's.
+
+##### Methods
+
+- `(property) name`
+  Key this indicator's result is reported under, unique within one probe.
+- `check(self) -> HealthIndicatorResult`
+  Answer for the one dependency this indicator watches.
+
+#### `HealthIndicatorResult`
+
+```python
+class HealthIndicatorResult
+```
+
+Defined in `bustan.health.indicators`.
+
+What one indicator answered, and why it answered that.
+
+``detail`` is one short sentence for whoever reads the probe. It crosses a trust
+boundary, because anything that can reach the probe reads it, so it says what is
+wrong in the framework's own words and never carries a host name, a connection
+string, a credential, or the message of an exception raised inside a dependency.
+It is ``None`` on a serving result that has nothing to add.
+
+##### Methods
+
+- `up(cls, detail: str | None = None) -> HealthIndicatorResult`
+  Return a serving result, optionally saying something about it.
+- `down(cls, detail: str) -> HealthIndicatorResult`
+  Return a failing result, which must say why it failed.
+
+#### `HealthModule`
+
+```python
+class HealthModule
+```
+
+Defined in `bustan.health.module`.
+
+Factory for the health module: the probes, their routes, and the readiness state.
+
+##### Methods
+
+- `for_root(*, check_timeout: float = 5.0, is_global: bool = True) -> DynamicModule`
+  Register the probe routes and export the service and the readiness state.
+
+Global by default, because both of the things it exports are used from outside
+the module that declared them: an indicator is registered by whichever module
+owns the dependency it watches, and the readiness state is set by whatever owns
+the shutdown sequence.
+
+Register indicators by injecting ``HealthService`` and calling its register
+methods from a module initialization hook. That stage runs before any hook can
+report the application started, so an indicator registered there is already
+being consulted the first time readiness can be true.
+
+``check_timeout`` is how long any one indicator is given to answer before it is
+recorded as down. Indicators are checked together, so it bounds the whole probe
+however many are registered; keep it below the interval the probe is read on.
+
+#### `HealthReport`
+
+```python
+class HealthReport
+```
+
+Defined in `bustan.health.indicators`.
+
+The answer one probe gives, and the wire shape it serialises to.
+
+``status`` is ``up`` only when every entry in ``checks`` is up, so a probe with no
+indicators registered is up. ``checks`` keeps the order the indicators were
+registered in, and the built-in lifecycle check of the readiness probe comes first.
+
+``as_dict`` renders the documented response shape, and is what an HTTP endpoint
+serialises. It is exactly two levels deep and has no optional keys: ``detail`` is
+always present and is ``null`` when the check had nothing to add, so a reader never
+has to tell a missing key from an absent detail::
+
+    {
+      "status": "down",
+      "checks": {
+        "lifecycle": {"status": "down", "detail": "startup has not completed"},
+        "database": {"status": "up", "detail": null}
+      }
+    }
+
+The shape carries no timing, no version and no host name. Those identify the
+process to anything that can reach the probe, and none of them is needed to decide
+whether to send it traffic.
+
+##### Methods
+
+- `as_dict(self) -> dict[str, object]`
+  Render the documented response shape as plain JSON-serialisable data.
+
+#### `HealthService`
+
+```python
+class HealthService
+```
+
+Defined in `bustan.health.service`.
+
+Registers health indicators and answers the liveness and readiness probes.
+
+The two probes answer different questions and share no indicators, because the two
+answers cause different things to happen.
+
+**Liveness** answers whether the process is alive, and the only honest evidence for
+that is that it answered at all. It therefore starts up, and stays, with nothing
+registered against it: no dependency belongs here, because a failing dependency is
+not a reason to kill and restart a process that is working. Register a liveness
+indicator only for a fault the process has detected in itself and cannot recover
+from without being restarted.
+
+**Readiness** answers whether this pod should be sent traffic. It always begins with
+the built-in lifecycle check, which is down before startup finishes and down again
+once the process is draining, and adds every dependency the process needs in order
+to serve a request correctly. A readiness indicator going down takes one pod out of
+rotation, which is recoverable; that is why the dependencies belong here.
+
+Every indicator of a probe is checked on each read, and they are checked together,
+so one slow dependency does not delay the answer about the others.
+
+A registered indicator cannot take a probe down. One that raises, one that does not
+answer within the check timeout, and one that answers with something that is not a
+result are each recorded as a down check under their own name, and the probe still
+reports on every other indicator. The failure is logged in full; what reaches the
+caller of the probe names only the kind of failure, because anything that can reach
+a probe reads its response.
+
+##### Methods
+
+- `register_liveness(self, indicator: HealthIndicator) -> None`
+  Register an indicator for a fault only a restart can clear.
+
+Registering a dependency here instead of on readiness is the mistake this
+method exists to be deliberate about: it turns an outage in something else into
+a restart of this process, which cannot fix it and loses everything in flight.
+- `register_readiness(self, indicator: HealthIndicator) -> None`
+  Register an indicator for something this process needs in order to serve.
+- `liveness(self) -> HealthReport`
+  Report whether the process is alive, consulting nothing about its lifecycle.
+
+Startup and drain are deliberately invisible here. A process that is still
+starting and a process that is draining are both alive, and reporting either as
+dead is what turns a rolling deploy into a crash loop.
+- `readiness(self) -> HealthReport`
+  Report whether this process should be sent traffic.
+
+Down until startup finishes, down again from the moment the process is asked to
+stop, and down whenever a dependency it needs in order to serve is down.
+
+#### `HealthStatus`
+
+```python
+class HealthStatus(StrEnum)
+```
+
+Defined in `bustan.health.indicators`.
+
+Whether one check, or a whole probe, is serving.
+
+Two values are the whole vocabulary because a probe is read by a machine that can
+only route traffic or withhold it, so any third state would have to be collapsed
+into one of these by whoever read it, and the collapse would be a guess. An
+indicator with more to say says it in its detail.
+
 #### `HostParam`
 
 Defined in `bustan.common.decorators.parameter`.
@@ -1270,6 +1459,58 @@ Makes a marker usable both bare (``Annotated[str, Body]``)
 and as a call (``Annotated[str, Body("field")]``).
 
 Current value: `Query`
+
+#### `ReadinessState`
+
+```python
+class ReadinessState
+```
+
+Defined in `bustan.health.readiness`.
+
+Where this process is in its own lifetime, as far as routing traffic goes.
+
+Two edges, and readiness is false outside the span between them.
+
+**Started.** Set by the application bootstrap hook, which runs after every module
+and provider has been initialized. Until then the process is alive but has not
+finished assembling itself, and traffic sent to it would be served by an
+application that is still being built.
+
+**Draining.** Set when the process is asked to stop. Nothing in the lifecycle
+records this on its own: a process that has been asked to stop is still fully
+initialized and is still finishing the requests it already accepted, while it must
+stop being sent new ones. Closing that gap is what this edge is for. The teardown
+hook sets it as a backstop, so a shutdown nobody announced still withdraws the
+process; a shutdown sequence that wants the process out of rotation *before* it
+stops serving has to say so earlier, which is what ``begin_drain`` is for.
+
+**The contract for whoever owns the shutdown sequence.** On a termination signal,
+call ``begin_drain`` first, before the teardown hooks run and before any request is
+refused, and only then wait for in-flight requests to finish. That order is the
+whole point: readiness has to go false while the process is still serving normally,
+so traffic is withdrawn from it by whatever routes traffic before it stops being
+able to accept any. Draining only as part of teardown would take the process out of
+rotation once it had already stopped serving, which is the outage this prevents.
+An application that does not provide this state has no readiness probe either, so a
+shutdown sequence that cannot resolve it has nothing to flip and drains without it.
+
+Both edges are one-way within a lifecycle, and neither survives one: teardown drops
+every instance the application built, so an application that is started again is
+served by a new state that has neither edge set.
+
+##### Methods
+
+- `(property) started`
+  Whether the application has finished starting up.
+- `(property) draining`
+  Whether this process has been asked to stop and wants no further traffic.
+- `begin_drain(self) -> None`
+  Record that the process is draining. Idempotent, and never reversed.
+- `on_application_bootstrap(self) -> None`
+  Record that startup reached the last stage the application runs.
+- `before_application_shutdown(self, signal: str | None) -> None`
+  Record that the process is going away, if nothing said so earlier.
 
 #### `Reflector`
 
