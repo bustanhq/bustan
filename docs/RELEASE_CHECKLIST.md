@@ -11,14 +11,22 @@ Use this checklist for every tagged release until the release workflow is fully 
 
 ## Validation
 
-1. Run `uv run python scripts/generate_api_reference.py --check`.
-2. Run `uv run python scripts/check_markdown_links.py`.
-3. Run `uv run ruff check .`.
-4. Run `uv run ty check src tests scripts`.
-5. Run `uv run pytest`.
-6. Run `uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml`.
-7. Run `uv build`.
-8. Run `uvx --from twine twine check dist/*`.
+Run the lockfile checks first. Every `uv run` below re-locks the project as a side effect,
+so a stale root lockfile repairs itself in place before any later command could see it,
+and the repair is silent.
+
+1. Run `uv lock --check`.
+2. Run `uv lock --check --project <example>` for each project directory under
+   [examples](../examples), or run the loop in step 2 of
+   [Prepare The Release Commit](#prepare-the-release-commit) with `--check` added.
+3. Run `uv run python scripts/generate_api_reference.py --check`.
+4. Run `uv run python scripts/check_markdown_links.py`.
+5. Run `uv run ruff check .`.
+6. Run `uv run ty check src tests scripts`.
+7. Run `uv run pytest`.
+8. Run `uv run pytest --cov=bustan --cov-report=term-missing --cov-report=xml`.
+9. Run `uv build`.
+10. Run `uvx --from twine twine check dist/*`.
 
 ## When To Cut
 
@@ -45,10 +53,45 @@ issues carry the classification labels the notes are grouped by.
 1. Compose the changelog entry from the milestone's closed issues, grouped by their
    classification labels. Every issue in the milestone appears, or the entry says why it
    does not.
-2. Set the version in [pyproject.toml](../pyproject.toml). It is the only place a version
-   is written down; nothing else in the repository repeats it.
-3. Land both on `main` through a pull request, reviewed like any other change. This is the
-   last point at which the release is reviewable, because a tag is not.
+2. Set the version in [pyproject.toml](../pyproject.toml) and then re-lock. The version is
+   written in `pyproject.toml` and repeated in every lockfile: `uv.lock` and
+   `examples/*/uv.lock`. That glob is the definition, not a count to memorise - each project
+   directory under [examples](../examples) is a standalone `uv` project that depends on
+   `bustan` by path, so its lockfile records the version too, and adding an example adds a
+   file that has to move with the release. Editing `pyproject.toml` alone leaves every
+   lockfile behind.
+
+   ```bash
+   uv lock
+   for manifest in examples/*/pyproject.toml; do
+     uv lock --project "$(dirname "$manifest")"
+   done
+   ```
+
+   The release commit therefore carries the changelog entry, `pyproject.toml`, and one
+   changed lockfile per project. `git status --porcelain` after the commands above lists
+   exactly what the commit must contain; a lockfile left out of it is a file left stale.
+
+3. Know which lockfile can fail a publish, because they are not equal. The root
+   [uv.lock](../uv.lock) is the only one
+   [publish.yml](../.github/workflows/publish.yml) reads: `uv lock --check` is its first gate
+   after checkout, ahead of the tag-versus-version comparison and ahead of the build. A stale
+   root lockfile therefore fails a tag that has already been pushed, which is the most
+   expensive place to find it - the run publishes nothing and leaves no GitHub release, but
+   the tag stands, and re-cutting means force-moving a pushed tag or burning a version
+   number. The example lockfiles are outside that workflow and cannot fail it.
+
+   Every lockfile is still worth updating, and none of them reaches `main` stale by accident.
+   [ci.yml](../.github/workflows/ci.yml) checks the root in its `Quality` job and the
+   examples in its `Example Execution` job, and both steps block, so a release pull request
+   that bumps the version without re-locking is red at review rather than after the tag. The
+   `pre-commit` hook in [lefthook.yml](../lefthook.yml) runs `uv lock --check` on the root
+   before that, so the same mistake usually fails at `git commit`. Beyond those gates,
+   `scripts/run_examples.py` rewrites the example lockfiles when it runs, so a stale one also
+   hands the next person an unexplained dirty tree.
+
+4. Land all of it on `main` through a pull request, reviewed like any other change. This is
+   the last point at which the release is reviewable, because a tag is not.
 
 ## Publishing Prerequisites
 
