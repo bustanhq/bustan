@@ -115,9 +115,13 @@ with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
 
 ### A Native Annotation Names A Role, Not A Class
 
-A parameter annotated with the transport's own request type is read as *the request object of whichever transport is serving*, not as that class. The framework matches the annotation structurally, and hands over `request.native_request` for the adapter actually in use.
+A parameter annotated with the transport's own request type is not read as that class. It is read as *the request object of whichever transport is serving*, and the framework decides whether an annotation qualifies **structurally**: the class must carry the whole of the internal native-request protocol, `stream` included.
 
-Under the Starlette adapter that is a Starlette `Request`, and the annotation above is exactly true. Under another adapter it is that adapter's own object, and the annotation is not:
+That test cuts both ways, and neither side is refused.
+
+An annotation that passes it is satisfied by the serving adapter's object, whatever that is. Under the Starlette adapter `starlette.requests.Request` passes and the annotation is exactly true; under the raw ASGI adapter the same annotation is satisfied by an `AsgiHttpRequest`, and it is not.
+
+An annotation that fails it is not treated as a request at all. `AsgiHttpRequest` itself fails - it has no `stream` method - so a handler naming the ASGI adapter's own request type is bound as an ordinary parameter, and every call to it is answered `400 Missing required query parameter 'request'`.
 
 ```python
 from typing import Any, cast
@@ -125,15 +129,19 @@ from typing import Any, cast
 from starlette.requests import Request
 
 from bustan import Controller, Get, Module, create_app
-from bustan.adapters.asgi import AsgiAdapter
+from bustan.adapters.asgi import AsgiAdapter, AsgiHttpRequest
 from bustan.testing import AsgiTestClient
 
 
 @Controller("/users")
 class UsersController:
-    @Get("/{user_id}")
-    def read_user(self, request: Request) -> dict[str, object]:
+    @Get("/passes")
+    def passes(self, request: Request) -> dict[str, object]:
         return {"handed": type(request).__name__, "is_starlette": isinstance(request, Request)}
+
+    @Get("/fails")
+    def fails(self, request: AsgiHttpRequest) -> dict[str, object]:
+        return {"path": request.path}
 
 
 @Module(controllers=[UsersController])
@@ -143,14 +151,19 @@ class AppModule:
 
 app = create_app(AppModule, adapter=lambda runtime: AsgiAdapter(lifespan=runtime.lifespan))
 with AsgiTestClient(cast(Any, app)) as client:
-    print(client.get("/users/7").json())
+    print(client.get("/users/passes").json())
+    failed = client.get("/users/fails")
+    print(failed.status_code, failed.json()["detail"])
 ```
 
 ```text
 {'handed': 'AsgiHttpRequest', 'is_starlette': False}
+400 Missing required query parameter 'request'
 ```
 
-Nothing refuses this, at startup or on the request. The handler is handed an object of a type its own annotation denies, and finds out only when it touches an attribute the other transport's object does not have. So a handler that names a transport's request type is making a claim about the deployment, not one the framework will check: write `HttpRequest` and reach for `request.native_request` where you genuinely need the transport's own object, which is the spelling that says what is happening.
+Nothing refuses either case, at startup or on the request. The first hands a handler an object of a type its own annotation denies, and it finds out on the first attribute the other transport's object does not have; the second turns every call into a `400` that names a query parameter the caller never heard of.
+
+So a handler that names a transport's request type is making a claim about the deployment rather than one the framework will check. Write `HttpRequest`, and reach for `request.native_request` where you genuinely need the transport's own object - the spelling that says what is actually happening.
 
 ## Response Control
 
