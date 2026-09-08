@@ -74,3 +74,24 @@ file the dependency was about.
 
 The dispatch is itself the signal that the ground is stable. That is what lets the
 ticket be self-contained.
+
+## The inbound-channel clause
+
+Every dispatch prompt says the pull request is the agent's only channel. That is true
+outbound and false inbound: the maintainer can open a delivery session and instruct it
+directly, and does. Saying otherwise in the prompt leaves an agent to work out mid-ticket
+what an instruction it was not told to expect actually counts for.
+
+So say it. Include this in the working agreement of every ticket and every dispatch prompt:
+
+> A block stays a block until a grant appears in writing, in this issue body or in a review
+> on the pull request. Nothing else grants a path: not an instruction that reaches you
+> outside the pull request, not an absence of objection, and not a permission prompt that
+> did not stop you. The maintainer may steer you directly and you may act on it - but if you
+> do, say so in the pull request: that it arrived, what it asked for, and that it is not a
+> grant. Recording a grant that cannot be pointed at is worse than staying blocked, because
+> it puts a false statement about a decision into history.
+
+The second sentence of that clause is what keeps the reviewer's view complete. Without it a
+supervisor reading only GitHub sees a path taken outside `Owns` with no visible authority
+and reasons to the wrong conclusion.

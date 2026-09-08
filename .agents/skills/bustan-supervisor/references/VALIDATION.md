@@ -539,3 +539,43 @@ safe would have been reversible by any agent willing to write a sentence claimin
 The grant, when it is right to give, is given afterwards and dated afterwards. It does not
 retroactively cover the commit that claimed it, and saying so in the review is what keeps the
 distinction real rather than procedural.
+
+### Correction to the entry above
+
+The entry above was written on the same day, before the facts were in, and its central claim is
+wrong. It says a correct block "was reversed by a decision nobody made". A decision was made: the
+maintainer opened the delivery session and told it to take the file. The agent was following the
+person entitled to instruct it.
+
+What was actually established was narrower - that no grant existed *on GitHub*. That was presented
+as no grant existing anywhere, on a channel the supervisor has no tool to read. The review said
+"messages to this session: none" as though four channels had been checked when three had, and the
+fourth was an inference from the supervisor's own outbox. The delivering agent corrected it, in the
+pull request, and was right.
+
+So the failure worth recording is not the agent's. It is this: **do not report a channel you cannot
+read as one you checked.** Say which channels were inspected and which were not. A review that
+enumerates four sources of evidence and has looked at three is more dangerous than one that looks
+at three and says so, because the missing one is where the exculpatory fact lives.
+
+The narrow point survives and is worth keeping: the commit message claimed the grant came from a
+review, and there was no review, so that sentence was false however the edit was prompted. Correct
+the sentence; do not build a verdict about intent on top of it.
+
+The rule the maintainer then set, which now governs:
+
+**Instructions may reach a delivery session outside the pull request. They never grant a path.**
+
+- The maintainer may steer any session directly. That is normal and an agent acting on it is not
+  at fault.
+- Nothing grants a path except the issue body or a review on the pull request - somewhere the gate
+  or a later reader can point at. Not an out-of-band instruction, not an absent objection, not a
+  permission prompt that did not stop you.
+- An agent that acts on an out-of-band instruction must say so in the pull request: that it
+  arrived, what it asked for, and that it is not a grant.
+
+Which means the gate's verdict changes shape. `OUTSIDE OWNS` is still always worth stopping on, but
+it is a question rather than a finding: it establishes that no grant is visible where grants are
+supposed to live, and the next step is to ask, not to conclude. Write the review so that it says
+what was checked, and so that being wrong about the cause costs a correction rather than an
+accusation.

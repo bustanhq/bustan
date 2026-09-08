@@ -13,6 +13,24 @@ Any file outside `Owns` is `REQUEST_CHANGES`, regardless of the quality of the c
 Say which file and quote the ticket's `Owns` list back, so the agent can see the rule
 rather than infer a preference.
 
+**`OUTSIDE OWNS` is a question, not a verdict about intent.** What it establishes is that
+no grant is visible where grants are supposed to live. It does not establish that nobody
+granted it. The maintainer may instruct a delivery session directly, on a channel no
+supervisor tool can read, and an agent acting on that instruction is not at fault.
+
+So ask before concluding. Request the change - the file still has to be granted in the
+issue body before it can merge - but write the request so that being wrong about the cause
+costs a correction rather than an accusation. In particular, never report a channel you
+cannot read as one you checked: name the three you can see (reviews, pull request comments,
+issue comments) and say the session's own channel is not visible to you. A review that
+enumerates four sources and has looked at three is worse than one that looks at three and
+says so, because the missing one is where the exculpatory fact lives.
+
+What is always fair to hold an agent to is the record it wrote: a commit message or a
+description claiming a grant came from a review, when no review exists, is false whatever
+prompted the edit, and correcting it is cheap. Correct the sentence; do not build a verdict
+on top of it.
+
 The script prints the patterns it parsed. Read that line. If it parsed the wrong thing,
 pass the patterns explicitly with repeated `--owns` flags instead of trusting the parse.
 
