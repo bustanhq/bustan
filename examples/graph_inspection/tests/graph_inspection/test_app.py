@@ -15,4 +15,4 @@ def test_graph_inspection_exposes_discovery_and_route_snapshot() -> None:
         "CatalogModule",
         "DiscoveryModule",
     ]
-    assert [entry["path"] for entry in routes] == ["/catalog-deliberately-wrong"]
+    assert [entry["path"] for entry in routes] == ["/catalog"]
