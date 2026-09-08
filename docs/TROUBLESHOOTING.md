@@ -172,11 +172,38 @@ Common fixes:
 - make sure path parameter names match the handler parameter names
 - send query values in a shape the annotation can coerce
 - send a JSON object when binding multiple body fields
-- keep body payload fields aligned with dataclass or Pydantic model fields
+- keep body payload fields aligned with dataclass or Pydantic model fields in name *and* in type: a required field the body omits, a key the model does not declare, and a value that is not the declared type are all refused, and the wording of each refusal is below
 - use `Annotated[..., Param | Query | Body | Header | ...]` when inference is ambiguous
 - avoid `*args` and `**kwargs` in controller handlers, which are refused as `uses unsupported variadic parameter`
 - `Could not resolve type hints for C.handler` means an annotation on the handler is not importable where the class is defined, the same condition as the annotation failures under `ProviderResolutionError`
 - `... requires an explicit binding marker in strict mode`, or `... is ambiguous in explicit mode` - `binding_mode="strict"` turns an inferred binding into a startup-time failure, which is the point of it; annotate the parameter with the marker you meant
+
+**A body that does not fit its model is refused, not repaired.** The caller sees `400` with the title `Bad Request`, and the `detail` opens with `Could not bind request body '<parameter>' to <Type>:` and then names what is wrong. The messages below were served by a handler taking `payload: Note`, where `Note` is a dataclass with `title: str`, `count: int`, `tags: list[str]` and `inner: Inner | None`, and `Inner` declares `depth: int`.
+
+**A field whose value is not its declared type is refused, and the message names the type it wanted.** Posting `{"title": "Ada", "count": "7"}`:
+
+```text
+Could not bind request body 'payload' to Note: field of the wrong type 'count' (wanted int)
+```
+
+**A problem inside a nested object or a list element is named where it sits.** The path in the message is the route to the offending value, not just the top-level field, so `inner.depth` is the `depth` key of the `inner` object and `tags[1]` is the second element of `tags`. Posting `{"title": "Ada", "count": 2, "inner": {"depth": "3"}}` and then `{"title": "Ada", "count": 2, "tags": ["a", 2]}`:
+
+```text
+Could not bind request body 'payload' to Note: field of the wrong type 'inner.depth' (wanted int)
+Could not bind request body 'payload' to Note: field of the wrong type 'tags[1]' (wanted str)
+```
+
+**Every problem in one body is answered in one response.** Missing fields, unexpected fields and wrong types are composed into a single sentence, so a `400` is the whole list rather than the first item on it and a caller repairs the body in one attempt instead of one deploy per problem. Posting `{"colour": "red", "count": "7"}`:
+
+```text
+Could not bind request body 'payload' to Note: missing required field 'title', unexpected field 'colour' and field of the wrong type 'count' (wanted int)
+```
+
+The `reason` field carries the same content for a caller that would rather parse than read: names within one kind of problem are separated by commas and the kinds by semicolons, so the body above also reports `missing required field: title; unexpected field: colour; field of the wrong type: count wanted int`.
+
+**A convertible mismatch is refused, not coerced.** `{"count": "7"}` for a field declared `int` is the `400` quoted above, not the number `7` handed to the handler. A query parameter would have coerced it, because a query string carries only text and reading `7` out of `"7"` is the only thing to do there. A JSON body carries real types, so a caller that had `7` and sent `"7"` made a mistake worth being told about. A reader migrating from 1.x meets this one first.
+
+**A `True` for a field declared `int` is refused**, even though `bool` is a subclass of `int` in Python. Posting `{"title": "Ada", "count": true}` is answered with the same `field of the wrong type 'count' (wanted int)` as the string was: a document that carried `true` carried no number, and the alternative is `true` arriving at arithmetic as the number one.
 
 By default, unhandled binding errors become HTTP `400` responses with structured `field` and `source` metadata.
 
