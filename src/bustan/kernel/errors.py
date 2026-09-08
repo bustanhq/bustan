@@ -166,6 +166,15 @@ class ConflictException(HttpException):
     title: ClassVar[str] = "Conflict"
 
 
+class ContentTooLargeException(HttpException):
+    """Raise to answer 413 when the request body is larger than the route accepts."""
+
+    status_code: ClassVar[int] = 413
+    problem_type: ClassVar[str] = "https://bustan.dev/problems/content-too-large"
+    code: ClassVar[str] = "content-too-large"
+    title: ClassVar[str] = "Content Too Large"
+
+
 class UnsupportedMediaTypeException(HttpException):
     """Raise to answer 415 when the body is in a format the handler cannot read."""
 
@@ -313,6 +322,7 @@ __all__ = (
     "AuthenticatorRegistryError",
     "BadGatewayException",
     "ConflictException",
+    "ContentTooLargeException",
     "ExportViolationError",
     "ForbiddenException",
     "GatewayTimeoutException",

@@ -16,6 +16,7 @@ from bustan.kernel.errors import (
     BadRequestException,
     BustanError,
     ConflictException,
+    ContentTooLargeException,
     ForbiddenException,
     GatewayTimeoutException,
     GuardRejectedError,
@@ -45,6 +46,12 @@ STATUS_CONTRACT: tuple[tuple[type[HttpException], int, str, str], ...] = (
         "method-not-allowed",
     ),
     (ConflictException, 409, "https://bustan.dev/problems/conflict", "conflict"),
+    (
+        ContentTooLargeException,
+        413,
+        "https://bustan.dev/problems/content-too-large",
+        "content-too-large",
+    ),
     (
         UnsupportedMediaTypeException,
         415,

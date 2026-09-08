@@ -79,6 +79,7 @@ from bustan.kernel.errors import (
     BadRequestException,
     BustanError,
     ConflictException,
+    ContentTooLargeException,
     ExportViolationError,
     ForbiddenException,
     GatewayTimeoutException,
@@ -493,6 +494,7 @@ def test_errors_module_exposes_the_supported_exception_types() -> None:
         "AuthenticatorRegistryError",
         "BadGatewayException",
         "ConflictException",
+        "ContentTooLargeException",
         "ExportViolationError",
         "ForbiddenException",
         "GatewayTimeoutException",
@@ -536,6 +538,7 @@ def test_errors_module_exposes_the_supported_exception_types() -> None:
     assert bustan_errors.AuthenticatorRegistryError is AuthenticatorRegistryError
     assert bustan_errors.BadGatewayException is BadGatewayException
     assert bustan_errors.ConflictException is ConflictException
+    assert bustan_errors.ContentTooLargeException is ContentTooLargeException
     assert bustan_errors.ForbiddenException is ForbiddenException
     assert bustan_errors.GatewayTimeoutException is GatewayTimeoutException
     assert bustan_errors.HttpException is HttpException

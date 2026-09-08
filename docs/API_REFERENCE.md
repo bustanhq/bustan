@@ -1964,6 +1964,16 @@ Defined in `bustan.kernel.errors`.
 
 Raise to answer 409 when the request contradicts the resource's current state.
 
+#### `ContentTooLargeException`
+
+```python
+class ContentTooLargeException(HttpException)
+```
+
+Defined in `bustan.kernel.errors`.
+
+Raise to answer 413 when the request body is larger than the route accepts.
+
 #### `ExportViolationError`
 
 ```python
