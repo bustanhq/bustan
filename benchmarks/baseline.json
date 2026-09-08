@@ -14,18 +14,18 @@
     "system": "Linux"
   },
   "medians_seconds": {
-    "bench_calibration": 0.000848,
-    "bench_container_resolution": 2.399e-05,
-    "bench_pipeline_route": 0.0009117,
-    "bench_request_scoped_chain": 0.000977,
-    "bench_simple_route": 0.0008326
+    "bench_calibration": 0.0007767,
+    "bench_container_resolution": 2.391e-05,
+    "bench_pipeline_route": 0.0009339,
+    "bench_request_scoped_chain": 0.001015,
+    "bench_simple_route": 0.0008672
   },
   "passes": 8,
   "ratios": {
-    "bench_container_resolution": 0.02838,
-    "bench_pipeline_route": 1.07157,
-    "bench_request_scoped_chain": 1.1602,
-    "bench_simple_route": 0.96833
+    "bench_container_resolution": 0.03101,
+    "bench_pipeline_route": 1.19651,
+    "bench_request_scoped_chain": 1.30045,
+    "bench_simple_route": 1.13868
   },
   "schema": 1,
   "statistic": "median",

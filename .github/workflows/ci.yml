@@ -470,9 +470,40 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # TEMPORARY, to be removed before this pull request is reviewed. The gate compares
+      # ratios so that the capture machine does not have to be the gate machine; whether
+      # that holds is a claim about this runner, and this step is how it gets measured
+      # rather than assumed. Runs after the gate so that overwriting baseline.json in the
+      # workspace cannot affect the verdict above.
+      - name: Capture a baseline on this runner
+        run: |
+          for pass in 3 4 5 6 7 8 9 10; do
+            uv run pytest -q --benchmark-json=".benchmark-results/capture-$pass.json" > /dev/null
+          done
+          uv run python gate.py --write-baseline \
+            --result .benchmark-results/capture-3.json \
+            --result .benchmark-results/capture-4.json \
+            --result .benchmark-results/capture-5.json \
+            --result .benchmark-results/capture-6.json \
+            --result .benchmark-results/capture-7.json \
+            --result .benchmark-results/capture-8.json \
+            --result .benchmark-results/capture-9.json \
+            --result .benchmark-results/capture-10.json
+          cat baseline.json
+          {
+            echo '### Baseline captured on this runner'
+            echo
+            echo '```json'
+            cat baseline.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # include-hidden-files, because the results directory is dot-prefixed to keep it out
+      # of the way locally and this action skips hidden paths by default.
       - name: Upload the benchmark results
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-results
           path: benchmarks/.benchmark-results/
+          include-hidden-files: true
