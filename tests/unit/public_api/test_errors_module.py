@@ -35,6 +35,8 @@ from bustan.kernel.errors import (
     UnprocessableEntityException,
     UnsupportedMediaTypeException,
 )
+from bustan.runtime.execution import RequestTimeoutError
+from bustan.runtime.params import RequestBodyTooLargeError
 
 
 def test_errors_module_exposes_the_supported_exception_types() -> None:
@@ -62,6 +64,8 @@ def test_errors_module_exposes_the_supported_exception_types() -> None:
         "BadRequestException",
         "ParameterBindingError",
         "ProviderResolutionError",
+        "RequestBodyTooLargeError",
+        "RequestTimeoutError",
         "RouteDefinitionError",
         "ServiceUnavailableException",
         "TooManyRequestsException",
@@ -81,6 +85,8 @@ def test_errors_module_exposes_the_supported_exception_types() -> None:
     assert bustan_errors.ModuleCycleError is ModuleCycleError
     assert bustan_errors.ParameterBindingError is ParameterBindingError
     assert bustan_errors.ProviderResolutionError is ProviderResolutionError
+    assert bustan_errors.RequestBodyTooLargeError is RequestBodyTooLargeError
+    assert bustan_errors.RequestTimeoutError is RequestTimeoutError
     assert bustan_errors.RouteDefinitionError is RouteDefinitionError
     assert bustan_errors.BustanError is BustanError
     assert bustan_errors.AuthenticationRequiredError is AuthenticationRequiredError

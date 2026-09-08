@@ -32,6 +32,8 @@ from .kernel.errors import (
     UnprocessableEntityException,
     UnsupportedMediaTypeException,
 )
+from .runtime.execution import RequestTimeoutError
+from .runtime.params import RequestBodyTooLargeError
 
 __all__ = (
     "AuthenticationRequiredError",
@@ -57,6 +59,8 @@ __all__ = (
     "BadRequestException",
     "ParameterBindingError",
     "ProviderResolutionError",
+    "RequestBodyTooLargeError",
+    "RequestTimeoutError",
     "RouteDefinitionError",
     "ServiceUnavailableException",
     "TooManyRequestsException",

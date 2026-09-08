@@ -149,6 +149,7 @@ from .pipeline import (
 )
 from .pipeline.decorators import UseFilters, UseGuards, UseInterceptors, UsePipes
 from .pipeline.middleware import Middleware, MiddlewareConsumer
+from .runtime.params import RequestLimits
 from .runtime.versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType
 from .security import CorsOptions, SkipThrottle, ThrottlerGuard, ThrottlerModule, ThrottlerStorage
 from .security.throttler import ThrottleState
@@ -253,6 +254,7 @@ __all__ = (
     "Reflector",
     "REQUEST",
     "RESPONSE",
+    "RequestLimits",
     "RequestTracer",
     "RouteDefinitionError",
     "Scope",
