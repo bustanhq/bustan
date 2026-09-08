@@ -144,3 +144,27 @@ spend the rest of your time preventing.
 
 Merge the pull request that meets its criteria, and file the rest as a follow-up naming
 the pull request that introduced it and the criterion it undermines.
+
+## Say a partial grant's refusal as often as you say its grant
+
+A blocked pull request asked for two things. One was safe and was granted; the other named
+two files another ticket had open, so it was withheld until that ticket merged. The agent
+had already scheduled its own check-in, and that check-in told it to do both the moment a
+review arrived. It did not. It took the granted half, waited, and took the second half five
+minutes after the release, merging the base branch first as the review asked.
+
+The review is why. It said the deferral three times, in three different registers: a heading
+that read "granted, but not yet", a sentence saying which files were in another agent's hands
+and that "probably would merge" is what file ownership exists to avoid, and a closing
+instruction to wait for a word. A blind agent reconciling a review against its own stale
+prompt has only the review's text to weigh, and one mention weighs about as much as the
+sentence next to it.
+
+So when a review grants part of what a block asked for, give the withheld part the same
+prominence as the granted part - its own heading, its reason, and the condition that lifts
+it. A refusal folded into a subordinate clause after two paragraphs of grant is a refusal the
+reader has already stopped expecting.
+
+The counter-case is the one that makes this worth writing down rather than filing as luck:
+the same agent's self-scheduled check-in was, at that moment, a second instruction telling it
+to proceed. Nothing in the harness resolved the conflict. The text did.
