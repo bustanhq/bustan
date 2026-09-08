@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, replace
+from typing import cast
 
 from ...common.types import ProviderScope
 from ..errors import (
@@ -55,9 +57,9 @@ def expand_module_input(
             )
 
         merged = ModuleMetadata(
-            imports=tuple(base_metadata.imports) + tuple(module_input.imports),
-            controllers=tuple(base_metadata.controllers) + tuple(module_input.controllers),
-            providers=tuple(base_metadata.providers) + tuple(module_input.providers),
+            imports=_overlaid_entries(base_metadata.imports, module_input.imports),
+            controllers=_overlaid_entries(base_metadata.controllers, module_input.controllers),
+            providers=_overlaid_providers(base_metadata.providers, module_input.providers),
             exports=tuple(
                 dict.fromkeys(tuple(base_metadata.exports) + tuple(module_input.exports))
             ),
@@ -78,6 +80,75 @@ def expand_module_input(
         module=module_input,
         metadata=base_metadata,
     )
+
+
+def _overlaid_entries[EntryT](
+    base: tuple[EntryT, ...], overlay: tuple[EntryT, ...]
+) -> tuple[EntryT, ...]:
+    """Return a base field extended by an overlay, dropping what the base already has.
+
+    An overlay naming an entry the base already names is describing one entry, not a
+    second copy of it, so the base keeps its place and the overlay adds only what is
+    new. A field that repeats an entry within the base alone, or within the overlay
+    alone, is still a mistake and is still refused when the module is validated.
+    """
+
+    declared = {_entry_identity(entry) for entry in base}
+    return base + tuple(entry for entry in overlay if _entry_identity(entry) not in declared)
+
+
+def _entry_identity(entry: object) -> object:
+    """Return what tells one metadata entry from another in the same field."""
+
+    # A dynamic registration is a value, and two equal registrations are one module, so
+    # the object itself is the identity that the module graph keys them by.
+    return id(entry) if isinstance(entry, DynamicModule) else entry
+
+
+def _overlaid_providers(
+    base: tuple[object, ...], overlay: tuple[object, ...]
+) -> tuple[object, ...]:
+    """Return the base providers with any token the overlay redeclares replaced by it.
+
+    This is what lets a base module declare a default and a dynamic registration replace
+    it: the overlay wins, and the base entry is dropped rather than left to collide. A
+    multi-provider token is left alone, because a second declaration of one of those adds
+    a component to a slot that runs them all rather than replacing anything.
+    """
+
+    replaced = {
+        identity
+        for entry in overlay
+        if (identity := _replaceable_token_identity(entry)) is not None
+    }
+    if not replaced:
+        return base + overlay
+    return (
+        tuple(entry for entry in base if _replaceable_token_identity(entry) not in replaced)
+        + overlay
+    )
+
+
+def _replaceable_token_identity(entry: object) -> TokenKey | None:
+    """Return the token an overlay entry replaces, or ``None`` when it replaces nothing.
+
+    Reading the token here is deliberately forgiving: an entry this cannot read is left
+    in place for the normalizer to refuse by name, so a malformed provider is reported
+    as the malformed provider it is rather than by silently failing to match.
+    """
+
+    if inspect.isclass(entry):
+        token: object = entry
+    elif isinstance(entry, dict) and "provide" in entry:
+        token = cast("dict[str, object]", entry)["provide"]
+    else:
+        return None
+    try:
+        identity = token_identity(token)
+        hash(identity)
+    except TypeError:
+        return None
+    return None if identity in _MULTI_PROVIDER_TOKENS_BY_IDENTITY else identity
 
 
 def validate_module_compiled(

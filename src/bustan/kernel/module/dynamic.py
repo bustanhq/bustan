@@ -32,6 +32,13 @@ class DynamicModule:
     it and two sets of their singletons. Constructing one therefore returns the
     registration that already describes those values whenever there is one, so identity
     follows the declaration rather than the order the objects were created in.
+
+    What the overlay declares wins over the base module. A provider here replaces the
+    base module's provider for the same token, which is what lets a base module declare
+    a default and a registration configure it away; a global pipeline token is the one
+    exception, because a second declaration of one of those adds a component to a slot
+    that runs them all. An import or a controller the base module already names is one
+    entry rather than two, so naming it again here adds nothing and is not an error.
     """
 
     module: type[object]
