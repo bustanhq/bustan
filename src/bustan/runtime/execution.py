@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from functools import partial
 from inspect import iscoroutinefunction
@@ -15,6 +17,7 @@ from anyio import CapacityLimiter, move_on_after, to_thread
 from ..contracts import HttpRequest, HttpResponse, RouteHandler
 from ..kernel.errors import BustanError, GuardRejectedError
 from ..kernel.ioc.container import Container
+from ..kernel.ioc.scopes import BoundedInstanceStore
 from ..kernel.module.dynamic import ModuleKey
 from ..observability.observability import ObservabilityHooks
 from ..pipeline.context import ExecutionContext
@@ -50,6 +53,13 @@ RuntimeResponse = CoercedResponse
 RouteExceptionHandler = Callable[[HttpRequest, Exception], Awaitable[RuntimeResponse]]
 _EXCEPTION_RESPONSE_PLAN = ResponsePlan(declared_type=None, default_status_code=200)
 _LOGGER = logging.getLogger(__name__)
+# The durable partitions cached by the request being decided in this context. A
+# refusal undoes its own work and no one else's, and the store is shared between
+# every request in flight, so each partition is attributed to whoever cached it
+# rather than being inferred from what the store held when the request started.
+_CREATED_DURABLE_PARTITIONS: ContextVar[set[object] | None] = ContextVar(
+    "bustan_created_durable_partitions", default=None
+)
 _INTERNAL_SERVER_ERROR_DETAIL = "Internal server error"
 # Reserved on the application object for the limits it serves requests under, following
 # the framework's convention that a name it owns on someone else's namespace says so.
@@ -298,7 +308,7 @@ async def execute_http_route(
     context: ExecutionContext | None = None
     filters: tuple[ExceptionFilter, ...] | None = None
     observation = None
-    durable_snapshot: frozenset[object] | None = None
+    created_durable_partitions: set[object] | None = None
 
     try:
         # The clock covers the whole of the request the application pays for, not
@@ -320,26 +330,27 @@ async def execute_http_route(
             )
             observation = observability.start_request(context)
 
-            durable_snapshot = _durable_partitions(container, execution_plan)
             # Guards decide whether the request is served at all, so they and the filters
             # that render their verdict are the only components resolved before that
             # decision. Everything the request would consume once it is admitted - the
             # controller, whatever it injects, the pipes and the interceptors - is built
             # after, so a refused caller pays for none of it and leaves nothing behind.
-            gate = await factory.resolve_pipeline_async(
-                PipelinePlan(
-                    guards=execution_plan.pipeline_plan.guards,
-                    filters=execution_plan.pipeline_plan.filters,
-                ),
-                module=execution_plan.module_key,
-                request=request,
-            )
-            filters = gate.filters
+            with _durable_partitions_created(container, execution_plan) as created:
+                created_durable_partitions = created
+                gate = await factory.resolve_pipeline_async(
+                    PipelinePlan(
+                        guards=execution_plan.pipeline_plan.guards,
+                        filters=execution_plan.pipeline_plan.filters,
+                    ),
+                    module=execution_plan.module_key,
+                    request=request,
+                )
+                filters = gate.filters
 
-            await run_guards(context, gate.guards)
+                await run_guards(context, gate.guards)
             # The request was admitted, so anything cached from here on is work it asked
             # for and is not undone if a later stage fails.
-            durable_snapshot = None
+            created_durable_partitions = None
 
             controller_instance = await factory.instantiate_async(
                 execution_plan.controller_cls,
@@ -415,7 +426,7 @@ async def execute_http_route(
         raise RequestTimeoutError(f"The request exceeded the {limits.timeout_seconds} second limit")
     except Exception as exc:
         if isinstance(exc, GuardRejectedError):
-            _evict_durable_partitions(container, durable_snapshot)
+            _evict_durable_partitions(container, created_durable_partitions)
         response = await _render_failure(
             exc,
             context=context,
@@ -635,45 +646,83 @@ async def _global_filters(
     return resolved.filters
 
 
-def _durable_partitions(
+class _AttributedDurableStore(BoundedInstanceStore):
+    """A durable store that tells the request being decided which partitions it cached.
+
+    A write is reported whether it added a partition or replaced one, because the
+    instance the store held under that key is gone either way. Nothing is reported
+    when no request is being decided in the writer's context, which is every request
+    already admitted and every route that declares no guard.
+    """
+
+    __slots__ = ()
+
+    def __setitem__(self, key: Any, instance: object) -> None:
+        created = _CREATED_DURABLE_PARTITIONS.get()
+        if created is not None:
+            created.add(key)
+        super().__setitem__(key, instance)
+
+
+def _attribute_durable_writes(container: Container) -> None:
+    """Make a container's durable store report every partition it caches.
+
+    The store is left in place and its class rebound, rather than a reporting store
+    being put in the container's stead: every resolution already holds this object,
+    so an exchange would lose whatever a request in flight wrote to the old one.
+    """
+
+    store = container.scope_manager.durable_instances
+    if type(store) is not _AttributedDurableStore:
+        store.__class__ = _AttributedDurableStore
+
+
+@contextmanager
+def _durable_partitions_created(
     container: Container,
     execution_plan: ExecutionPlan,
-) -> frozenset[object] | None:
-    """Record the durable partitions that already existed, for a route that can refuse.
+) -> Iterator[set[object] | None]:
+    """Collect the durable partitions a route that can refuse creates while deciding.
 
     Only a guard refuses a request, so a route that declares none can leave nothing
-    behind to undo and is not made to walk the cache on every call.
+    behind to undo and is not made to record anything.
     """
 
     if not execution_plan.pipeline_plan.guards:
-        return None
-    return frozenset(container.scope_manager.durable_instances)
+        yield None
+        return
+
+    _attribute_durable_writes(container)
+    created: set[object] = set()
+    token = _CREATED_DURABLE_PARTITIONS.set(created)
+    try:
+        yield created
+    finally:
+        _CREATED_DURABLE_PARTITIONS.reset(token)
 
 
 def _evict_durable_partitions(
     container: Container,
-    snapshot: frozenset[object] | None,
+    created: set[object] | None,
 ) -> None:
-    """Drop the durable partitions that appeared while a refused request was decided.
+    """Drop the durable partitions a refused request created while it was decided.
 
     A durable instance is cached under a key derived from the request, so a caller the
     application then refuses would otherwise decide what the cache holds: it names a
     partition, the partition is built and kept, and a bounded store fills with entries
     no admitted caller asked for.
 
-    The store is shared, and a partition another request created in the same window is
-    dropped with them. That costs a rebuild and nothing else, because whoever created
-    it already holds the instance; keeping a refused caller's entry instead would cost
-    the cache.
+    What goes is what this request cached and nothing else. The store is shared, so a
+    partition that appeared while this request was being decided but was cached by
+    another one stays: it is that request's work, and that request is being served.
     """
 
-    if snapshot is None:
+    if not created:
         return
 
     durable_instances = container.scope_manager.durable_instances
-    for key in tuple(durable_instances):
-        if key not in snapshot:
-            durable_instances.pop(key, None)
+    for key in created:
+        durable_instances.pop(key, None)
 
 
 def _with_limit_filter(filters: tuple[ExceptionFilter, ...]) -> tuple[ExceptionFilter, ...]:
