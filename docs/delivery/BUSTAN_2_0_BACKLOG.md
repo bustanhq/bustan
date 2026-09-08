@@ -257,7 +257,7 @@ deliberately deferred with that decision written down.
 `run_repros.py` is the objective referee for the whole programme, and it lives in the
 repository, so both the agent and the supervisor run the same check. When a ticket
 claims a finding, its repro flipping to `FIXED` is the evidence; when the supervisor
-reviews `main`, the same harness catches anything a merge broke. From T-503 it is a
+reviews `main`, the same harness catches anything a merge broke. From T-500 it is a
 blocking CI job, at which point the review gate for regressions becomes automatic and
 the supervisor's judgement is spent on design rather than on detection.
 
@@ -1364,7 +1364,7 @@ carried by T-001, where the lint sweep surfaces it.
 
 `run_repros.py --expect-fixed` is the arbiter, not that table. A finding is closed
 when its script reports `FIXED` and a regression test has replaced it. The harness
-runs advisory from T-002 and blocking from T-503, so drift between this plan and
+runs advisory from T-002 and blocking from T-500, so drift between this plan and
 reality surfaces immediately.
 
 ## Risks

@@ -247,14 +247,15 @@ configuration is overlaid from. [CLI.md](CLI.md#bustan-config) says the rest.
 
 ## Gating A Release
 
-The CLI answers questions a deployment pipeline can act on. Each exits `1` when it has
-findings, so each can be a step:
+The CLI answers questions a deployment pipeline can act on. `doctor` exits `1` when it
+has findings, so it can be a step that fails the build; the route commands always exit
+`0` and answer in their output, so a pipeline that gates on the route surface compares
+that output itself:
 
 | Command | Question |
 | --- | --- |
 | `bustan doctor` | Does this codebase still contain constructs 2.0 changed? |
 | `bustan routes snapshot` / `bustan routes diff` | What changed in the served route surface since the last release? |
-| `bustan governance release-gate` | Does the route diff and adapter conformance satisfy the policy? |
 
 Commit the route snapshot and diff each candidate against it, and an unintended route
 removal is caught before it reaches a caller rather than after.
