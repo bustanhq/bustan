@@ -12,10 +12,19 @@ from __future__ import annotations
 import collections.abc
 import inspect
 import sys
-from dataclasses import dataclass, is_dataclass
+from dataclasses import InitVar, dataclass, is_dataclass
 from enum import StrEnum
 from types import NoneType, UnionType
-from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin, get_type_hints
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from ..common.decorators.parameter import (
     _BodyMarker,
@@ -536,7 +545,7 @@ async def _bind_parameter(
             body_map = cast(dict[str, object], request_body)
             if lookup_name in body_map:
                 return (
-                    _coerce_value(
+                    _bind_body_value(
                         body_map[lookup_name],
                         annotation=binding.annotation,
                         parameter_name=binding.name,
@@ -546,7 +555,7 @@ async def _bind_parameter(
                 )
             if binding.name in binding_plan.inferred_parameter_names:
                 return (
-                    _coerce_value(
+                    _bind_body_value(
                         _extract_body_value(binding_plan, binding, request_body),
                         annotation=binding.annotation,
                         parameter_name=binding.name,
@@ -555,7 +564,7 @@ async def _bind_parameter(
                     request_body,
                 )
             return (
-                _coerce_value(
+                _bind_body_value(
                     request_body,
                     annotation=binding.annotation,
                     parameter_name=binding.name,
@@ -567,7 +576,7 @@ async def _bind_parameter(
         if binding.name in binding_plan.inferred_parameter_names:
             body_value = _extract_body_value(binding_plan, binding, request_body)
         return (
-            _coerce_value(
+            _bind_body_value(
                 body_value,
                 annotation=binding.annotation,
                 parameter_name=binding.name,
@@ -954,20 +963,65 @@ def _is_pydantic_model_type(annotation: object) -> bool:
 
 
 @dataclass(frozen=True, slots=True)
+class _FieldTypeMismatch:
+    """One place inside a body whose value is not of the type declared for it.
+
+    ``path`` locates the value within the body the caller sent: a bare name for a
+    field of the body itself, a dotted name for one inside a nested object, and an
+    index for an element of an array. ``wanted`` is the declared type as it reads.
+    """
+
+    path: str
+    wanted: str
+
+
+@dataclass(frozen=True, slots=True)
 class _BodyShapeMismatch:
-    """The keyword names a mapping omits and the ones the target does not declare."""
+    """Every way one body fails the target it is being bound to.
+
+    The three sets are the three kinds of problem a single body can have at the same
+    time: the keyword names it omits, the ones the target does not declare, and the
+    values whose type is not the declared one. They are carried together because a
+    caller who has all three should learn all three from one answer.
+    """
 
     missing: tuple[str, ...]
     unexpected: tuple[str, ...]
+    mistyped: tuple[_FieldTypeMismatch, ...] = ()
 
     @property
     def found(self) -> bool:
-        """Whether either set holds a name, so a composed message is owed."""
-        return bool(self.missing or self.unexpected)
+        """Whether any set holds an entry, so a composed message is owed."""
+        return bool(self.missing or self.unexpected or self.mistyped)
+
+    def merged_with(self, other: _BodyShapeMismatch) -> _BodyShapeMismatch:
+        """Fold a mismatch found elsewhere in the same body into this one."""
+        return _BodyShapeMismatch(
+            missing=self.missing + other.missing,
+            unexpected=self.unexpected + other.unexpected,
+            mistyped=self.mistyped + other.mistyped,
+        )
+
+
+_NO_MISMATCH = _BodyShapeMismatch(missing=(), unexpected=())
+
+
+def _child_path(path: str, name: str) -> str:
+    """Name a field of a nested object relative to the body the caller sent."""
+
+    return f"{path}.{name}" if path else name
+
+
+def _mistyped(path: str, wanted: str) -> _BodyShapeMismatch:
+    """Report one value that is not of its declared type."""
+
+    return _BodyShapeMismatch(
+        missing=(), unexpected=(), mistyped=(_FieldTypeMismatch(path=path, wanted=wanted),)
+    )
 
 
 def _body_shape_mismatch(
-    annotation: type[object], raw_value_mapping: dict[str, object]
+    annotation: type[object], raw_value_mapping: dict[str, object], *, path: str = ""
 ) -> _BodyShapeMismatch:
     """Compare a mapping's keys against the keyword parameters a target declares.
 
@@ -984,7 +1038,7 @@ def _body_shape_mismatch(
     try:
         parameters = inspect.signature(annotation).parameters
     except (TypeError, ValueError):
-        return _BodyShapeMismatch(missing=(), unexpected=())
+        return _NO_MISMATCH
 
     keyword_parameters = {
         name: parameter
@@ -997,47 +1051,415 @@ def _body_shape_mismatch(
     )
     return _BodyShapeMismatch(
         missing=tuple(
-            name
+            _child_path(path, name)
             for name, parameter in keyword_parameters.items()
             if parameter.default is inspect.Parameter.empty and name not in raw_value_mapping
         ),
         unexpected=(
             ()
             if collects_surplus
-            else tuple(key for key in raw_value_mapping if key not in keyword_parameters)
+            else tuple(
+                _child_path(path, key) for key in raw_value_mapping if key not in keyword_parameters
+            )
         ),
     )
 
 
-def _mismatch_clauses(mismatch: _BodyShapeMismatch) -> tuple[tuple[str, tuple[str, ...]], ...]:
+def _mismatch_clauses(
+    mismatch: _BodyShapeMismatch, *, quoted: bool
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Label each kind of problem the body has and render the names it applies to.
+
+    ``quoted`` picks the rendering: the prose message quotes each name, while the
+    machine-readable reason leaves it bare so a caller can split the string.
+    """
+
+    def render(name: str) -> str:
+        return repr(name) if quoted else name
+
+    def wrong_type(entry: _FieldTypeMismatch) -> str:
+        if quoted:
+            return f"{render(entry.path)} (wanted {entry.wanted})"
+        return f"{entry.path} wanted {entry.wanted}"
+
     clauses: list[tuple[str, tuple[str, ...]]] = []
     if mismatch.missing:
-        clauses.append(("missing required field", mismatch.missing))
+        clauses.append(
+            (
+                _plural("missing required field", "missing required fields", mismatch.missing),
+                tuple(render(name) for name in mismatch.missing),
+            )
+        )
     if mismatch.unexpected:
-        clauses.append(("unexpected field", mismatch.unexpected))
+        clauses.append(
+            (
+                _plural("unexpected field", "unexpected fields", mismatch.unexpected),
+                tuple(render(name) for name in mismatch.unexpected),
+            )
+        )
+    if mismatch.mistyped:
+        clauses.append(
+            (
+                _plural("field of the wrong type", "fields of the wrong type", mismatch.mistyped),
+                tuple(wrong_type(entry) for entry in mismatch.mistyped),
+            )
+        )
     return tuple(clauses)
 
 
-def _describe_mismatch(mismatch: _BodyShapeMismatch) -> str:
-    """Render both sets as one sentence, so a caller repairs the body in one attempt."""
+def _plural(singular: str, plural: str, entries: tuple[object, ...]) -> str:
+    """Pick the label that agrees with how many entries the clause names."""
 
-    return " and ".join(
-        f"{label}{'' if len(names) == 1 else 's'} {', '.join(repr(name) for name in names)}"
-        for label, names in _mismatch_clauses(mismatch)
+    return singular if len(entries) == 1 else plural
+
+
+def _describe_mismatch(mismatch: _BodyShapeMismatch) -> str:
+    """Render every set as one sentence, so a caller repairs the body in one attempt."""
+
+    clauses = tuple(
+        f"{label} {', '.join(names)}" for label, names in _mismatch_clauses(mismatch, quoted=True)
     )
+    if len(clauses) < 3:
+        return " and ".join(clauses)
+    return f"{', '.join(clauses[:-1])} and {clauses[-1]}"
 
 
 def _mismatch_reason(mismatch: _BodyShapeMismatch) -> str:
-    """Render both sets for the machine-readable field, kept parseable.
+    """Render every set for the machine-readable field, kept parseable.
 
-    Names within one set are separated by a comma and the two sets by a semicolon, so
-    the two levels stay distinguishable to a caller that splits the string.
+    Names within one set are separated by a comma and the sets by a semicolon, so the
+    two levels stay distinguishable to a caller that splits the string.
     """
 
     return "; ".join(
-        f"{label}{'' if len(names) == 1 else 's'}: {', '.join(names)}"
-        for label, names in _mismatch_clauses(mismatch)
+        f"{label}: {', '.join(names)}" for label, names in _mismatch_clauses(mismatch, quoted=False)
     )
+
+
+def _mismatch_error(
+    mismatch: _BodyShapeMismatch,
+    *,
+    annotation: object,
+    parameter_name: str,
+    source_description: str,
+) -> ParameterBindingError:
+    """Compose one refusal naming every problem the body has."""
+
+    return _parameter_error(
+        f"Could not bind {source_description} {parameter_name!r} to "
+        f"{_display_annotation(annotation)}: {_describe_mismatch(mismatch)}",
+        field=parameter_name,
+        source=source_description,
+        reason=_mismatch_reason(mismatch),
+    )
+
+
+# The types a JSON document carries itself. A value declared as one of these arrived
+# with a representation of its own, so one of another type is the caller's mistake and
+# is refused rather than converted; every other declared type is still built from what
+# arrived, because there a string or a number is the only representation the caller had.
+_JSON_SCALARS = (bool, int, float, str)
+
+
+@dataclass(frozen=True, slots=True)
+class _BodyPosition:
+    """Where a value sits in a request body, and which parameter that body is bound to.
+
+    It travels with the value into whatever the body nests, so one refusal can name
+    both the parameter being bound and the part of the document that did not fit.
+    """
+
+    parameter_name: str
+    source_description: str
+    path: str = ""
+
+    def field(self, name: str) -> _BodyPosition:
+        """Where a named field of the object at this position sits."""
+        return self._at(_child_path(self.path, name))
+
+    def item(self, index: int) -> _BodyPosition:
+        """Where one element of the array at this position sits."""
+        return self._at(f"{self.path}[{index}]")
+
+    def entry(self, key: str) -> _BodyPosition:
+        """Where one value of the mapping at this position sits."""
+        return self._at(f"{self.path}[{key!r}]")
+
+    def _at(self, path: str) -> _BodyPosition:
+        return _BodyPosition(
+            parameter_name=self.parameter_name,
+            source_description=self.source_description,
+            path=path,
+        )
+
+
+def _fits_json_scalar(raw_value: object, annotation: object) -> bool:
+    """Whether a decoded JSON value already is what a scalar declaration names.
+
+    ``bool`` is a subclass of ``int`` in Python and is excluded from both number
+    checks: a document that carried ``true`` did not carry a number, and a handler
+    annotated ``int`` that is handed ``True`` is the confusion this check exists to
+    stop. An ``int`` is accepted where ``float`` is declared, because a JSON document
+    has one number literal and common encoders write a whole float without its
+    fraction; it is passed on as it arrived rather than widened, since an integer
+    outside the range a float holds exactly would lose digits on the way through.
+    """
+
+    if annotation is bool:
+        return isinstance(raw_value, bool)
+    if annotation is int:
+        return isinstance(raw_value, int) and not isinstance(raw_value, bool)
+    if annotation is float:
+        return isinstance(raw_value, (float, int)) and not isinstance(raw_value, bool)
+    return isinstance(raw_value, str)
+
+
+def _bind_body_value(
+    raw_value: object,
+    *,
+    annotation: object,
+    parameter_name: str,
+    source_description: str,
+) -> object:
+    """Bind a request body to the type the handler declared for it, or refuse it.
+
+    A body is the one parameter source that arrives already typed, so a value of the
+    wrong type is answered rather than reinterpreted. The refusal names every problem
+    the same body has at once, so that a caller repairs it in one attempt.
+    """
+
+    at = _BodyPosition(parameter_name=parameter_name, source_description=source_description)
+    bound_value, mismatch = _bind_body_field(raw_value, annotation=annotation, at=at)
+    if not mismatch.found:
+        return bound_value
+
+    root = _root_mismatch(mismatch)
+    if root is not None:
+        # Nothing inside the body was reached, so there is no field name to compose
+        # with and the refusal reads as it does for every other parameter source.
+        raise _parameter_error(
+            f"Could not bind {source_description} {parameter_name!r} to {root.wanted}",
+            field=parameter_name,
+            source=source_description,
+            reason=f"{root.wanted} expected",
+        )
+    raise _mismatch_error(
+        mismatch,
+        annotation=annotation,
+        parameter_name=parameter_name,
+        source_description=source_description,
+    )
+
+
+def _root_mismatch(mismatch: _BodyShapeMismatch) -> _FieldTypeMismatch | None:
+    """The whole body being of the wrong type, when that is the only problem found."""
+
+    if mismatch.missing or mismatch.unexpected or len(mismatch.mistyped) != 1:
+        return None
+    entry = mismatch.mistyped[0]
+    return entry if entry.path == "" else None
+
+
+def _bind_body_field(
+    raw_value: object, *, annotation: object, at: _BodyPosition
+) -> tuple[object, _BodyShapeMismatch]:
+    """Bind one decoded body value to its declared type, collecting what does not fit.
+
+    Every problem is returned rather than raised, so that the problems of one body are
+    answered together. A declared type JSON cannot carry is the exception: it is built
+    by the conversion every other parameter source uses, which refuses in its own words.
+    """
+
+    if isinstance(annotation, InitVar):
+        annotation = annotation.type
+    if annotation in (inspect.Signature.empty, Any, object):
+        return raw_value, _NO_MISMATCH
+
+    origin = get_origin(annotation)
+    if origin in (Union, UnionType):
+        return _bind_body_union(raw_value, annotation=annotation, at=at)
+    if annotation is NoneType:
+        if raw_value is None:
+            return None, _NO_MISMATCH
+        return raw_value, _mistyped(at.path, "None")
+    if annotation is list or origin is list:
+        return _bind_body_list(raw_value, annotation=annotation, at=at)
+    if annotation is dict or origin is dict:
+        return _bind_body_dict(raw_value, annotation=annotation, at=at)
+    if isinstance(annotation, type) and is_dataclass(annotation):
+        return _bind_body_dataclass(raw_value, annotation=annotation, at=at)
+    if annotation in _JSON_SCALARS:
+        if _fits_json_scalar(raw_value, annotation):
+            return raw_value, _NO_MISMATCH
+        return raw_value, _mistyped(at.path, _display_annotation(annotation))
+
+    return (
+        _coerce_value(
+            raw_value,
+            annotation=annotation,
+            parameter_name=at.parameter_name,
+            source_description=at.source_description,
+        ),
+        _NO_MISMATCH,
+    )
+
+
+def _bind_body_union(
+    raw_value: object, *, annotation: object, at: _BodyPosition
+) -> tuple[object, _BodyShapeMismatch]:
+    """Take the first member of a union that the value already fits."""
+
+    union_arguments = get_args(annotation)
+    if raw_value is None:
+        if NoneType in union_arguments:
+            return None, _NO_MISMATCH
+        return raw_value, _mistyped(at.path, _display_annotation(annotation))
+
+    members = tuple(option for option in union_arguments if option is not NoneType)
+    sole_member_mismatch: _BodyShapeMismatch | None = None
+    for option in members:
+        try:
+            bound_value, mismatch = _bind_body_field(raw_value, annotation=option, at=at)
+        except ParameterBindingError:
+            # One member refusing is not the union refusing, so the next is tried and
+            # the union answers for itself once every member has failed.
+            continue
+        if not mismatch.found:
+            return bound_value, _NO_MISMATCH
+        if len(members) == 1:
+            # With one member there is no ambiguity about which the caller meant, so
+            # what that member found inside the value is more useful than the union.
+            sole_member_mismatch = mismatch
+    if sole_member_mismatch is not None:
+        return raw_value, sole_member_mismatch
+    return raw_value, _mistyped(at.path, _display_annotation(annotation))
+
+
+def _bind_body_list(
+    raw_value: object, *, annotation: object, at: _BodyPosition
+) -> tuple[object, _BodyShapeMismatch]:
+    """Bind every element of an array to the element type the declaration names."""
+
+    if not isinstance(raw_value, list):
+        return raw_value, _mistyped(at.path, _display_annotation(annotation))
+
+    item_types = get_args(annotation)
+    item_annotation = item_types[0] if item_types else object
+    bound_items: list[object] = []
+    mismatch = _NO_MISMATCH
+    for index, item in enumerate(cast(list[object], raw_value)):
+        bound_item, item_mismatch = _bind_body_field(
+            item, annotation=item_annotation, at=at.item(index)
+        )
+        bound_items.append(bound_item)
+        mismatch = mismatch.merged_with(item_mismatch)
+    return bound_items, mismatch
+
+
+def _bind_body_dict(
+    raw_value: object, *, annotation: object, at: _BodyPosition
+) -> tuple[object, _BodyShapeMismatch]:
+    """Bind every value of an object to the value type the declaration names.
+
+    The declared key type is not checked: the keys of a JSON object are strings and
+    nothing else, so a declaration naming another key type describes a mapping the
+    caller had no way to send, and checking it would refuse every body.
+    """
+
+    if not isinstance(raw_value, dict):
+        return raw_value, _mistyped(at.path, _display_annotation(annotation))
+
+    argument_types = get_args(annotation)
+    value_annotation = argument_types[1] if len(argument_types) == 2 else object
+    bound_entries: dict[str, object] = {}
+    mismatch = _NO_MISMATCH
+    for key, value in cast(dict[str, object], raw_value).items():
+        bound_value, value_mismatch = _bind_body_field(
+            value, annotation=value_annotation, at=at.entry(key)
+        )
+        bound_entries[key] = bound_value
+        mismatch = mismatch.merged_with(value_mismatch)
+    return bound_entries, mismatch
+
+
+def _bind_body_dataclass(
+    raw_value: object, *, annotation: type[object], at: _BodyPosition
+) -> tuple[object, _BodyShapeMismatch]:
+    """Build a declared object out of the JSON object the caller sent for it."""
+
+    if isinstance(raw_value, annotation):
+        return raw_value, _NO_MISMATCH
+    if not isinstance(raw_value, dict):
+        return raw_value, _mistyped(at.path, _display_annotation(annotation))
+    return _bind_mapping_to_dataclass(
+        annotation, cast(dict[str, object], raw_value), at=at, bind_field_types=True
+    )
+
+
+def _bind_declared_fields(
+    annotation: type[object], raw_value_mapping: dict[str, object], *, at: _BodyPosition
+) -> tuple[dict[str, object], _BodyShapeMismatch]:
+    """Bind each value the target declares a type for, leaving the rest as it arrived.
+
+    A target whose annotations cannot be resolved is bound as it was before any type
+    was held to: refusing every body for a target nobody can describe would deny more
+    than it protects, and the shape comparison still holds.
+    """
+
+    try:
+        declared_types = get_type_hints(annotation)
+    except (AttributeError, NameError, TypeError):
+        return raw_value_mapping, _NO_MISMATCH
+
+    bound_mapping = dict(raw_value_mapping)
+    mismatch = _NO_MISMATCH
+    for name, value in raw_value_mapping.items():
+        declared = declared_types.get(name, _MISSING)
+        if declared is _MISSING or get_origin(declared) is ClassVar:
+            continue
+        bound_value, field_mismatch = _bind_body_field(
+            value, annotation=declared, at=at.field(name)
+        )
+        bound_mapping[name] = bound_value
+        mismatch = mismatch.merged_with(field_mismatch)
+    return bound_mapping, mismatch
+
+
+def _bind_mapping_to_dataclass(
+    annotation: type[object],
+    raw_value_mapping: dict[str, object],
+    *,
+    at: _BodyPosition,
+    bind_field_types: bool,
+) -> tuple[object, _BodyShapeMismatch]:
+    """Construct a target from a mapping, reporting every way the mapping does not fit.
+
+    The returned value is meaningful only when no mismatch was found; a caller that
+    finds one composes the refusal instead of using it.
+    """
+
+    mismatch = _body_shape_mismatch(annotation, raw_value_mapping, path=at.path)
+    bound_mapping = raw_value_mapping
+    if bind_field_types:
+        bound_mapping, field_mismatch = _bind_declared_fields(annotation, raw_value_mapping, at=at)
+        mismatch = mismatch.merged_with(field_mismatch)
+    if mismatch.found:
+        return _MISSING, mismatch
+
+    try:
+        return annotation(**bound_mapping), _NO_MISMATCH
+    except TypeError as exc:
+        # The mapping was compared with what the target declares and fits it, so a
+        # TypeError here is the target objecting from inside its own construction and
+        # saying why, rather than the call being shaped wrongly. The interpreter's own
+        # wording for a mis-shaped call is never the caller's to see.
+        raise _parameter_error(
+            f"Could not bind {at.source_description} {at.parameter_name!r} to "
+            f"{_display_annotation(annotation)}: {exc}",
+            field=at.parameter_name,
+            source=at.source_description,
+            reason=str(exc),
+        ) from exc
 
 
 def _coerce_value(
@@ -1087,35 +1509,20 @@ def _coerce_value(
                 source=source_description,
                 reason=f"expected {_display_annotation(annotation)}",
             )
-        raw_value_mapping = cast(dict[str, object], raw_value)
-        try:
-            return annotation(**raw_value_mapping)
-        except TypeError as exc:
-            # A TypeError here is either the call being shaped wrongly or the target
-            # objecting to a value it was handed. The two are told apart by comparing
-            # the body's keys with what the target declares rather than by reading the
-            # exception, whose text is written by the interpreter and is not the
-            # caller's to see. Only a mismatch found there is the call's shape; with
-            # none, the target raised from inside its own construction and says why.
-            mismatch = _body_shape_mismatch(annotation, raw_value_mapping)
-            if mismatch.found:
-                message = (
-                    f"Could not bind {source_description} {parameter_name!r} to "
-                    f"{_display_annotation(annotation)}: {_describe_mismatch(mismatch)}"
-                )
-                reason = _mismatch_reason(mismatch)
-            else:
-                message = (
-                    f"Could not bind {source_description} {parameter_name!r} to "
-                    f"{_display_annotation(annotation)}: {exc}"
-                )
-                reason = str(exc)
-            raise _parameter_error(
-                message,
-                field=parameter_name,
-                source=source_description,
-                reason=reason,
-            ) from exc
+        bound_value, mismatch = _bind_mapping_to_dataclass(
+            annotation,
+            cast(dict[str, object], raw_value),
+            at=_BodyPosition(parameter_name=parameter_name, source_description=source_description),
+            bind_field_types=False,
+        )
+        if mismatch.found:
+            raise _mismatch_error(
+                mismatch,
+                annotation=annotation,
+                parameter_name=parameter_name,
+                source_description=source_description,
+            )
+        return bound_value
 
     if _is_pydantic_model_type(annotation):
         return raw_value
@@ -1351,8 +1758,24 @@ def _extract_path_parameter_names(path: str) -> frozenset[str]:
 
 
 def _display_annotation(annotation: object) -> str:
+    """Name a declared type the way the caller wrote it, without where it lives.
+
+    A module path names the application's own layout and tells a caller nothing it
+    can act on, so only the type's own name is served.
+    """
+
+    if annotation is NoneType:
+        return "None"
     if isinstance(annotation, type):
         return annotation.__name__
+
+    origin = get_origin(annotation)
+    arguments = get_args(annotation)
+    if origin in (Union, UnionType):
+        return " | ".join(_display_annotation(argument) for argument in arguments)
+    if origin is not None and arguments:
+        rendered = ", ".join(_display_annotation(argument) for argument in arguments)
+        return f"{_display_annotation(origin)}[{rendered}]"
     return repr(annotation)
 
 

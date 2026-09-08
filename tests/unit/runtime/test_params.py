@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Mapping
-from dataclasses import InitVar, dataclass, field
+from dataclasses import InitVar, dataclass, field, make_dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
@@ -49,6 +49,7 @@ from bustan.runtime.params import (
     RequestBodyTooLargeError,
     RequestLimits,
     ValidationMode,
+    _bind_body_value,
     _bind_parameter,
     _coerce_value,
     _compile_parameter_source,
@@ -1755,3 +1756,146 @@ class _UnreadableBodyRequestStub(_RequestStub):
     async def form(self) -> FormData:
         self.form_reads += 1
         raise AssertionError("the request form was parsed despite exceeding the limit")
+
+
+@dataclass(frozen=True, slots=True)
+class Depth:
+    level: int
+
+
+@dataclass(frozen=True, slots=True)
+class Envelope:
+    label: str
+    counts: dict[str, int] = field(default_factory=dict)
+    anything: Any = None
+    absent: None = None
+    depth: Depth | str | None = None
+    token: InitVar[str] = ""
+
+    def __post_init__(self, token: str) -> None:
+        pass
+
+
+def _bind_body(raw_value: object, annotation: object) -> Any:
+    """Bind a body the way the request path does, returning it for its fields to be read."""
+
+    return _bind_body_value(
+        raw_value,
+        annotation=annotation,
+        parameter_name="payload",
+        source_description="request body",
+    )
+
+
+def test_bind_body_value_leaves_a_value_alone_where_no_type_is_declared() -> None:
+    """``Any`` and ``object`` name no type to hold the value to, so nothing is checked."""
+
+    assert _bind_body({"label": "a", "anything": ["either", 1]}, Envelope) == Envelope(
+        label="a", anything=["either", 1]
+    )
+    assert _bind_body("free", Any) == "free"
+    assert _bind_body(7, object) == 7
+
+
+def test_bind_body_value_unwraps_a_field_the_constructor_consumes() -> None:
+    """A field only ``__post_init__`` reads still declares a type the caller must send."""
+
+    assert _bind_body({"label": "a", "token": "secret"}, Envelope).label == "a"
+
+    with pytest.raises(ParameterBindingError) as info:
+        _bind_body({"label": "a", "token": 7}, Envelope)
+
+    assert str(info.value) == (
+        "Could not bind request body 'payload' to Envelope: "
+        "field of the wrong type 'token' (wanted str)"
+    )
+
+
+def test_bind_body_value_holds_a_field_declared_none_to_null() -> None:
+    assert _bind_body({"label": "a", "absent": None}, Envelope).absent is None
+
+    with pytest.raises(ParameterBindingError) as info:
+        _bind_body({"label": "a", "absent": 0}, Envelope)
+
+    assert str(info.value) == (
+        "Could not bind request body 'payload' to Envelope: "
+        "field of the wrong type 'absent' (wanted None)"
+    )
+
+
+def test_bind_body_value_binds_the_values_of_a_declared_mapping() -> None:
+    """A JSON object's keys are always strings, so only the declared value type is held."""
+
+    assert _bind_body({"label": "a", "counts": {"red": 1}}, Envelope).counts == {"red": 1}
+
+    with pytest.raises(ParameterBindingError) as info:
+        _bind_body({"label": "a", "counts": {"red": "one"}}, Envelope)
+
+    assert str(info.value) == (
+        "Could not bind request body 'payload' to Envelope: "
+        "field of the wrong type \"counts['red']\" (wanted int)"
+    )
+
+    with pytest.raises(ParameterBindingError, match="'counts' \\(wanted dict\\[str, int\\]\\)"):
+        _bind_body({"label": "a", "counts": [1]}, Envelope)
+
+
+def test_bind_body_value_takes_the_first_union_member_the_value_already_fits() -> None:
+    envelope = _bind_body({"label": "a", "depth": {"level": 2}}, Envelope)
+    assert envelope.depth == Depth(level=2)
+    assert _bind_body({"label": "a", "depth": "shallow"}, Envelope).depth == "shallow"
+    assert _bind_body({"label": "a", "depth": None}, Envelope).depth is None
+    assert _bind_body({"label": "a", "depth": Depth(level=3)}, Envelope).depth == Depth(level=3)
+
+
+def test_bind_body_value_names_the_whole_union_when_no_member_fits() -> None:
+    with pytest.raises(ParameterBindingError) as info:
+        _bind_body({"label": "a", "depth": 4}, Envelope)
+
+    assert str(info.value) == (
+        "Could not bind request body 'payload' to Envelope: "
+        "field of the wrong type 'depth' (wanted Depth | str | None)"
+    )
+
+
+def test_bind_body_value_refuses_null_where_the_union_does_not_admit_it() -> None:
+    with pytest.raises(ParameterBindingError, match=r"to int \| str"):
+        _bind_body(None, int | str)
+
+
+def test_bind_body_value_tries_the_next_union_member_when_one_refuses_outright() -> None:
+    """A member that raises while converting has refused itself, not the union."""
+
+    class Strict:
+        def __init__(self, value: object) -> None:
+            raise ValueError("never")
+
+    assert _bind_body("kept", Strict | str) == "kept"
+
+    with pytest.raises(ParameterBindingError, match="to Strict"):
+        _bind_body("kept", Strict | None)
+
+
+def test_bind_body_value_keeps_the_conversion_for_a_type_json_cannot_carry() -> None:
+    """A string is the only representation a caller had for such a type, as in a query."""
+
+    assert _bind_body({"label": "a"}, Envelope).label == "a"
+    assert _bind_body("2024", int | str) == "2024"
+
+
+def test_bind_body_value_reports_a_whole_body_of_the_wrong_type_without_a_field_name() -> None:
+    with pytest.raises(ParameterBindingError) as info:
+        _bind_body("Ada", Envelope)
+
+    assert str(info.value) == "Could not bind request body 'payload' to Envelope"
+    assert info.value.reason == "Envelope expected"
+
+
+def test_bind_body_value_binds_a_target_whose_annotations_cannot_be_resolved() -> None:
+    """Refusing every body for a target nobody can describe would deny more than it protects."""
+
+    unresolvable = make_dataclass("Unresolvable", [("value", "Nowhere")], frozen=True)
+
+    bound = _bind_body({"value": 7}, unresolvable)
+
+    assert bound.value == 7
