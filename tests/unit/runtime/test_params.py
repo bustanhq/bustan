@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
@@ -1004,6 +1004,167 @@ def test_coerce_value_composes_stable_messages_for_missing_dataclass_fields() ->
         "Could not bind request body 'payload' to RequiredPayload: "
         "missing required fields 'name', 'count'"
     )
+
+
+def test_coerce_value_leaves_a_field_with_a_computed_default_out_of_the_missing_set() -> None:
+    @dataclass(frozen=True, slots=True)
+    class TaggedPayload:
+        name: str
+        tags: list[str] = field(default_factory=list)
+
+    assert _coerce_value(
+        {"name": "Ada"},
+        annotation=TaggedPayload,
+        parameter_name="payload",
+        source_description="request body",
+    ) == TaggedPayload(name="Ada", tags=[])
+
+    with pytest.raises(ParameterBindingError) as info:
+        _coerce_value(
+            {},
+            annotation=TaggedPayload,
+            parameter_name="payload",
+            source_description="request body",
+        )
+
+    assert str(info.value) == (
+        "Could not bind request body 'payload' to TaggedPayload: missing required field 'name'"
+    )
+
+
+def test_coerce_value_reports_a_key_the_target_does_not_declare() -> None:
+    @dataclass(frozen=True, slots=True)
+    class RequiredPayload:
+        name: str
+        count: int
+        enabled: bool = True
+
+    with pytest.raises(ParameterBindingError) as single_info:
+        _coerce_value(
+            {"name": "Ada", "count": 2, "colour": "red"},
+            annotation=RequiredPayload,
+            parameter_name="payload",
+            source_description="request body",
+        )
+
+    assert str(single_info.value) == (
+        "Could not bind request body 'payload' to RequiredPayload: unexpected field 'colour'"
+    )
+    assert single_info.value.reason == "unexpected field: colour"
+    assert "__init__" not in str(single_info.value)
+    assert "keyword argument" not in str(single_info.value)
+
+    with pytest.raises(ParameterBindingError) as multiple_info:
+        _coerce_value(
+            {"name": "Ada", "count": 2, "colour": "red", "shade": "dark"},
+            annotation=RequiredPayload,
+            parameter_name="payload",
+            source_description="request body",
+        )
+
+    assert str(multiple_info.value) == (
+        "Could not bind request body 'payload' to RequiredPayload: "
+        "unexpected fields 'colour', 'shade'"
+    )
+
+
+def test_coerce_value_reports_missing_and_unexpected_keys_in_one_message() -> None:
+    @dataclass(frozen=True, slots=True)
+    class RequiredPayload:
+        name: str
+        count: int
+        enabled: bool = True
+
+    with pytest.raises(ParameterBindingError) as info:
+        _coerce_value(
+            {"name": "Ada", "colour": "red"},
+            annotation=RequiredPayload,
+            parameter_name="payload",
+            source_description="request body",
+        )
+
+    assert str(info.value) == (
+        "Could not bind request body 'payload' to RequiredPayload: "
+        "missing required field 'count' and unexpected field 'colour'"
+    )
+    assert info.value.reason == "missing required field: count; unexpected field: colour"
+
+
+def test_coerce_value_accepts_a_key_only_post_init_consumes() -> None:
+    @dataclass
+    class InitVarPayload:
+        name: str
+        token: InitVar[str]
+
+        def __post_init__(self, token: str) -> None:
+            self.seen = token
+
+    bound = _coerce_value(
+        {"name": "Ada", "token": "secret"},
+        annotation=InitVarPayload,
+        parameter_name="payload",
+        source_description="request body",
+    )
+
+    assert isinstance(bound, InitVarPayload)
+
+    with pytest.raises(ParameterBindingError) as info:
+        _coerce_value(
+            {"name": "Ada"},
+            annotation=InitVarPayload,
+            parameter_name="payload",
+            source_description="request body",
+        )
+
+    assert str(info.value) == (
+        "Could not bind request body 'payload' to InitVarPayload: missing required field 'token'"
+    )
+
+
+def test_coerce_value_declares_no_key_unexpected_when_the_target_collects_surplus() -> None:
+    @dataclass
+    class SurplusPayload:
+        name: str
+
+        def __init__(self, name: str, **rest: object) -> None:
+            self.name = name
+            self.rest = rest
+
+    bound = _coerce_value(
+        {"name": "Ada", "colour": "red"},
+        annotation=SurplusPayload,
+        parameter_name="payload",
+        source_description="request body",
+    )
+
+    assert isinstance(bound, SurplusPayload)
+    assert bound.rest == {"colour": "red"}
+
+
+def test_coerce_value_forwards_a_type_error_raised_inside_the_construction() -> None:
+    class Stamp:
+        def __init__(self, value: object) -> None:
+            raise TypeError("Stamp accepts an integer")
+
+    @dataclass
+    class StampedPayload:
+        stamp: object
+
+        def __post_init__(self) -> None:
+            self.stamp = Stamp(self.stamp)
+
+    with pytest.raises(ParameterBindingError) as info:
+        _coerce_value(
+            {"stamp": "today"},
+            annotation=StampedPayload,
+            parameter_name="payload",
+            source_description="request body",
+        )
+
+    assert str(info.value) == (
+        "Could not bind request body 'payload' to StampedPayload: Stamp accepts an integer"
+    )
+    assert info.value.reason == "Stamp accepts an integer"
 
 
 def test_compile_parameter_source_covers_explicit_safe_unsafe_and_strict_modes() -> None:
