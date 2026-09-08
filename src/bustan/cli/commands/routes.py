@@ -11,6 +11,7 @@ from typing import cast
 
 from ...app.bootstrap import _create_app
 from ...runtime.registry import diff_route_snapshots
+from ..services.failures import COMMAND_FAILURES, report_failure
 
 
 def register_routes_commands(
@@ -61,9 +62,8 @@ def run_snapshot_command(arguments: argparse.Namespace) -> int:
             Path(output).write_text(rendered + "\n", encoding="utf-8")
         else:
             print(rendered)
-    except (AttributeError, ImportError, OSError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    except COMMAND_FAILURES as exc:
+        return report_failure(exc)
 
     return 0
 
@@ -75,8 +75,7 @@ def run_diff_command(arguments: argparse.Namespace) -> int:
         diff = diff_route_snapshots(previous, current)
         print(json.dumps(diff, indent=2, sort_keys=True))
     except (OSError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+        return report_failure(exc)
 
     return 0
 

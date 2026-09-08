@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, cast
 
 from ...app.bootstrap import _create_app
 from ...runtime.registry import diff_route_snapshots
+from ..services.failures import COMMAND_FAILURES, report_failure
 from .routes import _load_root_module, _load_snapshot
 
 if TYPE_CHECKING:
@@ -90,9 +91,8 @@ def run_governance_command(arguments: argparse.Namespace) -> int:
 def _run_json_command(builder: Callable[..., dict[str, object]], *args: str) -> int:
     try:
         payload = builder(*args)
-    except (AttributeError, ImportError, OSError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    except COMMAND_FAILURES as exc:
+        return report_failure(exc)
 
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
@@ -106,9 +106,8 @@ def _run_release_gate(arguments: argparse.Namespace) -> int:
             arguments.config,
             arguments.manifest,
         )
-    except (AttributeError, ImportError, OSError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    except COMMAND_FAILURES as exc:
+        return report_failure(exc)
 
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if payload["passed"] else 1
