@@ -3,6 +3,87 @@
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. These releases contain the core framework but should be treated as early alpha orphans. The first production-ready release will be `2.0.0`.
 
+## [2.0.0-rc.4](https://github.com/bustanhq/bustan/compare/v2.0.0rc3...v2.0.0rc4) (2026-09-08)
+
+The request contract and operability. A request now has one error contract from the edge to
+the handler and back, an exception hierarchy that reaches every common status without naming
+internals in a refusal, finite limits on what one request may spend, health and readiness a
+scheduler can route on, a shutdown that drains rather than drops, observability that measures
+what a request cost and can be correlated across services, and a throttler that counts what a
+deployment actually served.
+
+The candidate also closes the last of the request-binding gaps: a handler is no longer handed
+a value whose type contradicts its own annotation.
+
+**This candidate carries seven breaking changes.** Each is stated in full on the commit that
+made it; in brief:
+
+* A request body whose field values do not match their declared types is answered `400`
+  rather than passed to the handler, and a nested object arrives as the type its field
+  declares rather than as a plain mapping.
+* Every application now serves under finite request limits. A body over one megabyte, an
+  upload over ten, more than twenty parts bound to one parameter, or a request running longer
+  than thirty seconds is refused where it previously was not. `bustan.adapters.asgi` no longer
+  exports `RequestBodyTooLarge`, and an oversized body is answered `413` rather than `500`.
+* `bustan.errors` exports sixteen new names. A request refused for want of an identity is
+  answered `401` with a `WWW-Authenticate` header where it was answered `403`, and an
+  application whose authenticated route cannot see an authenticator registry is refused at
+  build time.
+* `RequestTracer` and `TraceSpan` are reshaped to OpenTelemetry's span model.
+  `MetricsSink.record_request` gains a `duration_seconds` keyword, and a sink written without
+  it is still called with the labels alone rather than broken. `Logger` emits structured JSON
+  through the standard library rather than a formatted line through `print()`.
+* `ThrottlerStorage` declares one asynchronous `count_request(key, ttl, limit)` in place of
+  `increment` and `get_ttl`. An implementation of the old protocol must be rewritten.
+* `Application.close()` stops a running server, drains it and waits for its port to be
+  released, where before it ran the lifecycle teardown alone and left the server serving.
+  Shutdown hooks receive the name of the signal that stopped the process.
+* `Cache`, `Idempotent` and `Audit` raise `InvalidPipelineError` when applied. They previously
+  accepted every argument and did nothing.
+
+Every entry below is a closed issue from the 2.0.0-rc.4 milestone, grouped by the
+classification label it carries. All 24 are listed. Thirteen carry two classification labels;
+each appears once, under the more severe of them.
+
+### Security
+
+* a body field is never checked against its declared type, so a handler is handed an int that is a str ([#103](https://github.com/bustanhq/bustan/issues/103))
+* constructor failures bypass every filter, and a rejected request still pays for its providers ([#148](https://github.com/bustanhq/bustan/issues/148))
+* only four HTTP statuses are reachable, and the 403 body leaks internal role names ([#149](https://github.com/bustanhq/bustan/issues/149))
+* no body-size limit, no upload cap and no timeout, so one large POST is an out-of-memory vector ([#152](https://github.com/bustanhq/bustan/issues/152))
+* request duration is never measured, and a user-supplied newline forges log records ([#153](https://github.com/bustanhq/bustan/issues/153))
+* the throttler multiplies its limit by worker count and shares one bucket behind a load balancer ([#154](https://github.com/bustanhq/bustan/issues/154))
+* a body that declares no length is read in full on the default adapter before the limit refuses it ([#211](https://github.com/bustanhq/bustan/issues/211))
+* the ASGI adapter reads a body 4096 times the application's limit before anything refuses it ([#217](https://github.com/bustanhq/bustan/issues/217))
+
+### Correctness
+
+* a missing body field is reported with a raw Python constructor TypeError ([#104](https://github.com/bustanhq/bustan/issues/104))
+* `Application.close()` never stops the server, so a rolling deploy drops in-flight requests ([#151](https://github.com/bustanhq/bustan/issues/151))
+* a per-route `@RateLimit` limits nothing, and three decorators do not say they are inert ([#155](https://github.com/bustanhq/bustan/issues/155))
+* the middleware failure path still builds the controller before the context, so it still answers 500 ([#207](https://github.com/bustanhq/bustan/issues/207))
+* the ASGI adapter refuses an oversized body with 500, and the conformance matrix does not notice ([#212](https://github.com/bustanhq/bustan/issues/212))
+* the conformance matrix reports every adapter answered identically when one member of one case is exempt ([#218](https://github.com/bustanhq/bustan/issues/218))
+* a request-scope test compares `id()` across two requests, so address reuse fails it at random ([#219](https://github.com/bustanhq/bustan/issues/219))
+* nothing bounds a multipart form on the Starlette adapter, and no conformance case sends one ([#223](https://github.com/bustanhq/bustan/issues/223))
+* three scope tests assert identity by comparing `id()` across requests ([#225](https://github.com/bustanhq/bustan/issues/225))
+* the body-binding messages report unexpected keys and no longer forward the interpreter's wording ([#239](https://github.com/bustanhq/bustan/issues/239))
+
+### Architecture
+
+* nothing holds the every-package-declares-`__all__` criterion ([#185](https://github.com/bustanhq/bustan/issues/185))
+* request limits are configured only through namespaces the stability guide declares internal ([#209](https://github.com/bustanhq/bustan/issues/209))
+* split the public-surface assertions so two tickets adding exports cannot land in one file ([#229](https://github.com/bustanhq/bustan/issues/229))
+
+### Operability
+
+* there is no health or readiness endpoint, so a pod is routed traffic before startup finishes ([#150](https://github.com/bustanhq/bustan/issues/150))
+* the pre-commit hook regenerates the API reference and never stages it, so a docstring change fails CI ([#234](https://github.com/bustanhq/bustan/issues/234))
+
+### Documentation
+
+* nothing in the documentation says an application has request limits, or what its defaults are ([#210](https://github.com/bustanhq/bustan/issues/210))
+
 ## [2.0.0-rc.3](https://github.com/bustanhq/bustan/compare/v2.0.0rc2...v2.0.0rc3) (2026-09-07)
 
 Ports and adapters. The transport becomes replaceable rather than assumed: a contracts
