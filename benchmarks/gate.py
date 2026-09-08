@@ -1,9 +1,15 @@
 """Compare a benchmark run against the published baseline and fail on a regression.
 
 Every gated number is a ratio: the benchmark's median divided by the median of the
-calibration workload measured in the same run. Dividing by the calibration is what makes
-the comparison portable, because the baseline was captured on one machine and the gate
-runs on another whose absolute speed nobody controls.
+calibration workload measured in the same run. That absorbs how busy a runner was and
+which processor it drew from the fleet, which is variation nobody controls.
+
+It does not make a number portable between machine classes, and it was measured not to:
+between the capture machine and a CI runner the calibration moved 18% while the request
+path moved 45%, because a deep, branchy call graph gains far more from a newer processor
+than a tight loop does. The baseline is therefore captured on the machine class the gate
+runs on. Comparing a run against a baseline from different hardware compares the
+hardware, so the report says so when it sees that.
 
 Run it after the suite:
 
@@ -15,8 +21,9 @@ single pass that landed next to a noisy neighbour cannot fail the build on its o
     python gate.py --result ... --write-baseline
 
 republishes the baseline instead of judging against it, using the median ratio across the
-files it was given. That is how the committed baseline was produced, and it is the only
-supported way to move it.
+files it was given, and prints the run-to-run spread it saw. ``--baseline`` judges against
+some other file and ``--output`` writes to one, which is how a local before-and-after is
+compared without touching what CI gates on.
 """
 
 from __future__ import annotations
@@ -35,9 +42,10 @@ CALIBRATION = "bench_calibration"
 STATISTIC = "median"
 SCHEMA = 1
 
-# Recorded in the baseline and copied out of it here so that the number a reader sees in
-# the file is the number the gate applies. How it was chosen is in docs/BENCHMARKS.md.
-DEFAULT_THRESHOLD = 0.30
+# Only the default for a newly written baseline; a gate run reads the threshold out of the
+# baseline it judges against, so the number a reader sees in the file is the number that
+# was applied. How it was chosen is in docs/BENCHMARKS.md.
+DEFAULT_THRESHOLD = 0.20
 
 _MACHINE_FIELDS = (
     "node",
@@ -89,8 +97,8 @@ def combine(
     return {name: reducer([p[name] for p in passes if name in p]) for name in names}
 
 
-def write_baseline(paths: list[Path], threshold: float) -> None:
-    """Publish the median ratio across the given result files as the new baseline."""
+def write_baseline(paths: list[Path], threshold: float, output: Path) -> None:
+    """Publish the median ratio across the given result files as a baseline."""
 
     passes = [read_pass(path) for path in paths]
     seconds = combine([read_medians(path) for path in paths], statistics.median)
@@ -108,10 +116,8 @@ def write_baseline(paths: list[Path], threshold: float) -> None:
         # whether the framework is fast, and a ratio never can.
         "medians_seconds": {name: float(f"{value:.4g}") for name, value in seconds.items()},
     }
-    BASELINE_PATH.write_text(
-        json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    print(f"wrote {BASELINE_PATH} from {len(passes)} pass(es)\n")
+    output.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"wrote {output} from {len(passes)} pass(es)\n")
     report_spread(passes, document["ratios"])
 
 
@@ -158,15 +164,15 @@ def report(baseline: dict[str, float], observed: dict[str, float], threshold: fl
     return breached
 
 
-def check(paths: list[Path]) -> int:
-    """Judge the given result files against the committed baseline."""
+def check(paths: list[Path], baseline_path: Path) -> int:
+    """Judge the given result files against a published baseline."""
 
-    baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     if baseline.get("schema") != SCHEMA:
-        raise SystemExit(f"{BASELINE_PATH}: schema {baseline.get('schema')!r} is not supported")
+        raise SystemExit(f"{baseline_path}: schema {baseline.get('schema')!r} is not supported")
     threshold = float(baseline["threshold"])
     observed = combine([read_pass(path) for path in paths], min)
-    _warn_on_unpinned_hash_seed(baseline, paths)
+    _warn_on_mismatched_machine(baseline, paths)
     print(f"threshold: a benchmark may not exceed its baseline ratio by more than {threshold:.0%}")
     print(f"observed: the lowest ratio each benchmark reached across {len(paths)} pass(es)\n")
     breached = report(baseline["ratios"], observed, threshold)
@@ -177,31 +183,46 @@ def check(paths: list[Path]) -> int:
     return 0
 
 
-def _warn_on_unpinned_hash_seed(baseline: dict[str, Any], paths: list[Path]) -> None:
-    """Say so when a run was measured under a different hash seed than the baseline.
+def _warn_on_mismatched_machine(baseline: dict[str, Any], paths: list[Path]) -> None:
+    """Say so when a run was measured somewhere the baseline was not.
 
-    Dictionary layout follows the hash seed and the framework's hot path is dictionaries,
-    so an unpinned seed is worth several percent of run-to-run spread that the threshold
-    would otherwise have to absorb.
+    Two things move a ratio without any code changing. Dictionary layout follows the hash
+    seed and the request path is dictionaries, so an unpinned seed costs several percent.
+    A different processor costs far more than that and in a direction no calibration
+    predicts, so a verdict against a baseline from other hardware is about the hardware.
+    Both are said out loud rather than folded into the threshold.
     """
 
-    expected = baseline.get("captured_on", {}).get("python_hash_seed")
+    captured = baseline.get("captured_on", {})
     for path in paths:
-        actual = read_machine(path).get("python_hash_seed")
-        if actual != expected:
-            print(f"warning: {path} ran with PYTHONHASHSEED={actual}, baseline used {expected}")
+        machine = read_machine(path)
+        if machine.get("python_hash_seed") != captured.get("python_hash_seed"):
+            print(
+                f"warning: {path} ran with "
+                f"PYTHONHASHSEED={machine.get('python_hash_seed')}, "
+                f"the baseline used {captured.get('python_hash_seed')}"
+            )
+        if machine.get("cpu_brand") != captured.get("cpu_brand"):
+            print(
+                f"warning: {path} ran on {machine.get('cpu_brand')}, the baseline was "
+                f"captured on {captured.get('cpu_brand')}. Ratios are not comparable "
+                f"across processors and this verdict is not evidence of a regression; "
+                f"see docs/BENCHMARKS.md for comparing a change on one machine."
+            )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--result", action="append", type=Path, required=True, metavar="PATH")
     parser.add_argument("--write-baseline", action="store_true")
+    parser.add_argument("--baseline", type=Path, default=BASELINE_PATH, metavar="PATH")
+    parser.add_argument("--output", type=Path, default=BASELINE_PATH, metavar="PATH")
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     arguments = parser.parse_args(argv)
     if arguments.write_baseline:
-        write_baseline(arguments.result, arguments.threshold)
+        write_baseline(arguments.result, arguments.threshold, arguments.output)
         return 0
-    return check(arguments.result)
+    return check(arguments.result, arguments.baseline)
 
 
 if __name__ == "__main__":

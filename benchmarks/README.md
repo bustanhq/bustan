@@ -20,4 +20,4 @@ ratios rather than wall time, and how to move the baseline are in
 | `harness.py` | Builds an application and drives one request through it. |
 | `calibration.py` | The workload the gate divides by, so the machine cancels. |
 | `gate.py` | Compares a run against `baseline.json` and fails on a regression. |
-| `baseline.json` | The published baseline, with the machine it was taken on. |
+| `baseline.json` | The published baseline, captured on a CI runner, with the machine it was taken on. |
