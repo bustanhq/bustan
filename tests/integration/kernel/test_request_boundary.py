@@ -152,11 +152,8 @@ def test_the_application_is_reached_through_the_contract_when_none_was_pushed() 
     resolved = application.container.resolve(NeedsTheApplication, module=AppModule, request=request)
     entered_directly = application.get(NeedsTheApplication)
 
-    assert cast(NeedsTheApplication, resolved).application is not application.get_http_server()
-    assert (
-        cast(NeedsTheApplication, resolved).application
-        is cast(NeedsTheApplication, entered_directly).application
-    )
+    assert resolved.application is not application.get_http_server()
+    assert resolved.application is entered_directly.application
 
 
 def build_starlette_request(app: Starlette) -> Request:

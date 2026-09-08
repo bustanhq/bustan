@@ -23,22 +23,74 @@ DecoratedT = TypeVar("DecoratedT", bound=object)
 
 
 def Auth(strategy: str) -> Callable[[DecoratedT], DecoratedT]:
+    """Serve this route only to a caller the named authentication strategy identifies.
+
+    ``strategy`` selects one authenticator out of the registry a module binds under
+    ``AUTHENTICATOR_REGISTRY``. It runs before the handler, and the principal it
+    returns is what ``Roles`` and ``Permissions`` are then checked against. A caller it
+    does not identify is refused with the challenge that says how to present an
+    identity. A strategy the registry does not name refuses every caller of the route
+    whatever it sends, so it is reported as an application fault rather than as a
+    refusal of the caller, and the reason is written to the log rather than to them.
+    """
+
     return _policy_decorator(auth=AuthPolicy(strategy=strategy))
 
 
 def Public() -> Callable[[DecoratedT], DecoratedT]:
+    """Serve this route to anybody, whatever the controller around it requires.
+
+    Authentication and the role and permission checks are skipped, so nothing about
+    the caller is established and no principal reaches the handler. Written on a
+    handler it outranks the controller, which is what makes one open route on an
+    otherwise authenticated controller expressible; written beside an access
+    requirement at the same level it is contradictory and refused while the routes are
+    compiled. Guards the application registers itself still run: this waives the policy
+    these decorators declare, not every gate in front of the handler.
+    """
+
     return _policy_decorator(public=True)
 
 
 def Roles(*roles: str) -> Callable[[DecoratedT], DecoratedT]:
+    """Serve this route only to a caller holding every one of these roles.
+
+    The roles are read off the principal the route's authentication produced, and all
+    of them must be held: naming two means both, never either. Roles written on the
+    controller and on the handler add up rather than replace one another, so a handler
+    narrows what its controller requires and can never widen it. A caller carrying an
+    identity that lacks a role is refused as unable to retry, because presenting the
+    same identity again would change nothing; one carrying no identity is asked for one.
+    """
+
     return _policy_decorator(roles=tuple(roles))
 
 
 def Permissions(*permissions: str) -> Callable[[DecoratedT], DecoratedT]:
+    """Serve this route only to a caller holding every one of these permissions.
+
+    Read off the principal and accumulated across the controller and the handler
+    exactly as ``Roles`` are, and refused the same way. What separates the two is only
+    what an application chooses to put in each: the container never interprets either.
+    """
+
     return _policy_decorator(permissions=tuple(permissions))
 
 
 def RateLimit(*, limit: int, window: str) -> Callable[[DecoratedT], DecoratedT]:
+    """Count this route's callers against a budget of its own, not the shared one.
+
+    ``limit`` requests are allowed per ``window``, written as a whole number of seconds
+    or a whole number followed by ``s``, ``m``, ``h`` or ``d``. The route is counted
+    under a key of its own, so a request spends this budget instead of the
+    application-wide one rather than as well as it, and a caller over the limit is
+    refused with the headers that say how much is left and when to retry.
+
+    The counting is the throttler's. An application that has not installed throttling
+    records this policy and enforces nothing, so a route that must be bounded needs
+    both.
+    """
+
     # Reading the window here refuses one that cannot be read where it was written, while
     # the application is being built. Left to the guard that enforces it, the same refusal
     # reaches the caller as a server fault, on every request the route ever serves, and
@@ -83,6 +135,14 @@ def Audit(*, event: str) -> Callable[[DecoratedT], DecoratedT]:
 
 
 def Owner(name: str) -> Callable[[DecoratedT], DecoratedT]:
+    """Record which team or person answers for this route.
+
+    ``name`` is free text the framework only carries. Nothing in the request path reads
+    it; it reaches the route's compiled policy plan, and the governance ownership report
+    renders it from there, so a route can be traced to whoever maintains it without that
+    costing a request anything.
+    """
+
     return _policy_decorator(owner=name)
 
 
@@ -92,6 +152,16 @@ def DeprecatedRoute(
     sunset: str | None = None,
     replacement: str | None = None,
 ) -> Callable[[DecoratedT], DecoratedT]:
+    """Record that this route is going away, and what its callers should move to.
+
+    ``since`` is when it was deprecated, ``sunset`` when it stops being served and
+    ``replacement`` what to call instead; all three are free text the framework only
+    carries. No response header is written from them and nothing in the request path
+    reads them, so a caller learns none of this from the route itself. They reach the
+    route's compiled policy plan, and the governance ownership report renders them for
+    whoever is planning the removal.
+    """
+
     return _policy_decorator(
         deprecation=DeprecationPolicy(
             since=since,

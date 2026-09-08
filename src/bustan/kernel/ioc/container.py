@@ -2,22 +2,24 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from types import MappingProxyType
+from typing import TYPE_CHECKING, overload
 
 from ..errors import InvalidModuleError, ProviderResolutionError
 from ..utils import _display_name, _qualname
 from .overrides import OverrideManager
 from .planning.container_plan import plan_container
-from .registry import Registry
+from .registry import Registry, VisibilityView
 from .runtime.kernel import ResolutionKernel
 from .scopes import ScopeManager
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from ...contracts import HttpRequest
     from ..module.dynamic import ModuleKey
     from ..module.graph import ModuleGraph
+    from .registry import Binding
     from .tokens import InjectionToken
 
 
@@ -78,6 +80,54 @@ class Container:
                     f"{_display_name(declaring_module)}, which declares no provider for it"
                 )
 
+    @property
+    def binding_view(self) -> Mapping[tuple[ModuleKey, object], Binding]:
+        """A live read-only window onto every binding, keyed by module and token.
+
+        Every view on this container reads without copying and refuses a write. What a
+        caller sees is therefore the container as it stands rather than a snapshot that
+        went stale on the way out, and a write is refused where it is made rather than
+        accepted into a copy nothing will ever read. Building the graph is the only way
+        to declare a binding, and it happens once, before the first request.
+        """
+
+        return self.registry.binding_view
+
+    @property
+    def visibility_view(self) -> VisibilityView:
+        """A live read-only window onto what each module can see."""
+
+        return self.registry.visibility_view
+
+    @property
+    def controller_module_view(self) -> Mapping[type[object], ModuleKey]:
+        """A live read-only window onto which module declares each controller."""
+
+        return self.registry.controller_module_view
+
+    @property
+    def singleton_instance_view(self) -> Mapping[tuple[ModuleKey, object], object]:
+        """A live read-only window onto the singletons this container has built."""
+
+        return MappingProxyType(self.scope_manager.singletons)
+
+    @property
+    def controller_instance_view(self) -> Mapping[tuple[ModuleKey, type[object]], object]:
+        """A live read-only window onto the controller instances kept for the whole run."""
+
+        return MappingProxyType(self.scope_manager.controller_singletons)
+
+    @property
+    def durable_instance_view(self) -> Mapping[object, object]:
+        """A live read-only window onto the durable instances currently cached.
+
+        The durable store is bounded and evicts what has gone longest without use, and
+        reading an entry through this window counts as a use exactly as resolving it
+        does. Nothing is evicted by reading, but what is evicted next may change.
+        """
+
+        return MappingProxyType(self.scope_manager.durable_instances)
+
     def mark_startup_begun(self) -> None:
         """Report that a startup has begun, so providers may be resolved again.
 
@@ -121,6 +171,33 @@ class Container:
             "again to build a fresh set of instances, then resolve from that one"
         )
 
+    @overload
+    def resolve[T](
+        self,
+        token: InjectionToken[T],
+        *,
+        module: ModuleKey,
+        request: HttpRequest | None = None,
+    ) -> T: ...
+
+    @overload
+    def resolve[T](
+        self,
+        token: type[T],
+        *,
+        module: ModuleKey,
+        request: HttpRequest | None = None,
+    ) -> T: ...
+
+    @overload
+    def resolve(
+        self,
+        token: object,
+        *,
+        module: ModuleKey,
+        request: HttpRequest | None = None,
+    ) -> object: ...
+
     def resolve(
         self,
         token: object,
@@ -129,6 +206,10 @@ class Container:
         request: HttpRequest | None = None,
     ) -> object:
         """Resolve a provider visible from the given module.
+
+        A class resolves to an instance of itself and an ``InjectionToken[T]`` resolves
+        to a ``T``. A token that carries no type resolves to ``object``, because nothing
+        about it says what a caller may do with the result.
 
         Passing no request resolves as though none were in flight, so an imperative
         resolution never captures a request that merely happens to be active further
@@ -142,6 +223,33 @@ class Container:
         self._refuse_while_shut_down(token)
         return self.kernel.resolve(token, module=module, request=request)
 
+    @overload
+    async def resolve_async[T](
+        self,
+        token: InjectionToken[T],
+        *,
+        module: ModuleKey,
+        request: HttpRequest | None = None,
+    ) -> T: ...
+
+    @overload
+    async def resolve_async[T](
+        self,
+        token: type[T],
+        *,
+        module: ModuleKey,
+        request: HttpRequest | None = None,
+    ) -> T: ...
+
+    @overload
+    async def resolve_async(
+        self,
+        token: object,
+        *,
+        module: ModuleKey,
+        request: HttpRequest | None = None,
+    ) -> object: ...
+
     async def resolve_async(
         self,
         token: object,
@@ -149,7 +257,11 @@ class Container:
         module: ModuleKey,
         request: HttpRequest | None = None,
     ) -> object:
-        """Resolve a provider, awaiting async factories when required."""
+        """Resolve a provider, awaiting async factories when required.
+
+        The token types what comes back here exactly as it does for the synchronous
+        resolution.
+        """
 
         self._refuse_while_shut_down(token)
         return await self.kernel.resolve_async(token, module=module, request=request)

@@ -117,8 +117,8 @@ def test_dynamic_module_singleton_isolation() -> None:
     app = create_app(DynamicModule(AppModule, imports=(M1, M2)))
 
     # Use internal container for module-specific resolution in tests
-    inst1 = cast(Counter, app._container.resolve(Counter, module=M1))
-    inst2 = cast(Counter, app._container.resolve(Counter, module=M2))
+    inst1 = app._container.resolve(Counter, module=M1)
+    inst2 = app._container.resolve(Counter, module=M2)
 
     assert inst1 is not inst2
     inst1.count += 1

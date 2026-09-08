@@ -30,6 +30,111 @@ Installed distribution version string for the bustan package.
 
 Runtime behavior: resolved from the installed distribution metadata, or from local project metadata when running from a source checkout.
 
+#### `AbstractHttpAdapter`
+
+```python
+class AbstractHttpAdapter(ABC)
+```
+
+Defined in `bustan.contracts.adapter`.
+
+Base class every transport adapter implements.
+
+Subclasses set ``name`` to the transport they bind and ``capabilities`` to what
+that transport can serve. Nothing here is handed the dependency injection
+container, a compiled execution plan or a middleware registry: those belong to the
+framework, and an adapter that received them would have to understand them.
+
+##### Methods
+
+- `from_native_request(self, native_request: object) -> HttpRequest`
+  Wrap one request from this transport in the neutral request contract.
+- `to_native_response(self, response: object) -> object`
+  Convert a framework response into what this transport writes.
+
+The argument is an :data:`HttpResponseValue`, or a response object this
+transport itself produced because a handler returned one, which is returned
+unchanged.
+- `register_routes(self, routes: Sequence[AdapterRoute]) -> None`
+  Register compiled routes with the underlying server, in the order given.
+- `start(self, port: int, host: str = '127.0.0.1', reload: bool = False, **options: object) -> None`
+  Serve requests until the server stops, binding ``host`` and ``port``.
+- `stop(self) -> None`
+  Shut the server down and release what it holds. Doing so twice is safe.
+- `create_test_client(self) -> object`
+  Return a client that drives this adapter in process, without a socket.
+
+The client is the transport's own, because that is the client its users
+already know how to drive; a conformance suite asks each adapter for one
+rather than assuming any single library.
+- `get_instance(self) -> object`
+  Return the underlying server object this adapter drives.
+- `add_middleware(self, middleware_class: type, **options: object) -> None`
+  Wrap the whole server in one of the transport's own middleware classes.
+- `listen(self, port: int, host: str = '127.0.0.1', reload: bool = False, **options: object) -> None`
+  Serve requests, under the name the application wrapper calls.
+
+This exists so that one verb reaches the server from the application object and
+another from the port itself; both run :meth:`start`, which is the one an
+adapter implements.
+
+#### `AdapterCapabilities`
+
+```python
+class AdapterCapabilities
+```
+
+Defined in `bustan.contracts.adapter`.
+
+What one transport adapter can and cannot do.
+
+The framework checks a route's requirements against these before compiling it, so
+an adapter that cannot serve a route says so at startup rather than at the first
+request that needs the missing capability.
+
+#### `AdapterRoute`
+
+```python
+class AdapterRoute
+```
+
+Defined in `bustan.contracts.adapter`.
+
+One route for an adapter to register, described without naming a transport.
+
+An adapter registers ``handler`` at ``path`` for every method in ``methods``, and
+for each request calls ``from_native_request``, awaits ``handler``, then calls
+``to_native_response`` on the result. Every route carries a handler, and there is
+no way to hand an adapter a route already built in its own transport's terms, so
+an adapter never has to recognise an opaque object as one of its own. A route that
+reaches an adapter without a handler is a fault in the framework, and the adapter
+refuses it by name rather than registering something that cannot serve a request.
+
+``requires_raw_body``, ``requires_streaming`` and ``hosts`` restate what the route
+needs from the transport, so the capability check reads the plan rather than
+reaching back into the compiled contracts.
+
+``attributes`` are names and values the adapter sets on whatever it registers. The
+framework uses them to leave the compiled contract beside the route, so that
+tooling reading a running server's routes back finds what produced each one; an
+adapter that cannot carry them sets none and loses only that introspection.
+
+#### `AdapterRuntime`
+
+```python
+class AdapterRuntime
+```
+
+Defined in `bustan.runtime.adapter`.
+
+What the framework settled before an adapter existed, for the adapter to honour.
+
+Two things about a run are the framework's to decide and an adapter's to apply, and
+neither can be discovered from the port's methods. ``debug`` is how the deployment
+was started. ``lifespan`` is the handler that starts and stops the module graph, so
+an adapter that does not run it serves requests against modules whose ``on_startup``
+never fired.
+
 #### `Application`
 
 ```python
@@ -117,13 +222,19 @@ a caller tells the two apart without inspecting either.
 - `get(self, token: object) -> Any`
   Resolve a provider as though no request were being served.
 
+The token types what comes back: a class yields an instance of itself, and an
+``InjectionToken[T]`` yields a ``T``. Either way, assigning the result to
+something else is a type error rather than something a cast has to assert. A
+token that carries no type - a bare string, an enum member - names nothing a
+checker can read, so resolving through one is unchecked.
+
 Anything scoped to a request is refused here, whether or not a request happens
 to be in flight, so a provider resolved this way can never capture one caller's
 state and hand it to the next. To reach a request-scoped provider from inside a
 handler, a guard or an interceptor, inject `ModuleRef` and call its `get()`:
 that resolves against the request currently being served.
 - `resolve(self, token: object) -> Any`
-  Alias for app.get(), with the same non-request semantics.
+  Alias for app.get(), with the same non-request semantics and the same typing.
 - `init(self) -> ApplicationContext`
   Initialize asynchronous providers and lifecycle hooks.
 
@@ -303,6 +414,66 @@ Defined in `bustan.openapi.decorators`.
 
 No user-facing documentation provided.
 
+#### `Audit`
+
+```python
+def Audit(*, event: str) -> Callable[[DecoratedT], DecoratedT]
+```
+
+Defined in `bustan.security.policy`.
+
+No audit record is written in this version; the decorator only records the policy.
+
+``event`` reaches the route's compiled policy plan, and nothing in the request path
+acts on it, so a route marked with this decorator leaves no trace of who called it.
+Write the record from the handler, or from an interceptor of your own, for as long
+as that is so.
+
+#### `Auth`
+
+```python
+def Auth(strategy: str) -> Callable[[DecoratedT], DecoratedT]
+```
+
+Defined in `bustan.security.policy`.
+
+Serve this route only to a caller the named authentication strategy identifies.
+
+``strategy`` selects one authenticator out of the registry a module binds under
+``AUTHENTICATOR_REGISTRY``. It runs before the handler, and the principal it
+returns is what ``Roles`` and ``Permissions`` are then checked against. A caller it
+does not identify is refused with the challenge that says how to present an
+identity. A strategy the registry does not name refuses every caller of the route
+whatever it sends, so it is reported as an application fault rather than as a
+refusal of the caller, and the reason is written to the log rather than to them.
+
+#### `AUTHENTICATOR_REGISTRY`
+
+Defined in `bustan.kernel.ioc.tokens`.
+
+A typed token representing a dependency for injection.
+
+A token is its own identity: two tokens are the same token only when they are the
+same object, so build each one once at module level and import it wherever it is
+declared, injected or overridden. The name is what the token is called in errors;
+the container never matches two tokens by comparing names.
+
+Current value: `InjectionToken('AUTHENTICATOR_REGISTRY')`
+
+#### `Authenticator`
+
+```python
+class Authenticator(Protocol)
+```
+
+Defined in `bustan.pipeline.auth`.
+
+Identifies the caller behind one request, answering None when it cannot.
+
+##### Methods
+
+- `authenticate(self, context: ExecutionContext) -> Principal | None`
+
 #### `BadRequestException`
 
 ```python
@@ -415,6 +586,20 @@ Defined in `bustan.kernel.errors`.
 
 Base exception for the framework.
 
+#### `Cache`
+
+```python
+def Cache(*, ttl: int) -> Callable[[DecoratedT], DecoratedT]
+```
+
+Defined in `bustan.security.policy`.
+
+No response is cached in this version; the decorator only records the policy.
+
+``ttl`` reaches the route's compiled policy plan, and nothing in the request path
+acts on it, so a route marked with this decorator is recomputed on every request.
+Cache in front of the application, or inside the handler, for as long as that is so.
+
 #### `ContextId`
 
 ```python
@@ -444,6 +629,23 @@ def Delete(path: str = '/', *, version: str | list[str] | None = None, host: Hos
 Defined in `bustan.common.decorators.route`.
 
 Return a decorator that registers a DELETE route.
+
+#### `DeprecatedRoute`
+
+```python
+def DeprecatedRoute(*, since: str | None = None, sunset: str | None = None, replacement: str | None = None) -> Callable[[DecoratedT], DecoratedT]
+```
+
+Defined in `bustan.security.policy`.
+
+Record that this route is going away, and what its callers should move to.
+
+``since`` is when it was deprecated, ``sunset`` when it stops being served and
+``replacement`` what to call instead; all three are free text the framework only
+carries. No response header is written from them and nothing in the request path
+reads them, so a caller learns none of this from the route itself. They reach the
+route's compiled policy plan, and the governance ownership report renders them for
+whoever is planning the removal.
 
 #### `DiscoveryModule`
 
@@ -969,6 +1171,21 @@ Minimal URL surface required by the framework runtime.
 
 - `(property) path`
 
+#### `Idempotent`
+
+```python
+def Idempotent(*, key_header: str = 'Idempotency-Key') -> Callable[[DecoratedT], DecoratedT]
+```
+
+Defined in `bustan.security.policy`.
+
+No idempotency key is stored or compared in this version; the policy is recorded.
+
+``key_header`` reaches the route's compiled policy plan, and nothing in the request
+path acts on it, so a retried request runs the handler again and its side effect
+happens again. Deduplicate inside the handler, against the store that already holds
+the side effect, for as long as that is so.
+
 #### `Inject`
 
 ```python
@@ -1403,6 +1620,21 @@ Protocol for components that run during module initialization.
 
 - `on_module_init(self) -> None | Awaitable[None]`
 
+#### `Owner`
+
+```python
+def Owner(name: str) -> Callable[[DecoratedT], DecoratedT]
+```
+
+Defined in `bustan.security.policy`.
+
+Record which team or person answers for this route.
+
+``name`` is free text the framework only carries. Nothing in the request path reads
+it; it reaches the route's compiled policy plan, and the governance ownership report
+renders it from there, so a route can be traced to whoever maintains it without that
+costing a request anything.
+
 #### `Param`
 
 Defined in `bustan.common.decorators.parameter`.
@@ -1526,6 +1758,20 @@ Defined in `bustan.common.decorators.route`.
 
 Return a decorator that registers a PATCH route.
 
+#### `Permissions`
+
+```python
+def Permissions(*permissions: str) -> Callable[[DecoratedT], DecoratedT]
+```
+
+Defined in `bustan.security.policy`.
+
+Serve this route only to a caller holding every one of these permissions.
+
+Read off the principal and accumulated across the controller and the handler
+exactly as ``Roles`` are, and refused the same way. What separates the two is only
+what an application chooses to put in each: the container never interprets either.
+
 #### `Pipe`
 
 ```python
@@ -1551,6 +1797,41 @@ Defined in `bustan.common.decorators.route`.
 
 Return a decorator that registers a POST route.
 
+#### `Principal`
+
+```python
+class Principal(Protocol)
+```
+
+Defined in `bustan.pipeline.auth`.
+
+The caller a request is being served for: who they are, and what they may do.
+
+#### `ProblemDetails`
+
+```python
+class ProblemDetails
+```
+
+Defined in `bustan.pipeline.filters`.
+
+RFC 7807 problem details payload.
+
+#### `ProblemDetailsExceptionFilter`
+
+```python
+class ProblemDetailsExceptionFilter(ExceptionFilter)
+```
+
+Defined in `bustan.pipeline.filters`.
+
+Framework fallback filter that always emits problem-details responses.
+
+##### Methods
+
+- `catch(self, exc: Exception, context: ExecutionContext) -> HttpResponse`
+  Convert an exception into a handler result or response payload.
+
 #### `ProviderResolutionError`
 
 ```python
@@ -1560,6 +1841,24 @@ class ProviderResolutionError(BustanError)
 Defined in `bustan.kernel.errors`.
 
 Raised when dependency resolution fails.
+
+#### `Public`
+
+```python
+def Public() -> Callable[[DecoratedT], DecoratedT]
+```
+
+Defined in `bustan.security.policy`.
+
+Serve this route to anybody, whatever the controller around it requires.
+
+Authentication and the role and permission checks are skipped, so nothing about
+the caller is established and no principal reaches the handler. Written on a
+handler it outranks the controller, which is what makes one open route on an
+otherwise authenticated controller expressible; written beside an access
+requirement at the same level it is contradictory and refused while the routes are
+compiled. Guards the application registers itself still run: this waives the policy
+these decorators declare, not every gate in front of the handler.
 
 #### `Put`
 
@@ -1579,6 +1878,26 @@ Makes a marker usable both bare (``Annotated[str, Body]``)
 and as a call (``Annotated[str, Body("field")]``).
 
 Current value: `Query`
+
+#### `RateLimit`
+
+```python
+def RateLimit(*, limit: int, window: str) -> Callable[[DecoratedT], DecoratedT]
+```
+
+Defined in `bustan.security.policy`.
+
+Count this route's callers against a budget of its own, not the shared one.
+
+``limit`` requests are allowed per ``window``, written as a whole number of seconds
+or a whole number followed by ``s``, ``m``, ``h`` or ``d``. The route is counted
+under a key of its own, so a request spends this budget instead of the
+application-wide one rather than as well as it, and a caller over the limit is
+refused with the headers that say how much is left and when to retry.
+
+The counting is the throttler's. An application that has not installed throttling
+records this policy and enforces nothing, so a route that must be bounded needs
+both.
 
 #### `ReadinessState`
 
@@ -1719,6 +2038,37 @@ caller's trace rather than beginning one beside it.
 ##### Methods
 
 - `start_span(self, name: str, *, kind: SpanKind, attributes: Mapping[str, str], context: SpanContext) -> TraceSpan`
+
+#### `ResponseSerializer`
+
+```python
+class ResponseSerializer(Protocol)
+```
+
+Defined in `bustan.runtime.responses`.
+
+Serializer contract used by the response handler.
+
+##### Methods
+
+- `serialize(self, value: object) -> HttpResponse | NativeHttpResponse`
+
+#### `Roles`
+
+```python
+def Roles(*roles: str) -> Callable[[DecoratedT], DecoratedT]
+```
+
+Defined in `bustan.security.policy`.
+
+Serve this route only to a caller holding every one of these roles.
+
+The roles are read off the principal the route's authentication produced, and all
+of them must be held: naming two means both, never either. Roles written on the
+controller and on the handler add up rather than replace one another, so a handler
+narrows what its controller requires and can never widen it. A caller carrying an
+identity that lacks a role is refused as unable to retry, because presenting the
+same identity again would change nothing; one carrying no identity is asked for one.
 
 #### `RouteDefinitionError`
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, cast
 
 from ...common.constants import BUSTAN_PROVIDER_ATTR
@@ -407,6 +408,36 @@ def _declared_durable_key_hook(target: type[object]) -> object | None:
     return None
 
 
+class VisibilityView(Mapping[ModuleKey, Mapping[object, ModuleKey]]):
+    """A live read-only window onto what each module can see.
+
+    Both levels refuse a write: the outer mapping of modules and the token map each
+    module holds. Reading is a window rather than a copy, so what a caller sees is the
+    registry as it stands, and a write to it is refused where it is written. A copy
+    would take that second half away - the write would succeed and then be discarded,
+    which is harder to notice than a refusal and leaves the caller believing the
+    registry changed.
+    """
+
+    __slots__ = ("_visibility",)
+
+    def __init__(self, visibility: Mapping[ModuleKey, TokenMap[ModuleKey]]) -> None:
+        self._visibility = visibility
+
+    def __getitem__(self, module_key: ModuleKey) -> Mapping[object, ModuleKey]:
+        return MappingProxyType(self._visibility[module_key])
+
+    def __iter__(self) -> Iterator[ModuleKey]:
+        return iter(self._visibility)
+
+    def __len__(self) -> int:
+        return len(self._visibility)
+
+    def __repr__(self) -> str:
+        shown = ", ".join(f"{module_key!r}: {visible!r}" for module_key, visible in self.items())
+        return f"{type(self).__name__}({{{shown}}})"
+
+
 class Registry:
     """Manages the mapping of provider tokens to their resolving bindings."""
 
@@ -428,3 +459,21 @@ class Registry:
 
     def get_binding(self, key: tuple[ModuleKey, object]) -> Binding | None:
         return self.bindings.get(key)
+
+    @property
+    def binding_view(self) -> Mapping[tuple[ModuleKey, object], Binding]:
+        """A live read-only window onto every binding, keyed by module and token."""
+
+        return MappingProxyType(self.bindings)
+
+    @property
+    def visibility_view(self) -> VisibilityView:
+        """A live read-only window onto what each module can see."""
+
+        return VisibilityView(self.module_visibility)
+
+    @property
+    def controller_module_view(self) -> Mapping[type[object], ModuleKey]:
+        """A live read-only window onto which module declares each controller."""
+
+        return MappingProxyType(self.controller_modules)

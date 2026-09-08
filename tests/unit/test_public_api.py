@@ -37,6 +37,9 @@ from bustan.common.decorators.route import Put as InternalPut
 from bustan.common.types import ProviderScope
 from bustan.configuration import ConfigModule as InternalConfigModule
 from bustan.configuration import ConfigService as InternalConfigService
+from bustan.contracts import AbstractHttpAdapter as InternalAbstractHttpAdapter
+from bustan.contracts import AdapterCapabilities as InternalAdapterCapabilities
+from bustan.contracts import AdapterRoute as InternalAdapterRoute
 from bustan.contracts import HttpFormData as InternalHttpFormData
 from bustan.contracts import HttpQueryParams as InternalHttpQueryParams
 from bustan.contracts import HttpRequest as InternalHttpRequest
@@ -113,13 +116,22 @@ from bustan.pipeline import ParseIntPipe as InternalParseIntPipe
 from bustan.pipeline import ParseUUIDPipe as InternalParseUUIDPipe
 from bustan.pipeline import Pipe as InternalPipe
 from bustan.pipeline import ValidationPipe as InternalValidationPipe
+from bustan.pipeline.auth import AUTHENTICATOR_REGISTRY as InternalAuthenticatorRegistry
+from bustan.pipeline.auth import Authenticator as InternalAuthenticator
+from bustan.pipeline.auth import Principal as InternalPrincipal
 from bustan.pipeline.decorators import UseFilters as InternalUseFilters
 from bustan.pipeline.decorators import UseGuards as InternalUseGuards
 from bustan.pipeline.decorators import UseInterceptors as InternalUseInterceptors
 from bustan.pipeline.decorators import UsePipes as InternalUsePipes
+from bustan.pipeline.filters import ProblemDetails as InternalProblemDetails
+from bustan.pipeline.filters import (
+    ProblemDetailsExceptionFilter as InternalProblemDetailsExceptionFilter,
+)
 from bustan.pipeline.middleware import Middleware as InternalMiddleware
 from bustan.pipeline.middleware import MiddlewareConsumer as InternalMiddlewareConsumer
+from bustan.runtime.adapter import AdapterRuntime as InternalAdapterRuntime
 from bustan.runtime.params import RequestLimits as InternalRequestLimits
+from bustan.runtime.responses import ResponseSerializer as InternalResponseSerializer
 from bustan.runtime.versioning import VERSION_NEUTRAL as InternalVersionNeutral
 from bustan.runtime.versioning import VersioningOptions as InternalVersioningOptions
 from bustan.runtime.versioning import VersioningType as InternalVersioningType
@@ -128,12 +140,26 @@ from bustan.security import SkipThrottle as InternalSkipThrottle
 from bustan.security import ThrottlerGuard as InternalThrottlerGuard
 from bustan.security import ThrottlerModule as InternalThrottlerModule
 from bustan.security import ThrottlerStorage as InternalThrottlerStorage
+from bustan.security.policy import Audit as InternalAudit
+from bustan.security.policy import Auth as InternalAuth
+from bustan.security.policy import Cache as InternalCache
+from bustan.security.policy import DeprecatedRoute as InternalDeprecatedRoute
+from bustan.security.policy import Idempotent as InternalIdempotent
+from bustan.security.policy import Owner as InternalOwner
+from bustan.security.policy import Permissions as InternalPermissions
+from bustan.security.policy import Public as InternalPublic
+from bustan.security.policy import RateLimit as InternalRateLimit
+from bustan.security.policy import Roles as InternalRoles
 from bustan.security.throttler import ThrottleState as InternalThrottleState
 
 
 def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.__all__ == (
         "__version__",
+        "AbstractHttpAdapter",
+        "AdapterCapabilities",
+        "AdapterRoute",
+        "AdapterRuntime",
         "Application",
         "ApplicationContext",
         "APPLICATION",
@@ -150,6 +176,10 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "ApiQuery",
         "ApiResponse",
         "ApiTags",
+        "Audit",
+        "Auth",
+        "AUTHENTICATOR_REGISTRY",
+        "Authenticator",
         "BadRequestException",
         "Body",
         "BeforeApplicationShutdown",
@@ -158,9 +188,11 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "create_app_context",
         "create_param_decorator",
         "BustanError",
+        "Cache",
         "ContextId",
         "Controller",
         "Delete",
+        "DeprecatedRoute",
         "DiscoveryModule",
         "DiscoveryService",
         "DurableProvider",
@@ -187,6 +219,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "HttpRequest",
         "HttpResponse",
         "HttpUrl",
+        "Idempotent",
         "Inject",
         "Injectable",
         "INQUIRER",
@@ -214,6 +247,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "OnApplicationShutdown",
         "OnModuleDestroy",
         "OnModuleInit",
+        "Owner",
         "Param",
         "ParameterBindingError",
         "ParseArrayPipe",
@@ -223,17 +257,25 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "ParseIntPipe",
         "ParseUUIDPipe",
         "Patch",
+        "Permissions",
         "Pipe",
         "Post",
+        "Principal",
+        "ProblemDetails",
+        "ProblemDetailsExceptionFilter",
         "ProviderResolutionError",
+        "Public",
         "Put",
         "Query",
+        "RateLimit",
         "ReadinessState",
         "Reflector",
         "REQUEST",
         "RESPONSE",
         "RequestLimits",
         "RequestTracer",
+        "ResponseSerializer",
+        "Roles",
         "RouteDefinitionError",
         "Scope",
         "SpanContext",
@@ -284,6 +326,26 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.ApiQuery is InternalApiQuery
     assert bustan.ApiResponse is InternalApiResponse
     assert bustan.ApiTags is InternalApiTags
+    assert bustan.AbstractHttpAdapter is InternalAbstractHttpAdapter
+    assert bustan.AdapterCapabilities is InternalAdapterCapabilities
+    assert bustan.AdapterRoute is InternalAdapterRoute
+    assert bustan.AdapterRuntime is InternalAdapterRuntime
+    assert bustan.Audit is InternalAudit
+    assert bustan.Auth is InternalAuth
+    assert bustan.AUTHENTICATOR_REGISTRY is InternalAuthenticatorRegistry
+    assert bustan.Authenticator is InternalAuthenticator
+    assert bustan.Principal is InternalPrincipal
+    assert bustan.Cache is InternalCache
+    assert bustan.DeprecatedRoute is InternalDeprecatedRoute
+    assert bustan.Idempotent is InternalIdempotent
+    assert bustan.Owner is InternalOwner
+    assert bustan.Permissions is InternalPermissions
+    assert bustan.ProblemDetails is InternalProblemDetails
+    assert bustan.ProblemDetailsExceptionFilter is InternalProblemDetailsExceptionFilter
+    assert bustan.Public is InternalPublic
+    assert bustan.RateLimit is InternalRateLimit
+    assert bustan.ResponseSerializer is InternalResponseSerializer
+    assert bustan.Roles is InternalRoles
     assert bustan.BadRequestException is BadRequestException
     assert bustan.BeforeApplicationShutdown is InternalBeforeApplicationShutdown
     assert bustan.Cookies is InternalCookies

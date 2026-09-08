@@ -622,7 +622,7 @@ def test_an_override_reaches_a_singleton_that_holds_the_token_two_hops_away() ->
     container = build_container(build_module_graph(AppModule))
 
     def stamped() -> str:
-        report = cast(ReportService, container.resolve(ReportService, module=AppModule))
+        report = container.resolve(ReportService, module=AppModule)
         return report.stamper.clock.now()
 
     # Built first, so the singletons hold the real clock before the override exists.
@@ -657,7 +657,7 @@ def test_a_singleton_first_built_during_an_override_does_not_outlive_it() -> Non
     container = build_container(build_module_graph(AppModule))
 
     def stamped() -> str:
-        report = cast(ReportService, container.resolve(ReportService, module=AppModule))
+        report = container.resolve(ReportService, module=AppModule)
         return report.clock.now()
 
     container.override(Clock, FakeClock())
