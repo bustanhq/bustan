@@ -46,20 +46,54 @@ Fix: a module may only export what it can supply, so give it one of the two ways
 - declare the provider in that module's `providers` list, or
 - import the module that exports the token, and re-export the same token.
 
-Re-exporting a whole module is not one of the two. Writing the module class into `exports`:
+Re-exporting a whole module is not one of the two. Writing the module class into `exports` raises `InvalidModuleError`, not this error, with the fix in the message: import the module, and export the tokens it exports. Writing the token instead is accepted:
 
 ```python
+from bustan import Injectable, Module, create_app_context
+from bustan.errors import InvalidModuleError
+
+
+@Injectable()
+class SharedService:
+    pass
+
+
+@Module(providers=[SharedService], exports=[SharedService])
+class SharedModule:
+    pass
+
+
 @Module(imports=[SharedModule], exports=[SharedModule])
-class CoreModule: ...
+class RefusedCoreModule:
+    pass
+
+
+@Module(imports=[SharedModule], exports=[SharedService])
+class CoreModule:
+    pass
+
+
+@Module(imports=[RefusedCoreModule])
+class RefusedApp:
+    pass
+
+
+@Module(imports=[CoreModule])
+class AcceptedApp:
+    pass
+
+
+try:
+    create_app_context(RefusedApp)
+except InvalidModuleError as error:
+    print(error)
+
+print(create_app_context(AcceptedApp).get(SharedService).__class__.__name__)
 ```
 
-raises `InvalidModuleError`, not this error, with the fix in the message: import the module, and export the tokens it exports.
-
-Write the token instead:
-
-```python
-@Module(imports=[SharedModule], exports=[SharedService])
-class CoreModule: ...
+```text
+RefusedCoreModule exports the module SharedModule. A module is not a provider token: import it, and export the tokens it exports instead.
+SharedService
 ```
 
 Do not add the module class to `providers` to satisfy either error. That registers the module class itself as a class provider, so `resolve(SharedModule)` hands back a bare module instance and none of the module's tokens are re-exported: the application builds and is wrong at runtime instead of refused at startup.
@@ -127,7 +161,7 @@ Cause: a dependency the container cannot find, cannot read, or cannot let its ow
 
 - `... depends on request-scoped provider P, which can only be injected into an owner that lives no longer than it does` - the direct refusal. Move the consumer to request scope, move the request-local dependency into a request-scoped collaborator, or pass the request-derived data as a method argument instead of constructor state. The same message names a durable provider when a singleton reaches durable scope.
 - `... depends on X, which keeps no instance of its own and reaches <state>` - the transitive refusal. `X` is a transient or a `use_existing` alias, so it carries whatever it reaches into whoever holds it. The phrase after `reaches` names the provider whose own lifetime is the reason.
-- `... requests framework-owned type Request, which can only be injected into a request-scoped or transient owner` - `Request`, `Response`, `REQUEST` and `RESPONSE` all read this way. A singleton or durable owner outlives the request.
+- `... requests framework-owned type HttpRequest, which can only be injected into a request-scoped or transient owner` - `HttpRequest`, `HttpResponse` and the serving transport's own request and response types all read this way; the `REQUEST` and `RESPONSE` tokens say `requests the REQUEST token` instead and mean the same thing. A singleton or durable owner outlives the request.
 - `... requests INQUIRER, which can only be injected into a transient provider` - `INQUIRER` names the class a provider is being built for, so only a provider rebuilt per consumer can carry it.
 
 **The state asked for does not exist yet, or no longer does.**
@@ -219,9 +253,27 @@ Cause: the request carried more body bytes, or more uploaded parts, than the lim
 Fix: send less, or raise the bound the application serves under. The three bounds are `max_body_bytes` for an ordinary body, `max_upload_bytes` for a multipart one and `max_upload_files` for the number of parts, and they are set together:
 
 ```python
-from bustan import RequestLimits, create_app
+from bustan import Controller, Module, Post, RequestLimits, create_app
+
+
+@Controller("/uploads")
+class UploadsController:
+    @Post("/")
+    def create(self, title: str) -> dict[str, str]:
+        return {"title": title}
+
+
+@Module(controllers=[UploadsController])
+class AppModule:
+    pass
+
 
 app = create_app(AppModule, request_limits=RequestLimits(max_body_bytes=4 * 1024 * 1024))
+print(app.__class__.__name__)
+```
+
+```text
+Application
 ```
 
 Every bound has a finite default, so an application that configures nothing still refuses something; `None` removes one bound for a deployment that has measured that it needs to.
@@ -235,9 +287,27 @@ Cause: one request ran longer than `timeout_seconds`, the wall clock the applica
 Fix: make the request faster, or give it longer:
 
 ```python
-from bustan import RequestLimits, create_app
+from bustan import Controller, Get, Module, RequestLimits, create_app
+
+
+@Controller("/reports")
+class ReportsController:
+    @Get("/")
+    def index(self) -> dict[str, str]:
+        return {"reports": "all"}
+
+
+@Module(controllers=[ReportsController])
+class AppModule:
+    pass
+
 
 app = create_app(AppModule, request_limits=RequestLimits(timeout_seconds=60.0))
+print(app.__class__.__name__)
+```
+
+```text
+Application
 ```
 
 A synchronous handler is a special case. It runs on a thread, Python cannot interrupt one, and so the budget is enforced for it only once it returns. What bounds a synchronous handler that never returns is `sync_handler_threads`, which caps how many of them may occupy threads at the same time; a timeout that never fires on a blocking handler is that distinction rather than a broken limit.
@@ -245,11 +315,22 @@ A synchronous handler is a special case. It runs on a thread, Python cannot inte
 Catch the class to answer the timeout with a status of your own - a `503` while the application sheds load reads differently to a caller than the framework's `504`:
 
 ```python
-from bustan import ExceptionFilter
+from bustan import ExceptionFilter, ExecutionContext, HttpResponse
 from bustan.errors import RequestTimeoutError
+
 
 class BusyFilter(ExceptionFilter):
     exception_types = (RequestTimeoutError,)
+
+    async def catch(self, exc: Exception, context: ExecutionContext) -> object:
+        return HttpResponse.json({"detail": "Busy, try again"}, status_code=503)
+
+
+print(BusyFilter.exception_types[0].__name__)
+```
+
+```text
+RequestTimeoutError
 ```
 
 ## `BadRequestException`
@@ -428,12 +509,48 @@ A startup failure is raised on its own, after the framework has torn down whatev
 Shutdown is different, because every teardown stage runs to completion even when a hook fails. One failed teardown hook is raised on its own. **More than one is raised together as an `ExceptionGroup` that is also a `LifecycleError`**, so `except LifecycleError` still catches it, and `except* LifecycleError` reads the members. Each member names one failed hook and keeps its own `__cause__`, so nothing is lost to the aggregation:
 
 ```python
-try:
-    await context.close()
-except* LifecycleError as group:
-    for error in group.exceptions:
-        print(error, "caused by", error.__cause__)
+import asyncio
+
+from bustan import Injectable, Module, create_app_context
+from bustan.errors import LifecycleError
+
+
+@Injectable()
+class FirstSink:
+    async def on_module_destroy(self) -> None:
+        raise RuntimeError("first sink would not close")
+
+
+@Injectable()
+class SecondSink:
+    async def on_module_destroy(self) -> None:
+        raise RuntimeError("second sink would not close")
+
+
+@Module(providers=[FirstSink, SecondSink])
+class AppModule:
+    pass
+
+
+async def main() -> None:
+    context = create_app_context(AppModule)
+    await context.init()
+    try:
+        await context.close()
+    except* LifecycleError as group:
+        for error in group.exceptions:
+            print(error, "caused by", error.__cause__)
+
+
+asyncio.run(main())
 ```
+
+```text
+Provider lifecycle hook SecondSink.on_module_destroy failed: second sink would not close caused by second sink would not close
+Provider lifecycle hook FirstSink.on_module_destroy failed: first sink would not close caused by first sink would not close
+```
+
+Both hooks ran even though the first one raised, and the members arrive in teardown order, which reverses construction order.
 
 [LIFECYCLE.md](LIFECYCLE.md) documents the stages, the ordering, and the failure contract in full.
 

@@ -1,6 +1,6 @@
 # Lifecycle Hooks
 
-Modules and providers can participate in application startup and shutdown. Bustan wires those lifecycle stages into the Starlette lifespan handler for HTTP applications, and `ApplicationContext` exposes the same semantics for non-HTTP bootstrapping.
+Modules and providers can participate in application startup and shutdown. An HTTP application runs those stages through the serving adapter's lifespan, whichever adapter that is, and `ApplicationContext` exposes the same semantics for a process that serves no HTTP at all.
 
 ## Supported Hook Names
 
@@ -12,7 +12,7 @@ Modules and providers can participate in application startup and shutdown. Busta
 
 Each hook may be synchronous or asynchronous.
 
-`signal` names the signal that asked the process to stop, as the platform names it: `"SIGTERM"` or `"SIGINT"`. It is `None` when nothing signalled the process and a caller asked for the shutdown instead, which is what `await context.close()` and `await app.close()` do. The Starlette adapter supplies it; an adapter whose transport does not report a signal passes `None` always.
+`signal` names the signal that asked the process to stop, as the platform names it: `"SIGTERM"` or `"SIGINT"`. It is `None` when nothing signalled the process and a caller asked for the shutdown instead, which is what `await context.close()` and `await app.close()` do, and `None` again when the application was started and stopped through a test client rather than by serving a port. The name comes from the adapter, which is the only layer that sees the signal: the shipped Starlette adapter records it in `app.listen()` and passes it on, and an adapter whose transport does not report one passes `None` always.
 
 ## Who Receives Provider Hooks
 
@@ -27,7 +27,7 @@ An error raised by a provider hook names the token the instance was built for, s
 
 ## Ordering
 
-For module classes, Bustan walks the discovered module graph in root-first order during startup and reverse order during shutdown.
+For module classes, Bustan walks the discovered module graph in root-first order during startup and in the reverse of that order during shutdown, so a root module is initialized before the modules it imports and torn down after them.
 
 Startup stages:
 
@@ -53,7 +53,9 @@ Every durable instance takes part in every teardown stage, including a partition
 ## Example
 
 ```python
-from bustan import Injectable, Module
+import asyncio
+
+from bustan import Injectable, Module, create_app_context
 
 
 @Injectable()
@@ -81,7 +83,27 @@ class AppModule:
 
     def on_application_shutdown(self, signal: str | None) -> None:
         print(f"application shutting down ({signal})")
+
+
+async def main() -> None:
+    context = create_app_context(AppModule)
+    await context.init()
+    await context.close()
+
+
+asyncio.run(main())
 ```
+
+```text
+database module discovered
+application ready
+database connected
+draining connections before shutdown (None)
+application shutting down (None)
+database disposed
+```
+
+The module hooks of one stage all run before the provider hooks of that stage, which is why `application ready` precedes `database connected` even though the pool is what the application is waiting for. Anything that must happen after a provider is live belongs in that provider's own hook rather than in a module's.
 
 ## `create_app()` Versus `create_app_context()`
 
@@ -90,16 +112,40 @@ class AppModule:
 
 That makes `ApplicationContext` useful for non-HTTP jobs, focused bootstrap tests, and integration helpers that need DI plus lifecycle but no server.
 
-Example:
+`init()` and `close()` are coroutines, so a script that is not already inside an event loop runs them through `asyncio.run`:
 
 ```python
-from bustan import create_app_context
+import asyncio
+
+from bustan import Injectable, Module, create_app_context
 
 
-context = create_app_context(AppModule)
-await context.init()
-service = context.get(DatabasePool)
-await context.close()
+@Injectable()
+class DatabasePool:
+    def __init__(self) -> None:
+        self.connected = False
+
+    async def on_application_bootstrap(self) -> None:
+        self.connected = True
+
+
+@Module(providers=[DatabasePool])
+class AppModule:
+    pass
+
+
+async def main() -> None:
+    context = create_app_context(AppModule)
+    await context.init()
+    print("connected:", context.get(DatabasePool).connected)
+    await context.close()
+
+
+asyncio.run(main())
+```
+
+```text
+connected: True
 ```
 
 ## Graceful Shutdown
@@ -114,8 +160,14 @@ A deployment replaces one process with another while callers are mid-request, so
 A request that outlasts the drain window is cancelled rather than waited on, because a shutdown that waited indefinitely is a shutdown one slow caller could refuse to allow. The window is `drain_timeout` seconds, ten by default:
 
 ```python
-await app.listen(8000, drain_timeout=30.0)
+from bustan import Application
+
+
+async def serve(app: Application) -> None:
+    await app.listen(8000, drain_timeout=30.0)
 ```
+
+`listen()` serves until the process is signalled or `close()` is called, so it is the last thing a program does rather than a step in the middle of one.
 
 `await app.close()` runs exactly the same sequence for a caller rather than a signal: the server stops, in-flight requests drain, the hooks run with `signal` as `None`, and the call returns once the port is free. With no server running it is the teardown on its own, which is what `ApplicationContext.close()` has always been.
 
