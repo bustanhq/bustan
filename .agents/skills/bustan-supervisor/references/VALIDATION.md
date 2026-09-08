@@ -467,3 +467,36 @@ instead of accepting the frame and found a declared limit was not being applied 
 64 MiB upload served 200 to an application that had declared it would take 1 MiB. Reasoning
 understated that one as badly as it overstated the other. Measurement is not a formality that
 confirms the ticket; it is the thing that decides what the ticket says.
+
+## Granting a generated file is not the same as owning it
+
+An earlier rule in this ledger says a generated product forced by an owned edit has to be granted
+up front rather than in review: a lockfile, an API reference, a downstream manifest. That rule is
+right and it is what put `docs/API_REFERENCE.md` into the `Owns` list of every ticket that adds a
+public name. It is also incomplete, and the incompleteness has a price.
+
+Ownership is a claim that no other ticket may write a file. Granting is a claim that this ticket
+may. For a file somebody writes by hand those are the same claim, so one list can carry both. For a
+file a generator writes they come apart, and conflating them makes every export-adding ticket
+mutually exclusive with every other export-adding ticket, forever, for no benefit: the generator
+settles the content and a check verifies it, so two tickets that both regenerate it are not in
+conflict in any sense a person has to resolve.
+
+That cost is measured rather than theoretical. It constrained three batches in one programme, and
+the third time it forced a choice between holding a ticket for a whole cycle and dispatching two
+agents onto a file they both had to edit.
+
+So an issue may carry a `Regenerates` section beside its `Owns` section, and the gate now reads
+both: a path under `Regenerates` permits the edit without claiming the file, and is reported as
+`regenerated` rather than as `ok` so a reviewer can see which it was. Colour batches on `Owns`
+alone. A path in neither section is still a violation, which is the property that has to survive
+any change here.
+
+The test that matters is the one that distinguishes the two, not the one that shows the parse
+works: a path under `Regenerates` must be permitted, must not count as ownership, and an unlisted
+path must still fail. Anything less and the section is a way to smuggle a file past the gate.
+
+What stays hand-written stays owned. `tests/unit/test_public_api.py` asserts each export from both
+sides and pins `__all__` exactly; a generated version of it would assert that the package exports
+what the package exports, which is nothing. Reducing its conflict surface is a real change to the
+repository and belongs in a ticket, not in this rule.

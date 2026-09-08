@@ -32,6 +32,16 @@ PAGE_SIZE = 100
 # An Owns section ends at the next bold lead-in, the next markdown heading, or a rule.
 SECTION_END = re.compile(r"^\s*(\*\*[A-Z]|#{1,6}\s|---\s*$)")
 OWNS_HEADING = re.compile(r"^\s*(\*\*Owns\*\*|#{1,6}\s+Owns\b)", re.IGNORECASE)
+# A Regenerates section names derived files the ticket may rewrite but does not own: a
+# generator writes them, a check verifies them, and several tickets may touch them in the
+# same wave without colliding in any way a person has to resolve by hand. They are read
+# separately from Owns so that a path here permits an edit without making two tickets
+# that both regenerate it mutually exclusive.
+# The bold lead-in carries a trailing period in this repository's tickets, as
+# ``**Must not touch.**`` does, so the period is optional rather than absent.
+REGENERATES_HEADING = re.compile(
+    r"^\s*(\*\*Regenerates\.?\*\*|#{1,6}\s+Regenerates\b)", re.IGNORECASE
+)
 BACKTICKED = re.compile(r"`([^`]+)`")
 # A bare lowercase identifier: a symbol name, never a path.
 IDENTIFIER = re.compile(r"[a-z_][a-z0-9_]*")
@@ -101,6 +111,37 @@ def changed_paths(repo: str, pull_number: int) -> list[str]:
         if len(batch) < PAGE_SIZE:
             return sorted(paths)
         page += 1
+
+
+def _section_patterns(body: str, heading: re.Pattern[str]) -> list[str]:
+    """Pull the backticked paths out of one section of an issue body."""
+
+    patterns: list[str] = []
+    inside = False
+    for line in body.splitlines():
+        if not inside:
+            if heading.match(line):
+                inside = True
+                patterns.extend(BACKTICKED.findall(line))
+            continue
+        if SECTION_END.match(line) and not heading.match(line):
+            break
+        patterns.extend(BACKTICKED.findall(line))
+    return patterns
+
+
+def regenerates_patterns_from_issue(repo: str, issue_number: int) -> list[str]:
+    """Return the derived paths the ticket may rewrite without owning.
+
+    Absent is the common case and means no derived file is permitted, which is the
+    conservative reading: a ticket that has not said a generator writes a file has not
+    earned the right to change it.
+    """
+
+    issue = _get(f"/repos/{repo}/issues/{issue_number}")
+    if not isinstance(issue, dict) or not issue.get("body"):
+        return []
+    return _section_patterns(issue["body"], REGENERATES_HEADING)
 
 
 def owns_patterns_from_issue(repo: str, issue_number: int) -> list[str]:
@@ -186,6 +227,16 @@ def _print_tolerating_closed_pipe(lines: list[str]) -> None:
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
 
 
+def _verdict(path: str, violations: list[str], patterns: list[str], regenerated: list[str]) -> str:
+    """Label one changed path for the report, distinguishing owned from regenerated."""
+
+    if path in violations:
+        return "OUTSIDE OWNS"
+    if not is_owned(path, patterns) and is_owned(path, regenerated):
+        return "regenerated "
+    return "ok          "
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True, help="owner/repo")
@@ -203,6 +254,16 @@ def main() -> int:
         metavar="PATTERN",
         help="an ownership pattern; repeat for more, and overrides --owns-from-issue",
     )
+    parser.add_argument(
+        "--regenerates",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help=(
+            "a derived path the ticket may rewrite without owning; repeat for more, and "
+            "overrides the issue's Regenerates section"
+        ),
+    )
     arguments = parser.parse_args()
 
     if not arguments.owns and arguments.owns_from_issue is None:
@@ -212,12 +273,23 @@ def main() -> int:
         patterns = arguments.owns or owns_patterns_from_issue(
             arguments.repo, arguments.owns_from_issue
         )
+        regenerated = arguments.regenerates or (
+            []
+            if arguments.owns_from_issue is None
+            else regenerates_patterns_from_issue(arguments.repo, arguments.owns_from_issue)
+        )
         paths = changed_paths(arguments.repo, arguments.pr)
     except GitHubError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
 
-    violations = [path for path in paths if not is_owned(path, patterns)]
+    # A regenerated path is permitted and is reported as such rather than as owned,
+    # because the two are different claims: ownership says no other ticket may write this
+    # file, and regeneration says a generator writes it and this ticket ran the generator.
+    # Only the first constrains which tickets may run at the same time.
+    violations = [
+        path for path in paths if not is_owned(path, patterns) and not is_owned(path, regenerated)
+    ]
 
     # The verdict is settled before anything is printed, so a reader that closes the
     # pipe early - piping into head, say - cannot be mistaken for a violation. The exit
@@ -225,9 +297,10 @@ def main() -> int:
     source = "--owns" if arguments.owns else f"issue #{arguments.owns_from_issue}"
     report = [
         f"ownership patterns ({source}): {', '.join(patterns)}",
+        *([f"regenerated paths: {', '.join(regenerated)}"] if regenerated else []),
         f"pull request #{arguments.pr} changes {len(paths)} files",
         "",
-        *(f"{'OUTSIDE OWNS' if path in violations else 'ok          '}  {path}" for path in paths),
+        *(f"{_verdict(path, violations, patterns, regenerated)}  {path}" for path in paths),
         "",
     ]
     if violations:
