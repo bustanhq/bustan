@@ -465,6 +465,11 @@ async def execute_http_exception(
     one, so a request that failed in a middleware is answered with the same document,
     in the same content type, as one that failed inside its handler, and a resolution
     failure never reaches the caller as a traceback.
+
+    The route never ran, so nothing it would have consumed is built here: rendering an
+    error needs the context and the filters and nothing else. A controller whose
+    constructor raises therefore cannot turn the exception the caller is owed an answer
+    to into a second failure that hides it.
     """
 
     request_token = container.scope_manager.push_request(request)
@@ -480,20 +485,18 @@ async def execute_http_exception(
     filters: tuple[ExceptionFilter, ...] | None = None
 
     try:
-        controller_instance = await factory.instantiate_async(
-            execution_plan.controller_cls,
-            module=execution_plan.module_key,
-            request=request,
-        )
+        # The context comes first, before anything that can fail while it is built, so
+        # the filters have something to answer with whatever else goes wrong. It names
+        # no controller because none was constructed for this request.
         context = _http_context(
             execution_plan,
             request=request,
             response_context=response_context,
             container=container,
-            controller=controller_instance,
+            controller=None,
         )
         resolved_pipeline = await factory.resolve_pipeline_async(
-            execution_plan.pipeline_plan,
+            PipelinePlan(filters=execution_plan.pipeline_plan.filters),
             module=execution_plan.module_key,
             request=request,
         )

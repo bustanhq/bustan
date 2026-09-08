@@ -4,7 +4,18 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from bustan import Controller, Get, Middleware, Module, create_app
+from bustan import (
+    APP_FILTER,
+    Controller,
+    ExceptionFilter,
+    ExecutionContext,
+    Get,
+    HttpResponse,
+    Middleware,
+    Module,
+    UseFilters,
+    create_app,
+)
 from bustan.contracts import HttpRequest
 from bustan.kernel.errors import BadRequestException
 from bustan.pipeline.middleware import MiddlewareConsumer
@@ -68,8 +79,79 @@ def test_a_resolution_failure_on_the_middleware_path_leaks_nothing_under_debug()
 
     body = response.text
 
-    assert response.status_code == 500
-    assert response.headers["content-type"].startswith("application/json")
-    assert response.json() == {"detail": "Internal server error"}
+    # The controller is never built on this path, so the constructor cannot fail and
+    # the answer is the one the middleware's own exception maps to.
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/problem+json")
     assert "Traceback" not in body
     assert "controller construction blew up" not in body
+    assert "RuntimeError" not in body
+    assert "BrokenController" not in body
+
+
+def test_the_middleware_failure_path_does_not_construct_the_controller() -> None:
+    constructed: list[str] = []
+
+    class MappingFilter(ExceptionFilter):
+        exception_types = (BadRequestException,)
+
+        async def catch(self, exc: Exception, context: ExecutionContext) -> HttpResponse:
+            return HttpResponse.json({"detail": "mapped by the route filter"}, status_code=422)
+
+    @Controller("/middleware")
+    class RecordingController:
+        def __init__(self) -> None:
+            constructed.append("controller")
+
+        @UseFilters(MappingFilter())
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    @Module(controllers=[RecordingController])
+    class AppModule:
+        def configure(self, consumer: MiddlewareConsumer) -> None:
+            consumer.apply(FailingMiddleware).for_routes("/middleware*")
+
+    with _client(AppModule) as client:
+        response = client.get("/middleware")
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "mapped by the route filter"}
+    # Rendering an error needs the filters and the context, not an instance of the
+    # controller whose handler the request never reached.
+    assert constructed == []
+
+
+def test_an_app_filter_answers_the_middleware_failure_path() -> None:
+    constructed: list[str] = []
+
+    class ApplicationFilter(ExceptionFilter):
+        exception_types = (BadRequestException,)
+
+        async def catch(self, exc: Exception, context: ExecutionContext) -> HttpResponse:
+            return HttpResponse.json({"detail": "mapped by APP_FILTER"}, status_code=422)
+
+    @Controller("/middleware")
+    class RecordingController:
+        def __init__(self) -> None:
+            constructed.append("controller")
+
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    @Module(
+        controllers=[RecordingController],
+        providers=[{"provide": APP_FILTER, "use_value": ApplicationFilter()}],
+    )
+    class AppModule:
+        def configure(self, consumer: MiddlewareConsumer) -> None:
+            consumer.apply(FailingMiddleware).for_routes("/middleware*")
+
+    with _client(AppModule) as client:
+        response = client.get("/middleware")
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "mapped by APP_FILTER"}
+    assert constructed == []
