@@ -355,7 +355,7 @@ Current value: `Cookies`
 #### `create_app`
 
 ```python
-def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | AdapterFactory | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None) -> Application
+def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | AdapterFactory | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None, observability: ObservabilityHooks | None = None) -> Application
 ```
 
 Defined in `bustan.app.bootstrap`.
@@ -368,6 +368,13 @@ adapter, that adapter serves as it stands. Given a callable, the framework calls
 with an :class:`AdapterRuntime` and serves through what it returns, which is how an
 adapter other than the default is handed ``debug`` and the lifespan that starts and
 stops the module graph.
+
+``observability`` attaches a metrics backend and a tracer. Build it with the sinks
+you have - ``ObservabilityHooks(metrics=..., tracer=...)`` - and every request this
+application serves is counted, timed and traced through them. The hooks belong to
+this application rather than to the process, so a second application in the same
+process can report somewhere else. Left out, requests are still measured and still
+correlated; there is simply nothing listening.
 
 #### `create_app_context`
 
@@ -1280,6 +1287,14 @@ Route-aware metrics and tracing hooks around request execution.
 ##### Methods
 
 - `current(cls) -> ObservabilityHooks`
+- `resolve(cls, configured: ObservabilityHooks | None) -> ObservabilityHooks`
+  Return the hooks one request is served under.
+
+An override installed for the calling context wins, because that is what an
+override is for: a test that redirects a request's metrics has to be able to
+do so whatever the application it is testing was assembled with. Otherwise
+the application serves under the hooks it was given, and an application given
+none serves under hooks that record nothing rather than under no hooks at all.
 - `override_global(cls, hooks: ObservabilityHooks) -> None`
 - `scoped_override(cls, hooks: ObservabilityHooks) -> Iterator[ObservabilityHooks]`
 - `reset_global(cls) -> None`

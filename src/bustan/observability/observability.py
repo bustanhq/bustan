@@ -157,6 +157,19 @@ class ObservabilityHooks:
         return cls._override.get() or cls()
 
     @classmethod
+    def resolve(cls, configured: ObservabilityHooks | None) -> ObservabilityHooks:
+        """Return the hooks one request is served under.
+
+        An override installed for the calling context wins, because that is what an
+        override is for: a test that redirects a request's metrics has to be able to
+        do so whatever the application it is testing was assembled with. Otherwise
+        the application serves under the hooks it was given, and an application given
+        none serves under hooks that record nothing rather than under no hooks at all.
+        """
+
+        return cls._override.get() or configured or cls()
+
+    @classmethod
     def override_global(cls, hooks: ObservabilityHooks) -> None:
         token = cls._override.set(hooks)
         cls._override_tokens.set(cls._override_tokens.get() + (token,))

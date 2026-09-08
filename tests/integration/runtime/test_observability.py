@@ -67,10 +67,12 @@ class Metrics:
 
     def __init__(self, events: list[tuple[object, ...]]) -> None:
         self._events = events
+        self.labels: list[dict[str, str]] = []
         self.durations: list[float] = []
 
     def record_request(self, *, labels: Mapping[str, str], duration_seconds: float) -> None:
         self._events.append(("metrics", dict(labels)))
+        self.labels.append(dict(labels))
         self.durations.append(duration_seconds)
 
 
@@ -249,3 +251,136 @@ def test_two_requests_are_two_correlations() -> None:
     first, second = tracer.attributes
     assert first["correlation_id"] != second["correlation_id"]
     assert tracer.contexts[0].trace_id != tracer.contexts[1].trace_id
+
+
+def test_sinks_attached_through_create_app_serve_the_applications_requests() -> None:
+    """The supported way to attach a metrics backend: hand it to ``create_app``."""
+
+    events: list[tuple[object, ...]] = []
+
+    @Controller("/users", version="1")
+    class UsersController:
+        @Get("/")
+        def read_users(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    metrics = Metrics(events)
+    tracer = Tracer(events)
+    application = create_app(
+        AppModule, observability=ObservabilityHooks(metrics=metrics, tracer=tracer)
+    )
+    with AsgiTestClient(cast(Any, application)) as client:
+        response = client.get("/users")
+
+    assert response.status_code == 200
+    assert [event[0] for event in events] == [
+        "start",
+        "metrics",
+        "attribute",
+        "attribute",
+        "status",
+        "end",
+    ]
+    assert metrics.labels[0] == {
+        "controller": "UsersController",
+        "route": "GET /users",
+        "operation": "UsersController.read_users",
+        "version": "1",
+        "status": "200",
+    }
+    assert 0.0 < metrics.durations[0] < 30.0
+    assert tracer.attributes[0]["correlation_id"]
+
+
+def test_an_application_given_no_sinks_still_serves_requests() -> None:
+    @Controller("/users")
+    class UsersController:
+        @Get("/")
+        def read_users(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/users")
+
+    assert response.status_code == 200
+
+
+def test_two_applications_in_one_process_report_to_their_own_sinks() -> None:
+    """The hooks belong to an application, not to the process it happens to share."""
+
+    first_events: list[tuple[object, ...]] = []
+    second_events: list[tuple[object, ...]] = []
+
+    @Controller("/first")
+    class FirstController:
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "first"}
+
+    @Controller("/second")
+    class SecondController:
+        @Get("/")
+        def read(self) -> dict[str, str]:
+            return {"status": "second"}
+
+    @Module(controllers=[FirstController])
+    class FirstModule:
+        pass
+
+    @Module(controllers=[SecondController])
+    class SecondModule:
+        pass
+
+    first_metrics = Metrics(first_events)
+    second_metrics = Metrics(second_events)
+    first = create_app(FirstModule, observability=ObservabilityHooks(metrics=first_metrics))
+    second = create_app(SecondModule, observability=ObservabilityHooks(metrics=second_metrics))
+    with AsgiTestClient(cast(Any, first)) as first_client:
+        first_client.get("/first")
+    with AsgiTestClient(cast(Any, second)) as second_client:
+        second_client.get("/second")
+
+    assert [labels["operation"] for labels in first_metrics.labels] == ["FirstController.read"]
+    assert [labels["operation"] for labels in second_metrics.labels] == ["SecondController.read"]
+
+
+def test_a_scoped_override_wins_over_the_sinks_the_application_was_built_with() -> None:
+    """A test can redirect a request's metrics whatever the application was given.
+
+    That precedence is what makes the override usable at all: an application under
+    test is assembled by the code under test, so an override that lost to it could
+    never reach the application it most needs to observe.
+    """
+
+    configured_events: list[tuple[object, ...]] = []
+    override_events: list[tuple[object, ...]] = []
+
+    @Controller("/users")
+    class UsersController:
+        @Get("/")
+        def read_users(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    application = create_app(
+        AppModule, observability=ObservabilityHooks(metrics=Metrics(configured_events))
+    )
+    with (
+        ObservabilityHooks.scoped_override(ObservabilityHooks(metrics=Metrics(override_events))),
+        AsgiTestClient(cast(Any, application)) as client,
+    ):
+        client.get("/users")
+
+    assert [event[0] for event in override_events] == ["metrics"]
+    assert configured_events == []
