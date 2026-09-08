@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, overload, runtime_checkable
 
 if TYPE_CHECKING:
     from ..adapters.asgi.types import Receive, Scope, Send
     from ..kernel.ioc.container import Container
+    from ..kernel.ioc.tokens import InjectionToken
     from ..kernel.lifecycle.manager import LifecycleManager
     from ..kernel.module.graph import ModuleGraph
     from ..runtime.adapter import AbstractHttpAdapter
@@ -96,8 +97,19 @@ class ApplicationContext:
         """
         return self._http_application
 
+    @overload
+    def get[T](self, token: InjectionToken[T]) -> T: ...
+
+    @overload
+    def get(self, token: object) -> Any: ...
+
     def get(self, token: object) -> Any:
         """Resolve a provider as though no request were being served.
+
+        An ``InjectionToken[T]`` types what comes back: resolving through one yields a
+        ``T``, and assigning it to anything else is a type error rather than something
+        a cast has to assert. Every other token - a class, a bare string, an enum
+        member - resolves unchecked, exactly as it did before.
 
         Anything scoped to a request is refused here, whether or not a request happens
         to be in flight, so a provider resolved this way can never capture one caller's
@@ -111,8 +123,14 @@ class ApplicationContext:
         finally:
             self._container.scope_manager.pop_application(application_token)
 
+    @overload
+    def resolve[T](self, token: InjectionToken[T]) -> T: ...
+
+    @overload
+    def resolve(self, token: object) -> Any: ...
+
     def resolve(self, token: object) -> Any:
-        """Alias for app.get(), with the same non-request semantics."""
+        """Alias for app.get(), with the same non-request semantics and the same typing."""
         return self.get(token)
 
     async def init(self) -> ApplicationContext:
