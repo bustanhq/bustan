@@ -46,11 +46,15 @@ from the backlog's defaults. The issue stands alone for the work: never write "s
 backlog for details" for any of that. It does not repeat the programme's rules. The
 dispatch prompt sends every agent to the backlog for those, and a rule copied into
 thirty issues is a rule with thirty versions. Run
-`scripts/check_writeup.py --file issue.md --kind issue --title "..."` before posting.
+`scripts/check_writeup.py --file issue.md --kind issue --title "..."` before posting,
+with `--epic` for an epic draft.
 
-Attach each ticket issue as a sub-issue of a wave epic, so the epic's sub-issue summary
-becomes the wave's progress bar and no separate tracker is needed. Set the milestone to
-the release the wave ships.
+Attach each ticket to its wave epic the moment it exists: `gh issue create` has no
+parent flag, so create it, then `gh issue edit N --parent P`. The epic carries the
+`epic` label, is the one issue that stands without a parent, and its sub-issue summary
+is the wave's progress bar, so no separate tracker is needed.
+`check_writeup.py --issue N` refuses a ticket with no parent. Set the milestone to the
+release the wave ships.
 
 ## 2. Validate before you dispatch
 
@@ -91,12 +95,14 @@ In this order, so the cheap mechanical gates fail before anyone reads logic:
    violation is an immediate `REQUEST_CHANGES`.
 2. **CI.** A red pull request is not reviewed.
 3. **The pull request contract.** `Closes #N` and `Refs T-NNN` with the finding ids, a
-   prose summary, a verification summary of one line per command with its final status
-   line, the decisions the ticket left open, and what in scope was not done. A missing
+   prose summary, the acceptance checklist with one ticked box per criterion and its
+   evidence, a verification summary of one line per command with its final status
+   line, the decisions the ticket left open with the ladder rung for anything new, and
+   what in scope was not done. A missing
    "Not done" section is a returned pull request: a reviewer who cannot ask questions
    depends on it. So is pasted output in place of the summary: your own run in step 5
    is the proof. The form is in [references/WRITING.md](references/WRITING.md).
-4. **The diff, against one acceptance criterion at a time.**
+4. **The diff, against the acceptance checklist one box at a time.**
 5. **Your own run of the verification block on the branch.**
 
 Then open a pending review, add each finding as an inline comment, and submit as
@@ -120,10 +126,11 @@ branch worse. After each merge, and always before closing a wave:
 
 Anything you find becomes a **follow-up issue** - never a silent fix, never an
 unrecorded complaint. Name the pull request that introduced it and the acceptance
-criterion it undermines. Attach it to the wave epic if it blocks the release, or to a
-later wave if it does not. Write it in the issue shape
-[references/WRITING.md](references/WRITING.md) gives, with the pull request on its
-`Refs` line.
+criterion it undermines. Its parent is the issue it came from; when that issue is
+closed, the epic of the milestone it is deferred to (`gh issue edit N --parent P`).
+The milestone says whether it blocks a release; the parent says where it came from.
+Write it in the issue shape [references/WRITING.md](references/WRITING.md) gives, with
+the pull request on its `Refs` line.
 
 ## Cutting a release
 

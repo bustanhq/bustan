@@ -66,7 +66,8 @@ What to do, imperative mood. Where the ticket leaves a choice open, name the
 options and say which is preferred, or say the choice is the agent's to record.
 
 ## Acceptance
-- One observable criterion per bullet, each reachable inside Owns.
+- One observable criterion per bullet, each reachable inside Owns, written as a
+  checkable statement: the pull request ticks it as written.
 - The finding ids this closes, as run_repros.py reports them.
 
 ## Owns
@@ -81,7 +82,10 @@ Branch `feat/t-500-pipeline-memoization` from `main`.
 ```
 
 A follow-up raised from a review has no ticket id; its first line cites what revealed it,
-`Refs #274`, and names the acceptance criterion it undermines under `## Context`.
+`Refs #274`, and names the acceptance criterion it undermines under `## Context`. Its
+parent is the issue it came from, or the epic of the milestone it is deferred to when
+that issue is closed, set with `gh issue edit N --parent P`. The `Refs` line does not
+repeat the parent: GitHub shows the link on both issues and the check verifies it.
 
 `## Delivery` is one line unless something differs from the backlog's defaults: a base
 branch that is not `main`, or a verification command specific to this ticket.
@@ -101,6 +105,7 @@ What the old bodies carried, and where it goes instead:
 | Narration of an amendment | The amendment itself, applied to the list, plus one line under `**Notes on that list.**`: date, path, the pull request that needed it. The edit history holds the diff. |
 | Provenance ("reported by the T-600 agent in #274") | A `Refs` entry: `Refs T-600, #274`. |
 | Sequencing and scheduler state | The epic's status table. An open issue means go, so the issue carries no schedule. |
+| Which wave or series this belongs to | The parent link, `gh issue edit N --parent P`, never a title prefix or a sentence. |
 | Second-person instructions | Imperative mood under `## Change`. |
 | A generated-by footer | Nowhere. |
 
@@ -113,6 +118,12 @@ Refs T-502, DP-01, DP-02, DP-03, MG-08
 ## What changed
 One or two paragraphs: the change and the reason, readable without the diff. Name
 any public behaviour that changed.
+
+## Acceptance
+- [x] **The criterion, as written in the issue**: the test, file or command that
+  proves it, one per box, in the issue's order.
+- [ ] **A criterion not met, as written**: why, in a clause; it appears again under
+  Not done.
 
 ## Verification
 - `uv run ruff format --check . && uv run ruff check .`: All checks passed
@@ -128,11 +139,20 @@ any public behaviour that changed.
 ## Decisions
 - Only where the ticket left more than one defensible option: the option taken and
   the reason, one or two sentences each.
+- For any new module, dependency, public symbol or abstraction: the rung of the
+  ladder in `CLAUDE.md` it stopped at, and why the rungs above did not hold.
 
 ## Not done
-- Only omissions inside the ticket's scope, each with its reason. Or the one line:
+- Only omissions inside the ticket's scope, each with its reason, an unticked
+  criterion among them quoted as written. Or the one line:
   Nothing in scope was left undone.
 ```
+
+`## Acceptance` quotes each criterion as the issue states it, in bold, then the
+evidence: a test id, a file, a command and its status line, or the row of a table
+elsewhere in the body. The check compares the first 60 characters of each criterion,
+so a paraphrase does not count; a box left unticked is a criterion not met, and the
+same criterion goes under `## Not done` with its reason.
 
 The figures are illustrative; a real body carries the numbers its own run printed. One
 line per command: the command and its final status line, edited only to drop timing. A
@@ -147,8 +167,8 @@ as repository maintenance, carries `Refs` alone and is checked with `--no-issue`
 delivery pull request always closes its ticket.
 
 Not in the body: a "Files touched" list (the diff tab is that list), a note on how the
-work was directed, the repository's pull request template and its checkboxes,
-attestations, footers, session links.
+work was directed, a checkbox outside `## Acceptance`, attestations, footers, session
+links.
 
 A `BLOCKED:` or `DECISION REQUIRED:` draft keeps that first line, then the problem in one
 paragraph, the options as bullets, and the recommendation with its reason. It does not
@@ -179,7 +199,8 @@ A review is a verdict and a list of findings. Nothing else.
 ## Epic body and comments
 
 The epic body is the wave's purpose in a paragraph, the sequencing table and the risks.
-It is already that shape; keep it.
+It is already that shape; keep it. An epic carries the `epic` label, is the one issue
+with no parent, and owns no files; every ticket and follow-up hangs under one.
 
 An epic comment is one of three things, named in its first line:
 
@@ -198,7 +219,8 @@ of what was checked by hand, no section titled with what the writer got wrong.
 | --- | --- |
 | Issue or pull request title | 72 characters |
 | Issue body, excluding the `Owns` and `Must not touch` lists | 400 words |
-| Pull request body, excluding `## Verification` and any `<details>` block | 300 words |
+| Pull request body, excluding `## Acceptance`, `## Verification` and any `<details>` block | 300 words |
+| `## Acceptance` checklist | one box per criterion, at most 12 |
 | `## Verification` list | one line per command, at most 12 lines |
 | Fenced output outside `<details>`, whole body | 20 lines |
 | Pull request body including `<details>` | 10,000 characters |
@@ -233,7 +255,8 @@ The check refuses a title, body or comment containing any of these, case-insensi
   was deliberately not done`, `What I verified`, `Two things I got wrong`; and
   `**Sequencing.**` as a lead-in in a ticket, since an epic's sequencing table is the
   one place a schedule belongs.
-- A pull request template checkbox, ticked or not.
+- A checkbox anywhere but under `## Acceptance` in a pull request: the old template's
+  Validation, Docs and Release Notes boxes, ticked or not.
 
 ## Attribution
 
