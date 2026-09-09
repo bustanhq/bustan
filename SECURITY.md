@@ -22,11 +22,22 @@ You should receive an acknowledgement within 5 business days.
 
 ## Supported Versions
 
-Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`. The release being prepared is the `version` field in `pyproject.toml`; read it there rather than from a list that cannot notice it moved.
-
 Security support is best-effort for:
 
 - the default branch
-- the most recent tagged pre-`1.0` release, once releases begin
+- the most recent release on the current minor line: the newest release whose major and
+  minor version match the `version` field in `pyproject.toml`
 
-Older unreleased snapshots and abandoned feature branches are not supported.
+That list names no version on purpose. Read the field, apply the two bullets, and the
+answer holds without this section being edited each time a release ships.
+
+Pre-release candidates are not supported. A version carrying a pre-release suffix is
+published so that the release can be tested, and a vulnerability found in one is fixed
+on the default branch and ships in the next release rather than as a patched candidate.
+That is stated rather than left to inference, because candidates are what the package
+index offers while a line is being prepared: while the current line has published only
+candidates, the default branch is the only supported code.
+
+Earlier minor lines, unreleased snapshots and abandoned feature branches are not
+supported. Support follows the current line rather than accumulating behind it, so a
+line stops receiving security fixes once a newer one becomes current.
