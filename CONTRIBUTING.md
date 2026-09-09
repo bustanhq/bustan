@@ -80,6 +80,8 @@ Pull requests should:
 - include tests for behavior changes
 - include docs updates for user-facing changes
 
+The pull request template lays this out as `What changed`, `Verification`, `Decisions` and `Not done`; fill those sections and report each check as one line, rather than pasting command output.
+
 Before opening a PR, make sure the local quality checks pass.
 
 ## Security

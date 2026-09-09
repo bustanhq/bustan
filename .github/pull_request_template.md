@@ -1,20 +1,11 @@
-## Summary
+Closes #
 
-Describe the problem and the change.
+## What changed
 
-## Validation
+## Verification
 
-- [ ] `uv run ruff check .`
-- [ ] `uv run ty check src tests examples scripts`
-- [ ] `uv run pytest`
+<!-- One line per command: the command and its final status line. No pasted output. -->
 
-## Docs
+## Decisions
 
-- [ ] Docs updated for user-facing behavior changes
-- [ ] Examples updated if relevant
-- [ ] API reference regenerated if public docstrings changed
-
-## Release Notes
-
-- [ ] Commit titles follow Conventional Commits
-- [ ] Breaking changes are called out explicitly
+## Not done

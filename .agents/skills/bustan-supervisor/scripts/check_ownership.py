@@ -113,10 +113,19 @@ def owns_patterns_from_issue(repo: str, issue_number: int) -> list[str]:
     issue = _get(f"/repos/{repo}/issues/{issue_number}")
     if not isinstance(issue, dict) or not issue.get("body"):
         raise GitHubError(f"issue {issue_number} has no body to parse")
+    return owns_patterns_from_body(issue["body"], f"issue {issue_number}")
 
+
+def owns_patterns_from_body(body: str, label: str) -> list[str]:
+    """Pull the backticked paths out of the Owns section of issue text.
+
+    The parse is the same whether the text came from GitHub or from a draft on disk,
+    which is what lets a body be checked before it is posted. `label` names the source
+    in the errors.
+    """
     patterns: list[str] = []
     inside = False
-    for line in issue["body"].splitlines():
+    for line in body.splitlines():
         if not inside:
             if OWNS_HEADING.match(line):
                 inside = True
@@ -128,7 +137,7 @@ def owns_patterns_from_issue(repo: str, issue_number: int) -> list[str]:
 
     if not patterns:
         raise GitHubError(
-            f"found no backticked paths in the Owns section of issue {issue_number}; "
+            f"found no backticked paths in the Owns section of {label}; "
             "pass the patterns explicitly with --owns"
         )
 
@@ -139,7 +148,7 @@ def owns_patterns_from_issue(repo: str, issue_number: int) -> list[str]:
     suspect = [pattern for pattern in patterns if not _looks_like_a_path(pattern)]
     if suspect:
         raise GitHubError(
-            f"the Owns section of issue {issue_number} did not parse into file paths. "
+            f"the Owns section of {label} did not parse into file paths. "
             f"These do not look like paths: {', '.join(suspect)}. The section probably "
             "refers to a list given elsewhere in the issue, which this cannot follow. "
             "Pass the paths explicitly with --owns, and fix the issue to carry literal "
