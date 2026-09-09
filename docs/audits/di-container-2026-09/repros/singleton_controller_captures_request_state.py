@@ -1,7 +1,7 @@
 """RI-01: a default-scope (singleton) controller that injects a request-scoped provider or the
 Request itself is built once and then serves the first caller's state to every later caller.
 
-docs/explanation/request-scope.md promises a ProviderResolutionError for this shape;
+docs/REQUEST_SCOPED_PROVIDERS.md promises a ProviderResolutionError for this shape;
 no error is raised.
 """
 

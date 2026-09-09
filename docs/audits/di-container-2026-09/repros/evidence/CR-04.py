@@ -2,7 +2,7 @@
 # Verbatim verification script; prints its own CONFIRMED/REFUTED lines. See ../../REPORT.md.
 """F-22: request-scoped cache writes are unlocked (resolver.py:151-152, 268-269, 883-888;
 controller_factory.py:55-63). Concurrent resolution inside ONE request builds two instances,
-contradicting docs/explanation/request-scope.md 'One cached instance per request'.
+contradicting docs/REQUEST_SCOPED_PROVIDERS.md 'One cached instance per request'.
 
 Case 1: two threads share one Request and call container.resolve(Identity, request=req).
 Case 2: two anyio tasks share one Request and call resolve_async(AsyncIdentity), whose async

@@ -5,7 +5,7 @@ a raw TypeError instead of a framework error; that is a defect and is fixed. INQ
 yielding the requesting class rather than the requesting instance is not a defect: Bustan
 injects through the constructor only, so at the moment INQUIRER is answered the consumer's
 __init__ has not run and no instance of it exists. That gap is documented as a deliberate
-difference in docs/explanation/comparisons.md, and this script holds the framework to it.
+difference in docs/COMPARISONS.md, and this script holds the framework to it.
 """
 
 from typing import Annotated

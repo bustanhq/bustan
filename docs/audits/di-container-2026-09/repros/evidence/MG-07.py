@@ -108,11 +108,11 @@ except Exception as exc:  # noqa: BLE001
     print("unexpected:", type(exc).__name__, exc)
 
 print("--- 4. TROUBLESHOOTING.md text ---")
-with open("/home/user/bustan/docs/reference/errors.md", encoding="utf-8") as fh:
+with open("/home/user/bustan/docs/TROUBLESHOOTING.md", encoding="utf-8") as fh:
     lines = fh.read().splitlines()
 for i, line in enumerate(lines, 1):
     if "ExportViolationError" in line or "Fix: add the provider" in line:
-        print(f"docs/reference/errors.md:{i}: {line}")
+        print(f"docs/TROUBLESHOOTING.md:{i}: {line}")
 
 print("results:", results)
 if (results.get("class_export_rejected") and results.get("class_msg_says_provider")
