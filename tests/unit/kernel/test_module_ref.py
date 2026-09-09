@@ -209,6 +209,45 @@ def test_module_ref_reaches_request_scope_from_inside_a_handler() -> None:
     assert body == {"user": "ada", "same_instance": True}
 
 
+def test_a_singleton_holding_a_module_ref_serves_over_http() -> None:
+    @Injectable
+    class GreetingService:
+        def greet(self) -> str:
+            return "hello"
+
+    @Injectable
+    class Catalogue:
+        def __init__(self, module_ref: ModuleRef) -> None:
+            self.module_ref = module_ref
+
+        def greeting(self) -> str:
+            return cast(GreetingService, self.module_ref.get(GreetingService)).greet()
+
+    @Controller("/catalogue")
+    class CatalogueController:
+        def __init__(self, catalogue: Catalogue) -> None:
+            self.catalogue = catalogue
+
+        @Get("/")
+        def read_greeting(self) -> dict[str, str]:
+            return {"message": self.catalogue.greeting()}
+
+    @Module(
+        providers=[ModuleRef, GreetingService, Catalogue],
+        controllers=[CatalogueController],
+    )
+    class AppModule:
+        pass
+
+    application = create_app(AppModule)
+
+    # A singleton is built while the application starts, which is where a reference
+    # that names the running application is asked for before any request exists.
+    with TestClient(cast(Any, application)) as client:
+        assert client.get("/catalogue/").json() == {"message": "hello"}
+        assert application.get(Catalogue).module_ref.module_key is AppModule
+
+
 def test_module_ref_refuses_request_scope_when_no_request_is_being_served() -> None:
     @Module(imports=[DiscoveryModule], providers=[RequestIdentity])
     class AppModule:

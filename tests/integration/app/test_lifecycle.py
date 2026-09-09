@@ -1,11 +1,21 @@
 """Integration tests for module and application lifecycle hooks."""
 
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 import pytest
 from starlette.testclient import TestClient
 
-from bustan import Injectable, InjectionToken, Module, create_app, create_app_context
+from bustan import (
+    APPLICATION,
+    ApplicationContext,
+    Inject,
+    Injectable,
+    InjectionToken,
+    Module,
+    ModuleRef,
+    create_app,
+    create_app_context,
+)
 from bustan.errors import LifecycleError, ProviderResolutionError
 
 
@@ -268,3 +278,74 @@ def test_an_http_application_refuses_to_resolve_between_two_client_blocks() -> N
         second = app.get(Pool)
         assert second is not first
         assert second.opened is True
+
+
+def test_a_provider_built_during_http_startup_can_inject_the_application() -> None:
+    @Injectable()
+    class NeedsApplication:
+        def __init__(self, application: Annotated[object, Inject(APPLICATION)]) -> None:
+            self.application = application
+
+    @Module(providers=[NeedsApplication], exports=[NeedsApplication])
+    class RootModule:
+        pass
+
+    application = create_app(RootModule)
+
+    with TestClient(cast(Any, application)):
+        seated = application.get(NeedsApplication).application
+
+    # Both entry points answer with the one context the container was told it belongs
+    # to, so what a provider is handed does not depend on which one built it.
+    assert isinstance(seated, ApplicationContext)
+    assert seated.http_application is application
+
+
+@pytest.mark.anyio
+async def test_both_entry_points_hand_a_startup_provider_the_same_application() -> None:
+    @Injectable()
+    class NeedsApplication:
+        def __init__(self, application: Annotated[object, Inject(APPLICATION)]) -> None:
+            self.application = application
+
+    @Module(providers=[NeedsApplication], exports=[NeedsApplication])
+    class RootModule:
+        pass
+
+    context = create_app_context(RootModule)
+    await context.init()
+    assert context.get(NeedsApplication).application is context
+    await context.close()
+
+    application = create_app(RootModule)
+    with TestClient(cast(Any, application)):
+        served = application.get(NeedsApplication).application
+
+    assert cast(ApplicationContext, served).container is application.container
+
+
+def test_a_teardown_hook_over_http_can_still_resolve_through_the_application() -> None:
+    resolved: list[object] = []
+
+    @Injectable(scope="transient")
+    class NeedsApplication:
+        def __init__(self, application: Annotated[object, Inject(APPLICATION)]) -> None:
+            self.application = application
+
+    @Injectable()
+    class Registry:
+        def __init__(self, module_ref: ModuleRef) -> None:
+            self.module_ref = module_ref
+
+        def on_application_shutdown(self, signal: str | None) -> None:
+            resolved.append(self.module_ref.get(NeedsApplication))
+
+    @Module(providers=[ModuleRef, NeedsApplication, Registry], exports=[Registry])
+    class RootModule:
+        pass
+
+    with TestClient(cast(Any, create_app(RootModule))):
+        pass
+
+    assert len(resolved) == 1
+    assert isinstance(resolved[0], NeedsApplication)
