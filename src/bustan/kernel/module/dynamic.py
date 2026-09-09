@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+
+from ...common.types import Provider
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +43,7 @@ class DynamicModule:
     """
 
     module: type[object]
-    providers: tuple[object | dict[str, Any], ...] = ()
+    providers: tuple[Provider, ...] = ()
     imports: tuple[type[object] | DynamicModule, ...] = ()
     controllers: tuple[type[object], ...] = ()
     exports: tuple[object, ...] = ()
@@ -51,7 +52,7 @@ class DynamicModule:
     def __new__(
         cls,
         module: type[object],
-        providers: tuple[object | dict[str, Any], ...] = (),
+        providers: tuple[Provider, ...] = (),
         imports: tuple[type[object] | DynamicModule, ...] = (),
         controllers: tuple[type[object], ...] = (),
         exports: tuple[object, ...] = (),
@@ -71,20 +72,14 @@ class DynamicModule:
 def _identity_of(value: object) -> object:
     """Return a hashable stand-in for a declaration, so equal declarations match.
 
-    A provider definition is written as a dict and a dict cannot be a key, so a
-    declaration is read structurally down to its leaves. A leaf is paired with its own
-    type, because a string enum member and the bare string it equals are two different
-    declarations. A leaf nothing can hash - an arbitrary object handed to ``use_value``
-    - stands for itself, which is the strictest answer available and so never merges
-    two declarations that are not the same one.
+    A declaration is a sequence of entries, so it is read structurally down to its
+    leaves. A leaf is paired with its own type, because a string enum member and the
+    bare string it equals are two different declarations. A leaf nothing can hash - a
+    provider holding an arbitrary object as its ``use_value`` - stands for itself, which
+    is the strictest answer available and so never merges two declarations that are not
+    the same one.
     """
 
-    if isinstance(value, dict):
-        entries = tuple(
-            (_identity_of(key), _identity_of(item))
-            for key, item in cast("dict[object, object]", value).items()
-        )
-        return ("dict", tuple(sorted(entries, key=repr)))
     if isinstance(value, (list, tuple)):
         return ("sequence", tuple(_identity_of(item) for item in value))
     try:

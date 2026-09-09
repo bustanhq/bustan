@@ -143,7 +143,7 @@ to your class. Create `src/my_app/identity_module.py`:
 ```python
 from __future__ import annotations
 
-from bustan import AUTHENTICATOR_REGISTRY, Module
+from bustan import AUTHENTICATOR_REGISTRY, FactoryProvider, Module
 
 from .bearer_authenticator import BearerAuthenticator
 
@@ -155,11 +155,11 @@ def _registry(authenticator: BearerAuthenticator) -> dict[str, object]:
 @Module(
     providers=[
         BearerAuthenticator,
-        {
-            "provide": AUTHENTICATOR_REGISTRY,
-            "use_factory": _registry,
-            "inject": (BearerAuthenticator,),
-        },
+        FactoryProvider(
+            provide=AUTHENTICATOR_REGISTRY,
+            use_factory=_registry,
+            inject=(BearerAuthenticator,),
+        ),
     ],
     exports=[AUTHENTICATOR_REGISTRY],
 )
@@ -167,9 +167,9 @@ class IdentityModule:
     pass
 ```
 
-That provider is written as a dictionary rather than a class because what you are providing is a
-value built from other things: a factory function, and the list of what to inject into it. It is the
-same idea as `@Injectable()`, spelled out for the cases where there is no class to decorate.
+That provider is written as a `FactoryProvider` rather than a class because what you are providing
+is a value built from other things: a factory function, and the list of what to inject into it. It
+is the same idea as `@Injectable()`, spelled out for the cases where there is no class to decorate.
 
 ## Guarding The Routes
 
