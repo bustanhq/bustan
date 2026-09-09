@@ -17,9 +17,14 @@ from starlette.testclient import TestClient
 
 from bustan import Controller, Get, Injectable, Module, Scope, create_app, create_app_context
 from bustan.common.decorators.injectable import Inject, OptionalDep
+from bustan.contracts import HttpRequest
 from bustan.errors import InvalidControllerError, ProviderResolutionError
 from bustan.kernel.ioc.container import build_container
-from bustan.kernel.ioc.planning.container_plan import controller_scope
+from bustan.kernel.ioc.planning.container_plan import (
+    NativeRequestDependency,
+    controller_scope,
+    native_request_dependencies,
+)
 from bustan.kernel.ioc.planning.plan import FixedValue, ProvidedToken
 from bustan.kernel.ioc.tokens import APPLICATION, REQUEST, RESPONSE, InjectionToken
 from bustan.kernel.module.graph import build_module_graph
@@ -461,3 +466,99 @@ def test_a_factory_injecting_equal_tokens_of_different_types_is_given_both() -> 
     container = build_container(build_module_graph(FeatureModule))
 
     assert container.resolve("dsn", module=FeatureModule) == "enum-db|string-db"
+
+
+def test_a_constructor_naming_a_transport_request_is_reported_with_what_it_named() -> None:
+    """The plan cannot judge the annotation, so it has to carry it forward.
+
+    No adapter exists when a container is planned, so nothing here can say whether the
+    transport a parameter named is the one that will serve. What the plan can do is
+    report the claim and what was written to make it, which is all the check against the
+    serving adapter needs.
+    """
+
+    @Injectable(scope=Scope.REQUEST)
+    class HoldsTheTransportRequest:
+        def __init__(self, request: Request) -> None:
+            self.request = request
+
+    @Module(providers=[HoldsTheTransportRequest])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    assert native_request_dependencies(container.plan) == (
+        NativeRequestDependency(
+            target=HoldsTheTransportRequest, parameter="request", annotation=Request
+        ),
+    )
+
+
+def test_a_constructor_naming_the_neutral_request_contract_is_not_reported() -> None:
+    """The neutral contract names no transport, so no adapter has anything to answer."""
+
+    @Injectable(scope=Scope.REQUEST)
+    class HoldsTheContract:
+        def __init__(self, request: HttpRequest) -> None:
+            self.request = request
+
+    @Module(providers=[HoldsTheContract])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    assert native_request_dependencies(container.plan) == ()
+
+
+def test_a_transport_request_type_a_module_declares_is_a_binding_and_not_the_request() -> None:
+    """A class the graph declares is resolved from the table however it is shaped.
+
+    Reporting it would refuse an application over a provider that is never handed the
+    request at all, which is the opposite of the mistake this reporting exists to catch.
+    """
+
+    replacement = cast(Any, object())
+
+    @Injectable(scope=Scope.TRANSIENT)
+    class HoldsWhatTheModuleDeclared:
+        def __init__(self, request: Request) -> None:
+            self.request = request
+
+    @Module(
+        providers=[{"provide": Request, "use_value": replacement}, HoldsWhatTheModuleDeclared],
+    )
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+
+    assert native_request_dependencies(container.plan) == ()
+    assert container.resolve(HoldsWhatTheModuleDeclared, module=AppModule).request is replacement
+
+
+def test_a_class_two_modules_can_build_reports_its_parameter_once() -> None:
+    """One mistake is one report, however many modules could have made it."""
+
+    @Injectable(scope=Scope.REQUEST)
+    class HoldsTheTransportRequest:
+        def __init__(self, request: Request) -> None:
+            self.request = request
+
+    @Module(providers=[HoldsTheTransportRequest], exports=[HoldsTheTransportRequest])
+    class SharedModule:
+        pass
+
+    @Module(imports=[SharedModule], providers=[HoldsTheTransportRequest])
+    class FeatureModule:
+        pass
+
+    container = build_container(build_module_graph(FeatureModule))
+
+    assert len(container.plan.constructions) > 1
+    assert native_request_dependencies(container.plan) == (
+        NativeRequestDependency(
+            target=HoldsTheTransportRequest, parameter="request", annotation=Request
+        ),
+    )
