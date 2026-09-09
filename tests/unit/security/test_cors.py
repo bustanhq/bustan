@@ -24,6 +24,7 @@ from bustan.adapters.asgi import AsgiAdapter, AsgiCorsMiddleware
 from bustan.adapters.starlette import StarletteAdapter
 from bustan.contracts import AbstractHttpAdapter, AdapterCapabilities, AdapterRoute, HttpRequest
 from bustan.contracts.cors import CorsOptions as ContractCorsOptions
+from bustan.errors import BustanError, CorsConfigurationError
 from bustan.runtime.adapter import AdapterRuntime
 from bustan.security.cors import CorsOptions as SecurityCorsOptions
 from bustan.testing import AsgiTestClient
@@ -238,7 +239,7 @@ def test_the_bare_call_refuses_instead_of_allowing_every_origin(
 
     application = create_app(CorsModule, adapter=adapter)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(CorsConfigurationError):
         application.enable_cors()
 
     with AsgiTestClient(cast(Any, application)) as client:
@@ -263,13 +264,18 @@ def test_the_bare_call_refuses_instead_of_allowing_every_origin(
 def test_a_policy_naming_no_origins_is_refused_and_says_what_is_missing(
     options: CorsOptions | None,
 ) -> None:
-    """The author meets the refusal at the call site, where the origins can be named."""
+    """The author meets the refusal at the call site, where the origins can be named.
+
+    The type is the framework's own, so an application that wraps its own wiring catches
+    this refusal with the same ``except BustanError`` that catches every other one.
+    """
 
     application = create_app(CorsModule, adapter=_asgi)
 
-    with pytest.raises(ValueError) as refusal:
+    with pytest.raises(CorsConfigurationError) as refusal:
         application.enable_cors(options)
 
+    assert isinstance(refusal.value, BustanError)
     assert str(refusal.value) == (
         "enable_cors needs the origins it should permit. Pass "
         "CorsOptions(origins=[...]), or omit the call to leave cross-origin "
@@ -539,13 +545,20 @@ def test_both_adapters_answer_a_cross_origin_request_identically(
 
 
 def test_an_adapter_without_the_capability_refuses_and_names_itself() -> None:
-    """Silence would be worse than a refusal: it reads as a policy that is being enforced."""
+    """Silence would be worse than a refusal: it reads as a policy that is being enforced.
+
+    The type stays a standard-library one. The port that raises it is the lowest layer of
+    the package and may not import the framework's errors, and an abstract method a
+    subclass did not implement is what ``NotImplementedError`` means, so this is asserted
+    rather than left to be promoted later by someone reading it as an oversight.
+    """
 
     application = create_app(CorsModule, adapter=UncorsedAdapter())
 
     with pytest.raises(NotImplementedError) as refusal:
         application.enable_cors(CorsOptions(origins=[ORIGIN]))
 
+    assert not isinstance(refusal.value, BustanError)
     assert "UncorsedAdapter" in str(refusal.value)
     assert "CORS" in str(refusal.value)
 

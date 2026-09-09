@@ -156,6 +156,13 @@ class AbstractHttpAdapter(ABC):
         answered by nothing at all believes a policy is being enforced, and serves every
         origin while believing it. An adapter whose transport can enforce a policy
         overrides this and does.
+
+        The refusal is a standard-library ``NotImplementedError`` and stays one. This is
+        the lowest layer of the package and may not import the framework's own error
+        types, which is what lets an adapter be written against this module alone; and an
+        abstract method a subclass did not implement is exactly what that exception means
+        in Python. A policy the application refuses before it reaches any transport is a
+        different failure, and carries a framework type instead.
         """
 
         raise NotImplementedError(
