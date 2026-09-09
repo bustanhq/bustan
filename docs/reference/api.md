@@ -464,12 +464,23 @@ def Audit(*, event: str) -> Callable[[DecoratedT], DecoratedT]
 
 Defined in `bustan.security.policy`.
 
-No audit record is written in this version; the decorator only records the policy.
+Write a record of who called this route, every time it is called.
 
-``event`` reaches the route's compiled policy plan, and nothing in the request path
-acts on it, so a route marked with this decorator leaves no trace of who called it.
-Write the record from the handler, or from an interceptor of your own, for as long
-as that is so.
+``event`` names what the record is a record of, and is what a reader searches the
+trail for. One record is written once the handler has finished, whether it returned
+or raised, carrying that name, whether the call succeeded, the controller, route,
+operation and version it reached, the identity it was authorised under when it was
+authorised, and the correlation and trace ids of the request it belongs to.
+
+Nothing the caller sent is in the record: no header, no body, no query and no path.
+The trail says who called what and when, and a reader who needs what they sent
+follows the correlation id into the request's own records rather than finding a
+copy of it here.
+
+There is no store. The record is written through the framework's logger, so it goes
+wherever the application has configured that to write, is redacted by the same
+rules, and is filtered by the same level: records are written at the log level, and
+an application that raises the level above it stops writing them.
 
 #### `Auth`
 
@@ -647,11 +658,32 @@ def Cache(*, ttl: int) -> Callable[[DecoratedT], DecoratedT]
 
 Defined in `bustan.security.policy`.
 
-No response is cached in this version; the decorator only records the policy.
+Answer a repeated read with what the last one computed, until it goes stale.
 
-``ttl`` reaches the route's compiled policy plan, and nothing in the request path
-acts on it, so a route marked with this decorator is recomputed on every request.
-Cache in front of the application, or inside the handler, for as long as that is so.
+``ttl`` is how many whole seconds an answer stays usable, counted from when it was
+computed, and must be at least one. A request matching an answer still inside its
+ttl is served from it and the handler does not run at all; anything else runs the
+handler and keeps what it returned.
+
+Only ``GET`` and ``HEAD`` are served this way, because replaying a method that is
+allowed to change something would skip the change. Answers are kept apart by the
+route, by the exact path and query string the caller asked for, and by the identity
+the request was authorised under, so one caller's answer is never handed to another
+and two different queries never share one. Headers are no part of that, so a route
+whose body varies by header, by ``Accept`` or by a language, must not be cached
+here. A handler returning a response object or a stream rather than a value is
+refused this decorator while the application is built, because such a body can only
+be read once.
+
+Only the handler is skipped. Everything in front of it still runs, so a caller who
+should be refused is still refused, on the request that would have been served from
+the cache as much as on the one that filled it.
+
+The store is in the process and lives on the decorator: it is shared by every
+application in the process that serves this route, is never shared between
+processes or across a restart, and holds at most 512 answers per decorated route,
+dropping the oldest when a new one arrives at that limit. An application needing a
+cache any of that is untrue of needs one of its own, in front of the process.
 
 #### `ClassProvider`
 
@@ -1287,12 +1319,28 @@ def Idempotent(*, key_header: str = 'Idempotency-Key') -> Callable[[DecoratedT],
 
 Defined in `bustan.security.policy`.
 
-No idempotency key is stored or compared in this version; the policy is recorded.
+Answer a retry carrying a key already seen with what the first attempt returned.
 
-``key_header`` reaches the route's compiled policy plan, and nothing in the request
-path acts on it, so a retried request runs the handler again and its side effect
-happens again. Deduplicate inside the handler, against the store that already holds
-the side effect, for as long as that is so.
+``key_header`` names the header a caller puts its key in. The first request
+presenting a key runs the handler and its result is recorded under that key; a
+later request presenting the same key to the same route and path is answered from
+the recording and the handler does not run, so the side effect happens once however
+many times the request is retried. The path is part of the key, so one key
+presented against two different resources is two attempts rather than one.
+
+A request carrying no such header is not deduplicated and runs like any other,
+because a key is the only thing that tells one attempt from a retry of it. Two
+requests presenting the same key at the same time both run: the recording is made
+when the first finishes, and until then the second has nothing to find. A handler
+returning a response object or a stream rather than a value is refused this
+decorator while the application is built, because such a body can only be read once.
+
+A recording answers for twenty-four hours, after which the same key is a fresh
+attempt. The store is in the process and lives on the decorator: it is shared by
+every application in the process that serves this route, is never shared between
+processes or across a restart, and holds at most 1024 keys per decorated route,
+dropping the oldest when a new one arrives at that limit. An application that must
+deduplicate across its workers, or across a restart, needs a store of its own.
 
 #### `Inject`
 

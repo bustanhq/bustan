@@ -58,12 +58,14 @@ Assume none of the following unless you have arranged it yourself.
 - **Password hashing, token issuing or token verification.** `@Auth` runs the
   authenticator you wrote; the framework has no opinion about what is inside it.
 - **Request signing, replay protection or nonce tracking.**
-- **`@Cache`, `@Idempotent` and `@Audit` do nothing in this version.** All three accept
-  every argument and record their policy on the route's compiled plan, and nothing in
-  the request path reads it. A route marked `@Idempotent` runs its handler again on a
-  retry and its side effect happens again; a route marked `@Audit` leaves no record of
-  who called it. Deduplicate inside the handler and write the audit record yourself
-  until that changes. Their docstrings say the same thing, which is what an editor's
-  hover shows.
+- **`@Cache` and `@Idempotent` keep their stores in the process.** Each holds a bounded
+  number of entries for one route in memory, and neither is shared between workers nor
+  survives a restart, so a deployment of N workers caches N times over and a retry that
+  lands on a different worker than the first attempt runs the handler again. An
+  application that must deduplicate across its workers needs a store of its own.
+- **`@Audit` writes through the framework's logger**, so its records go wherever the
+  application sends its logs and are filtered by the level it set. That is an audit
+  trail only to the degree the log destination is one: it is not separately stored, not
+  tamper evident, and an application filtering above the log level stops writing it.
 - **`@Owner` and `@DeprecatedRoute` write no response header** and are read only by the
   governance ownership report.
