@@ -366,7 +366,7 @@ class RouteCompiler:
     def _visible_authenticator_registry(self, module: ModuleKey) -> Binding | None:
         """Return the authenticator registry binding one module can see, if it can see one."""
 
-        visibility = self._container.registry.module_visibility.get(module)
+        visibility = self._container.registry.visibility_view.get(module)
         if visibility is None:
             return None
         declaring_module = visibility.get(AUTHENTICATOR_REGISTRY)

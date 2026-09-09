@@ -131,7 +131,9 @@ def test_a_durable_binding_that_escaped_the_declaration_check_still_refuses_to_r
             scope=Scope.DURABLE,
         ),
     )
-    container.registry.module_visibility[AppModule][KeylessDurableService] = AppModule
+    visible = dict(container.registry.visibility_view[AppModule])
+    visible[KeylessDurableService] = AppModule
+    container.registry.set_visibility(AppModule, visible)
     request = build_http_request(path="/items", headers=[(b"x-tenant-id", b"tenant-a")])
 
     with pytest.raises(ProviderResolutionError, match="get_durable_context_key"):

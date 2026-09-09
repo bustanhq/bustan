@@ -42,9 +42,9 @@ class Container:
 
         self._build_bindings()
         self.plan = plan_container(
-            bindings=self.registry.bindings,
-            visibility=self.registry.module_visibility,
-            controllers=self.registry.controller_modules,
+            bindings=self.registry.binding_view,
+            visibility=self.registry.visibility_view,
+            controllers=self.registry.controller_module_view,
         )
         self.kernel = ResolutionKernel(
             self.registry, self.scope_manager, self.override_manager, self.plan
@@ -72,9 +72,10 @@ class Container:
         Visibility a binding does not back is a promise kept only until the first
         request that needs the token, so it is refused at bootstrap instead.
         """
-        for module_key, visibility in self.registry.module_visibility.items():
+        bindings = self.registry.binding_view
+        for module_key, visibility in self.registry.visibility_view.items():
             for token, declaring_module in visibility.items():
-                if (declaring_module, token) in self.registry.bindings:
+                if (declaring_module, token) in bindings:
                     continue
                 raise InvalidModuleError(
                     f"{_qualname(token)} is visible to {_display_name(module_key)} through "
@@ -374,11 +375,8 @@ class Container:
         application was built. So this names where each component comes from rather
         than building it, and the runtime resolves it once per request.
         """
-        return tuple(
-            node.key
-            for node in self.module_graph.nodes
-            if (node.key, token) in self.registry.bindings
-        )
+        bindings = self.registry.binding_view
+        return tuple(node.key for node in self.module_graph.nodes if (node.key, token) in bindings)
 
 
 def build_container(module_graph: ModuleGraph) -> Container:

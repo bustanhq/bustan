@@ -448,13 +448,13 @@ class ResolutionKernel:
             return planned
         unplanned = self._unplanned.get((module, target))
         if unplanned is None:
-            visible = self.registry.module_visibility.get(module, {})
+            visible = self.registry.visibility_view.get(module, {})
             unplanned = plan_target(target, module, visible)
             self._unplanned[(module, target)] = unplanned
         return unplanned
 
     def _declaring_module(self, token: object, module: ModuleKey) -> ModuleKey:
-        visibility = self.registry.module_visibility.get(module)
+        visibility = self.registry.visibility_view.get(module)
         if visibility is None:
             raise ProviderResolutionError(
                 f"{_display_name(module)} is not part of the application container"

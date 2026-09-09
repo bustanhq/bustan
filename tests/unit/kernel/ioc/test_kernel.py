@@ -618,7 +618,9 @@ def test_a_binding_the_kernel_cannot_recognise_names_the_kind_it_found() -> None
             scope=Scope.TRANSIENT,
         ),
     )
-    container.registry.module_visibility[AppModule]["odd"] = AppModule
+    visible = dict(container.registry.visibility_view[AppModule])
+    visible["odd"] = AppModule
+    container.registry.set_visibility(AppModule, visible)
 
     with pytest.raises(ProviderResolutionError, match="Unknown resolver kind: telepathy"):
         container.resolve("odd", module=AppModule)

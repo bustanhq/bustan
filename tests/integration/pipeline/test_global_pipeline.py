@@ -193,7 +193,7 @@ def test_global_providers_declared_by_several_modules_run_in_registration_order(
     declaring_modules = [
         node.key
         for node in application.module_graph.nodes
-        if (node.key, APP_GUARD) in application.container.registry.bindings
+        if (node.key, APP_GUARD) in application.container.registry.binding_view
     ]
     assert declaring_modules == [AppModule, FeatureModule]
     assert calls == ["root", "feature"]

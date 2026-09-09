@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, MutableMapping
 from enum import StrEnum
 from types import MappingProxyType
 from typing import cast
@@ -112,8 +112,33 @@ def test_registry_stores_bindings_visibility_and_controller_ownership() -> None:
     registry.register_controller(AppModule, AppModule)
 
     assert registry.get_binding((AppModule, "token")) is binding
-    assert registry.module_visibility[AppModule] == {"token": AppModule}
-    assert registry.controller_modules[AppModule] is AppModule
+    assert registry.visibility_view[AppModule] == {"token": AppModule}
+    assert registry.controller_module_view[AppModule] is AppModule
+
+
+def test_the_registry_holds_no_table_a_caller_can_write_to() -> None:
+    # Nothing re-reads the graph once it is validated, so a table reachable as a public
+    # attribute is one an application can assign into and go on running against a graph
+    # that no longer describes it. The public attributes are walked rather than the three
+    # tables named, so a fourth table added later fails here instead of shipping writable.
+    registry = Registry()
+    registry.register_binding(
+        (AppModule, "token"), Binding("token", AppModule, "value", 1, ProviderScope.SINGLETON)
+    )
+    registry.set_visibility(AppModule, {"token": AppModule})
+    registry.register_controller(AppModule, AppModule)
+
+    writable = sorted(
+        name
+        for name in dir(registry)
+        if not name.startswith("_") and isinstance(getattr(registry, name), MutableMapping)
+    )
+
+    # A dict is a MutableMapping, so the one check answers for both.
+    assert writable == []
+    assert isinstance(registry.binding_view, Mapping)
+    assert isinstance(registry.visibility_view, Mapping)
+    assert isinstance(registry.controller_module_view, Mapping)
 
 
 def _rejection(definition: object) -> Exception | None:
@@ -532,4 +557,4 @@ def test_registry_tells_two_equal_tokens_of_different_types_apart() -> None:
 
     assert registry.get_binding((AppModule, Tokens.DB)) is enum_binding
     assert registry.get_binding((AppModule, "db")) is None
-    assert registry.module_visibility[AppModule].get("db") is None
+    assert registry.visibility_view[AppModule].get("db") is None

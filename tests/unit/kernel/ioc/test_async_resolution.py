@@ -139,8 +139,9 @@ def test_an_awaited_failure_still_names_the_owner_and_the_path() -> None:
     container = build_container(build_module_graph(AppModule))
     # Removing the binding after the graph was planned is the only way to reach the
     # failure path from a graph that planned cleanly; it stands for a token whose
-    # binding the runtime cannot find.
-    del container.registry.bindings[(AppModule, Dependency)]
+    # binding the runtime cannot find. Nothing in the framework removes a binding, so
+    # the test reaches into the table rather than a removal method existing for it.
+    del container.registry._bindings[(AppModule, Dependency)]
 
     async def resolve() -> object:
         return await container.resolve_async(Consumer, module=AppModule)

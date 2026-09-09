@@ -146,14 +146,14 @@ def test_discovery_service_does_not_mutate_container_state() -> None:
 
     application = create_app(AppModule)
     discovery = application.get(DiscoveryService)
-    binding_count = len(application.container.registry.bindings)
+    binding_count = len(application.container.registry.binding_view)
     routes_before = application.snapshot_routes()
 
     discovery.modules()
     discovery.providers()
     discovery.routes()
 
-    assert len(application.container.registry.bindings) == binding_count
+    assert len(application.container.registry.binding_view) == binding_count
     assert not application.container.has_override(GreetingService)
     assert application.snapshot_routes() == routes_before
 
