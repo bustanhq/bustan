@@ -856,6 +856,100 @@ FILTER_CASES: tuple[ConformanceCase, ...] = (
 )
 
 
+def _expect_not_found(instance: str) -> ResponseObservation:
+    """The document a caller receives wherever the framework finds nothing to serve.
+
+    One document rather than one per refusing part. A path nothing is registered at and
+    a path whose versions the request does not name are the same answer to the caller,
+    who cannot see which part of the framework looked and has nothing to do differently
+    for either.
+    """
+
+    return _expect_json(
+        {
+            "type": "https://bustan.dev/problems/not-found",
+            "title": "Not Found",
+            "status": 404,
+            "detail": "Not Found",
+            "instance": instance,
+            "code": "not-found",
+        },
+        status_code=404,
+        media_type=PROBLEM_MEDIA_TYPE,
+    )
+
+
+def _build_refusal_module(_fixtures: Path) -> type[object]:
+    """An application whose two routes leave every refusal reachable.
+
+    Between them a request can be turned away three ways before a handler runs: no route
+    answers the path, a route answers the path but not the method, and a route answers
+    both but serves no version the request asked for.
+    """
+
+    @Controller("/orders")
+    class OrdersController:
+        @Get("/")
+        def index(self) -> dict[str, object]:
+            return {"orders": []}
+
+    @Controller("/invoices", version="1")
+    class InvoicesController:
+        @Get("/")
+        def index(self) -> dict[str, object]:
+            return {"invoices": []}
+
+    @Module(controllers=[OrdersController, InvoicesController])
+    class RefusalModule:
+        pass
+
+    return RefusalModule
+
+
+# The refusals a caller meets before any handler runs. Each is compared on the media
+# type as well as the status, because a status alone cannot tell a problem document from
+# a line of text: two transports answering 404 and 405 with the same numbers and
+# different shapes agree on every figure this suite would otherwise read, and a caller
+# written against the documented error model breaks on whichever shape it did not
+# expect. These are the errors an API returns most often, so they are the ones that
+# shape has to hold for.
+REFUSAL_CASES: tuple[ConformanceCase, ...] = (
+    ConformanceCase(
+        name="router_refuses_an_unmatched_route_with_problem_details",
+        dimension="refusal before a handler",
+        request=ConformanceRequest(path="/no-route-is-registered-here"),
+        expected=_expect_not_found("/no-route-is-registered-here"),
+    ),
+    ConformanceCase(
+        name="router_refuses_a_wrong_method_with_problem_details",
+        dimension="refusal before a handler",
+        request=ConformanceRequest(method="POST", path="/orders"),
+        # ``allow`` is named because a 405 without it tells a client it guessed wrong
+        # without telling it what to send instead, and because the two transports work
+        # the header out separately: unnamed, it was free to differ between them and did.
+        expected=_expect_json(
+            {
+                "type": "https://bustan.dev/problems/method-not-allowed",
+                "title": "Method Not Allowed",
+                "status": 405,
+                "detail": "Method Not Allowed",
+                "instance": "/orders",
+                "code": "method-not-allowed",
+            },
+            status_code=405,
+            media_type=PROBLEM_MEDIA_TYPE,
+            headers={"allow": "GET, HEAD"},
+        ),
+    ),
+    ConformanceCase(
+        name="version_dispatcher_refuses_an_unknown_version_with_problem_details",
+        dimension="refusal before a handler",
+        request=ConformanceRequest(path="/invoices", headers=(("X-API-Version", "9"),)),
+        expected=_expect_not_found("/invoices"),
+    ),
+)
+
+
 # What the request-limit scenario's application accepts as a body, and a body two bytes
 # past it. The limit is the largest body the framework's own limits accept anywhere under
 # their defaults, so a body over it is past every bound those defaults set. That is what
@@ -1049,13 +1143,13 @@ def _build_versioning_module(_fixtures: Path) -> type[object]:
 
 
 # A version the URI strategy does not know is a path no route was registered at, so the
-# transport answers it; under the other two strategies the route exists and the
-# framework's own version dispatcher answers. The two answers differ by design, and a
-# matrix that did not distinguish them would be asserting one of them was wrong.
-TRANSPORT_NOT_FOUND = _expect_text(
-    "Not Found", status_code=404, media_type="text/plain; charset=utf-8"
-)
-DISPATCHER_NOT_FOUND = _expect_json({"detail": "Not Found"}, status_code=404)
+# router answers it; under the other two strategies the route exists and the framework's
+# own version dispatcher answers. Two parts of the framework, one document: which of
+# them looked is the framework's business, and a caller that had to tell them apart
+# would be handling two refusals for one condition. The path each names as the instance
+# is what still separates them, and it is the path the caller asked for.
+TRANSPORT_NOT_FOUND = _expect_not_found("/v3/reports")
+DISPATCHER_NOT_FOUND = _expect_not_found("/reports")
 
 URI_VERSIONING_CASES: tuple[ConformanceCase, ...] = (
     ConformanceCase(
@@ -1214,6 +1308,12 @@ SCENARIOS: tuple[ConformanceScenario, ...] = (
     ConformanceScenario("responses", _build_response_module, RESPONSE_CASES),
     ConformanceScenario("middleware", _build_middleware_module, MIDDLEWARE_CASES),
     ConformanceScenario("exception filters", _build_filter_module, FILTER_CASES),
+    ConformanceScenario(
+        "refusals",
+        _build_refusal_module,
+        REFUSAL_CASES,
+        VersioningOptions(type=VersioningType.HEADER),
+    ),
     ConformanceScenario(
         "request limits",
         _build_request_limit_module,

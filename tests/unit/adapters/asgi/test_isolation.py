@@ -7,15 +7,18 @@ interpreter, with the ``bustan`` package replaced by an empty stand-in so that i
 the framework cannot be what satisfies an import, and asserts that no web framework and
 no framework module other than the contracts ended up in ``sys.modules``.
 
-Two imports are exempt from the static guard and named symbol by symbol below, both on
-the path that reads a request body: the error the framework raises when a body is over
-the limit, which the adapter has to raise by that name or a caller it refused is
-answered as though the server had broken, and the reader for the limits the application
-serving the request declared, which the adapter has to ask or it bounds the read by a
-figure nobody chose. Each is made inside the function that uses it rather than at module
-scope, so importing this package still pulls in nothing but the standard library and the
-contracts - which is the property the dynamic guard measures, and it is left measuring
-exactly that.
+Four imports are exempt from the static guard and named symbol by symbol below, each one
+a refusal the adapter must not compose out of its own head. Two are on the path that
+reads a request body: the error the framework raises when a body is over the limit,
+which the adapter has to raise by that name or a caller it refused is answered as though
+the server had broken, and the reader for the limits the application serving the request
+declared, which the adapter has to ask or it bounds the read by a figure nobody chose.
+Two are on the path that routes a request: the documents for a path no route answers and
+for a method no route answers, which the adapter has to ask for or it writes an error of
+its own shape for the two errors an API returns most often. Each is made inside the
+function that uses it rather than at module scope, so importing this package still pulls
+in nothing but the standard library and the contracts - which is the property the
+dynamic guard measures, and it is left measuring exactly that.
 """
 
 from __future__ import annotations
@@ -64,6 +67,8 @@ ALLOWED_DEFERRED_IMPORTS = frozenset(
     {
         ("...runtime.params", "RequestBodyTooLargeError"),
         ("...runtime.execution", "request_limits_of"),
+        ("...runtime.execution", "method_not_allowed_response"),
+        ("...runtime.execution", "not_found_response"),
     }
 )
 

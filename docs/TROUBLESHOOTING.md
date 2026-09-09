@@ -369,6 +369,8 @@ The message becomes the problem's `detail`, except at 500 and above: those statu
 
 An exception that is not one of these and not otherwise modelled still renders as a `500` whose `type` is `about:blank` and which carries no `code`, because that is what the standard defines that value to mean: a problem with no semantics beyond its status.
 
+The framework answers with these documents too, without an application raising anything. A path no route answers and a version nothing serves both produce the `NotFoundException` document, and a method no route answers produces the `MethodNotAllowedException` one with an `Allow` header; see [ROUTING.md](ROUTING.md#refusals-before-a-handler-runs). So a `404` carrying `not-found` does not tell you whether a handler raised it or the router did, and the two are told apart by `detail`, which an application sets and the router leaves as the status reason.
+
 Fix: nothing to fix. Raise the subclass whose status says what happened.
 
 ## `UnauthorizedException`

@@ -29,6 +29,7 @@ from bustan import (
 )
 from bustan.contracts import HttpRequest
 from bustan.errors import GuardRejectedError
+from bustan.kernel.errors import MethodNotAllowedException, NotFoundException
 from bustan.kernel.ioc.container import Container, build_container
 from bustan.kernel.module.graph import build_module_graph
 from bustan.observability.correlation import current_correlation_id
@@ -43,6 +44,8 @@ from bustan.runtime.execution import (
     _with_limit_filter,
     compile_execution_plans,
     execute_http_route,
+    method_not_allowed_response,
+    not_found_response,
     request_limits_of,
     set_request_limits,
 )
@@ -699,3 +702,52 @@ def test_a_pipeline_kept_from_one_run_is_dropped_when_the_application_starts_aga
 
     assert len(seen) == 2
     assert seen[0] is not seen[1]
+
+
+def test_a_refusal_carries_the_document_its_status_exception_describes() -> None:
+    """The framework writes the router's refusals, so they are the class's own document.
+
+    An application raising ``NotFoundException`` and a router finding no route are one
+    condition to the caller, and answering them from the same class is what keeps them
+    one shape rather than two that happen to agree today.
+    """
+
+    response = not_found_response("/orders/7")
+
+    assert response.status_code == 404
+    assert response.media_type == "application/problem+json"
+    assert json.loads(response.body) == {
+        "type": NotFoundException.problem_type,
+        "title": NotFoundException.title,
+        "status": 404,
+        "detail": NotFoundException.title,
+        "instance": "/orders/7",
+        "code": NotFoundException.code,
+    }
+
+
+def test_a_wrong_method_names_the_methods_that_would_have_been_answered() -> None:
+    response = method_not_allowed_response("/orders", ("GET", "HEAD"))
+
+    assert response.status_code == 405
+    assert response.media_type == "application/problem+json"
+    assert response.headers["Allow"] == "GET, HEAD"
+    assert json.loads(response.body)["code"] == MethodNotAllowedException.code
+
+
+def test_the_allowed_methods_reach_the_caller_in_one_order_whoever_worked_them_out() -> None:
+    """Two transports work the set of methods out separately and iterate it separately.
+
+    Ordering the header here rather than where each transport happens to build it is
+    what makes the header a caller reads the same header on every transport.
+    """
+
+    from_a_sorted_router = method_not_allowed_response("/orders", ("GET", "HEAD"))
+    from_an_unsorted_router = method_not_allowed_response("/orders", ("HEAD", "GET"))
+
+    assert from_a_sorted_router.headers["Allow"] == from_an_unsorted_router.headers["Allow"]
+    assert from_an_unsorted_router.headers["Allow"] == "GET, HEAD"
+
+
+def test_a_refusal_without_a_path_leaves_the_instance_out_rather_than_sending_nothing() -> None:
+    assert "instance" not in json.loads(not_found_response().body)

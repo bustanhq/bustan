@@ -12,6 +12,7 @@ from starlette.responses import Response
 
 from ...contracts import AbstractHttpAdapter, AdapterCapabilities, HttpRequest
 from ...contracts.cors import allowed_origins
+from ...runtime.execution import method_not_allowed_response, not_found_response
 from .requests import from_starlette_request
 from .responses import to_starlette_response
 from .routes import build_starlette_routes
@@ -19,6 +20,8 @@ from .shutdown import DrainGate, DrainingApp
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from starlette.types import ExceptionHandler
 
     from ...contracts import AdapterRoute
     from ...contracts.cors import CorsOptions
@@ -74,9 +77,16 @@ class StarletteAdapter(AbstractHttpAdapter):
         ``drain_timeout`` is how many seconds the requests already in flight are given
         to finish when the server is asked to stop. The application wrapper overrides it
         for one run when its own caller names a different window.
+
+        Whichever application is used, the router's own refusals are answered through the
+        framework's error model. An application handed in already carrying handlers for
+        those two statuses has them replaced, because the error model is the framework's
+        promise to the caller rather than the transport's.
         """
 
         self._app = starlette_app or Starlette(debug=debug, lifespan=lifespan)
+        for status_code, refuse in _ROUTER_REFUSALS:
+            self._app.add_exception_handler(status_code, refuse)
         self._server: GracefulServer | None = None
         self._stopped: asyncio.Event | None = None
         self._gate = DrainGate()
@@ -242,6 +252,54 @@ class StarletteAdapter(AbstractHttpAdapter):
 
         scope, receive, send = connection
         await self._app(cast(Any, scope), cast(Any, receive), cast(Any, send))
+
+
+async def _refuse_unmatched_route(request: Request, _exc: Exception) -> Response:
+    """Answer a path this router found no route for with the framework's own document."""
+
+    return to_starlette_response(not_found_response(_requested_path(request)))
+
+
+async def _refuse_wrong_method(request: Request, exc: Exception) -> Response:
+    """Answer a method this router will not serve with the framework's own document."""
+
+    return to_starlette_response(
+        method_not_allowed_response(_requested_path(request), _allowed_methods(exc))
+    )
+
+
+def _requested_path(request: Request) -> str:
+    """The path the caller asked for, read from the connection rather than rebuilt.
+
+    Starlette builds a request's URL out of the ``Host`` header among other things, and
+    a refusal is answered for whatever arrived, including a request carrying no headers
+    at all. The path is on the connection either way.
+    """
+
+    return cast(str, request.scope.get("path", "/"))
+
+
+def _allowed_methods(exc: Exception) -> tuple[str, ...]:
+    """The methods the router would have answered, read off the refusal it raised.
+
+    Starlette states them on the refusal as the ``Allow`` header it would have sent. The
+    framework writes that header itself, from these, so what a caller reads is decided
+    in one place for every transport rather than by each transport's own set ordering.
+    """
+
+    allow = (getattr(exc, "headers", None) or {}).get("Allow", "")
+    return tuple(method.strip() for method in allow.split(",") if method.strip())
+
+
+# The refusals Starlette's own router decides, by status, and what answers each. The
+# router turns a request away before any endpoint runs, so nothing the framework put on
+# a route stands between these and the caller; left to the transport they would be the
+# only errors an application serves outside its own error model, and they are the two it
+# serves most often.
+_ROUTER_REFUSALS: tuple[tuple[int, ExceptionHandler], ...] = (
+    (404, _refuse_unmatched_route),
+    (405, _refuse_wrong_method),
+)
 
 
 __all__ = ("StarletteAdapter",)

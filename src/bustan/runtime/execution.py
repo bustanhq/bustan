@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
@@ -17,7 +17,13 @@ from anyio import CapacityLimiter, move_on_after, to_thread
 from ..common.metadata import ControllerRouteDefinition
 from ..common.types import PipelineOverrides
 from ..contracts import ApplicationRuntime, HttpRequest, HttpResponse, RouteHandler
-from ..kernel.errors import BustanError, GuardRejectedError
+from ..kernel.errors import (
+    BustanError,
+    GuardRejectedError,
+    HttpException,
+    MethodNotAllowedException,
+    NotFoundException,
+)
 from ..kernel.ioc.container import Container
 from ..kernel.ioc.scopes import BoundedInstanceStore
 from ..kernel.module.dynamic import ModuleKey
@@ -65,6 +71,10 @@ _CREATED_DURABLE_PARTITIONS: ContextVar[set[object] | None] = ContextVar(
     "bustan_created_durable_partitions", default=None
 )
 _INTERNAL_SERVER_ERROR_DETAIL = "Internal server error"
+# What a response carrying a problem document says it is. A refusal has its own media
+# type so that a client can tell a described refusal from whatever else may have written
+# the body it received, and every refusal this framework produces carries it.
+_PROBLEM_MEDIA_TYPE = "application/problem+json"
 # Reserved on the application object for the limits it serves requests under, following
 # the framework's convention that a name it owns on someone else's namespace says so.
 REQUEST_LIMITS_ATTR = "bustan_request_limits"
@@ -81,6 +91,73 @@ RESPONSE_HANDLER_ATTR = "bustan_response_handler"
 
 class RequestTimeoutError(BustanError):
     """Raised when one request took longer than the time its application allows it."""
+
+
+def _problem_response(
+    problem: ProblemDetails, headers: Mapping[str, str] | None = None
+) -> HttpResponse:
+    """Return the response that carries one problem document to the caller.
+
+    A member the document did not set is left out rather than sent as null, because a
+    reader of a problem document tells an absent member from one whose value is nothing.
+    """
+
+    payload = {key: value for key, value in asdict(problem).items() if value is not None}
+    response = HttpResponse.json(payload, status_code=problem.status, headers=headers)
+    response.media_type = _PROBLEM_MEDIA_TYPE
+    return response
+
+
+def _refusal_response(error: HttpException, instance: str | None) -> HttpResponse:
+    """Return the document one refusal decided before any handler runs answers with.
+
+    A path no route answers, a method a route does not answer and a version nothing
+    serves are all turned away before a controller exists, so no pipeline and no
+    exception filter stands between the refusal and the caller. Answering each with the
+    document *error* describes is what makes one error model cover every refusal rather
+    than most of them: a caller reads one shape whichever part of the framework turned
+    the request away, and reads it for the errors it meets most often.
+    """
+
+    return _problem_response(
+        ProblemDetails(
+            type=error.problem_type,
+            title=error.title,
+            status=error.status_code,
+            detail=error.detail,
+            instance=instance,
+            code=error.code,
+        ),
+        error.headers,
+    )
+
+
+def not_found_response(instance: str | None = None) -> HttpResponse:
+    """Return what a caller receives when nothing here answers the path it asked for.
+
+    A transport calls this where its router found no route, and the framework calls it
+    where a route exists but serves no version the request named. The two are one answer
+    to the caller, who cannot see which of them looked. ``instance`` is the path asked
+    for, and appears in the document as the resource the refusal is about.
+    """
+
+    return _refusal_response(NotFoundException(), instance)
+
+
+def method_not_allowed_response(
+    instance: str | None = None, allowed: Iterable[str] = ()
+) -> HttpResponse:
+    """Return what a caller receives for a path that exists but not for this method.
+
+    ``allowed`` names the methods that would have been answered, and reaches the caller
+    as the ``Allow`` header a client reads to correct itself. The order is settled here
+    rather than left to whichever transport worked the set out, because two transports
+    serving one application answer the same caller and an order nobody chose is a
+    difference between them that nobody can act on.
+    """
+
+    header = {"Allow": ", ".join(sorted(allowed))}
+    return _refusal_response(MethodNotAllowedException(headers=header), instance)
 
 
 class RequestLimitExceptionFilter(ExceptionFilter):
@@ -109,20 +186,19 @@ class RequestLimitExceptionFilter(ExceptionFilter):
 
         _LOGGER.warning("Request refused by a request limit: %s", exc)
         request = context.request
-        problem = ProblemDetails(
-            type="about:blank",
-            title=title,
-            status=status_code,
-            # A timeout's own message names the budget the deployment configured, which
-            # tells a caller how long to hold a connection to exhaust the workers; the
-            # status's reason says everything a caller can act on instead.
-            detail=str(exc) if status_code < 500 else title,
-            instance=request.path if request is not None else None,
+        return _problem_response(
+            ProblemDetails(
+                type="about:blank",
+                title=title,
+                status=status_code,
+                # A timeout's own message names the budget the deployment configured,
+                # which tells a caller how long to hold a connection to exhaust the
+                # workers; the status's reason says everything a caller can act on
+                # instead.
+                detail=str(exc) if status_code < 500 else title,
+                instance=request.path if request is not None else None,
+            )
         )
-        payload = {key: value for key, value in asdict(problem).items() if value is not None}
-        response = HttpResponse.json(payload, status_code=status_code)
-        response.media_type = "application/problem+json"
-        return response
 
 
 _REQUEST_LIMIT_FILTER = RequestLimitExceptionFilter()
@@ -991,6 +1067,8 @@ __all__ = [
     "create_route_handler",
     "execute_http_exception",
     "execute_http_route",
+    "method_not_allowed_response",
+    "not_found_response",
     "observability_hooks_of",
     "request_limits_of",
     "response_handler_of",

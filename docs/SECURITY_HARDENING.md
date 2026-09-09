@@ -110,6 +110,13 @@ Three rules hold:
 - **A `ForbiddenException` you raise yourself should follow the same rule.** Say what is
   refused, never why in terms of your own roles or permissions.
 
+"Every refusal" includes the ones decided before a handler runs: a path no route
+answers, a method no route answers and a version nothing serves are all answered with
+the problem document their status names, on every adapter. See
+[ROUTING.md](ROUTING.md#refusals-before-a-handler-runs). A caller probing for paths
+therefore learns from a `404` only that nothing answered, which is what it would learn
+from a line of text, and every refusal it can provoke is masked by the same three rules.
+
 `HttpException` and its subclasses in `bustan.errors` fix the status, the problem type
 and the code, so the same condition is always reported the same way. Reach for one of
 those rather than returning a hand-built error body, and the answer stays consistent

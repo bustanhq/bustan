@@ -242,8 +242,14 @@ def test_the_adapter_answers_a_request_no_route_matched() -> None:
         missing = client.get("/absent")
         wrong_method = client.post("/health")
 
-    assert (missing.status_code, missing.text) == (404, "Not Found")
+    assert missing.status_code == 404
+    assert missing.headers["content-type"] == "application/problem+json"
+    assert missing.json()["type"] == "https://bustan.dev/problems/not-found"
+    assert missing.json()["instance"] == "/absent"
     assert wrong_method.status_code == 405
+    assert wrong_method.headers["content-type"] == "application/problem+json"
+    assert wrong_method.headers["allow"] == "GET, HEAD"
+    assert wrong_method.json()["code"] == "method-not-allowed"
     assert wrong_method.headers["allow"] == "GET, HEAD"
 
 
