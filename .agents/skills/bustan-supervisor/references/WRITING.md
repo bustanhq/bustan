@@ -228,7 +228,9 @@ The check refuses a title, body or comment containing any of these, case-insensi
   `Layering A:`.
 - Headings: `Working agreement`, `Verification block`, `Files touched`, `Note on how
   this work was directed`, `Decisions where more than one option was defensible`, `What
-  was deliberately not done`, `What I verified`, `Two things I got wrong`, `Sequencing`.
+  was deliberately not done`, `What I verified`, `Two things I got wrong`; and
+  `**Sequencing.**` as a lead-in in a ticket, since an epic's sequencing table is the
+  one place a schedule belongs.
 - A pull request template checkbox, ticked or not.
 
 ## Attribution
