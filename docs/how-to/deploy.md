@@ -76,7 +76,7 @@ worker = context.get(QueueWorker)
 a queue consumer, a scheduled job or a management command that has to share the
 application's providers. `ApplicationContext` supports `get()`, `resolve()`, `init()`
 and `close()` and nothing HTTP. See
-[reference/adapters.md](../reference/adapters.md#non-http-bootstrapping).
+[reference/adapters.md](configure-the-platform.md#non-http-bootstrapping).
 
 ## Choosing An Adapter
 

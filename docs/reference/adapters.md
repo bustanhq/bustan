@@ -213,50 +213,6 @@ ok 203
 
 `HttpResponse` is the portable half of that pair. A `PlainTextResponse` is handed to the Starlette adapter unchanged and is meaningless to any other, so a route returning one is a route bound to that transport.
 
-## Configure The Underlying Platform
-
-Use `app.get_http_server()` when a transport-specific feature is genuinely the right tool.
-
-```python
-from typing import Any, cast
-
-from starlette.middleware.gzip import GZipMiddleware
-
-from bustan import Controller, Get, Module, create_app
-from bustan.testing import AsgiTestClient
-
-
-@Controller("/")
-class RootController:
-    @Get("/")
-    def index(self) -> dict[str, str]:
-        return {"status": "ok"}
-
-
-@Module(controllers=[RootController])
-class AppModule:
-    pass
-
-
-app = create_app(AppModule)
-server = app.get_http_server()
-server.add_middleware(GZipMiddleware, minimum_size=1)
-
-with AsgiTestClient(cast(Any, app)) as client:
-    response = client.get("/", headers={"accept-encoding": "gzip"})
-    print(response.status_code, response.headers.get("content-encoding"))
-```
-
-```text
-200 gzip
-```
-
-The `Application` wrapper also exposes helper methods for common integrations:
-
-- `app.enable_cors(...)`
-- `app.enable_swagger(...)`
-- `await app.listen(...)`, which serves and drains gracefully; see [reference/lifecycle.md](../reference/lifecycle.md#graceful-shutdown).
-
 ## Runtime Artifacts And Inspection
 
 Two public inspection helpers are especially useful in tests, governance tooling, and release validation:
@@ -353,6 +309,6 @@ with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
 
 A route's compiled path carries no trailing slash: `@Controller("/discovery")` plus `@Get("/")` is the single path `/discovery`, which is what a snapshot, a diff and `bustan routes` all report.
 
-## Non-HTTP Bootstrapping
+## Where That Material Went
 
-Use `create_app_context()` when you want DI plus lifecycle behavior without an HTTP server. `ApplicationContext` supports `get()`, `resolve()`, `init()`, and `close()` but does not expose `listen()` or HTTP adapter access. It needs no adapter and no web server, so it is the shape a `pip install bustan` with no extra can run.
+Reaching the underlying platform object, and bootstrapping without HTTP, are in [Configure The Underlying Platform](../how-to/configure-the-platform.md).

@@ -264,7 +264,7 @@ A module registers several components under one global pipeline token either by 
 
 ## Reaching The Request Scope From Code
 
-Constructor injection is the normal way in, and it is enough for a request-scoped controller, guard, pipe, interceptor or middleware. Where a class must look a token up rather than declare it, inject `ModuleRef` and call its `get()`: that resolves against the request in flight and hands back the same instance everything else in the request holds. `ApplicationContext.get()` does not - it resolves as though no request were being served, and refuses request scope by design. [reference/request-pipeline.md](../reference/request-pipeline.md#resolving-providers-inside-a-handler) has the details and the one thing `ModuleRef.get()` cannot do.
+Constructor injection is the normal way in, and it is enough for a request-scoped controller, guard, pipe, interceptor or middleware. Where a class must look a token up rather than declare it, inject `ModuleRef` and call its `get()`: that resolves against the request in flight and hands back the same instance everything else in the request holds. `ApplicationContext.get()` does not - it resolves as though no request were being served, and refuses request scope by design. [reference/request-pipeline.md](../how-to/choose-a-pipeline-hook.md#resolving-providers-inside-a-handler) has the details and the one thing `ModuleRef.get()` cannot do.
 
 ## Common Failure Mode
 
