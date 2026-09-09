@@ -13,9 +13,9 @@ from bustan import (
     ValueProvider,
     create_app,
 )
-from bustan.common.types import Provider
 from bustan.kernel.errors import (
     InvalidModuleError,
+    InvalidProviderError,
     ModuleCycleError,
 )
 from bustan.kernel.ioc.container import build_container
@@ -327,24 +327,61 @@ def test_registrations_holding_a_value_nothing_can_hash_stay_apart() -> None:
 
 
 def test_a_registration_replaces_a_provider_its_base_module_declares() -> None:
-    # Both declarations are written as definition dicts because that is the only shape
-    # the overlay reads a token out of, so a value type on either side is not matched
-    # against the other and the base provider is kept beside the overlay's.
     options = InjectionToken[str]("OPTIONS")
 
+    @Module(providers=[ValueProvider(provide=options, use_value="default")], exports=[options])
+    class BaseModule:
+        pass
+
+    registration = DynamicModule(
+        BaseModule, providers=(ValueProvider(provide=options, use_value="configured"),)
+    )
+    container = build_container(build_module_graph(registration))
+
+    assert container.resolve(options, module=container.module_graph.root_key) == "configured"
+
+
+def test_a_registration_written_as_a_definition_dict_still_replaces_a_base_provider() -> None:
+    # Both spellings name the same token, so both are matched the same way: an
+    # application part-way through moving off the dict still gets one binding per token
+    # rather than a collision between the default and the value configured over it. The
+    # dict is refused where it is written, which is why the base module carries the
+    # suppression, and it still binds, which is what this asserts.
+    options = InjectionToken[str]("OPTIONS")
+
+    written_as_a_dict = {"provide": options, "use_value": "default"}
+
     @Module(
-        providers=cast("list[Provider]", [{"provide": options, "use_value": "default"}]),
+        providers=[written_as_a_dict],  # ty: ignore[invalid-argument-type]
         exports=[options],
     )
     class BaseModule:
         pass
 
     registration = DynamicModule(
-        BaseModule, providers=({"provide": options, "use_value": "configured"},)
+        BaseModule, providers=(ValueProvider(provide=options, use_value="configured"),)
     )
     container = build_container(build_module_graph(registration))
 
     assert container.resolve(options, module=container.module_graph.root_key) == "configured"
+
+
+def test_a_registration_entry_that_names_no_readable_token_is_refused_by_name() -> None:
+    # Matching one declaration against another is forgiving, because an entry it cannot
+    # read is not its to reject: leaving it in place is what lets the normalizer name the
+    # module and the entry, which a silent failure to match would not.
+    @Module()
+    class BaseModule:
+        pass
+
+    for entry, expected in (
+        ("not a provider", "is not a class or a provider definition"),
+        (ValueProvider(provide=["unhashable"], use_value=1), "cannot be used as a key"),
+    ):
+        registration = DynamicModule(BaseModule, providers=(cast(object, entry),))
+
+        with pytest.raises(InvalidProviderError, match=expected):
+            build_module_graph(registration)
 
 
 def test_a_base_module_keeps_the_providers_a_registration_does_not_name() -> None:
@@ -352,20 +389,17 @@ def test_a_base_module_keeps_the_providers_a_registration_does_not_name() -> Non
     replaced = InjectionToken[str]("REPLACED")
 
     @Module(
-        providers=cast(
-            "list[Provider]",
-            [
-                {"provide": kept, "use_value": "base"},
-                {"provide": replaced, "use_value": "base"},
-            ],
-        ),
+        providers=[
+            ValueProvider(provide=kept, use_value="base"),
+            ValueProvider(provide=replaced, use_value="base"),
+        ],
         exports=[kept, replaced],
     )
     class BaseModule:
         pass
 
     registration = DynamicModule(
-        BaseModule, providers=({"provide": replaced, "use_value": "overlay"},)
+        BaseModule, providers=(ValueProvider(provide=replaced, use_value="overlay"),)
     )
     container = build_container(build_module_graph(registration))
     root = container.module_graph.root_key

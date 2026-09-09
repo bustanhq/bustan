@@ -3,18 +3,18 @@ for a token the base already declares is rejected as a duplicate instead of repl
 and an import the base already names is rejected as a duplicate too.
 """
 
-from bustan import DynamicModule, InjectionToken, Module, create_app_context
+from bustan import DynamicModule, InjectionToken, Module, ValueProvider, create_app_context
 from bustan.errors import BustanError
 
 OPTIONS = InjectionToken("OPTIONS")
 
 
-@Module(providers=[{"provide": OPTIONS, "use_value": "default"}], exports=[OPTIONS])
+@Module(providers=[ValueProvider(provide=OPTIONS, use_value="default")], exports=[OPTIONS])
 class BaseModule:
     pass
 
 
-@Module(providers=[{"provide": "shared", "use_value": "shared"}], exports=["shared"])
+@Module(providers=[ValueProvider(provide="shared", use_value="shared")], exports=["shared"])
 class SharedModule:
     pass
 
@@ -36,7 +36,9 @@ def _outcome(build: object) -> str:
 def main() -> None:
     overridden = _outcome(
         lambda: create_app_context(
-            DynamicModule(BaseModule, providers=({"provide": OPTIONS, "use_value": "configured"},))
+            DynamicModule(
+                BaseModule, providers=(ValueProvider(provide=OPTIONS, use_value="configured"),)
+            )
         ).get(OPTIONS)
     )
     reimported = _outcome(

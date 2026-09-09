@@ -186,6 +186,37 @@ def normalize_provider(defn: object, declaring_module: ModuleKey) -> Binding:
     raise _refused(declaring_module, f"{defn!r} is not a class or a provider definition")
 
 
+def declared_token_identity(entry: object) -> TokenKey | None:
+    """Return the identity of the token a provider declaration binds, or ``None``.
+
+    ``None`` means the entry binds no token that can be read: it is not a class, a
+    provider definition or a definition dict, or the token it names cannot be a key.
+    That is not the same as binding ``None``, which is a token like any other and comes
+    back as its own identity.
+
+    Reading a token is deliberately forgiving, because the caller uses it to match one
+    declaration against another rather than to accept it. An entry this cannot read is
+    left for ``normalize_provider`` to refuse by name, so a malformed provider is
+    reported as the malformed provider it is rather than by silently failing to match.
+    """
+
+    if inspect.isclass(entry):
+        token: object = entry
+    elif isinstance(entry, (ClassProvider, FactoryProvider, ValueProvider, ExistingProvider)):
+        token = entry.provide
+    elif isinstance(entry, dict) and "provide" in entry:
+        token = cast("dict[str, object]", entry)["provide"]
+    else:
+        return None
+
+    try:
+        identity = token_identity(token)
+        hash(identity)
+    except TypeError:
+        return None
+    return identity
+
+
 def _refused(declaring_module: ModuleKey, detail: str) -> InvalidProviderError:
     """Build the rejection every malformed provider definition is reported through."""
 

@@ -2809,7 +2809,7 @@ Create an application and apply any requested provider overrides.
 #### `create_test_module`
 
 ```python
-def create_test_module(*, name: str = 'TestModule', imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[type[object] | dict[str, object]] | None = None, exports: Iterable[object] | None = None) -> type[object]
+def create_test_module(*, name: str = 'TestModule', imports: Iterable[type[object]] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[Provider] | None = None, exports: Iterable[object] | None = None) -> type[object]
 ```
 
 Defined in `bustan.testing.builder`.
