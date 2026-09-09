@@ -2,8 +2,7 @@
 
 This document is for the next person to change `src/bustan`. It states how the package
 is layered, why an import that crosses a layer the wrong way is a defect rather than a
-style preference, why the check that finds those imports does not currently fail the
-build, and which violations are open right now.
+style preference, and how CI fails a build that adds one.
 
 Read it before you add a dependency between two packages. The rule is cheap to respect
 while you are writing the import and expensive to unwind afterwards, and the reason it
@@ -25,7 +24,7 @@ uv run python scripts/check_layering.py --layers
 | 1 | `kernel` | `common`, `kernel` | no |
 | 2 | `runtime` | `observability`, `pipeline`, `runtime` | no |
 | 3 | `adapters` | `adapters` | **yes** |
-| 4 | `application` | `addons`, `app`, `cli`, `configuration`, `openapi`, `security`, `testing`, and the modules directly under `src/bustan` | no |
+| 4 | `application` | `addons`, `app`, `cli`, `configuration`, `health`, `openapi`, `security`, `testing`, and the modules directly under `src/bustan` | no |
 
 The table in `scripts/check_layering.py` is the definition, not this document. A
 contributor who adds a top-level package declares its layer there, and the check fails
@@ -60,7 +59,11 @@ ASGI specification and the standard library alone. Both are held to the same ans
 `scripts/conformance_matrix.py`.
 
 **`application`** is everything assembled on top: bootstrap, configuration, the
-security policy decorators, OpenAPI, the CLI, the testing surface.
+security policy decorators, OpenAPI, the CLI, the testing surface, and the health and
+readiness probes. `health` belongs here rather than lower down because it is an
+application in miniature - it declares a controller and a module, and its controller
+carries the throttling decorator `security` owns - so a package that reached down to
+it would be reaching into an application, not into the framework.
 
 ## Why The Direction Matters
 
@@ -78,62 +81,51 @@ Three consequences, each of which was a real defect before the rule existed:
   layers means neither can be read without the other, and the audit that started this
   work found exactly that shape wherever it looked.
 
-## Why The Check Is Advisory
+## The Check Is A Gate
 
-`scripts/check_layering.py` exits `1` on this tree. CI runs it under
-`continue-on-error: true`, writes the report to the run summary, and stays green.
-
-That is deliberate and it is temporary. The violations the check reports are defects to
-close, not entries to add to the table, and no violation is closed by weakening the
-check: not by adding a package to the layer table, not by widening the web-server
-denylist, and not by moving an import under `TYPE_CHECKING`. The check counts deferred
-imports on purpose, because a deferred import is still a dependency and excluding them
-would make deferral a way around the rule.
-
-Making it blocking today would either fail every pull request or force whoever is
-holding the pager to legalise the existing edges. So the arrangement is: the report is
-visible on every run, and `continue-on-error` comes off the moment the report is empty.
-The comment on the CI step says the same thing, and it is the instruction to follow:
-
-> Delete `continue-on-error` the moment the report is empty: an advisory layering check
-> that stays advisory is a layering check nobody reads.
-
-An advisory check has one honest failure mode - nothing objects to a new violation - so
-treat the report as blocking yourself. **Run it before you push and compare it against
-what it said before your change.** A report that grew is a change to reconsider, whether
-or not CI agrees.
-
-## The Open Violations
-
-Measure them; do not read a number out of this document. Line numbers in particular
-move on almost every merge, so what is recorded here is the count and the edges.
+`scripts/check_layering.py` reports every import that crosses a layer the wrong way and
+every top-level package the table does not declare. Run it before you push:
 
 ```bash
 uv run python scripts/check_layering.py
 ```
 
-On the commit this document was written against, the report holds **nine import
-violations plus one unclassified package**:
+CI runs the same command in the `Package layering` job, and that job blocks. A report
+that is not empty stops the merge, and the crossed boundary is quoted on the run
+summary so a red job says what it objected to without anyone opening a step log.
 
-| What | Where | Why it is a violation |
-| --- | --- | --- |
-| Unclassified package | `src/bustan/health` | Landed after the layer table was written and nobody declared it. |
-| `application` imports a web server | `app/application.py`, in `enable_cors` | `starlette.middleware.cors` reaches the application layer; the only violation with a user-visible symptom. |
-| `kernel` imports `runtime` | `kernel/module/graph.py` | The module graph reads controller metadata out of the runtime, so the kernel cannot be read without it. |
-| `runtime` imports `adapters` | `runtime/conformance.py`, twice | The conformance suite lives in `runtime` and names both shipped adapters. |
-| `runtime` imports `application` | `runtime/conformance.py` | The same suite assembles applications through `app.bootstrap`. |
-| `runtime` imports `application` | `runtime/controller_factory.py`, `runtime/execution.py`, `runtime/routing.py` | Three modules reach for `testing.overrides` to find pipeline overrides. |
-| `runtime` imports `application` | `runtime/execution.py` | The execution engine names `app.application`. |
+**A violation is closed by moving the import, never by weakening the check.** Not by
+declaring a package into whichever layer makes its existing imports legal, not by
+widening the web-server denylist, not by adding a directory to the non-source
+exclusions, and not by moving the import under `TYPE_CHECKING`. The check counts
+deferred imports on purpose: a function-local or type-checking import is still a
+dependency of the file that writes it, and excluding it would make deferral the way
+around the rule. Declaring a genuinely new package is the one table edit that is not a
+weakening, and it is only that while the package's own imports already point downward.
 
-Eight of the ten have no user-visible symptom: they are import direction, and the cost
-they carry is that the packages cannot be read, tested or reused apart. The CORS one is
-the exception, and it is why an application that never enables CORS still cannot serve
-without Starlette installed on that path.
+The rule the gate enforces is narrow, and the reason it is worth a job of its own is in
+the section above: the direction is what keeps the kernel usable with no web server
+installed, keeps a second adapter possible without touching framework code, and keeps
+each package readable on its own.
 
-Closing them is tracked in [issue 197](https://github.com/bustanhq/bustan/issues/197)
-and its five children. The last of those classifies `health`, empties the report and
-deletes `continue-on-error`; that is the commit after which this section is a history
-note rather than a to-do.
+## How The Report Was Emptied
+
+This section is history, kept because the shape of these fixes is the shape the next
+one should take. The check was written alongside a tree that did not pass it: ten
+findings, nine crossing imports and one package the table did not know about. Every
+crossing import was closed by moving code; the table gained one entry, for the package
+that had never been classified at all.
+
+| What crossed | How it was closed |
+| --- | --- |
+| `application` imported a web server, in `enable_cors` | A cross-origin policy became the transport adapter's work. Each adapter enforces `CorsOptions` through its own middleware, and `contracts` holds the option type both read. |
+| `kernel` imported `runtime` | The controller metadata accessors moved below the request path, so the module graph reads metadata without reaching up into the runtime. |
+| `runtime` imported `adapters`, twice, and `application` | The conformance suite moved to the application layer, where naming both shipped adapters and assembling applications through `app.bootstrap` is what the layer is for. |
+| `runtime` imported `application`, from four places | The runtime names protocols where it had named application types: route compilation takes a `PipelineOverrides` shape rather than the testing registry, and the request path recognises an application by the `ApplicationRuntime` declaration rather than by its class. |
+| `src/bustan/health` had no layer | Declared as `application`, for the reason given under `application` above. |
+
+The last of those emptied the report, and `continue-on-error` came off the CI step in
+the same change.
 
 ## Where The Rest Of The Architecture Is Written
 

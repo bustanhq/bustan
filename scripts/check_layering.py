@@ -78,7 +78,9 @@ LAYERS: tuple[Layer, ...] = (
     Layer(name="runtime", packages=("observability", "pipeline", "runtime")),
     # The only layer permitted to import a web server.
     Layer(name="adapters", packages=("adapters",), may_import_web_server=True),
-    # Everything assembled on top of the layers below.
+    # Everything assembled on top of the layers below. `health` sits here rather than lower
+    # because it is an application in miniature: it declares a controller and a module, and its
+    # controller carries the throttling decorator that `security` owns.
     Layer(
         name="application",
         packages=(
@@ -86,6 +88,7 @@ LAYERS: tuple[Layer, ...] = (
             "app",
             "cli",
             "configuration",
+            "health",
             "openapi",
             "security",
             "testing",
