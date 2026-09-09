@@ -2,7 +2,18 @@ from typing import cast
 
 import pytest
 
-from bustan import APP_GUARD, Controller, Get, Injectable, InjectionToken, Module, create_app
+from bustan import (
+    APP_GUARD,
+    ClassProvider,
+    Controller,
+    Get,
+    Injectable,
+    InjectionToken,
+    Module,
+    ValueProvider,
+    create_app,
+)
+from bustan.common.types import Provider
 from bustan.kernel.errors import (
     InvalidModuleError,
     ModuleCycleError,
@@ -45,10 +56,10 @@ def test_dynamic_module_instances_are_distinct_and_their_colliding_exports_are_r
         pass
 
     dynamic1 = DynamicModule(
-        ConfigModule, providers=({"provide": "A", "use_value": 1},), exports=("A",)
+        ConfigModule, providers=(ValueProvider(provide="A", use_value=1),), exports=("A",)
     )
     dynamic2 = DynamicModule(
-        ConfigModule, providers=({"provide": "B", "use_value": 2},), exports=("B",)
+        ConfigModule, providers=(ValueProvider(provide="B", use_value=2),), exports=("B",)
     )
 
     @Module(imports=[dynamic1, dynamic2])
@@ -72,10 +83,10 @@ def test_dynamic_module_instances_are_distinct_and_their_colliding_exports_are_r
 
     # The same two identities, now colliding on one token, cannot be assembled at all.
     colliding1 = DynamicModule(
-        ConfigModule, providers=({"provide": "A", "use_value": 1},), exports=("A",)
+        ConfigModule, providers=(ValueProvider(provide="A", use_value=1),), exports=("A",)
     )
     colliding2 = DynamicModule(
-        ConfigModule, providers=({"provide": "A", "use_value": 2},), exports=("A",)
+        ConfigModule, providers=(ValueProvider(provide="A", use_value=2),), exports=("A",)
     )
 
     @Module(imports=[colliding1, colliding2])
@@ -102,8 +113,12 @@ def test_dynamic_module_singleton_isolation() -> None:
 
     # Two registrations that declare different things are two modules, each with its
     # own singletons.
-    dynamic1 = DynamicModule(SharedModule, providers=({"provide": "label", "use_value": "one"},))
-    dynamic2 = DynamicModule(SharedModule, providers=({"provide": "label", "use_value": "two"},))
+    dynamic1 = DynamicModule(
+        SharedModule, providers=(ValueProvider(provide="label", use_value="one"),)
+    )
+    dynamic2 = DynamicModule(
+        SharedModule, providers=(ValueProvider(provide="label", use_value="two"),)
+    )
 
     # Use intermediate modules to avoid provider ambiguity in AppModule
     @Module(imports=[dynamic1])
@@ -140,8 +155,12 @@ def test_equal_dynamic_registrations_are_one_module_with_one_set_of_singletons()
     class SharedModule:
         pass
 
-    first = DynamicModule(SharedModule, providers=({"provide": "label", "use_value": "same"},))
-    second = DynamicModule(SharedModule, providers=({"provide": "label", "use_value": "same"},))
+    first = DynamicModule(
+        SharedModule, providers=(ValueProvider(provide="label", use_value="same"),)
+    )
+    second = DynamicModule(
+        SharedModule, providers=(ValueProvider(provide="label", use_value="same"),)
+    )
 
     assert first is second
 
@@ -297,16 +316,26 @@ def test_registrations_holding_a_value_nothing_can_hash_stay_apart() -> None:
     class SharedModule:
         pass
 
-    first = DynamicModule(SharedModule, providers=({"provide": "tags", "use_value": {"a", "b"}},))
-    second = DynamicModule(SharedModule, providers=({"provide": "tags", "use_value": {"a", "b"}},))
+    first = DynamicModule(
+        SharedModule, providers=(ValueProvider(provide="tags", use_value={"a", "b"}),)
+    )
+    second = DynamicModule(
+        SharedModule, providers=(ValueProvider(provide="tags", use_value={"a", "b"}),)
+    )
 
     assert first is not second
 
 
 def test_a_registration_replaces_a_provider_its_base_module_declares() -> None:
+    # Both declarations are written as definition dicts because that is the only shape
+    # the overlay reads a token out of, so a value type on either side is not matched
+    # against the other and the base provider is kept beside the overlay's.
     options = InjectionToken[str]("OPTIONS")
 
-    @Module(providers=[{"provide": options, "use_value": "default"}], exports=[options])
+    @Module(
+        providers=cast("list[Provider]", [{"provide": options, "use_value": "default"}]),
+        exports=[options],
+    )
     class BaseModule:
         pass
 
@@ -323,10 +352,13 @@ def test_a_base_module_keeps_the_providers_a_registration_does_not_name() -> Non
     replaced = InjectionToken[str]("REPLACED")
 
     @Module(
-        providers=[
-            {"provide": kept, "use_value": "base"},
-            {"provide": replaced, "use_value": "base"},
-        ],
+        providers=cast(
+            "list[Provider]",
+            [
+                {"provide": kept, "use_value": "base"},
+                {"provide": replaced, "use_value": "base"},
+            ],
+        ),
         exports=[kept, replaced],
     )
     class BaseModule:
@@ -353,12 +385,12 @@ def test_a_registration_adds_to_a_global_pipeline_token_rather_than_replacing_it
         def can_activate(self, context: object) -> bool:
             return True
 
-    @Module(providers=[{"provide": APP_GUARD, "use_class": BaseGuard}])
+    @Module(providers=[ClassProvider(provide=APP_GUARD, use_class=BaseGuard)])
     class BaseModule:
         pass
 
     registration = DynamicModule(
-        BaseModule, providers=({"provide": APP_GUARD, "use_class": OverlayGuard},)
+        BaseModule, providers=(ClassProvider(provide=APP_GUARD, use_class=OverlayGuard),)
     )
     container = build_container(build_module_graph(registration))
     guards = container.resolve(APP_GUARD, module=container.module_graph.root_key)
@@ -370,7 +402,7 @@ def test_a_registration_adds_to_a_global_pipeline_token_rather_than_replacing_it
 
 
 def test_a_registration_may_name_an_import_its_base_module_already_names() -> None:
-    @Module(providers=[{"provide": "shared", "use_value": "shared"}], exports=["shared"])
+    @Module(providers=[ValueProvider(provide="shared", use_value="shared")], exports=["shared"])
     class SharedModule:
         pass
 
@@ -411,8 +443,8 @@ def test_a_registration_that_names_one_token_twice_is_still_refused() -> None:
     registration = DynamicModule(
         BaseModule,
         providers=(
-            {"provide": options, "use_value": "first"},
-            {"provide": options, "use_value": "second"},
+            ValueProvider(provide=options, use_value="first"),
+            ValueProvider(provide=options, use_value="second"),
         ),
     )
 

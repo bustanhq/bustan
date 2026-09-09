@@ -6,7 +6,18 @@ from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import pytest
 
-from bustan import APP_GUARD, Controller, Get, Guard, Inject, Injectable, Module, Scope
+from bustan import (
+    APP_GUARD,
+    Controller,
+    FactoryProvider,
+    Get,
+    Guard,
+    Inject,
+    Injectable,
+    Module,
+    Scope,
+    ValueProvider,
+)
 from bustan.kernel.errors import InvalidControllerError, InvalidPipelineError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
@@ -326,7 +337,7 @@ def test_a_global_token_bound_to_a_list_resolves_to_every_component_it_names(
 
     @Module(
         controllers=[UsersController],
-        providers=[{"provide": APP_GUARD, "use_value": [first, second]}],
+        providers=[ValueProvider(provide=APP_GUARD, use_value=[first, second])],
     )
     class AppModule:
         pass
@@ -363,7 +374,9 @@ async def test_the_awaited_driver_builds_a_controller_whose_dependency_is_awaite
 
     @Module(
         controllers=[UsersController],
-        providers=[{"provide": SESSION, "use_factory": build_session, "scope": "request"}],
+        providers=[
+            FactoryProvider(provide=SESSION, use_factory=build_session, scope=Scope.REQUEST)
+        ],
     )
     class AppModule:
         pass

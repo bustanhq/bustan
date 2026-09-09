@@ -6,6 +6,7 @@ import pytest
 
 from bustan import (
     Controller,
+    FactoryProvider,
     Get,
     Inject,
     Injectable,
@@ -193,7 +194,7 @@ async def test_compiled_testing_module_serves_a_graph_built_by_an_async_factory(
             return {"connection": self.connection}
 
     @Module(
-        providers=[{"provide": "CONN", "use_factory": build_connection}],
+        providers=[FactoryProvider(provide="CONN", use_factory=build_connection)],
         exports=["CONN"],
     )
     class DbModule:

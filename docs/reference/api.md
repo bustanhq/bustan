@@ -646,6 +646,20 @@ No response is cached in this version; the decorator only records the policy.
 acts on it, so a route marked with this decorator is recomputed on every request.
 Cache in front of the application, or inside the handler, for as long as that is so.
 
+#### `ClassProvider`
+
+```python
+class ClassProvider
+```
+
+Defined in `bustan.common.types`.
+
+Bind a token to a class the container constructs for it.
+
+Leave ``scope`` unset to take the lifetime the class itself declares. A lifetime
+named here may narrow that one but never widen it, because a wider lifetime keeps
+one caller's state on an instance that outlives them.
+
 #### `ContextId`
 
 ```python
@@ -861,6 +875,19 @@ handle.
 - `catch(self, exc: Exception, context: ExecutionContext) -> object | Awaitable[object]`
   Convert an exception into a handler result or response payload.
 
+#### `ExistingProvider`
+
+```python
+class ExistingProvider
+```
+
+Defined in `bustan.common.types`.
+
+Bind a token as a second name for a token another provider already binds.
+
+An alias holds nothing of its own and names no lifetime, so what a consumer gets is
+whatever the token it points at would have handed them.
+
 #### `ExportViolationError`
 
 ```python
@@ -870,6 +897,20 @@ class ExportViolationError(InvalidModuleError)
 Defined in `bustan.kernel.errors`.
 
 Raised when a module exports a provider it does not declare.
+
+#### `FactoryProvider`
+
+```python
+class FactoryProvider
+```
+
+Defined in `bustan.common.types`.
+
+Bind a token to a callable the container calls to build the value.
+
+``inject`` names the tokens to resolve and pass as positional arguments, in the
+order the callable takes them. Writing a single token needs a one-element tuple:
+the callable is given each entry of the sequence, never the sequence itself.
 
 #### `Get`
 
@@ -1523,12 +1564,18 @@ picking one, and `for_module()` names the one to resolve through.
 #### `Module`
 
 ```python
-def Module(*, imports: Iterable[type[object] | DynamicModule] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[object | dict[str, Any]] | None = None, exports: Iterable[object] | None = None, is_global: bool = False) -> Callable[[ClassT], ClassT]
+def Module(*, imports: Iterable[type[object] | DynamicModule] | None = None, controllers: Iterable[type[object]] | None = None, providers: Iterable[Provider] | None = None, exports: Iterable[object] | None = None, is_global: bool = False) -> Callable[[ClassT], ClassT]
 ```
 
 Defined in `bustan.kernel.module.decorators`.
 
 Attach module metadata to a class without performing registration.
+
+A provider is either a class, which binds under its own identity, or one of the
+provider value types, which bind a token to a class, to a factory, to a value or to
+another token. Which of them a declaration is decides what it binds, so a
+declaration naming two targets, or none, or a key no provider has, cannot be
+written down.
 
 #### `ModuleGraph`
 
@@ -2252,6 +2299,19 @@ Validate body payloads with Pydantic models when available.
 - `transform(self, value: object, context: ExecutionContext) -> object`
   Return the transformed parameter value passed to the handler.
 
+#### `ValueProvider`
+
+```python
+class ValueProvider
+```
+
+Defined in `bustan.common.types`.
+
+Bind a token to one object that already exists.
+
+The object is handed to every consumer as it is written, so it names no lifetime:
+there is one of it for as long as the application runs.
+
 #### `application_context_id`
 
 ```python
@@ -2339,7 +2399,7 @@ Build runtime-generated module classes with for_root-style helpers.
 ##### Methods
 
 - `set_class_name(self, name: str) -> ConfigurableModuleBuilder[OptionsT]`
-- `set_extras(self, *, providers: tuple[object | dict[str, object], ...] = ()) -> ConfigurableModuleBuilder[OptionsT]`
+- `set_extras(self, *, providers: tuple[Provider, ...] = ()) -> ConfigurableModuleBuilder[OptionsT]`
 - `build(self) -> tuple[type[ConfigurableModuleDefinition[OptionsT]], InjectionToken[OptionsT]]`
   Return a generated module class and its stable options token.
 

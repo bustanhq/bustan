@@ -13,9 +13,11 @@ from bustan import (
     APP_GUARD,
     APP_INTERCEPTOR,
     APP_PIPE,
+    ClassProvider,
     Controller,
     ExceptionFilter,
     ExecutionContext,
+    FactoryProvider,
     Get,
     Guard,
     Injectable,
@@ -23,6 +25,7 @@ from bustan import (
     Module,
     Pipe,
     Scope,
+    ValueProvider,
     create_app,
 )
 from bustan.errors import InvalidModuleError
@@ -49,7 +52,7 @@ class UsersController:
 def test_app_guard_provider_applies_to_all_routes() -> None:
     @Module(
         controllers=[UsersController],
-        providers=[{"provide": APP_GUARD, "use_class": RejectAllGuard}],
+        providers=[ClassProvider(provide=APP_GUARD, use_class=RejectAllGuard)],
     )
     class AppModule:
         pass
@@ -63,7 +66,7 @@ def test_app_guard_provider_applies_to_all_routes() -> None:
 def test_overriding_a_global_guard_before_startup_disables_it() -> None:
     @Module(
         controllers=[UsersController],
-        providers=[{"provide": APP_GUARD, "use_class": RejectAllGuard}],
+        providers=[ClassProvider(provide=APP_GUARD, use_class=RejectAllGuard)],
     )
     class AppModule:
         pass
@@ -93,7 +96,7 @@ def test_a_module_may_declare_several_global_guards_and_all_of_them_run() -> Non
 
     @Module(
         controllers=[UsersController],
-        providers=[{"provide": APP_GUARD, "use_value": [FirstGuard(), SecondGuard()]}],
+        providers=[ValueProvider(provide=APP_GUARD, use_value=[FirstGuard(), SecondGuard()])],
     )
     class AppModule:
         pass
@@ -124,7 +127,7 @@ def test_a_request_scoped_global_guard_is_built_once_for_each_request() -> None:
     @Module(
         controllers=[UsersController],
         providers=[
-            {"provide": APP_GUARD, "use_class": RequestScopedGuard, "scope": "request"},
+            ClassProvider(provide=APP_GUARD, use_class=RequestScopedGuard, scope=Scope.REQUEST),
         ],
     )
     class AppModule:
@@ -148,11 +151,7 @@ def test_a_global_guard_built_by_an_async_callable_object_is_awaited() -> None:
     @Module(
         controllers=[UsersController],
         providers=[
-            {
-                "provide": APP_GUARD,
-                "use_factory": AsyncGuardFactory(),
-                "scope": "request",
-            }
+            FactoryProvider(provide=APP_GUARD, use_factory=AsyncGuardFactory(), scope=Scope.REQUEST)
         ],
     )
     class AppModule:
@@ -175,14 +174,14 @@ def test_global_providers_declared_by_several_modules_run_in_registration_order(
             calls.append("root")
             return True
 
-    @Module(providers=[{"provide": APP_GUARD, "use_class": FeatureGuard}])
+    @Module(providers=[ClassProvider(provide=APP_GUARD, use_class=FeatureGuard)])
     class FeatureModule:
         pass
 
     @Module(
         imports=[FeatureModule],
         controllers=[UsersController],
-        providers=[{"provide": APP_GUARD, "use_class": RootGuard}],
+        providers=[ClassProvider(provide=APP_GUARD, use_class=RootGuard)],
     )
     class AppModule:
         pass
@@ -215,11 +214,9 @@ def test_a_global_interceptor_sees_the_request_it_was_built_for() -> None:
     @Module(
         controllers=[UsersController],
         providers=[
-            {
-                "provide": APP_INTERCEPTOR,
-                "use_class": RecordingInterceptor,
-                "scope": "request",
-            }
+            ClassProvider(
+                provide=APP_INTERCEPTOR, use_class=RecordingInterceptor, scope=Scope.REQUEST
+            )
         ],
     )
     class AppModule:
@@ -247,8 +244,8 @@ def test_two_global_guard_entries_in_one_module_both_run_in_declaration_order() 
     @Module(
         controllers=[UsersController],
         providers=[
-            {"provide": APP_GUARD, "use_class": FirstGuard},
-            {"provide": APP_GUARD, "use_class": SecondGuard},
+            ClassProvider(provide=APP_GUARD, use_class=FirstGuard),
+            ClassProvider(provide=APP_GUARD, use_class=SecondGuard),
         ],
     )
     class AppModule:
@@ -278,8 +275,8 @@ def test_two_global_pipe_entries_in_one_module_both_transform_in_declaration_ord
     @Module(
         controllers=[GreetingsController],
         providers=[
-            {"provide": APP_PIPE, "use_class": Exclaim},
-            {"provide": APP_PIPE, "use_class": Wrap},
+            ClassProvider(provide=APP_PIPE, use_class=Exclaim),
+            ClassProvider(provide=APP_PIPE, use_class=Wrap),
         ],
     )
     class AppModule:
@@ -313,8 +310,8 @@ def test_two_global_interceptor_entries_in_one_module_both_wrap_in_declaration_o
     @Module(
         controllers=[UsersController],
         providers=[
-            {"provide": APP_INTERCEPTOR, "use_class": FirstInterceptor},
-            {"provide": APP_INTERCEPTOR, "use_class": SecondInterceptor},
+            ClassProvider(provide=APP_INTERCEPTOR, use_class=FirstInterceptor),
+            ClassProvider(provide=APP_INTERCEPTOR, use_class=SecondInterceptor),
         ],
     )
     class AppModule:
@@ -355,8 +352,8 @@ def test_two_global_filter_entries_in_one_module_are_both_offered_the_error() ->
     @Module(
         controllers=[BrokenController],
         providers=[
-            {"provide": APP_FILTER, "use_class": EarlierFilter},
-            {"provide": APP_FILTER, "use_class": LaterFilter},
+            ClassProvider(provide=APP_FILTER, use_class=EarlierFilter),
+            ClassProvider(provide=APP_FILTER, use_class=LaterFilter),
         ],
     )
     class AppModule:
@@ -398,9 +395,9 @@ def test_separate_entries_and_a_list_entry_mix_into_one_declaration_order() -> N
     @Module(
         controllers=[UsersController],
         providers=[
-            {"provide": APP_GUARD, "use_class": recording_guard("first")},
-            {"provide": APP_GUARD, "use_value": [Second(), Third()]},
-            {"provide": APP_GUARD, "use_class": RequestScopedGuard, "scope": "request"},
+            ClassProvider(provide=APP_GUARD, use_class=recording_guard("first")),
+            ValueProvider(provide=APP_GUARD, use_value=[Second(), Third()]),
+            ClassProvider(provide=APP_GUARD, use_class=RequestScopedGuard, scope=Scope.REQUEST),
         ],
     )
     class AppModule:

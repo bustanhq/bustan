@@ -10,11 +10,13 @@ import pytest
 from bustan import (
     APPLICATION,
     REQUEST,
+    ClassProvider,
     Inject,
     Injectable,
     InjectionToken,
     Module,
     OptionalDep,
+    ValueProvider,
     create_app_context,
 )
 from bustan.kernel.errors import ProviderResolutionError
@@ -41,7 +43,7 @@ def test_explicit_inject_overrides_annotation_based_resolution() -> None:
             self.config = config
 
     @Module(
-        providers=[ConfigConsumer, {"provide": CONFIG_TOKEN, "use_value": "configured"}],
+        providers=[ConfigConsumer, ValueProvider(provide=CONFIG_TOKEN, use_value="configured")],
         exports=[ConfigConsumer],
     )
     class AppModule:
@@ -165,7 +167,7 @@ def test_two_annotations_naming_equal_tokens_of_different_types_stay_apart() -> 
     # one providers list is refused where it is written. Declaring them apart is the
     # arrangement a user reaches for instead, and the one this defect survived in.
     @Module(
-        providers=[{"provide": Tokens.DB, "use_class": FromEnum}],
+        providers=[ClassProvider(provide=Tokens.DB, use_class=FromEnum)],
         exports=[Tokens.DB],
     )
     class SharedModule:
@@ -173,7 +175,7 @@ def test_two_annotations_naming_equal_tokens_of_different_types_stay_apart() -> 
 
     @Module(
         imports=[SharedModule],
-        providers=[Consumer, {"provide": "db", "use_class": FromStr}],
+        providers=[Consumer, ClassProvider(provide="db", use_class=FromStr)],
         exports=[Consumer],
     )
     class FeatureModule:
@@ -202,13 +204,13 @@ def test_two_annotations_naming_a_true_and_a_one_token_stay_apart() -> None:
             self.from_bool = from_bool
             self.from_int = from_int
 
-    @Module(providers=[{"provide": True, "use_value": "bool-token"}], exports=[True])
+    @Module(providers=[ValueProvider(provide=True, use_value="bool-token")], exports=[True])
     class SharedModule:
         pass
 
     @Module(
         imports=[SharedModule],
-        providers=[Consumer, {"provide": 1, "use_value": "int-token"}],
+        providers=[Consumer, ValueProvider(provide=1, use_value="int-token")],
         exports=[Consumer],
     )
     class FeatureModule:

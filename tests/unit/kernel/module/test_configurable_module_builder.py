@@ -6,7 +6,16 @@ from typing import cast
 
 import pytest
 
-from bustan import ConfigurableModuleBuilder, Injectable, Module, create_app_context
+from bustan import (
+    ClassProvider,
+    ConfigurableModuleBuilder,
+    ExistingProvider,
+    FactoryProvider,
+    Injectable,
+    Module,
+    ValueProvider,
+    create_app_context,
+)
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.builder import ConfigurableModuleDefinition
 from bustan.kernel.module.dynamic import DynamicModule
@@ -26,7 +35,9 @@ def test_configurable_module_builder_generates_dynamic_modules() -> None:
     assert isinstance(dynamic_module, DynamicModule)
     assert dynamic_module.is_global is True
     assert dynamic_module.exports == (options_token,)
-    assert dynamic_module.providers[0] == {"provide": options_token, "use_value": {"name": "Ada"}}
+    assert dynamic_module.providers[0] == ValueProvider(
+        provide=options_token, use_value={"name": "Ada"}
+    )
     assert ExtraProvider in dynamic_module.providers
 
 
@@ -61,18 +72,21 @@ def test_configurable_module_builder_covers_register_and_async_variants() -> Non
     )
     class_module = ConfigModule.for_root_async(use_class=ConfigFactory)
     existing_module = ConfigModule.register_async(use_existing="CONFIG_TOKEN")
-    factory_provider = cast(dict[str, object], factory_module.providers[0])
+    factory_provider = cast(FactoryProvider, factory_module.providers[0])
 
-    assert registered.providers[0] == {"provide": options_token, "use_value": {"name": "Ada"}}
+    assert registered.providers[0] == ValueProvider(
+        provide=options_token, use_value={"name": "Ada"}
+    )
     assert registered.is_global is True
-    assert factory_provider["provide"] is options_token
-    assert factory_provider["inject"] == ("DEP",)
-    assert callable(factory_provider["use_factory"])
-    assert class_module.providers[0] == {"provide": options_token, "use_class": ConfigFactory}
-    assert existing_module.providers[0] == {
-        "provide": options_token,
-        "use_existing": "CONFIG_TOKEN",
-    }
+    assert factory_provider.provide is options_token
+    assert factory_provider.inject == ("DEP",)
+    assert callable(factory_provider.use_factory)
+    assert class_module.providers[0] == ClassProvider(
+        provide=options_token, use_class=ConfigFactory
+    )
+    assert existing_module.providers[0] == ExistingProvider(
+        provide=options_token, use_existing="CONFIG_TOKEN"
+    )
 
     with pytest.raises(ValueError, match="requires use_factory, use_class, or use_existing"):
         ConfigModule.for_root_async()

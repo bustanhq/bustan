@@ -11,7 +11,18 @@ from typing import Annotated
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
-from bustan import Controller, Get, Inject, Injectable, InjectionToken, Module, Scope, create_app
+from bustan import (
+    Controller,
+    ExistingProvider,
+    FactoryProvider,
+    Get,
+    Inject,
+    Injectable,
+    InjectionToken,
+    Module,
+    Scope,
+    create_app,
+)
 from bustan.errors import ProviderResolutionError
 
 
@@ -54,8 +65,8 @@ class SnapController:
     controllers=[SnapController],
     providers=[
         RequestIdentity,
-        {"provide": SNAPSHOT, "use_factory": make_snapshot, "inject": [RequestIdentity]},
-        {"provide": ALIAS, "use_existing": RequestIdentity},
+        FactoryProvider(provide=SNAPSHOT, use_factory=make_snapshot, inject=(RequestIdentity,)),
+        ExistingProvider(provide=ALIAS, use_existing=RequestIdentity),
         SingletonViaAlias,
     ],
 )

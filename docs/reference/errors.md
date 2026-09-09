@@ -105,16 +105,16 @@ Cause: a `providers` entry the container cannot turn into a binding. Every messa
 Common conditions and fixes:
 
 - `@Injectable can only decorate classes`, or `Unsupported provider scope` - the scope must be one of `singleton`, `request`, `transient` or `durable`.
-- `... is not a class or a provider definition dict` - a `providers` entry is either a class or a `{"provide": ..., "use_*": ...}` dict.
-- `unknown provider keys`, `the definition has no 'provide' key`, or `declares none of use_class, use_factory, use_value, use_existing` - a definition names exactly one `use_*` key beside `provide`.
-- `... declares more than one of ...` - pick one binding form.
+- `... is not a class or a provider definition` - a `providers` entry is either a class or one of `ClassProvider`, `FactoryProvider`, `ValueProvider` and `ExistingProvider`.
 - `the 'provide' token ... cannot be used as a key` - a token must be hashable. Use a class, a string, or an `InjectionToken`.
-- `... declares 'inject' beside '<key>', which takes no dependencies` - only `use_factory` takes an `inject` list.
-- `... declares 'scope' beside '<key>', which cannot honour a lifetime of its own` - `use_value` is one object and `use_existing` borrows the lifetime of the token it points at, so neither can be given a scope.
-- `... binds C as <scope>-scoped, but the class declares <scope> scope. A binding may narrow a declared scope, never widen it` - a `use_class` may bind a request-scoped class as transient, but not as a singleton. See [Binding Forms And Scope](../explanation/request-scope.md#binding-forms-and-scope).
-- `... asks for a durable 'use_factory'` - a durable lifetime is partitioned by a `get_durable_context_key` hook, which only a class can carry. Use `use_class`.
+- `... declares a 'use_class' that is not a class`, or `... declares a 'use_factory' that is not callable` - the target has to be the thing the provider says it is.
+- `... declares an 'inject' that is not a sequence of tokens`, or `declares 'inject' as '<token>'` - `inject` is a sequence, so a single token is still written inside one; a bare string is read one character at a time.
+- `... binds C as <scope>-scoped, but the class declares <scope> scope. A binding may narrow a declared scope, never widen it` - a `ClassProvider` may bind a request-scoped class as transient, but not as a singleton. See [Binding Forms And Scope](../explanation/request-scope.md#binding-forms-and-scope).
+- `... asks for a durable 'use_factory'` - a durable lifetime is partitioned by a `get_durable_context_key` hook, which only a class can carry. Use a `ClassProvider`.
 - `... asks for a durable lifetime but declares no 'get_durable_context_key'`, or the hook is not a `classmethod` or `staticmethod` - the key selects the instance, so it must be derivable without one.
 - `... and ... are equal but are not the same token, so one would silently take the other's binding` - two tokens in one module compare equal but are different objects or types, such as a `str` and a `StrEnum` member spelling the same value. Declare one of them under a distinct token.
+
+The older way of writing a provider, a `{"provide": ..., "use_*": ...}` dict, is still accepted and is read into the same four types before it is bound. It has refusals of its own that the types make unwritable: `unknown provider keys`, `the definition has no 'provide' key`, `declares none of use_class, use_factory, use_value, use_existing`, `declares more than one of ...`, `declares 'inject' beside '<key>', which takes no dependencies`, and `declares 'scope' beside '<key>', which cannot honour a lifetime of its own`. Writing the declaration as one of the four types instead turns each of them into an error the type checker reports where the provider is written.
 
 ## `InvalidControllerError`
 

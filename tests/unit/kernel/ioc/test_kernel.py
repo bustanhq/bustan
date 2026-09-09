@@ -21,11 +21,15 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from bustan import (
+    ClassProvider,
     Controller,
+    ExistingProvider,
+    FactoryProvider,
     Get,
     Injectable,
     Module,
     Scope,
+    ValueProvider,
     create_app,
     create_app_context,
 )
@@ -113,7 +117,7 @@ def test_same_token_name_in_two_modules_is_not_reported_as_a_cycle() -> None:
             self.cfg = cfg
 
     @Module(
-        providers=[Svc, {"provide": "cfg", "use_value": "inner-config"}],
+        providers=[Svc, ValueProvider(provide="cfg", use_value="inner-config")],
         exports=[Svc],
     )
     class InnerModule:
@@ -126,7 +130,7 @@ def test_same_token_name_in_two_modules_is_not_reported_as_a_cycle() -> None:
 
     @Module(
         imports=[InnerModule],
-        providers=[{"provide": "cfg", "use_class": CfgHolder}],
+        providers=[ClassProvider(provide="cfg", use_class=CfgHolder)],
         exports=["cfg"],
     )
     class OuterModule:
@@ -147,7 +151,7 @@ def test_class_bound_in_two_modules_uses_the_scope_of_the_resolved_binding(
             self.request = request
 
     @Module(
-        providers=[{"provide": "req_scoped", "use_class": Shared, "scope": "request"}],
+        providers=[ClassProvider(provide="req_scoped", use_class=Shared, scope=Scope.REQUEST)],
         exports=["req_scoped"],
     )
     class RequestModule:
@@ -155,7 +159,9 @@ def test_class_bound_in_two_modules_uses_the_scope_of_the_resolved_binding(
 
     @Module(
         imports=[RequestModule],
-        providers=[{"provide": "singleton_bound", "use_class": Shared, "scope": "singleton"}],
+        providers=[
+            ClassProvider(provide="singleton_bound", use_class=Shared, scope=Scope.SINGLETON)
+        ],
     )
     class AppModule:
         pass
@@ -221,7 +227,7 @@ def test_resolve_async_supports_class_providers_with_async_factory_dependencies(
     @Module(
         providers=[
             NeedsConnection,
-            {"provide": "conn", "use_factory": make_connection, "scope": "transient"},
+            FactoryProvider(provide="conn", use_factory=make_connection, scope=Scope.TRANSIENT),
         ],
         exports=[NeedsConnection],
     )
@@ -248,7 +254,7 @@ def test_a_singleton_whose_value_is_none_is_built_once_and_kept() -> None:
         return None
 
     @Module(
-        providers=[{"provide": "client", "use_factory": build_client}],
+        providers=[FactoryProvider(provide="client", use_factory=build_client)],
         exports=["client"],
     )
     class AppModule:
@@ -269,7 +275,7 @@ def test_an_async_singleton_factory_that_returns_none_starts_the_application() -
         return None
 
     @Module(
-        providers=[{"provide": "client", "use_factory": build_client}],
+        providers=[FactoryProvider(provide="client", use_factory=build_client)],
         exports=["client"],
     )
     class AppModule:
@@ -284,7 +290,7 @@ def test_an_async_singleton_factory_that_returns_none_starts_the_application() -
 
 
 def test_a_value_provider_of_none_is_served_rather_than_rebuilt() -> None:
-    @Module(providers=[{"provide": "absent", "use_value": None}], exports=["absent"])
+    @Module(providers=[ValueProvider(provide="absent", use_value=None)], exports=["absent"])
     class AppModule:
         pass
 
@@ -561,7 +567,7 @@ def test_an_async_factory_cannot_be_called_by_synchronous_resolution() -> None:
         return "connected"
 
     @Module(
-        providers=[{"provide": "conn", "use_factory": build_connection}],
+        providers=[FactoryProvider(provide="conn", use_factory=build_connection)],
         exports=["conn"],
     )
     class AppModule:
@@ -579,7 +585,7 @@ def test_an_alias_resolves_to_the_provider_it_points_at() -> None:
         pass
 
     @Module(
-        providers=[Service, {"provide": "alias", "use_existing": Service}],
+        providers=[Service, ExistingProvider(provide="alias", use_existing=Service)],
         exports=["alias", Service],
     )
     class AppModule:
@@ -594,7 +600,9 @@ def test_an_alias_resolves_to_the_provider_it_points_at() -> None:
 
 def test_a_binding_the_kernel_cannot_recognise_names_the_kind_it_found() -> None:
     # Guards the invariant that normalization produces one of four resolver kinds; a
-    # fifth would otherwise be a silent None handed to a constructor.
+    # fifth would otherwise be a silent None handed to a constructor. The kind is a
+    # closed set of four literals, so writing a fifth is refused where it is written and
+    # the suppression below is what lets this test reach the runtime refusal at all.
     @Module()
     class AppModule:
         pass
@@ -605,7 +613,7 @@ def test_a_binding_the_kernel_cannot_recognise_names_the_kind_it_found() -> None
         Binding(
             token="odd",
             declaring_module=AppModule,
-            resolver_kind="telepathy",
+            resolver_kind="telepathy",  # ty: ignore[invalid-argument-type]
             target=None,
             scope=Scope.TRANSIENT,
         ),
@@ -622,7 +630,7 @@ def test_a_callable_object_that_returns_a_coroutine_is_refused_by_name() -> None
             return "connected"
 
     @Module(
-        providers=[{"provide": "conn", "use_factory": OpenConnection()}],
+        providers=[FactoryProvider(provide="conn", use_factory=OpenConnection())],
         exports=["conn"],
     )
     class AppModule:
@@ -637,7 +645,9 @@ def test_a_callable_object_that_returns_a_coroutine_is_refused_by_name() -> None
 def test_a_factory_without_a_qualified_name_is_still_named_in_a_diagnostic() -> None:
     open_connection = functools.partial(_never_called)
 
-    @Module(providers=[{"provide": "conn", "use_factory": open_connection}], exports=["conn"])
+    @Module(
+        providers=[FactoryProvider(provide="conn", use_factory=open_connection)], exports=["conn"]
+    )
     class AppModule:
         pass
 

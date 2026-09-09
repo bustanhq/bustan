@@ -8,9 +8,9 @@ from typing import cast
 
 import pytest
 
-from bustan import Injectable
+from bustan import ClassProvider, ExistingProvider, FactoryProvider, Injectable, ValueProvider
 from bustan.common.constants import BUSTAN_PROVIDER_ATTR
-from bustan.common.types import ProviderScope
+from bustan.common.types import ProviderDefinition, ProviderScope
 from bustan.kernel.errors import InvalidProviderError
 from bustan.kernel.ioc.registry import (
     Binding,
@@ -44,7 +44,7 @@ def test_normalize_provider_covers_class_factory_value_and_existing_forms() -> N
         scope=ProviderScope.SINGLETON,
     )
     assert normalize_provider(
-        {"provide": "client", "use_class": Replacement, "scope": "request"},
+        ClassProvider(provide="client", use_class=Replacement, scope=ProviderScope.REQUEST),
         AppModule,
     ) == Binding(
         token="client",
@@ -54,7 +54,7 @@ def test_normalize_provider_covers_class_factory_value_and_existing_forms() -> N
         scope=ProviderScope.REQUEST,
     )
     factory_binding = normalize_provider(
-        {"provide": "factory", "use_factory": lambda: "ok", "inject": ["dep"]},
+        FactoryProvider(provide="factory", use_factory=lambda: "ok", inject=("dep",)),
         AppModule,
     )
     factory_target = cast(tuple[object, tuple[object, ...]], factory_binding.target)
@@ -65,7 +65,7 @@ def test_normalize_provider_covers_class_factory_value_and_existing_forms() -> N
     assert factory_target[1] == ("dep",)
     assert factory_binding.scope is ProviderScope.SINGLETON
     assert normalize_provider(
-        {"provide": "value", "use_value": 1},
+        ValueProvider(provide="value", use_value=1),
         AppModule,
     ) == Binding(
         token="value",
@@ -75,7 +75,7 @@ def test_normalize_provider_covers_class_factory_value_and_existing_forms() -> N
         scope=ProviderScope.SINGLETON,
     )
     assert normalize_provider(
-        {"provide": "alias", "use_existing": Service},
+        ExistingProvider(provide="alias", use_existing=Service),
         AppModule,
     ) == Binding(
         token="alias",
@@ -225,14 +225,18 @@ def test_normalize_provider_refuses_a_durable_lifetime_it_cannot_partition() -> 
     # hook has to be reachable on the class itself and only a class binding can carry it.
     assert (
         normalize_provider(
-            {"provide": "tenant", "use_class": DurableByClassMethod, "scope": "durable"},
+            ClassProvider(
+                provide="tenant", use_class=DurableByClassMethod, scope=ProviderScope.DURABLE
+            ),
             AppModule,
         ).scope
         is ProviderScope.DURABLE
     )
     assert (
         normalize_provider(
-            {"provide": "tenant", "use_class": DurableByStaticMethod, "scope": "durable"},
+            ClassProvider(
+                provide="tenant", use_class=DurableByStaticMethod, scope=ProviderScope.DURABLE
+            ),
             AppModule,
         ).scope
         is ProviderScope.DURABLE
@@ -240,13 +244,15 @@ def test_normalize_provider_refuses_a_durable_lifetime_it_cannot_partition() -> 
 
     with pytest.raises(InvalidProviderError, match="classmethod or a staticmethod"):
         normalize_provider(
-            {"provide": "tenant", "use_class": DurableByInstanceMethod, "scope": "durable"},
+            ClassProvider(
+                provide="tenant", use_class=DurableByInstanceMethod, scope=ProviderScope.DURABLE
+            ),
             AppModule,
         )
 
     with pytest.raises(InvalidProviderError, match="only a class can carry"):
         normalize_provider(
-            {"provide": "tenant", "use_factory": _factory, "scope": "durable"},
+            FactoryProvider(provide="tenant", use_factory=_factory, scope=ProviderScope.DURABLE),
             AppModule,
         )
 
@@ -266,28 +272,61 @@ def test_injectable_durable_class_needs_an_unbound_context_key_hook() -> None:
         normalize_provider(decorated, AppModule)
 
 
-def test_every_valid_dict_provider_shape_is_accepted() -> None:
+def test_a_definition_dict_binds_exactly_as_the_value_type_it_describes() -> None:
+    # The dict is the older way to write a provider and still has to work while both
+    # spellings are in the field. It is read into the value type first, so the two
+    # cannot answer differently: the same declaration written either way binds the same.
+    pairs: tuple[tuple[dict[str, object], ProviderDefinition], ...] = (
+        (
+            {"provide": "t", "use_class": Service},
+            ClassProvider(provide="t", use_class=Service),
+        ),
+        (
+            {"provide": "t", "use_class": Service, "scope": "transient"},
+            ClassProvider(provide="t", use_class=Service, scope=ProviderScope.TRANSIENT),
+        ),
+        (
+            {"provide": "t", "use_factory": _factory, "inject": ["dep", Service]},
+            FactoryProvider(provide="t", use_factory=_factory, inject=("dep", Service)),
+        ),
+        (
+            {"provide": "t", "use_value": None},
+            ValueProvider(provide="t", use_value=None),
+        ),
+        (
+            {"provide": "t", "use_existing": Service},
+            ExistingProvider(provide="t", use_existing=Service),
+        ),
+    )
+
+    for written_as_a_dict, written_as_a_value in pairs:
+        assert normalize_provider(written_as_a_dict, AppModule) == normalize_provider(
+            written_as_a_value, AppModule
+        )
+
+
+def test_every_valid_provider_declaration_is_accepted() -> None:
     accepted = (
-        {"provide": "t", "use_class": Service},
-        {"provide": "t", "use_class": Service, "scope": "request"},
-        {"provide": "t", "use_class": Service, "scope": ProviderScope.TRANSIENT},
-        {"provide": "t", "use_factory": _factory},
-        {"provide": "t", "use_factory": _factory, "inject": ()},
-        {"provide": "t", "use_factory": _factory, "inject": ["dep", Service]},
-        {"provide": "t", "use_factory": Service, "scope": "transient"},
-        {"provide": "t", "use_value": None},
-        {"provide": "t", "use_existing": Service},
-        {"provide": Service, "use_existing": "other"},
+        ClassProvider(provide="t", use_class=Service),
+        ClassProvider(provide="t", use_class=Service, scope=ProviderScope.REQUEST),
+        ClassProvider(provide="t", use_class=Service, scope=ProviderScope.TRANSIENT),
+        FactoryProvider(provide="t", use_factory=_factory),
+        FactoryProvider(provide="t", use_factory=_factory, inject=()),
+        FactoryProvider(provide="t", use_factory=_factory, inject=("dep", Service)),
+        FactoryProvider(provide="t", use_factory=Service, scope=ProviderScope.TRANSIENT),
+        ValueProvider(provide="t", use_value=None),
+        ExistingProvider(provide="t", use_existing=Service),
+        ExistingProvider(provide=Service, use_existing="other"),
     )
 
     for definition in accepted:
         assert normalize_provider(definition, AppModule).declaring_module is AppModule
 
 
-def test_every_invalid_dict_provider_shape_is_refused_naming_the_module_and_key() -> None:
+def test_every_invalid_provider_declaration_is_refused_naming_the_module_and_key() -> None:
     # The breadth is the point: a validator that only rejects the shapes someone thought
     # to write down is how 'inject' beside 'use_class' stayed silent for a whole release.
-    shapes = tuple(_invalid_dict_provider_shapes())
+    shapes = (*_invalid_dict_provider_shapes(), *_invalid_provider_declarations())
     assert len(shapes) > 60
 
     unreported: list[str] = []
@@ -332,23 +371,52 @@ def _invalid_dict_provider_shapes() -> Iterator[tuple[dict[str, object], str]]:
     for empty in ({}, {"scope": "request"}, {"provide": "t"}, {"provide": "t", "inject": ()}):
         yield dict(empty), "provide" if "provide" not in empty else "use_value"
 
+
+def _invalid_provider_declarations() -> Iterator[tuple[ProviderDefinition, str]]:
+    """Generate provider declarations whose fields hold what the field cannot mean.
+
+    Every declaration here is a type error where it is written, which is the point of
+    the value types. The container still has to refuse each one by name, because a
+    caller that reaches it from unchecked code gets no such warning, and each is
+    suppressed so this test can reach that refusal.
+    """
+
     for unhashable in ({"name": "x"}, ["x"], bytearray(b"x"), {1: {2: 3}}):
-        yield {"provide": unhashable, "use_value": 1}, "provide"
+        yield ValueProvider(provide=unhashable, use_value=1), "provide"
 
     for not_a_class in (Service(), _factory, 42, None, "Service", (Service,)):
-        yield {"provide": "t", "use_class": not_a_class}, "use_class"
+        yield (
+            ClassProvider(provide="t", use_class=not_a_class),  # ty: ignore[invalid-argument-type]
+            "use_class",
+        )
 
     for not_callable in (42, None, "factory", (), Service()):
-        yield {"provide": "t", "use_factory": not_callable}, "use_factory"
+        yield (
+            FactoryProvider(
+                provide="t",
+                use_factory=not_callable,  # ty: ignore[invalid-argument-type]
+            ),
+            "use_factory",
+        )
 
     for bad_inject in ("dep", b"dep", 42, None, Service()):
-        yield {"provide": "t", "use_factory": _factory, "inject": bad_inject}, "inject"
+        yield (
+            FactoryProvider(
+                provide="t",
+                use_factory=_factory,
+                inject=bad_inject,  # ty: ignore[invalid-argument-type]
+            ),
+            "inject",
+        )
 
     yield (
-        {"provide": "t", "use_class": DurableByInstanceMethod, "scope": "durable"},
+        ClassProvider(provide="t", use_class=DurableByInstanceMethod, scope=ProviderScope.DURABLE),
         "get_durable_context_key",
     )
-    yield {"provide": "t", "use_factory": _factory, "scope": "durable"}, "use_factory"
+    yield (
+        FactoryProvider(provide="t", use_factory=_factory, scope=ProviderScope.DURABLE),
+        "use_factory",
+    )
 
 
 def test_a_use_class_definition_takes_the_lifetime_its_target_declares() -> None:
@@ -360,7 +428,9 @@ def test_a_use_class_definition_takes_the_lifetime_its_target_declares() -> None
     class PerRequestAudit:
         pass
 
-    binding = normalize_provider({"provide": "audit", "use_class": PerRequestAudit}, AppModule)
+    binding = normalize_provider(
+        ClassProvider(provide="audit", use_class=PerRequestAudit), AppModule
+    )
 
     assert binding.scope is ProviderScope.REQUEST
 
@@ -371,7 +441,7 @@ def test_a_use_class_definition_may_narrow_a_declared_lifetime_but_never_widen_i
         pass
 
     narrowed = normalize_provider(
-        {"provide": "audit", "use_class": PerRequestAudit, "scope": ProviderScope.TRANSIENT},
+        ClassProvider(provide="audit", use_class=PerRequestAudit, scope=ProviderScope.TRANSIENT),
         AppModule,
     )
 
@@ -379,7 +449,10 @@ def test_a_use_class_definition_may_narrow_a_declared_lifetime_but_never_widen_i
 
     with pytest.raises(InvalidProviderError, match="never widen it") as refusal:
         normalize_provider(
-            {"provide": "audit", "use_class": PerRequestAudit, "scope": "singleton"}, AppModule
+            ClassProvider(
+                provide="audit", use_class=PerRequestAudit, scope=ProviderScope.SINGLETON
+            ),
+            AppModule,
         )
 
     assert "PerRequestAudit" in str(refusal.value)
@@ -397,11 +470,11 @@ def test_a_use_class_definition_whose_target_declares_nothing_keeps_the_default(
         pass
 
     assert (
-        normalize_provider({"provide": "t", "use_class": Service}, AppModule).scope
+        normalize_provider(ClassProvider(provide="t", use_class=Service), AppModule).scope
         is ProviderScope.SINGLETON
     )
     assert (
-        normalize_provider({"provide": "t", "use_class": Derived}, AppModule).scope
+        normalize_provider(ClassProvider(provide="t", use_class=Derived), AppModule).scope
         is ProviderScope.SINGLETON
     )
 

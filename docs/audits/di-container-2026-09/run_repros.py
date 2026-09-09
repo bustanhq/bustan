@@ -22,6 +22,13 @@ from pathlib import Path
 RESULT_RE = re.compile(r"^RESULT: (?P<id>\S+) (?P<status>REPRODUCED|FIXED|ERROR) - (?P<msg>.*)$")
 DEFAULT_DIR = Path(__file__).resolve().parent / "repros"
 
+# How many findings the scripts in `repros` report between them. The gate compares the
+# run against this, so a script that stops being run - deleted, renamed under a leading
+# underscore, or quietly returning nothing - fails instead of shrinking what is guarded.
+# Retiring a script is therefore a change to this number as well, made in the same commit
+# and explained where the finding is marked closed in REPORT.md.
+EXPECTED_FINDINGS = 27
+
 
 def run_script(path: Path, timeout: float) -> tuple[list[tuple[str, str, str]], str]:
     """Run one repro script and return its RESULT lines plus raw output."""
@@ -93,7 +100,16 @@ def main() -> int:
     )
     if errors:
         return 1
-    if args.expect_fixed and reproduced:
+    if not args.expect_fixed:
+        return 0
+    if reproduced:
+        return 1
+    if len(rows) != EXPECTED_FINDINGS:
+        print(
+            f"\n{len(rows)} findings reported, expected {EXPECTED_FINDINGS}. A finding that "
+            "stopped being reported is a defect no longer guarded: restore the script, or "
+            "mark the finding closed in REPORT.md and lower EXPECTED_FINDINGS with it."
+        )
         return 1
     return 0
 

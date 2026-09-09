@@ -8,7 +8,15 @@ from unittest.mock import MagicMock
 import pytest
 from starlette.requests import Request
 
-from bustan import Injectable, InjectionToken, Module, Scope
+from bustan import (
+    ExistingProvider,
+    FactoryProvider,
+    Injectable,
+    InjectionToken,
+    Module,
+    Scope,
+    ValueProvider,
+)
 from bustan.kernel.errors import InvalidModuleError, LifecycleError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.lifecycle.manager import LifecycleManager
@@ -61,7 +69,7 @@ class UnboundHooks:
 async def test_a_class_handed_over_as_a_value_receives_no_lifecycle_hook() -> None:
     token = InjectionToken("UNBOUND")
 
-    @Module(providers=[{"provide": token, "use_value": UnboundHooks}])
+    @Module(providers=[ValueProvider(provide=token, use_value=UnboundHooks)])
     class AppModule:
         pass
 
@@ -76,7 +84,7 @@ async def test_a_mock_handed_over_as_a_value_receives_no_lifecycle_hook() -> Non
     client = MagicMock()
     token = InjectionToken("CLIENT")
 
-    @Module(providers=[{"provide": token, "use_value": client}])
+    @Module(providers=[ValueProvider(provide=token, use_value=client)])
     class AppModule:
         pass
 
@@ -97,8 +105,8 @@ async def test_one_object_bound_under_two_tokens_receives_each_hook_once() -> No
 
     @Module(
         providers=[
-            {"provide": first, "use_factory": lambda: shared},
-            {"provide": second, "use_factory": lambda: shared},
+            FactoryProvider(provide=first, use_factory=lambda: shared),
+            FactoryProvider(provide=second, use_factory=lambda: shared),
         ]
     )
     class AppModule:
@@ -129,7 +137,7 @@ async def test_an_alias_does_not_make_its_target_a_second_participant() -> None:
 
     alias = InjectionToken("ALIAS")
 
-    @Module(providers=[Service, {"provide": alias, "use_existing": Service}])
+    @Module(providers=[Service, ExistingProvider(provide=alias, use_existing=Service)])
     class AppModule:
         pass
 
@@ -154,7 +162,7 @@ async def test_constructed_instances_are_listed_in_construction_order() -> None:
     value_token = InjectionToken("VALUE")
 
     @Module(
-        providers=[Dependent, Dependency, {"provide": value_token, "use_value": object()}],
+        providers=[Dependent, Dependency, ValueProvider(provide=value_token, use_value=object())],
         exports=[Dependent],
     )
     class AppModule:
@@ -262,7 +270,7 @@ async def test_a_failing_provider_hook_names_the_token_it_was_dispatched_to() ->
         def on_module_init(self) -> None:
             raise RuntimeError("boom")
 
-    @Module(providers=[{"provide": token, "use_factory": Broken}])
+    @Module(providers=[FactoryProvider(provide=token, use_factory=Broken)])
     class AppModule:
         pass
 

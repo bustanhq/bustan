@@ -1,6 +1,6 @@
 """Dynamic cache module for the example."""
 
-from bustan import DynamicModule, InjectionToken, Module
+from bustan import DynamicModule, FactoryProvider, InjectionToken, Module, ValueProvider
 
 from .cache_service import CacheService
 
@@ -14,12 +14,10 @@ class CacheModule:
         return DynamicModule(
             module=cls,
             providers=(
-                {"provide": CACHE_PREFIX, "use_value": prefix},
-                {
-                    "provide": CacheService,
-                    "use_factory": CacheService,
-                    "inject": [CACHE_PREFIX],
-                },
+                ValueProvider(provide=CACHE_PREFIX, use_value=prefix),
+                FactoryProvider(
+                    provide=CacheService, use_factory=CacheService, inject=(CACHE_PREFIX,)
+                ),
             ),
             exports=(CacheService,),
         )

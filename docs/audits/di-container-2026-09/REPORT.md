@@ -157,7 +157,7 @@ verbatim evidence script in `repros/evidence/` otherwise.
 | Id | Severity | Status | Title | Repro |
 | --- | --- | --- | --- | --- |
 | RI-01 | critical | Confirmed | Default-scope controllers capture the first request's identity, `Request` and `Response` | `singleton_controller_captures_request_state.py`, `evidence/RI-01.py` |
-| RI-02 | high | Confirmed | `use_class` dicts drop the class's declared scope; `use_value` and `use_existing` ignore an explicit scope | `dict_provider_silently_downgrades_declared_scope.py`, `evidence/RI-02.py` |
+| RI-02 | high | Confirmed, closed | `use_class` dicts drop the class's declared scope; `use_value` and `use_existing` ignore an explicit scope | `evidence/RI-02.py` |
 | RI-03 | high | Confirmed | Singleton owners may capture a tenant-keyed durable instance and serve it to every tenant | `evidence/RI-03.py` |
 | RI-04 | high | Confirmed | Durable providers receive and retain the first caller's `Request` for the life of the partition | `evidence/RI-04.py` |
 | RI-05 | high | Confirmed | `RESPONSE` injection has no owner-scope guard; later header and status writes are lost | `evidence/RI-05.py` |
@@ -371,9 +371,7 @@ the request-scope guard never fires either. A `scope` key given with
 `use_value` or `use_existing` is discarded without error, and an invalid scope
 string raises a raw `ValueError` rather than `InvalidProviderError`.
 
-Evidence: `repros/dict_provider_silently_downgrades_declared_scope.py`
-prints `class declares scope=request but the binding is singleton`;
-`repros/evidence/RI-02.py` shows the HTTP consequence with the lifespan
+Evidence: `repros/evidence/RI-02.py` shows the HTTP consequence with the lifespan
 running: `alice -> {'events': ['secret-of-alice']}` then
 `bob -> {'events': ['secret-of-alice', 'secret-of-bob']}` from the same instance.
 
@@ -385,6 +383,15 @@ metadata when the dict omits `scope`; raise `InvalidProviderError` when an
 explicit dict scope is less strict than the class scope, when `scope`
 accompanies `use_value` or `use_existing`, and when the scope string is
 invalid. Document the precedence rule.
+
+Closed: a provider is now declared as one of four value types, and each carries
+only the fields its target can honour. There is no `use_class` declaration that
+omits a scope key it never had, and neither `ValueProvider` nor `ExistingProvider`
+has a scope field to discard, so the shape this finding describes cannot be
+written. `repros/dict_provider_silently_downgrades_declared_scope.py` was retired
+with it; rewriting it against the value types would have left the finding id
+standing over a different claim. The evidence script stays as the record of what
+the behaviour was.
 
 #### RI-03 Singleton owners may capture a tenant-keyed durable instance and serve it to every tenant
 
@@ -2511,7 +2518,10 @@ uv run python docs/audits/di-container-2026-09/repros/evidence/RI-01.py  # one e
 Each script in `repros/` prints `RESULT: <id> REPRODUCED|FIXED|ERROR - <message>`
 per sub-finding. A `FIXED` line means the fix landed: convert the script into
 a regression test and delete it. `ERROR` means the script itself broke (an API
-rename, a missing dependency); fix the script before trusting the run.
+rename, a missing dependency); fix the script before trusting the run. A script
+whose subject stops existing is retired rather than rewritten, and the finding it
+held is marked closed in the table above; `EXPECTED_FINDINGS` in the runner is
+lowered in the same change, so a script that disappears on its own fails the gate.
 `repros/evidence/` holds the verbatim verification scripts from the audit,
 described in its README. VS Code launch configurations for the IoC unit tests
 and for the repro scripts are in `.vscode/launch.json`.

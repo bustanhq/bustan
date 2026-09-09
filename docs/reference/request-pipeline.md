@@ -104,6 +104,7 @@ from typing import Any, cast
 
 from bustan import (
     APP_GUARD,
+    ClassProvider,
     Controller,
     ExecutionContext,
     Get,
@@ -128,7 +129,7 @@ class ReportsController:
 
 @Module(
     controllers=[ReportsController],
-    providers=[{"provide": APP_GUARD, "use_class": RejectAnonymousGuard}],
+    providers=[ClassProvider(provide=APP_GUARD, use_class=RejectAnonymousGuard)],
 )
 class AppModule:
     pass
@@ -178,12 +179,14 @@ from typing import Any, cast
 
 from bustan import (
     APP_GUARD,
+    ClassProvider,
     Controller,
     ExecutionContext,
     Get,
     Guard,
     Module,
     create_app,
+    ValueProvider,
 )
 from bustan.testing import AsgiTestClient
 
@@ -212,7 +215,7 @@ class ReportsController:
 # One entry binding a list, and a separate entry per component, run the same way.
 @Module(
     controllers=[ReportsController],
-    providers=[{"provide": APP_GUARD, "use_value": [AuditGuard(), RejectAllGuard()]}],
+    providers=[ValueProvider(provide=APP_GUARD, use_value=[AuditGuard(), RejectAllGuard()])],
 )
 class ListedModule:
     pass
@@ -221,8 +224,8 @@ class ListedModule:
 @Module(
     controllers=[ReportsController],
     providers=[
-        {"provide": APP_GUARD, "use_value": AuditGuard()},
-        {"provide": APP_GUARD, "use_class": RejectAllGuard},
+        ValueProvider(provide=APP_GUARD, use_value=AuditGuard()),
+        ClassProvider(provide=APP_GUARD, use_class=RejectAllGuard),
     ],
 )
 class SeparateModule:

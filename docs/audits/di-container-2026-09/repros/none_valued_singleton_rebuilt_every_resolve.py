@@ -2,7 +2,7 @@
 returns None (or a use_value of None) is re-executed on every resolution.
 """
 
-from bustan import InjectionToken, Module, create_app_context
+from bustan import FactoryProvider, InjectionToken, Module, create_app_context
 
 FEATURE_FLAG_CLIENT = InjectionToken("FEATURE_FLAG_CLIENT")
 calls = {"count": 0}
@@ -13,7 +13,7 @@ def build_client() -> None:
     return None  # e.g. feature flags disabled in this environment
 
 
-@Module(providers=[{"provide": FEATURE_FLAG_CLIENT, "use_factory": build_client}])
+@Module(providers=[FactoryProvider(provide=FEATURE_FLAG_CLIENT, use_factory=build_client)])
 class AppModule:
     pass
 

@@ -34,7 +34,11 @@ from bustan.common.decorators.route import Get as InternalGet
 from bustan.common.decorators.route import Patch as InternalPatch
 from bustan.common.decorators.route import Post as InternalPost
 from bustan.common.decorators.route import Put as InternalPut
+from bustan.common.types import ClassProvider as InternalClassProvider
+from bustan.common.types import ExistingProvider as InternalExistingProvider
+from bustan.common.types import FactoryProvider as InternalFactoryProvider
 from bustan.common.types import ProviderScope
+from bustan.common.types import ValueProvider as InternalValueProvider
 from bustan.configuration import ConfigModule as InternalConfigModule
 from bustan.configuration import ConfigService as InternalConfigService
 from bustan.contracts import AbstractHttpAdapter as InternalAbstractHttpAdapter
@@ -192,6 +196,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "create_param_decorator",
         "BustanError",
         "Cache",
+        "ClassProvider",
         "ContextId",
         "Controller",
         "DefaultResponseSerializer",
@@ -204,7 +209,9 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "DocumentBuilder",
         "ExecutionContext",
         "ExceptionFilter",
+        "ExistingProvider",
         "ExportViolationError",
+        "FactoryProvider",
         "Get",
         "Global",
         "Guard",
@@ -290,6 +297,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "UploadedFile",
         "UploadedFiles",
         "ValidationPipe",
+        "ValueProvider",
         "application_context_id",
         "durable_context_id",
         "Ip",
@@ -427,6 +435,10 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.Post is InternalPost
     assert bustan.Put is InternalPut
     assert bustan.Scope is ProviderScope
+    assert bustan.ClassProvider is InternalClassProvider
+    assert bustan.FactoryProvider is InternalFactoryProvider
+    assert bustan.ValueProvider is InternalValueProvider
+    assert bustan.ExistingProvider is InternalExistingProvider
     assert bustan.ReadinessState is InternalReadinessState
     assert bustan.Reflector is InternalReflector
     assert bustan.REQUEST is InternalRequestToken

@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from bustan import Controller, DynamicModule, Get, Global, Injectable, Module
+from bustan import Controller, DynamicModule, Get, Global, Injectable, Module, ValueProvider
 from bustan.kernel.errors import (
     ExportViolationError,
     InvalidControllerError,
@@ -184,11 +184,11 @@ def test_available_providers_merges_equal_tokens_that_visibility_holds_apart() -
     class Tokens(StrEnum):
         DB = "db"
 
-    @Module(providers=[{"provide": Tokens.DB, "use_value": "enum-db"}], exports=[Tokens.DB])
+    @Module(providers=[ValueProvider(provide=Tokens.DB, use_value="enum-db")], exports=[Tokens.DB])
     class EnumModule:
         pass
 
-    @Module(providers=[{"provide": "db", "use_value": "string-db"}], exports=["db"])
+    @Module(providers=[ValueProvider(provide="db", use_value="string-db")], exports=["db"])
     class StringModule:
         pass
 
@@ -259,13 +259,13 @@ def test_a_module_may_export_a_globally_visible_token() -> None:
 
 
 def test_a_local_provider_shadows_an_imported_export_of_the_same_token() -> None:
-    @Module(providers=[{"provide": "config", "use_value": "imported"}], exports=["config"])
+    @Module(providers=[ValueProvider(provide="config", use_value="imported")], exports=["config"])
     class SettingsModule:
         pass
 
     @Module(
         imports=[SettingsModule],
-        providers=[{"provide": "config", "use_value": "local"}],
+        providers=[ValueProvider(provide="config", use_value="local")],
     )
     class AppModule:
         pass
@@ -277,12 +277,12 @@ def test_a_local_provider_shadows_an_imported_export_of_the_same_token() -> None
 
 def test_build_module_graph_refuses_two_global_modules_exporting_one_token() -> None:
     @Global()
-    @Module(providers=[{"provide": "config", "use_value": "first"}], exports=["config"])
+    @Module(providers=[ValueProvider(provide="config", use_value="first")], exports=["config"])
     class FirstGlobalModule:
         pass
 
     @Global()
-    @Module(providers=[{"provide": "config", "use_value": "second"}], exports=["config"])
+    @Module(providers=[ValueProvider(provide="config", use_value="second")], exports=["config"])
     class SecondGlobalModule:
         pass
 
@@ -310,11 +310,11 @@ def test_build_module_graph_refuses_two_global_modules_exporting_one_token() -> 
 
 
 def test_build_module_graph_refuses_two_imports_exporting_one_token() -> None:
-    @Module(providers=[{"provide": "config", "use_value": "left"}], exports=["config"])
+    @Module(providers=[ValueProvider(provide="config", use_value="left")], exports=["config"])
     class LeftModule:
         pass
 
-    @Module(providers=[{"provide": "config", "use_value": "right"}], exports=["config"])
+    @Module(providers=[ValueProvider(provide="config", use_value="right")], exports=["config"])
     class RightModule:
         pass
 
@@ -381,7 +381,7 @@ def test_build_module_graph_rejects_exporting_a_dynamic_module() -> None:
         pass
 
     dynamic_settings = DynamicModule(
-        SettingsModule, providers=({"provide": "config", "use_value": "value"},)
+        SettingsModule, providers=(ValueProvider(provide="config", use_value="value"),)
     )
 
     @Module(imports=[dynamic_settings], exports=[dynamic_settings])
@@ -464,13 +464,13 @@ def test_a_local_provider_does_not_shadow_an_import_of_an_equal_token_of_another
     class Tokens(StrEnum):
         DB = "db"
 
-    @Module(providers=[{"provide": Tokens.DB, "use_value": "enum-db"}], exports=[Tokens.DB])
+    @Module(providers=[ValueProvider(provide=Tokens.DB, use_value="enum-db")], exports=[Tokens.DB])
     class SharedModule:
         pass
 
     @Module(
         imports=[SharedModule],
-        providers=[{"provide": "db", "use_value": "string-db"}],
+        providers=[ValueProvider(provide="db", use_value="string-db")],
     )
     class FeatureModule:
         pass
@@ -485,11 +485,11 @@ def test_a_local_provider_does_not_shadow_an_import_of_an_equal_token_of_another
 def test_a_global_export_and_an_equal_local_token_of_another_type_stay_apart() -> None:
     # True equals 1 and hashes the same, so the global layer used to collapse the two
     # onto whichever module was walked last.
-    @Module(providers=[{"provide": 1, "use_value": "int-one"}], exports=[1], is_global=True)
+    @Module(providers=[ValueProvider(provide=1, use_value="int-one")], exports=[1], is_global=True)
     class IntModule:
         pass
 
-    @Module(providers=[{"provide": True, "use_value": "bool-true"}])
+    @Module(providers=[ValueProvider(provide=True, use_value="bool-true")])
     class BoolModule:
         pass
 

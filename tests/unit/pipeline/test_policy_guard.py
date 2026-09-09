@@ -10,7 +10,17 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 from starlette.testclient import TestClient
 
-from bustan import Controller, Get, Injectable, Module, UseGuards, create_app, request_context_id
+from bustan import (
+    Controller,
+    FactoryProvider,
+    Get,
+    Injectable,
+    Module,
+    UseGuards,
+    ValueProvider,
+    create_app,
+    request_context_id,
+)
 from bustan.kernel.errors import (
     AuthenticationRequiredError,
     AuthenticatorRegistryError,
@@ -372,7 +382,7 @@ def test_a_registry_only_an_async_factory_can_build_is_refused_the_same_way() ->
 
     @Module(
         controllers=[ReportsController],
-        providers=[{"provide": AUTHENTICATOR_REGISTRY, "use_factory": build_registry}],
+        providers=[FactoryProvider(provide=AUTHENTICATOR_REGISTRY, use_factory=build_registry)],
     )
     class AppModule:
         pass
@@ -412,10 +422,10 @@ def test_a_route_whose_module_imports_the_registry_builds_and_serves() -> None:
 
     @Module(
         providers=[
-            {
-                "provide": AUTHENTICATOR_REGISTRY,
-                "use_value": {"jwt": AuthenticatorStub(PrincipalStub(id="user-1"))},
-            }
+            ValueProvider(
+                provide=AUTHENTICATOR_REGISTRY,
+                use_value={"jwt": AuthenticatorStub(PrincipalStub(id="user-1"))},
+            )
         ],
         exports=[AUTHENTICATOR_REGISTRY],
     )

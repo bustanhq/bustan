@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pytest
 
-from bustan import Injectable, Module, Scope
+from bustan import Injectable, Module, Scope, ValueProvider
 from bustan.kernel.errors import LifecycleError, ProviderResolutionError
 from bustan.kernel.ioc.container import Container, build_container
 from bustan.kernel.lifecycle.manager import LifecycleErrorGroup, LifecycleManager
@@ -221,7 +221,7 @@ async def test_every_kind_of_binding_is_refused_between_a_shutdown_and_a_startup
         pass
 
     @Module(
-        providers=[Ticket, {"provide": "config", "use_value": {"dsn": "sqlite://"}}],
+        providers=[Ticket, ValueProvider(provide="config", use_value={"dsn": "sqlite://"})],
         exports=[Ticket, "config"],
     )
     class AppModule:

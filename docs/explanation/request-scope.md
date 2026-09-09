@@ -87,7 +87,7 @@ The one thing a transient owner may do that a cached owner may not is inject req
 Every token in a `use_factory` provider's `inject` list is measured against the scope the factory's result is cached under, exactly as a class constructor's parameters are. A singleton factory whose `inject` list names a request-scoped token is refused, and the error names the factory and the entry.
 
 ```python
-from bustan import InjectionToken, Injectable, Module, create_app_context
+from bustan import FactoryProvider, InjectionToken, Injectable, Module, create_app_context
 from bustan.errors import ProviderResolutionError
 
 AUDIT_SINK = InjectionToken("AUDIT_SINK")
@@ -107,7 +107,7 @@ def build_sink(identity: RequestIdentity) -> list[str]:
 @Module(
     providers=[
         RequestIdentity,
-        {"provide": AUDIT_SINK, "use_factory": build_sink, "inject": [RequestIdentity]},
+        FactoryProvider(provide=AUDIT_SINK, use_factory=build_sink, inject=(RequestIdentity,)),
     ]
 )
 class AppModule:

@@ -15,6 +15,7 @@ from bustan import (
     Injectable,
     InjectionToken,
     Module,
+    ValueProvider,
     create_app,
 )
 from bustan.kernel.utils import _display_name, _qualname
@@ -203,8 +204,8 @@ def test_provider_and_export_rows_name_a_token_without_the_value_it_was_built_fr
     settings = DynamicModule(
         module=SettingsModule,
         providers=(
-            {"provide": named_token, "use_value": _FAKE_CREDENTIAL},
-            {"provide": object_token, "use_value": _FAKE_CREDENTIAL},
+            ValueProvider(provide=named_token, use_value=_FAKE_CREDENTIAL),
+            ValueProvider(provide=object_token, use_value=_FAKE_CREDENTIAL),
         ),
         exports=(named_token, object_token),
     )
@@ -239,11 +240,11 @@ def test_two_registrations_of_one_module_are_told_apart_by_name() -> None:
 
     first = DynamicModule(
         module=FeatureModule,
-        providers=({"provide": "feature.first", "use_value": _FAKE_CREDENTIAL},),
+        providers=(ValueProvider(provide="feature.first", use_value=_FAKE_CREDENTIAL),),
     )
     second = DynamicModule(
         module=FeatureModule,
-        providers=({"provide": "feature.second", "use_value": _FAKE_CREDENTIAL},),
+        providers=(ValueProvider(provide="feature.second", use_value=_FAKE_CREDENTIAL),),
     )
 
     @Module(imports=[DiscoveryModule, first, second])
@@ -278,7 +279,7 @@ def test_a_registration_is_named_by_its_module_before_it_has_been_compiled() -> 
 
     registration = DynamicModule(
         module=SettingsModule,
-        providers=({"provide": "settings.credential", "use_value": _FAKE_CREDENTIAL},),
+        providers=(ValueProvider(provide="settings.credential", use_value=_FAKE_CREDENTIAL),),
     )
 
     assert _display_name(registration) == "SettingsModule (dynamic)"

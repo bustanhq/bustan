@@ -9,7 +9,16 @@ from pathlib import Path
 import pytest
 from starlette.applications import Starlette
 
-from bustan import Controller, Get, Guard, Injectable, Module
+from bustan import (
+    ClassProvider,
+    Controller,
+    FactoryProvider,
+    Get,
+    Guard,
+    Injectable,
+    Module,
+    ValueProvider,
+)
 from bustan.errors import LifecycleError, ProviderResolutionError
 from bustan.kernel.module.metadata import ModuleMetadata, get_module_metadata
 from bustan.testing import (
@@ -356,7 +365,7 @@ async def test_compile_starts_a_graph_whose_singleton_factory_is_async() -> None
         return "conn"
 
     @Module(
-        providers=[{"provide": "CONN", "use_factory": build_connection}],
+        providers=[FactoryProvider(provide="CONN", use_factory=build_connection)],
         exports=["CONN"],
     )
     class DbModule:
@@ -709,7 +718,7 @@ async def test_a_non_class_token_finds_its_declaring_module() -> None:
             self.dep = dep
 
     @Module(
-        providers=[Dep, {"provide": registered_token, "use_class": RealConfig}],
+        providers=[Dep, ClassProvider(provide=registered_token, use_class=RealConfig)],
         exports=[registered_token],
     )
     class ConfigModule:
@@ -740,7 +749,7 @@ async def test_a_value_override_reaches_a_non_class_token_built_at_runtime() -> 
     assert lookup_token is not registered_token
 
     @Module(
-        providers=[{"provide": registered_token, "use_value": "production"}],
+        providers=[ValueProvider(provide=registered_token, use_value="production")],
         exports=[registered_token],
     )
     class GreetingModule:

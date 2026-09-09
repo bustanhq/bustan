@@ -15,9 +15,11 @@ from bustan import (
     APP_GUARD,
     APP_PIPE,
     ApplicationContext,
+    ClassProvider,
     Controller,
     ExceptionFilter,
     ExecutionContext,
+    FactoryProvider,
     Get,
     Guard,
     Injectable,
@@ -143,7 +145,7 @@ def test_a_global_component_only_a_factory_can_build_is_named_by_its_token() -> 
 
     @Module(
         controllers=[UsersController],
-        providers=[{"provide": APP_GUARD, "use_factory": build_guard}],
+        providers=[FactoryProvider(provide=APP_GUARD, use_factory=build_guard)],
     )
     class AppModule:
         pass
@@ -609,8 +611,8 @@ def test_a_settled_pipeline_is_resolved_from_the_container_once_and_never_again(
         providers=[
             FirstGuard,
             SecondGuard,
-            {"provide": APP_PIPE, "use_class": NoopPipe},
-            {"provide": APP_FILTER, "use_class": NeverCatches},
+            ClassProvider(provide=APP_PIPE, use_class=NoopPipe),
+            ClassProvider(provide=APP_FILTER, use_class=NeverCatches),
         ],
     )
     class AppModule:

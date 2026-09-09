@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, MappingView, Set
 from dataclasses import replace
-from typing import Any, TypeVar, cast
+from typing import TypeVar, cast
 
+from ...common.types import Provider
 from ...kernel.errors import InvalidModuleError
 from .dynamic import DynamicModule
 from .metadata import ModuleMetadata, get_module_metadata, set_module_metadata
@@ -17,11 +18,18 @@ def Module(
     *,
     imports: Iterable[type[object] | DynamicModule] | None = None,
     controllers: Iterable[type[object]] | None = None,
-    providers: Iterable[object | dict[str, Any]] | None = None,
+    providers: Iterable[Provider] | None = None,
     exports: Iterable[object] | None = None,
     is_global: bool = False,
 ) -> Callable[[ClassT], ClassT]:
-    """Attach module metadata to a class without performing registration."""
+    """Attach module metadata to a class without performing registration.
+
+    A provider is either a class, which binds under its own identity, or one of the
+    provider value types, which bind a token to a class, to a factory, to a value or to
+    another token. Which of them a declaration is decides what it binds, so a
+    declaration naming two targets, or none, or a key no provider has, cannot be
+    written down.
+    """
 
     module_metadata = ModuleMetadata(
         imports=cast(
