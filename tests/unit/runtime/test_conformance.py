@@ -16,11 +16,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from bustan import conformance as conformance_module
 from bustan.adapters.asgi import AsgiAdapter
-from bustan.contracts import AbstractHttpAdapter, AdapterCapabilities, HttpRequest
-from bustan.runtime import conformance as conformance_module
-from bustan.runtime.compiler import ResponseStrategy
-from bustan.runtime.conformance import (
+from bustan.conformance import (
     ADAPTER_NAMES,
     UNCERTIFIED_PARAMETER_SOURCES,
     AdapterConformanceResult,
@@ -31,6 +29,8 @@ from bustan.runtime.conformance import (
     evaluate_adapter_conformance,
     load_adapter,
 )
+from bustan.contracts import AbstractHttpAdapter, AdapterCapabilities, HttpRequest
+from bustan.runtime.compiler import ResponseStrategy
 from bustan.runtime.params import ParameterSource
 from bustan.runtime.versioning import VersioningType
 

@@ -7,14 +7,14 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
 
-from bustan.runtime.adapter import AdapterCapabilities
-from bustan.runtime.conformance import (
+from bustan.conformance import (
     AdapterConformanceResult,
     ConformanceCase,
     ConformanceCheck,
     ConformanceRequest,
     ResponseObservation,
 )
+from bustan.runtime.adapter import AdapterCapabilities
 
 
 def test_the_matrix_passes_over_every_adapter_it_knows(capsys) -> None:

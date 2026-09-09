@@ -149,6 +149,7 @@ Everything outside the three stable modules is internal for compatibility purpos
 - `bustan.cli.*`
 - `bustan.common.*`
 - `bustan.configuration.*`
+- `bustan.conformance.*`
 - `bustan.contracts.*`
 - `bustan.health.*`
 - `bustan.kernel.*`
