@@ -3,6 +3,53 @@
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`.
 
+## [2.0.0-rc.6](https://github.com/bustanhq/bustan/compare/v2.0.0rc5...v2.0.0rc6) (2026-09-09)
+
+The candidate that closes an adversarial pre-release audit and the layering debt the previous five
+carried. Twenty-six issues, three of them breaking.
+
+**This candidate carries three breaking changes.**
+
+* A provider is declared as a value type rather than a dict. `ClassProvider`, `FactoryProvider`,
+  `ValueProvider` and `ExistingProvider` are exported and each takes `provide` and exactly one
+  target, with `scope` and `inject` only where the runtime honours them. A dict is refused with a
+  message naming the type that replaces it. The dict spelling carried two of the September audit's
+  confirmed findings, and both become unwritable rather than fixed: a wrong key, a missing token or
+  two targets is now an error the type checker reports where the provider is written.
+  [migrate-from-1x.md](docs/how-to/migrate-from-1x.md) shows all four beside their replacements.
+* `enable_cors()` with no origins raises instead of permitting every origin. The default was `*` on
+  both a simple request and a preflight, against a stated deny-by-default standard and the hardening
+  guide's own advice to name your origins.
+* A cross-origin policy is the transport adapter's work. `enable_cors` is a port method that refuses
+  by default, so an adapter that does not implement it declines by name rather than accepting
+  silently. The raw ASGI adapter gained its own implementation, and `CorsOptions` moved to
+  `bustan.contracts.cors` with its meaning unchanged.
+
+**The request path answers one error contract.** An unmatched route and a wrong method were answered
+as `text/plain` while every framework error was problem details, so a client written against the
+documented model broke on the error it meets first. All three refusals, including an unknown API
+version, now answer with the same document on both adapters, and the `Allow` header no longer
+differs between them. Three conformance cases compare the media type and the whole body rather than
+the status, which is why the old suite reported both adapters answering identically throughout.
+
+**The layer table is enforced.** The check spent five candidates advisory, reporting ten findings
+nobody was obliged to read. The report is empty, `continue-on-error` is gone, and a change that
+crosses a layer fails the build. The conformance suite left the runtime, the kernel stopped reading
+controller metadata out of it, the runtime stopped naming two application types, and the health
+package is classified.
+
+**Two leaks and two wrong objects.** The read-only discovery surface printed a dynamic module's
+entire configuration, including every value a configuration module resolved. A transport request
+annotation was matched by shape, so one adapter handed over the other adapter's request object and
+never recognised its own, on a handler parameter and on a provider constructor alike. A singleton
+injecting `ModuleRef` could not be served over HTTP at all. An application can now install its own
+`ResponseSerializer`, which was on the supported surface with no supported way to install one.
+
+**The documentation is reorganised on diataxis** with kebab-case names, six tutorials that take an
+application from a route to a deployment, and one package manager described throughout. The
+post-publish verification that failed the previous good release now waits fifteen minutes with
+backoff and tells a missing upload apart from a slow index.
+
 ## [2.0.0-rc.5](https://github.com/bustanhq/bustan/compare/v2.0.0rc4...v2.0.0rc5) (2026-09-08)
 
 The candidate that closes the audit. Every defect the September dependency-injection audit
