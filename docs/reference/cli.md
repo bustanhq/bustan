@@ -145,6 +145,9 @@ Two limits are worth knowing before you paste the output anywhere:
 
 ## `bustan init`
 
+Scaffolds into an existing uv project, so it requires Python 3.13 or newer and a `pyproject.toml`
+written by `uv init --package`.
+
 ```bash
 uv init --package my-service
 cd my-service

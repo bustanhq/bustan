@@ -3,6 +3,9 @@
 These guides sit on top of the [project README](../README.md), which covers the pitch, installation
 and the supported public surface.
 
+**Requirements.** Python 3.13 or newer, and [uv](https://docs.astral.sh/uv/) as the package
+manager. uv is the only one supported: the project is built, locked, tested and released with it.
+
 **Upgrading from 1.x?** Start at [Migrate from 1.x](how-to/migrate-from-1x.md). 2.0 is a clean break
 and a 1.x application will not start on it until it is corrected.
 
@@ -23,10 +26,22 @@ A guide that answers two of those questions is two documents.
 
 ## Tutorials
 
-Learning-oriented. One path, start to finish, no choices to make.
+Learning-oriented. One path, start to finish, no choices to make. Six steps that build one application, a
+link shortener, from a scaffold to something you could deploy. The finished code is
+[`examples/link_shortener`](../examples/link_shortener/), and it runs on every commit.
 
-- [Your first app](tutorials/first-app.md) - scaffold a runnable application, understand the
-  generated files, run it, and add a first test.
+1. [Your first app](tutorials/first-app.md) - scaffold a runnable application, understand the
+   generated files, run it, and add a first test.
+2. [Shorten your first link](tutorials/a-resource-with-three-routes.md) - build a working link
+   shortener: create a code, follow it, and answer properly when it is wrong.
+3. [Settings that live outside the code](tutorials/configuration-end-to-end.md) - move the magic
+   numbers out, validate them at startup, override them from the environment.
+4. [Links that survive a restart](tutorials/a-datastore-and-a-readiness-probe.md) - a database opened
+   and closed at named points, and a readiness probe that tells the truth.
+5. [Deciding who may create a link](tutorials/before-the-handler-runs.md) - middleware on every
+   request, then a working authenticator that leaves short links public.
+6. [Letting the API describe itself](tutorials/openapi-and-swagger-ui.md) - an OpenAPI document and a
+   browsable page, generated from the routes you already wrote.
 
 ## How-to guides
 
@@ -46,6 +61,8 @@ Task-oriented. You know what you want; these say how.
   object behind the adapter, and running with no HTTP at all.
 - [Test an application](how-to/test-an-application.md) - starting an application with providers
   replaced, and building a throwaway module for one test.
+- [Containerise an application](how-to/containerise-an-application.md) - a two-stage image built with
+  uv, and probes wired to an orchestrator.
 - [Run the benchmarks](how-to/run-benchmarks.md) - what is measured, comparing a change on your own
   machine, and reading a failure.
 - [Cut a release](how-to/cut-a-release.md) - validation, publishing prerequisites and post-publish
@@ -102,6 +119,8 @@ Each example is a standalone project you can run.
 - [testing_overrides](../examples/testing_overrides/README.md) - `create_test_app()` and
   `override_provider()`.
 - [dynamic_module_usage](../examples/dynamic_module_usage/README.md) - a configurable dynamic module.
+- [link_shortener](../examples/link_shortener/README.md) - the link shortener the tutorial series
+  builds, at its end state.
 
 ## Project
 

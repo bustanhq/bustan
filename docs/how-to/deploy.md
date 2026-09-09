@@ -5,6 +5,8 @@ application already runs locally; [tutorials/first-app.md](../tutorials/first-ap
 
 ## Install
 
+Bustan requires Python 3.13 or newer, and uv is the only supported package manager.
+
 `bustan` on its own is not a web server, and installing it does not install one:
 
 ```bash

@@ -2,6 +2,10 @@
 
 This walkthrough uses the current CLI scaffold, which is the recommended starting point for new Bustan projects. The scaffold produces the same package shape the checked-in examples now follow: an application package with `__init__.py`, a root module, a controller, a service, and focused tests.
 
+**Before you start.** You need Python 3.13 or newer and [uv](https://docs.astral.sh/uv/), which
+is the only supported package manager. `uv init` writes the floor from the interpreter it finds, so
+on an older Python this fails at `uv add` with a resolver message rather than at import.
+
 ## Create The Project
 
 ```bash
@@ -211,4 +215,14 @@ with compiled.create_client() as client:
 - `app.listen()` is the supported runtime entry point for local serving.
 - `bustan.testing` is the supported way to build test applications and apply overrides.
 
-After this walkthrough, continue with [reference/routing.md](../reference/routing.md) and [reference/request-pipeline.md](../reference/request-pipeline.md) to understand how handlers bind inputs and how cross-cutting request logic is composed.
+## Next
+
+One route is not an application. Next: [A Resource With Three Routes](a-resource-with-three-routes.md),
+which turns this into a resource that lists, reads and creates, answering the right status each time.
+
+The series continues from there through configuration, a datastore, the request pipeline and OpenAPI.
+The [tutorials index](../README.md#tutorials) lists all six.
+
+For the binding rules and the pipeline in full, rather than as a path,
+[the routing reference](../reference/routing.md) and
+[the request pipeline reference](../reference/request-pipeline.md) are where they live.

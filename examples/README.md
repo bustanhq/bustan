@@ -52,3 +52,4 @@ one whose assertions all pass.
 - `examples/request_scope_pipeline_app`: one request-scoped provider shared across guard, interceptor, and request-scoped controller
 - `examples/testing_overrides`: `create_test_app()` and `override_provider()` in action
 - `examples/dynamic_module_usage`: a configurable dynamic module that registers providers from runtime input
+- `examples/link_shortener`: the link shortener the tutorial series builds, at its end state

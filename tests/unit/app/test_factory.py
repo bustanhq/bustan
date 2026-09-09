@@ -115,7 +115,7 @@ def test_create_app_without_the_starlette_extra_names_the_extra_and_the_command(
 
     message = str(raised.value)
     assert "starlette" in message.lower()
-    assert "pip install 'bustan[starlette]'" in message
+    assert "uv add 'bustan[starlette]'" in message
     assert "adapter=" in message
     assert isinstance(raised.value.__cause__, ModuleNotFoundError)
 
@@ -131,7 +131,7 @@ def test_an_unrelated_missing_import_under_the_adapter_is_not_reported_as_the_ex
         create_app(RootModule)
 
     assert raised.value.name == "bustan.adapters.starlette"
-    assert "pip install" not in str(raised.value)
+    assert "uv add" not in str(raised.value)
 
 
 class _RefuseToImport:

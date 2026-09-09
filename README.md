@@ -28,12 +28,18 @@ suite. An application that serves no HTTP needs neither.
 
 ## Install
 
+Requires **Python 3.13 or newer** and [uv](https://docs.astral.sh/uv/), which is the only supported
+package manager.
+
 ```bash
-uv add 'bustan[starlette]'    # or: pip install 'bustan[starlette]'
+uv add 'bustan[starlette]'
 ```
 
 Plain `bustan` installs no web server. That is the install for using the framework as a library:
 modules, providers and injection resolved through `create_app_context`, with no HTTP served.
+
+Bustan is built, locked, tested and released with uv throughout. Another installer may resolve the
+package, but nothing here is tested against one and no issue is accepted for one.
 
 ## Quickstart
 
@@ -64,7 +70,9 @@ tests/my_app/        test_app_controller.py  test_app_module.py  test_app_servic
 ```
 
 For the walkthrough, the generated file contents and a first test, see
-[Your first app](docs/tutorials/first-app.md).
+[Your first app](docs/tutorials/first-app.md) - the first of
+[six tutorials](docs/README.md#tutorials) that build a working link shortener from this
+scaffold.
 
 ## Documentation
 

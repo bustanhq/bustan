@@ -40,4 +40,4 @@ The generated [reference/api.md](../reference/api.md) is part of that public doc
 
 - Patch releases should focus on fixes, documentation, packaging, and release-process hardening.
 - Minor releases may expand the supported public surface or tighten behavior where the public contract is still settling.
-- Python support should widen only after the current release automation and compatibility story are routine on the existing floor.
+- The floor is Python 3.13. Python support should widen only after the current release automation and compatibility story are routine on the existing floor.

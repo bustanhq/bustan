@@ -191,7 +191,7 @@ _STARLETTE_EXTRA_REQUIREMENT = (
     "Bustan serves HTTP through a transport adapter, and the adapter it uses by default "
     "is built on Starlette, which is not installed.\n\n"
     "Install it with:\n\n"
-    "    pip install 'bustan[starlette]'\n\n"
+    "    uv add 'bustan[starlette]'\n\n"
     "or pass an adapter of your own as create_app(..., adapter=...)."
 )
 
