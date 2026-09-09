@@ -7,8 +7,9 @@ from types import FunctionType
 from typing import TypeVar
 
 from ...kernel.errors import RouteDefinitionError
-from ...kernel.utils import _normalize_path, _unwrap_handler
+from ...kernel.utils import _unwrap_handler
 from ..constants import BUSTAN_ROUTE_ATTR
+from ..metadata import normalize_route_path
 from ..types import HostInput, RouteMetadata, normalize_hosts
 
 FunctionT = TypeVar("FunctionT", bound=FunctionType)
@@ -25,7 +26,7 @@ def Route(
     """Attach HTTP route metadata to a handler function."""
 
     normalized_method = _normalize_method(method)
-    normalized_path = _normalize_route_path(path)
+    normalized_path = normalize_route_path(path)
     normalized_hosts = _resolve_hosts(host=host, hosts=hosts)
 
     def decorate(handler: FunctionT) -> FunctionT:
@@ -125,12 +126,6 @@ def _normalize_method(method: str) -> str:
         raise RouteDefinitionError(f"Route method contains invalid characters: {method!r}")
 
     return normalized_method
-
-
-def _normalize_route_path(path: str) -> str:
-    """Normalize route paths into the canonical stored form."""
-    normalized_path = _normalize_path(path, allow_empty=False, kind="route path")
-    return normalized_path or "/"
 
 
 def _resolve_hosts(*, host: HostInput | None, hosts: HostInput | None) -> tuple[str, ...]:

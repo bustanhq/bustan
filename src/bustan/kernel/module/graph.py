@@ -6,11 +6,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
-from ...common.types import ProviderScope
-from ...runtime.metadata import (
+from ...common.metadata import (
     get_controller_metadata,
     iter_controller_routes,
 )
+from ...common.types import ProviderScope
 from ..errors import (
     ExportViolationError,
     InvalidControllerError,

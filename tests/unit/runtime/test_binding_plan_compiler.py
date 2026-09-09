@@ -8,8 +8,8 @@ from typing import Annotated
 import pytest
 
 from bustan import Body, Controller, Get, Post, Query
+from bustan.common.metadata import iter_controller_routes
 from bustan.kernel.errors import ParameterBindingError
-from bustan.runtime.metadata import iter_controller_routes
 from bustan.runtime.params import (
     ParameterBindingMode,
     ParameterSource,

@@ -10,6 +10,7 @@ from enum import StrEnum
 from types import NoneType
 from typing import cast, get_origin, get_type_hints
 
+from ..common.metadata import ControllerRouteDefinition
 from ..common.types import ControllerMetadata
 from ..kernel.errors import AuthenticatorRegistryError, RouteDefinitionError
 from ..kernel.ioc.container import Container
@@ -31,7 +32,6 @@ from ..pipeline.metadata import (
     merge_pipeline_metadata,
     merge_policy_metadata,
 )
-from .metadata import ControllerRouteDefinition
 from .params import HandlerBindingPlan, compile_parameter_bindings
 from .scanner import ControllerScanner, ScannedHandler
 from .versioning import normalize_versions

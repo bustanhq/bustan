@@ -40,11 +40,11 @@ from ..common.decorators.parameter import (
     _UploadedFileMarker,
     _UploadedFilesMarker,
 )
+from ..common.metadata import ControllerRouteDefinition, get_controller_metadata
 from ..contracts import HttpRequest, as_http_request, names_native_request
 from ..contracts.requests import produces_native_request
 from ..kernel.errors import BustanError, ParameterBindingError, RouteDefinitionError
 from ..kernel.utils import _qualname
-from .metadata import ControllerRouteDefinition, get_controller_metadata
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator

@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..common.metadata import (
+    ControllerRouteDefinition,
+    get_controller_metadata,
+    get_route_metadata,
+    iter_controller_routes,
+)
 from ..common.types import ControllerMetadata, RouteMetadata
 from ..kernel.errors import InvalidControllerError, RouteDefinitionError
 from ..kernel.ioc.registry import DURABLE_CONTEXT_KEY_HOOK
@@ -11,12 +17,6 @@ from ..kernel.lifecycle.hooks import LIFECYCLE_HOOK_NAMES
 from ..kernel.module.dynamic import ModuleKey
 from ..kernel.module.graph import ModuleGraph
 from ..kernel.utils import _join_paths, _qualname, _unwrap_handler
-from .metadata import (
-    ControllerRouteDefinition,
-    get_controller_metadata,
-    get_route_metadata,
-    iter_controller_routes,
-)
 
 # The public method names the framework itself defines on a class it builds. A
 # controller may carry any of them and none of them is a route: the framework calls

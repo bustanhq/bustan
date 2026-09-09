@@ -19,11 +19,11 @@ from bustan import (
     ParseUUIDPipe,
     ValidationPipe,
 )
+from bustan.common.metadata import ControllerRouteDefinition
 from bustan.common.types import RouteMetadata
 from bustan.kernel.errors import BadRequestException
 from bustan.kernel.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.context import ExecutionContext, RequestContext
-from bustan.runtime.metadata import ControllerRouteDefinition
 
 if TYPE_CHECKING:
     from bustan.kernel.ioc.container import Container

@@ -1,22 +1,34 @@
-"""Metadata structures for HTTP controllers and routes."""
+"""Reading and writing the metadata the controller and route decorators attach.
+
+Nothing here runs during a request. Every function stores an attribute a decorator
+declared, reads one back, or normalizes a path into the form the decorators store, so
+the module describes declarations rather than serving them.
+
+That is why it sits beside the decorators that write those declarations rather than
+with the request path that consumes them. Both read them: the runtime compiles routes
+out of them, and module graph validation refuses a controller with no metadata, a
+controller with duplicate routes and a controller whose declared lifetime cannot be
+served. Validating the graph precedes serving anything, so these accessors have to be
+visible from below the request path, and declaring them here is what makes that true.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from types import FunctionType
 
-from ..common.constants import (
+from ..kernel.errors import InvalidControllerError, RouteDefinitionError
+from ..kernel.utils import _get_metadata, _normalize_path, _unwrap_handler
+from .constants import (
     BUSTAN_CONTROLLER_ATTR as CONTROLLER_METADATA_ATTR,
 )
-from ..common.constants import (
+from .constants import (
     BUSTAN_ROUTE_ATTR as ROUTE_METADATA_ATTR,
 )
-from ..common.types import (
+from .types import (
     ControllerMetadata,
     RouteMetadata,
 )
-from ..kernel.errors import InvalidControllerError, RouteDefinitionError
-from ..kernel.utils import _get_metadata, _normalize_path, _unwrap_handler
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +59,8 @@ def normalize_route_path(path: str) -> str:
 def set_controller_metadata[ClassT: type[object]](
     controller_cls: ClassT, metadata: ControllerMetadata
 ) -> ClassT:
+    """Store a controller declaration on a class and return the same class."""
+
     setattr(controller_cls, CONTROLLER_METADATA_ATTR, metadata)
     return controller_cls
 
@@ -54,6 +68,12 @@ def set_controller_metadata[ClassT: type[object]](
 def get_controller_metadata(
     controller_cls: type[object], *, inherit: bool = False
 ) -> ControllerMetadata | None:
+    """Return a class's controller declaration, or None if it has none.
+
+    Metadata describes the class it was written on, so an undecorated subclass answers
+    with None unless ``inherit`` asks for the nearest declaration in its ancestry.
+    """
+
     metadata = _get_metadata(controller_cls, CONTROLLER_METADATA_ATTR, inherit=inherit)
     return metadata if isinstance(metadata, ControllerMetadata) else None
 
@@ -61,11 +81,15 @@ def get_controller_metadata(
 def set_route_metadata[FunctionT: FunctionType](
     handler: FunctionT, metadata: RouteMetadata
 ) -> FunctionT:
+    """Store a route declaration on a handler and return the same handler."""
+
     setattr(handler, ROUTE_METADATA_ATTR, metadata)
     return handler
 
 
 def get_route_metadata(handler: object) -> RouteMetadata | None:
+    """Return a handler's route declaration, or None if it has none."""
+
     unwrapped_handler = _unwrap_handler(handler)
     if unwrapped_handler is None:
         return None

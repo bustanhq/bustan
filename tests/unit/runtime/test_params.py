@@ -32,13 +32,13 @@ from bustan import (
 )
 from bustan.adapters.asgi import AsgiAdapter
 from bustan.adapters.starlette import StarletteAdapter
+from bustan.common.metadata import ControllerRouteDefinition, iter_controller_routes
 from bustan.contracts import AdapterRoute, HttpRequest
 from bustan.kernel.errors import ParameterBindingError, RouteDefinitionError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
 from bustan.pipeline.context import ExecutionContext
 from bustan.runtime.compiler import compile_route_contracts
-from bustan.runtime.metadata import ControllerRouteDefinition, iter_controller_routes
 from bustan.runtime.params import (
     _MISSING,
     _NO_BODY,

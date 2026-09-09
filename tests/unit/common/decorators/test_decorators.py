@@ -21,7 +21,8 @@ from bustan import (
     UsePipes,
 )
 from bustan.common.decorators.injectable import ProviderMetadata, get_provider_metadata
-from bustan.common.types import ProviderScope
+from bustan.common.metadata import get_controller_metadata, get_route_metadata
+from bustan.common.types import ControllerMetadata, ProviderScope, RouteMetadata
 from bustan.kernel.errors import (
     InvalidControllerError,
     InvalidPipelineError,
@@ -36,12 +37,6 @@ from bustan.pipeline.metadata import (
     PipelineMetadata,
     get_controller_pipeline_metadata,
     get_handler_pipeline_metadata,
-)
-from bustan.runtime.metadata import (
-    ControllerMetadata,
-    RouteMetadata,
-    get_controller_metadata,
-    get_route_metadata,
 )
 
 

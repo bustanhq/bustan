@@ -1,15 +1,15 @@
 """Unit tests for metadata storage and route discovery helpers."""
 
 from bustan import Controller, Get, Injectable, Module
-from bustan.common.types import ProviderScope
-from bustan.kernel.ioc.registry import normalize_provider
-from bustan.kernel.module.metadata import get_module_metadata
-from bustan.runtime.metadata import (
+from bustan.common.metadata import (
     ControllerRouteDefinition,
     get_controller_metadata,
     get_route_metadata,
     iter_controller_routes,
 )
+from bustan.common.types import ProviderScope
+from bustan.kernel.ioc.registry import normalize_provider
+from bustan.kernel.module.metadata import get_module_metadata
 
 
 def test_module_and_provider_metadata_are_not_inherited_by_default() -> None:

@@ -14,6 +14,7 @@ from typing import Any, cast
 
 from anyio import CapacityLimiter, move_on_after, to_thread
 
+from ..common.metadata import ControllerRouteDefinition
 from ..common.types import PipelineOverrides
 from ..contracts import ApplicationRuntime, HttpRequest, HttpResponse, RouteHandler
 from ..kernel.errors import BustanError, GuardRejectedError
@@ -41,7 +42,6 @@ from .compiler import (
     RouteContract,
 )
 from .controller_factory import ControllerFactory, PipelineMemo
-from .metadata import ControllerRouteDefinition
 from .params import (
     BoundParameter,
     HandlerBindingPlan,
