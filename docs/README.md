@@ -1,70 +1,120 @@
 # Documentation
 
-These guides sit on top of the main [README.md](../README.md). Start there for the project overview, installation, supported public modules, and the CLI scaffold. Then use the guides below to go deeper into routing, the request pipeline, request scope, lifecycle hooks, platform access, operations, and release policy.
+These guides sit on top of the [project README](../README.md), which covers the pitch, installation
+and the supported public surface.
 
-Upgrading from 1.x? Start at [how-to/migrate-from-1x.md](how-to/migrate-from-1x.md). 2.0 is a clean break and a 1.x application will not start on it until it is corrected.
+**Upgrading from 1.x?** Start at [Migrate from 1.x](how-to/migrate-from-1x.md). 2.0 is a clean break
+and a 1.x application will not start on it until it is corrected.
 
-## Recommended Reading Order
+## How this is organised
 
-1. [tutorials/first-app.md](tutorials/first-app.md) for the generated project layout and the normal `bustan init` workflow.
-2. [reference/routing.md](reference/routing.md) for controller prefixes, parameter binding, validation modes, and response coercion.
-3. [reference/request-pipeline.md](reference/request-pipeline.md) for guards, pipes, interceptors, exception filters, and global pipeline tokens.
-4. [explanation/request-scope.md](explanation/request-scope.md) for request-local state and scope constraints.
-5. [reference/lifecycle.md](reference/lifecycle.md) for startup and shutdown ordering across modules and providers.
+Four kinds of document, after [Diataxis](https://diataxis.fr). The split is by what you are doing,
+not by subject, so the same topic appears in more than one place on purpose.
 
-## Getting Started
+| | For | Answers |
+| --- | --- | --- |
+| **[Tutorials](#tutorials)** | Learning | "Take me through it once." |
+| **[How-to guides](#how-to-guides)** | A task in hand | "How do I do this?" |
+| **[Reference](#reference)** | Looking something up | "What exactly does this do?" |
+| **[Explanation](#explanation)** | Understanding | "Why is it like this?" |
 
-- [tutorials/first-app.md](tutorials/first-app.md): scaffold a runnable app, inspect the generated files, run it locally, and add a first test.
-- [reference/routing.md](reference/routing.md): controller structure, inferred versus explicit binding, `Annotated[...]` markers, and return-type behavior.
-- [reference/request-pipeline.md](reference/request-pipeline.md): execution order, `ExecutionContext`, automatic validation, and custom pipeline components.
-- [explanation/request-scope.md](explanation/request-scope.md): request-scoped providers, request-scoped controllers, and safe dependency direction.
-- [reference/lifecycle.md](reference/lifecycle.md): `on_module_init`, `on_application_bootstrap`, shutdown hooks, and `create_app_context()`.
-- [reference/cli.md](reference/cli.md): the `bustan` command line tool - `init`, `doctor`, `graph`, `config`, `routes`, and `governance`.
+Adding a document? Put it in the directory matching what a reader will be doing when they open it.
+A guide that answers two of those questions is two documents.
 
-## Upgrading
+## Tutorials
 
-- [how-to/migrate-from-1x.md](how-to/migrate-from-1x.md): what `bustan doctor` finds, what only you can find, and a worked migration validated against a real 1.x application.
-- [../CHANGELOG.md](../CHANGELOG.md): every change, release by release, with the issue each one closed.
+Learning-oriented. One path, start to finish, no choices to make.
+
+- [Your first app](tutorials/first-app.md) - scaffold a runnable application, understand the
+  generated files, run it, and add a first test.
+
+## How-to guides
+
+Task-oriented. You know what you want; these say how.
+
+- [Migrate from 1.x](how-to/migrate-from-1x.md) - what `bustan doctor` finds, what only you can
+  find, and a worked migration against a real 1.x application.
+- [Choose a pipeline hook](how-to/choose-a-pipeline-hook.md) - which of guard, pipe, interceptor or
+  filter a piece of work belongs in, with one request walked through every stage.
+- [Deploy an application](how-to/deploy.md) - installing, serving, choosing an adapter, probes,
+  draining and workers.
+- [Observe an application](how-to/observe-an-application.md) - structured logging, correlation and
+  trace context, the metrics and tracing protocols, and the two health probes.
+- [Harden an application](how-to/harden-security.md) - request limits, throttling, authentication
+  policy, CORS, and what never reaches a log.
+- [Configure the underlying platform](how-to/configure-the-platform.md) - reaching the real platform
+  object behind the adapter, and running with no HTTP at all.
+- [Test an application](how-to/test-an-application.md) - starting an application with providers
+  replaced, and building a throwaway module for one test.
+- [Run the benchmarks](how-to/run-benchmarks.md) - what is measured, comparing a change on your own
+  machine, and reading a failure.
+- [Cut a release](how-to/cut-a-release.md) - validation, publishing prerequisites and post-publish
+  checks. Maintainers only.
+
+## Reference
+
+Information-oriented. Look something up and leave.
+
+- [API reference](reference/api.md) - every symbol in `bustan`, `bustan.errors` and
+  `bustan.testing`. Generated from docstrings; do not edit by hand.
+- [CLI](reference/cli.md) - `init`, `doctor`, `graph`, `config`, `routes`, `governance`, output
+  formats and exit codes.
+- [Errors](reference/errors.md) - one entry per exception the framework raises, keyed to the name in
+  your traceback.
+- [Routing](reference/routing.md) - controller prefixes, parameter binding, validation modes and
+  response coercion.
+- [Request pipeline](reference/request-pipeline.md) - execution order, `ExecutionContext`, automatic
+  validation, global components and request limits.
+- [Lifecycle](reference/lifecycle.md) - the hooks, who receives them, and their ordering across
+  modules and providers.
+- [Adapters](reference/adapters.md) - the port, the two shipped adapters, and the `Application`
+  wrapper.
+- [Stability](reference/stability.md) - what is public, what is internal, and how a new public API
+  gets promoted.
+- [Versioning](reference/versioning.md) - the compatibility contract and what counts as a public
+  change.
+
+## Explanation
+
+Understanding-oriented. Background and reasoning, read away from the keyboard.
+
+- [Request scope](explanation/request-scope.md) - what request scope gives you, when providers are
+  built, and why some shapes are refused.
+- [Layering](explanation/layering.md) - the package layering rule, why direction matters, and the
+  gate that now enforces it.
+- [The security model](explanation/security-model.md) - what a refusal deliberately withholds, and
+  where the framework's responsibility stops.
+- [Why the benchmark gate uses a ratio](explanation/why-the-benchmark-ratio.md) - why a ratio rather
+  than a wall-clock number, and why the threshold is twenty percent.
+- [Comparisons](explanation/comparisons.md) - how Bustan sits beside Starlette, FastAPI and
+  NestJS-style architecture.
 
 ## Examples
 
-The checked-in examples now mirror the standalone mini-project layout rather than the older one-file demos.
+Each example is a standalone project you can run.
 
-- [../examples/README.md](../examples/README.md): example index, run commands, and what each example demonstrates.
-- [../examples/blog_api/README.md](../examples/blog_api/README.md): reference-style feature module plus request-scoped actor.
-- [../examples/multi_module_app/README.md](../examples/multi_module_app/README.md): provider exports across feature modules.
-- [../examples/graph_inspection/README.md](../examples/graph_inspection/README.md): route snapshots and runtime discovery.
-- [../examples/request_scope_pipeline_app/README.md](../examples/request_scope_pipeline_app/README.md): request-local state shared across guard, interceptor, and controller.
-- [../examples/testing_overrides/README.md](../examples/testing_overrides/README.md): `create_test_app()` and `override_provider()`.
-- [../examples/dynamic_module_usage/README.md](../examples/dynamic_module_usage/README.md): a configurable dynamic module with injected tokens.
+- [Example index](../examples/README.md) - what each one demonstrates and how to run it.
+- [blog_api](../examples/blog_api/README.md) - feature modules with a request-scoped actor.
+- [multi_module_app](../examples/multi_module_app/README.md) - provider exports across modules.
+- [graph_inspection](../examples/graph_inspection/README.md) - route snapshots and discovery.
+- [request_scope_pipeline_app](../examples/request_scope_pipeline_app/README.md) - request-local
+  state shared across guard, interceptor and controller.
+- [testing_overrides](../examples/testing_overrides/README.md) - `create_test_app()` and
+  `override_provider()`.
+- [dynamic_module_usage](../examples/dynamic_module_usage/README.md) - a configurable dynamic module.
 
-## Platform And Operations
+## Project
 
-- [reference/adapters.md](reference/adapters.md): `Application`, `ApplicationContext`, accessors for the underlying adapter, and runtime artifacts.
-- [how-to/deploy.md](how-to/deploy.md): installing, serving, choosing an adapter, health probes, draining, workers, and gating a release.
-- [how-to/observe-an-application.md](how-to/observe-an-application.md): structured logging, correlation and trace context, the metrics and tracing protocols, and the two health probes.
-- [how-to/harden-security.md](how-to/harden-security.md): request limits, throttling, authentication policy, what a refusal is allowed to say, and what the framework does not do.
-- [reference/errors.md](reference/errors.md): the common module graph, binding, scope, and lifecycle failures.
-- [explanation/comparisons.md](explanation/comparisons.md): how Bustan fits beside Starlette, FastAPI, and NestJS-style architecture.
+- [Changelog](../CHANGELOG.md) - every change, release by release.
+- [Contributing](../CONTRIBUTING.md) - development setup and the checks to run.
+- [Governance](../GOVERNANCE.md) - maintainer roles, release ownership and pause policy.
+- [Security policy](../SECURITY.md) - how to report a vulnerability, and what is supported.
 
-## Architecture And Performance
+## Programme records
 
-- [explanation/layering.md](explanation/layering.md): the package layering rule, why crossing it is a defect, why the check is advisory for now, and the violations still open.
-- [how-to/run-benchmarks.md](how-to/run-benchmarks.md): what is measured, how run-to-run variation is divided out, and the CI gate that fails a regression.
+Kept for provenance rather than for reading. Neither is a guide.
 
-## Audits
-
-- [audits/di-container-2026-09/REPORT.md](audits/di-container-2026-09/REPORT.md): adversarial audit of the dependency-injection container (findings, executable repros, and the maintenance roadmap).
-- [audits/di-container-2026-09/repros/evidence/README.md](audits/di-container-2026-09/repros/evidence/README.md): the captured output the audit's repro scripts are checked against.
-
-## Stability And Release
-
-- [reference/stability.md](reference/stability.md): what counts as public, what does not, and how to read the generated API reference safely.
-- [reference/versioning.md](reference/versioning.md): alpha compatibility expectations and the current release contract.
-- [reference/api.md](reference/api.md): generated reference for `bustan`, `bustan.errors`, and `bustan.testing`.
-- [how-to/cut-a-release.md](how-to/cut-a-release.md): release validation, automation prerequisites, and post-publish smoke checks.
-- [../GOVERNANCE.md](../GOVERNANCE.md): maintainer roles, release ownership, and pause policy.
-
-## Delivery
-
-- [delivery/BUSTAN_2_0_BACKLOG.md](delivery/BUSTAN_2_0_BACKLOG.md): the 2.0 programme's ticket-by-ticket specification, its orchestration rules, and the shared context every delivery agent works from.
+- [Dependency-injection audit](audits/di-container-2026-09/REPORT.md) - the adversarial audit behind
+  the 2.0 programme, with executable repros.
+- [2.0 delivery backlog](delivery/BUSTAN_2_0_BACKLOG.md) - the ticket-by-ticket specification the
+  release was built from.
