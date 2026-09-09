@@ -91,7 +91,7 @@ jobs:
         run: uv run pytest --cov=bustan.kernel --cov-report=term-missing --cov-fail-under=85
 
   layering:
-    name: Package layering (advisory)
+    name: Package layering
     runs-on: ubuntu-latest
 
     steps:
@@ -109,46 +109,56 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --frozen
 
-      # Advisory only, and only until the violations it already reports are fixed. The check
-      # passes on a tree that respects the layer table; this tree does not yet, and the imports
-      # it names are defects to close rather than entries to add to the table. Delete
-      # `continue-on-error` the moment the report is empty: an advisory layering check that
-      # stays advisory is a layering check nobody reads.
+      # Blocking, because the tree respects the layer table and a report that is not empty is
+      # therefore an edge the change under review just added. The report is written to a file
+      # as well as to the log so the summary step below can quote it after this step has
+      # stopped the job.
       - name: Check package layering
         id: layering
-        continue-on-error: true
         run: |
           status=0
           uv run python scripts/check_layering.py --check > layering-report.txt || status=$?
           cat layering-report.txt
           exit "$status"
 
-      # The report belongs on the run summary rather than only inside a step log, because a
-      # step whose failure does not stop the job is a step nobody opens. The job is green
-      # whether the report is empty or not, so nothing in the checks list can announce the day
-      # it empties; the summary says so instead, on the first run where it becomes true.
+      # Runs even when the step above fails, which is the run that needs it: the reader has a
+      # red job and wants the crossed boundary, not a step log to open. The clean report is
+      # written too, because "no package crosses a layer" is a result the release checklist
+      # asks for, and a green checks list alone does not say it.
       - name: Summarise the layering report
+        if: always()
         env:
           LAYERING_OUTCOME: ${{ steps.layering.outcome }}
         run: |
-          if [ "$LAYERING_OUTCOME" = "failure" ]; then
-            {
-              echo '### Package layering: advisory failure'
-              echo
-              echo 'These imports cross a boundary declared in `scripts/check_layering.py`.'
-              echo
-              echo '```'
-              cat layering-report.txt
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo '### Package layering: clean'
-              echo
-              echo 'The report is empty. Delete `continue-on-error` from the step above so this'
-              echo 'job blocks a change that reintroduces a violation.'
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          case "$LAYERING_OUTCOME" in
+            failure)
+              {
+                echo '### Package layering: violation'
+                echo
+                echo 'These imports cross a boundary declared in `scripts/check_layering.py`.'
+                echo 'They are defects to close, not entries to add to the table.'
+                echo
+                echo '```'
+                cat layering-report.txt
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            success)
+              {
+                echo '### Package layering: clean'
+                echo
+                echo 'Every top-level package under `src/bustan` is declared, and no import'
+                echo 'crosses a layer the wrong way.'
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              {
+                echo '### Package layering: did not run'
+                echo
+                echo 'An earlier step failed, so the tree was never checked.'
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+          esac
 
   conformance:
     name: Adapter conformance matrix
@@ -247,8 +257,9 @@ jobs:
       # upstream disclosure to whoever pushes next as a red build, and the fix - raise the
       # floor, relock - does not belong inside their unrelated change. The finding goes to
       # the run summary instead, and `docs/RELEASE_CHECKLIST.md` makes reading that summary
-      # a release step, which is the point at which acting on it is somebody's job. The
-      # layering step above takes the same shape for the same reason.
+      # a release step, which is the point at which acting on it is somebody's job. This is
+      # the last advisory step in the workflow, and it is advisory because the finding
+      # arrives from outside the repository rather than out of the diff.
       - name: Audit the resolved dependency sets
         id: audit
         continue-on-error: true
