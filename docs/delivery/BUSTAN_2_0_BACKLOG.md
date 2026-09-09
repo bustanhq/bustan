@@ -28,7 +28,8 @@ cannot see the other agents, their branches or their work in progress, and you m
 not try to infer it. Everything you need is either in this document, in your own
 checkout, or is a question for a draft PR. This is also why your ticket's
 dependencies are already merged before you are dispatched: the supervisor's dispatch
-is itself the signal that the ground under you is stable.
+is itself the signal that the ground under you is stable. The pull request is also a
+record people read later, so it is written for them: see **Writing rules** below.
 
 **If you are the supervisor**, read the whole file, and `## The GitHub loop` most
 carefully. You open one issue per ticket at the start of each wave, review every pull
@@ -75,7 +76,7 @@ migration guide and a `bustan doctor` scanner rather than compatibility shims.
 
 **Roles.** One supervisor: turns each ticket in this backlog into a GitHub issue,
 reviews every pull request against its acceptance criteria, runs the verification
-independently rather than trusting the pasted output, answers `BLOCKED:` and
+independently rather than trusting the summary, answers `BLOCKED:` and
 `DECISION REQUIRED:` drafts in review comments, reviews `main` after every merge and
 raises follow-up issues for what the tickets did not anticipate, owns the merge queue
 and cuts releases. N delivery agents, working remotely and independently: each is
@@ -102,11 +103,15 @@ comment on a draft PR.
    conflict. Waves are barriers: a wave merges completely before the next starts.
 3. Branch name is the ticket id in lower case, for example
    `feat/t-102-annotation-resolution`. One ticket, one branch, one PR.
-4. Commits use Conventional Commits with the ticket id in the body. A `BREAKING
-   CHANGE:` footer is mandatory whenever `bustan.__all__`, a public signature or a
-   documented behaviour changes.
-5. Every PR body follows the contract below. Because the PR is the only channel, a PR
-   that omits part of it cannot be reviewed and will be returned unread.
+4. Commits use Conventional Commits, with the ticket id as a `Refs T-NNN` line in the
+   body and no other trailer: no `Co-Authored-By`, no `Claude-Session`, no
+   generated-by line. The repository's `.claude/settings.json` turns those off; a
+   commit that carries one is amended before review. A `BREAKING CHANGE:` footer is
+   mandatory whenever `bustan.__all__`, a public signature or a documented behaviour
+   changes.
+5. Every PR body follows the contract below and stays inside its budgets. Because the
+   PR is the only channel, a PR that omits part of the contract, or buries it under
+   pasted output, cannot be reviewed and will be returned unread.
 6. Rebase onto the wave's integration branch before requesting review; never merge
    the integration branch into the ticket branch.
 7. One agent per ticket, assigned by the supervisor. An agent never picks up a second
@@ -114,19 +119,41 @@ comment on a draft PR.
    blocked or trivial. Tickets are claimed by dispatch, not by initiative, so two
    agents cannot converge on the same work.
 
-**The PR contract.** Every pull request description contains, in this order: the
-ticket id and title; the audit finding ids closed; a short statement of what changed
-and why, in prose a reviewer can read without opening the diff; the list of repro
-scripts that moved from `REPRODUCED` to `FIXED`; the verification block output pasted
-verbatim; every decision you made where the ticket left more than one defensible
-option, each with the reason; and anything you deliberately did not do, with why.
-That last item matters most: a silent omission is indistinguishable from an oversight
-to a reviewer who cannot ask you.
+**The PR contract.** Every pull request description contains, in this order:
+`Closes #N` on its own line, not inside backticks; a `Refs T-NNN` line naming the
+ticket and the audit finding ids it closes; what changed and why, in one or two
+paragraphs a reviewer can read without opening the diff; a verification summary, one
+line per command of the block giving the command and its final status line, with
+`run_repros.py` reported as the findings that moved from `REPRODUCED` to `FIXED`; the
+decisions taken where the ticket left more than one defensible option, one bullet
+each with the reason; and what was left undone inside the ticket's scope, one bullet
+each with the reason, or the single line "Nothing in scope was left undone". That
+last item matters most: a silent omission is indistinguishable from an oversight to a
+reviewer who cannot ask you. Full command output goes nowhere in the body; if a
+reviewer could need it, it goes in one collapsed `<details>` block after the summary,
+and the body without it stays under 300 words. Not in the body: a list of files
+touched, a note on how the work was directed, the repository's pull request template
+or its checkboxes, a claim that every criterion is met, a footer, a session link.
+
+**Writing rules.** Everything you post is read by people, months later, without you
+there to explain it. Write as a maintainer writing to a colleague: facts, decisions
+and reasons, in the third person or the imperative. State what is true and why, not
+what you did to find it out. No narration of your own process, no apology, no message
+to the reviewer as a person, no restatement of the rules you followed. A title is one
+clause in sentence case, at most 72 characters, with the Conventional Commits prefix
+and no ticket or finding id. A comment answering a review stays under 150 words and
+answers the finding it replies to. If a comment you posted is wrong, edit it; do not
+post a correction. Sentence case, ASCII only, one idea per paragraph. Before opening
+the pull request, run
+`python3 .agents/skills/bustan-supervisor/scripts/check_writeup.py --file body.md --kind pr --title "..."`
+on the description; the review starts with the same check.
 
 **When you are blocked.** You never wait. You open a draft PR whose description
 begins with `BLOCKED:` and a one-paragraph statement of the problem, containing
-whatever work is already done, and then you stop. The partial work stays reviewable
-and survives if the ticket is reassigned. Four situations warrant it:
+whatever work is already done, and then you stop. The draft states the problem, the
+options as bullets and your recommendation with its reason; not what you tried. The
+partial work stays reviewable and survives if the ticket is reassigned. Four
+situations warrant it:
 
 - You need to change a file outside your `Owns` list. Name the file and say why. Do
   not edit it, and do not work around it by duplicating logic into a file you do own,
@@ -181,10 +208,20 @@ no interaction.
 
 At the start of each wave, one issue per ticket, created with `issue_write`:
 
-- **Title** `T-NNN <ticket title>`, so the id is greppable and sorts naturally.
-- **Body** is the ticket copied verbatim from this backlog: context, scope, owns, must
-  not touch, acceptance. The issue is what the agent reads, so it must stand alone;
-  never write "see the backlog for details".
+- **Title** one clause in sentence case, at most 72 characters, saying what is wrong
+  or what changes: no ticket id, no finding id, no series prefix, no trailing period.
+  The `ticket:T-NNN` label and the body's `Refs T-NNN` line carry the id, so
+  `label:ticket:T-500` finds the issue and `T-500 in:body` finds everything that
+  cites it.
+- **Body** is the ticket's substance in the issue skeleton: `Refs T-NNN`, `## Context`,
+  `## Change`, `## Acceptance`, `## Owns` as a bullet list of literal paths and nothing
+  else, `## Must not touch`, and a one-line `## Delivery` naming the branch, plus the
+  base branch or a ticket-specific verification command only when they differ from the
+  defaults here. The issue is what the agent reads, so it must stand alone for the
+  work; never write "see the backlog for details" for context, change, acceptance or
+  the lists. It does not carry the working agreement, the shared verification block,
+  sequencing notes or who reported it: those live in this document, on the epic, or
+  nowhere.
 - **Labels** `wave-N`, `ticket:T-NNN`, and one of `security`, `correctness`,
   `architecture`, `operability`, `docs`.
 - **Milestone** the release the wave ships: `1.1.1`, `2.0.0-rc.1` and so on. The
@@ -216,17 +253,19 @@ logic:
    agents from corrupting each other is the ownership rule, and an exception granted
    once stops being a rule.
 2. `get_check_runs`. CI must be green. A red PR is not reviewed.
-3. Confirm the PR body carries every element of the contract. A missing "what I
-   deliberately did not do" section is a returned PR; a reviewer who cannot ask
-   questions depends on it.
+3. Confirm the PR body carries every element of the contract inside its budgets
+   (`check_writeup.py --pr N` does the mechanical part). A missing "Not done" section
+   is a returned PR; a reviewer who cannot ask questions depends on it. So is pasted
+   output in place of the verification summary.
 4. `get_diff`, and read it against the acceptance criteria one at a time.
-5. Run the verification block locally on the branch rather than trusting the pasted
-   output. The paste proves the agent ran it; your run proves it passes.
+5. Run the verification block locally on the branch rather than trusting the summary.
+   The summary says the agent ran it; your run proves it passes.
 6. `pull_request_review_write` with `create` to open a pending review,
    `add_comment_to_pending_review` for each inline finding, then submit as
    `APPROVE` or `REQUEST_CHANGES`. A review comment is the only way to answer a
    `BLOCKED:` or `DECISION REQUIRED:` draft, so make it complete enough to unblock in
-   one round: state the decision and the reason, not just the verdict.
+   one round: state the decision and the reason, not just the verdict, and nothing
+   beyond them: a review is a verdict and a numbered list of findings.
 
 ### Supervisor: review main, not just the diff
 
@@ -317,7 +356,9 @@ they are meant to stay as written.
   `tests/conftest.py` once T-003 has merged; never add a fourteenth copy of
   `_build_request`.
 
-**Verification block.** Run all of it before requesting review.
+**Verification block.** Run all of it before requesting review, and report it in the
+pull request as one line per command with that command's final status line, never as
+pasted output.
 
 ```bash
 uv sync --group dev --frozen
