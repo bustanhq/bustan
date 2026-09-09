@@ -397,11 +397,14 @@ class ResolutionKernel:
     def _cache_for(self, binding: Binding, key: tuple[ModuleKey, object]) -> InstanceCache:
         """Return the slot a binding's instance is kept in for its declared lifetime."""
 
+        # The wrapper holds one slot and writes the instance into it once construction
+        # finishes, so each arm is handed the cache itself rather than the scope
+        # manager's setters, which have no slot to hand back.
         if binding.scope is ProviderScope.SINGLETON:
-            return InstanceCache(self.scope_manager.singletons, key, shared=True)
+            return InstanceCache(self.scope_manager._singletons, key, shared=True)
         if binding.scope is ProviderScope.DURABLE:
             return InstanceCache(
-                self.scope_manager.durable_instances, self._durable_key(binding, key), shared=True
+                self.scope_manager._durable_instances, self._durable_key(binding, key), shared=True
             )
         if binding.scope is ProviderScope.REQUEST:
             request = self.scope_manager.active_request.get()
@@ -448,13 +451,13 @@ class ResolutionKernel:
             return planned
         unplanned = self._unplanned.get((module, target))
         if unplanned is None:
-            visible = self.registry.module_visibility.get(module, {})
+            visible = self.registry.visibility_view.get(module, {})
             unplanned = plan_target(target, module, visible)
             self._unplanned[(module, target)] = unplanned
         return unplanned
 
     def _declaring_module(self, token: object, module: ModuleKey) -> ModuleKey:
-        visibility = self.registry.module_visibility.get(module)
+        visibility = self.registry.visibility_view.get(module)
         if visibility is None:
             raise ProviderResolutionError(
                 f"{_display_name(module)} is not part of the application container"

@@ -491,10 +491,10 @@ def test_container_visibility_is_the_graph_visibility_and_every_entry_has_a_bind
     container = build_container(graph)
 
     for node in graph.nodes:
-        assert container.registry.module_visibility[node.key] == node.visibility
+        assert container.registry.visibility_view[node.key] == node.visibility
         assert set(node.available_providers) == set(node.visibility)
         for token, declaring_module in node.visibility.items():
-            assert (declaring_module, token) in container.registry.bindings
+            assert (declaring_module, token) in container.registry.binding_view
 
 
 def test_container_refuses_visibility_that_no_binding_backs() -> None:

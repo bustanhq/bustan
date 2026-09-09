@@ -134,7 +134,7 @@ def _host_module_key(application: ApplicationContext) -> ModuleKey:
     # on the resolution stack and the class being built names it instead.
     building = container.kernel.construction_stack.get()
     if len(building) >= 2:
-        host = container.registry.controller_modules.get(building[-2])
+        host = container.registry.controller_module_view.get(building[-2])
         if host is not None:
             return host
     return application.root_key
@@ -143,7 +143,7 @@ def _host_module_key(application: ApplicationContext) -> ModuleKey:
 def _is_visible_to(application: ApplicationContext, module_key: ModuleKey, token: object) -> bool:
     """Report whether one module resolves a token through its own providers or imports."""
 
-    visibility = application.container.registry.module_visibility.get(module_key)
+    visibility = application.container.registry.visibility_view.get(module_key)
     return visibility is not None and token in visibility
 
 
@@ -153,7 +153,7 @@ def _modules_declaring(application: ApplicationContext, token: object) -> tuple[
     identity = token_identity(token)
     return tuple(
         module_key
-        for module_key, bound_token in application.container.registry.bindings
+        for module_key, bound_token in application.container.registry.binding_view
         if token_identity(bound_token) == identity
     )
 

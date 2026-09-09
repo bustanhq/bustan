@@ -278,7 +278,7 @@ class ControllerFactory:
         container = self.container
         if not container.override_manager.started:
             return False
-        visibility = container.registry.module_visibility.get(owner)
+        visibility = container.registry.visibility_view.get(owner)
         if visibility is None:
             return False
         declaring_module = visibility.get(token)
@@ -327,7 +327,7 @@ class ControllerFactory:
     def _is_registered(self, component: type[object], module: ModuleKey) -> bool:
         """Return whether a module can see a provider registered under this class."""
 
-        return component in self.container.registry.module_visibility.get(module, {})
+        return component in self.container.registry.visibility_view.get(module, {})
 
     def _build_unmanaged(self, component: object, kind: str) -> object:
         """Build a component the container does not know about, or refuse it."""

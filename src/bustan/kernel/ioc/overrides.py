@@ -150,7 +150,7 @@ class OverrideManager:
         identity = token_identity(token)
         declaring = [
             registered_module
-            for registered_module, registered_token in self.registry.bindings
+            for registered_module, registered_token in self.registry.binding_view
             if token_identity(registered_token) == identity
         ]
 
@@ -221,8 +221,11 @@ def _evict_reach(
     """
 
     invalidated = _binding_with_dependents(binding_identity, registry, plan)
-    _drop_cached(scopes.singletons, invalidated)
-    _drop_cached(scopes.durable_instances, invalidated)
+    # The sweep matches each cached key against the bindings an override invalidated,
+    # which this module knows and the caches do not, so it reaches into them here
+    # rather than asking the scope manager to drop a set it cannot compute.
+    _drop_cached(scopes._singletons, invalidated)
+    _drop_cached(scopes._durable_instances, invalidated)
     # Every controller is built from the graph the override just changed, and a
     # controller is cheap to rebuild, so they go rather than being traced one by one.
     scopes.clear_controller_singletons()
@@ -270,8 +273,7 @@ def _dependents_index(
     """
 
     index: dict[BindingIdentity, set[BindingIdentity]] = {}
-    for module_key, token in registry.bindings:
-        binding = registry.bindings[(module_key, token)]
+    for (module_key, token), binding in registry.binding_view.items():
         holder = (module_key, token_identity(token))
         for needed in _needs(binding, module_key, registry, plan):
             index.setdefault(needed, set()).add(holder)
@@ -320,7 +322,7 @@ def _declaring_module(token: object, module_key: ModuleKey, registry: Registry) 
     by no module and reaches no binding, so it has nothing an override could invalidate.
     """
 
-    visible = registry.module_visibility.get(module_key, TokenMap[ModuleKey]())
+    visible = registry.visibility_view.get(module_key, TokenMap[ModuleKey]())
     try:
         return visible.get(token)
     except TypeError:

@@ -208,7 +208,7 @@ async def test_controller_factory_never_caches_a_durable_controller_as_a_singlet
             TenantsController, module=module, request=build_http_request(path="/tenants")
         )
 
-    assert container.scope_manager.controller_singletons == {}
+    assert container.controller_instance_view == {}
 
 
 def test_pipeline_components_are_constructed_directly_unless_they_declare_provider_metadata(

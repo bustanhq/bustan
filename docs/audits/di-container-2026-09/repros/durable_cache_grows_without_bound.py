@@ -43,7 +43,7 @@ def main() -> None:
     with TestClient(app) as client:
         for index in range(REQUESTS):
             client.get("/t/", headers={"x-tenant": f"tenant-{index}"})
-    instances = len(scope_manager.durable_instances)
+    instances = len(app.container.durable_instance_view)
     locks = len(scope_manager.construction_locks)
     if instances >= REQUESTS:
         print(

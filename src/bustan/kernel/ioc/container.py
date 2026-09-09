@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import MappingProxyType
 from typing import TYPE_CHECKING, overload
 
 from ..errors import InvalidModuleError, ProviderResolutionError
@@ -42,9 +41,9 @@ class Container:
 
         self._build_bindings()
         self.plan = plan_container(
-            bindings=self.registry.bindings,
-            visibility=self.registry.module_visibility,
-            controllers=self.registry.controller_modules,
+            bindings=self.registry.binding_view,
+            visibility=self.registry.visibility_view,
+            controllers=self.registry.controller_module_view,
         )
         self.kernel = ResolutionKernel(
             self.registry, self.scope_manager, self.override_manager, self.plan
@@ -72,9 +71,10 @@ class Container:
         Visibility a binding does not back is a promise kept only until the first
         request that needs the token, so it is refused at bootstrap instead.
         """
-        for module_key, visibility in self.registry.module_visibility.items():
+        bindings = self.registry.binding_view
+        for module_key, visibility in self.registry.visibility_view.items():
             for token, declaring_module in visibility.items():
-                if (declaring_module, token) in self.registry.bindings:
+                if (declaring_module, token) in bindings:
                     continue
                 raise InvalidModuleError(
                     f"{_qualname(token)} is visible to {_display_name(module_key)} through "
@@ -110,13 +110,13 @@ class Container:
     def singleton_instance_view(self) -> Mapping[tuple[ModuleKey, object], object]:
         """A live read-only window onto the singletons this container has built."""
 
-        return MappingProxyType(self.scope_manager.singletons)
+        return self.scope_manager.singleton_instance_view
 
     @property
     def controller_instance_view(self) -> Mapping[tuple[ModuleKey, type[object]], object]:
         """A live read-only window onto the controller instances kept for the whole run."""
 
-        return MappingProxyType(self.scope_manager.controller_singletons)
+        return self.scope_manager.controller_instance_view
 
     @property
     def durable_instance_view(self) -> Mapping[object, object]:
@@ -127,7 +127,7 @@ class Container:
         does. Nothing is evicted by reading, but what is evicted next may change.
         """
 
-        return MappingProxyType(self.scope_manager.durable_instances)
+        return self.scope_manager.durable_instance_view
 
     def mark_startup_begun(self) -> None:
         """Report that a startup has begun, so providers may be resolved again.
@@ -374,11 +374,8 @@ class Container:
         application was built. So this names where each component comes from rather
         than building it, and the runtime resolves it once per request.
         """
-        return tuple(
-            node.key
-            for node in self.module_graph.nodes
-            if (node.key, token) in self.registry.bindings
-        )
+        bindings = self.registry.binding_view
+        return tuple(node.key for node in self.module_graph.nodes if (node.key, token) in bindings)
 
 
 def build_container(module_graph: ModuleGraph) -> Container:

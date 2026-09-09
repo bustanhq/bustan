@@ -7,6 +7,7 @@ from collections import OrderedDict
 from collections.abc import Hashable, MutableMapping
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar, Token
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Protocol, cast, runtime_checkable
 
 import anyio
@@ -16,7 +17,7 @@ from ..module.dynamic import ModuleKey
 from .registry import token_identity
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Iterator
+    from collections.abc import AsyncIterator, Callable, Iterator, Mapping
     from contextlib import AbstractAsyncContextManager, AbstractContextManager
 
 REQUEST_SCOPE_CACHE_ATTR = "bustan_request_provider_cache"
@@ -250,13 +251,19 @@ class DurableProvider(Protocol):
 
 
 class ScopeManager:
-    """Manages singleton and request-scoped instance lifetimes."""
+    """Manages singleton and request-scoped instance lifetimes.
+
+    The instance caches are held privately and are read through the three views. A
+    cache reachable as an attribute is one a caller can assign into, and an instance
+    put there by hand is served to every later consumer of that binding as though the
+    container had built it: nothing between the cache and the caller checks it again.
+    """
 
     def __init__(self, *, durable_instance_limit: int = DURABLE_INSTANCE_LIMIT) -> None:
-        self.singletons = InstanceTable()
-        self.controller_singletons: dict[tuple[ModuleKey, type[object]], object] = {}
-        self.controller_singleton_locks: dict[tuple[ModuleKey, type[object]], threading.Lock] = {}
-        self.durable_instances = BoundedInstanceStore(durable_instance_limit)
+        self._singletons = InstanceTable()
+        self._controller_singletons: dict[tuple[ModuleKey, type[object]], object] = {}
+        self._controller_singleton_locks: dict[tuple[ModuleKey, type[object]], threading.Lock] = {}
+        self._durable_instances = BoundedInstanceStore(durable_instance_limit)
         self.construction_locks: ConstructionLocks[threading.Lock] = ConstructionLocks(
             threading.Lock
         )
@@ -272,38 +279,69 @@ class ScopeManager:
             "bustan_active_application", default=None
         )
 
+    @property
+    def singleton_instance_view(self) -> Mapping[tuple[ModuleKey, object], object]:
+        """A live read-only window onto the singletons this manager has been given."""
+
+        return MappingProxyType(self._singletons)
+
+    @property
+    def controller_instance_view(self) -> Mapping[tuple[ModuleKey, type[object]], object]:
+        """A live read-only window onto the controller instances kept for the whole run."""
+
+        return MappingProxyType(self._controller_singletons)
+
+    @property
+    def durable_instance_view(self) -> Mapping[object, object]:
+        """A live read-only window onto the durable instances currently cached.
+
+        The durable store is bounded and evicts what has gone longest without use, and
+        reading an entry through this window counts as a use exactly as resolving it
+        does. Nothing is evicted by reading, but what is evicted next may change.
+        """
+
+        return MappingProxyType(self._durable_instances)
+
     def get_singleton(self, key: tuple[ModuleKey, object]) -> object:
         """Return the cached process-wide instance, or ``CACHE_MISS`` when there is none."""
 
-        return self.singletons.get(key, CACHE_MISS)
+        return self._singletons.get(key, CACHE_MISS)
 
     def set_singleton(self, key: tuple[ModuleKey, object], instance: object) -> None:
-        self.singletons[key] = instance
+        """Cache the process-wide instance built for a binding."""
+
+        self._singletons[key] = instance
 
     def get_controller_singleton(self, key: tuple[ModuleKey, type[object]]) -> object | None:
-        return self.controller_singletons.get(key)
+        """Return the controller instance kept for the whole run, or ``None``."""
+
+        return self._controller_singletons.get(key)
 
     def set_controller_singleton(
         self, key: tuple[ModuleKey, type[object]], instance: object
     ) -> None:
-        self.controller_singletons[key] = instance
+        """Cache a controller instance for the whole run."""
+
+        self._controller_singletons[key] = instance
 
     def get_controller_singleton_lock(self, key: tuple[ModuleKey, type[object]]) -> threading.Lock:
+        """Return the lock that serializes building one module's controller."""
+
         try:
-            return self.controller_singleton_locks[key]
+            return self._controller_singleton_locks[key]
         except KeyError:
             with self._lock_table_guard:
-                return self.controller_singleton_locks.setdefault(key, threading.Lock())
+                return self._controller_singleton_locks.setdefault(key, threading.Lock())
 
     def get_durable(self, key: DurableKey) -> object:
         """Return the cached instance for a durable partition, or ``CACHE_MISS``."""
 
-        return self.durable_instances.get(key, CACHE_MISS)
+        return self._durable_instances.get(key, CACHE_MISS)
 
     def set_durable(self, key: DurableKey, instance: object) -> None:
         """Cache a durable instance, evicting the partition used longest ago when full."""
 
-        self.durable_instances[key] = instance
+        self._durable_instances[key] = instance
 
     def get_construction_lock(self, key: object) -> AbstractContextManager[None]:
         """Return a guard holding the lock that serializes construction under one key."""
@@ -375,4 +413,4 @@ class ScopeManager:
 
     def clear_controller_singletons(self) -> None:
         """Drop cached singleton controller instances."""
-        self.controller_singletons.clear()
+        self._controller_singletons.clear()

@@ -487,41 +487,54 @@ class VisibilityView(Mapping[ModuleKey, Mapping[object, ModuleKey]]):
 
 
 class Registry:
-    """Manages the mapping of provider tokens to their resolving bindings."""
+    """Manages the mapping of provider tokens to their resolving bindings.
+
+    The three tables are held privately and are written only by the register methods
+    below. Nothing re-checks a table after the graph is validated, so a table a caller
+    could assign into is one the container would go on trusting while it described an
+    application that no longer exists. Reading is served by the three views, which are
+    live windows rather than copies and refuse a write where it is made.
+    """
 
     def __init__(self) -> None:
-        self.bindings: BindingTable = BindingTable()
-        self.module_visibility: dict[ModuleKey, TokenMap[ModuleKey]] = {}
-        self.controller_modules: dict[type[object], ModuleKey] = {}
+        self._bindings: BindingTable = BindingTable()
+        self._module_visibility: dict[ModuleKey, TokenMap[ModuleKey]] = {}
+        self._controller_modules: dict[type[object], ModuleKey] = {}
 
     def register_binding(self, key: tuple[ModuleKey, object], binding: Binding) -> None:
-        self.bindings[key] = binding
+        """Record the binding a module declares for a token."""
+
+        self._bindings[key] = binding
 
     def set_visibility(self, module_key: ModuleKey, visibility: Mapping[object, ModuleKey]) -> None:
         """Record what one module can see, keyed so equal tokens of two types stay apart."""
 
-        self.module_visibility[module_key] = TokenMap(visibility)
+        self._module_visibility[module_key] = TokenMap(visibility)
 
     def register_controller(self, controller_cls: type[object], module_key: ModuleKey) -> None:
-        self.controller_modules[controller_cls] = module_key
+        """Record the module a controller was declared in."""
+
+        self._controller_modules[controller_cls] = module_key
 
     def get_binding(self, key: tuple[ModuleKey, object]) -> Binding | None:
-        return self.bindings.get(key)
+        """Return the binding a module declares for a token, or ``None`` for no binding."""
+
+        return self._bindings.get(key)
 
     @property
     def binding_view(self) -> Mapping[tuple[ModuleKey, object], Binding]:
         """A live read-only window onto every binding, keyed by module and token."""
 
-        return MappingProxyType(self.bindings)
+        return MappingProxyType(self._bindings)
 
     @property
     def visibility_view(self) -> VisibilityView:
         """A live read-only window onto what each module can see."""
 
-        return VisibilityView(self.module_visibility)
+        return VisibilityView(self._module_visibility)
 
     @property
     def controller_module_view(self) -> Mapping[type[object], ModuleKey]:
         """A live read-only window onto which module declares each controller."""
 
-        return MappingProxyType(self.controller_modules)
+        return MappingProxyType(self._controller_modules)

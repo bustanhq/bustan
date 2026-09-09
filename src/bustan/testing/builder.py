@@ -253,7 +253,7 @@ def _declaring_module(container: Container, token: object) -> ModuleKey | None:
     identity = token_identity(token)
     declaring = [
         registered_module
-        for registered_module, registered_token in container.registry.bindings
+        for registered_module, registered_token in container.registry.binding_view
         if token_identity(registered_token) == identity
     ]
     if len(declaring) != 1:

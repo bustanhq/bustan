@@ -187,11 +187,11 @@ def test_an_override_of_a_singleton_binding_becomes_the_cached_singleton() -> No
     manager.override("db", fake, plan=EMPTY_PLAN, scopes=scopes)
     manager.override("per-request", object(), plan=EMPTY_PLAN, scopes=scopes)
 
-    assert scopes.singletons[(RootModule, "db")] is fake
-    assert (RootModule, "per-request") not in scopes.singletons
+    assert scopes.singleton_instance_view[(RootModule, "db")] is fake
+    assert (RootModule, "per-request") not in scopes.singleton_instance_view
 
     manager.clear_override("db", plan=EMPTY_PLAN, scopes=scopes)
-    assert (RootModule, "db") not in scopes.singletons
+    assert (RootModule, "db") not in scopes.singleton_instance_view
 
 
 def test_overrides_are_refused_once_the_application_has_started() -> None:
