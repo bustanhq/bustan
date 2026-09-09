@@ -81,19 +81,21 @@ class AbstractHttpAdapter(ABC):
     that transport can serve. Nothing here is handed the dependency injection
     container, a compiled execution plan or a middleware registry: those belong to the
     framework, and an adapter that received them would have to understand them.
+
+    ``native_request_type`` is the request type this transport builds, which is what
+    ``HttpRequest.native_request`` returns for a request this adapter wrapped. It is the
+    counterpart of :meth:`from_native_request`: that names the type an adapter converts,
+    this names the type it produces. A handler may write a transport's request type on a
+    parameter instead of the neutral one, and every transport's request object has the
+    same shape, so shape alone cannot say which transport such an annotation named. This
+    declaration can, and it is what lets the framework refuse that parameter before a
+    server starts rather than hand it another transport's object. An adapter that leaves
+    it unset produces no request type of its own, and every parameter naming one is
+    refused under it.
     """
 
     name: str
     capabilities: AdapterCapabilities
-    # The request type this transport builds, which is what ``HttpRequest.native_request``
-    # returns for a request this adapter wrapped. It is the counterpart of
-    # ``from_native_request``: that names the type an adapter converts, this names the type
-    # it produces. A handler may write a transport's request type on a parameter, and every
-    # transport's request has the same shape, so shape cannot say which transport an
-    # annotation named; this declaration can, and it is what lets such a parameter be
-    # refused before a server starts rather than handed another transport's object. An
-    # adapter leaving this unset produces no request type of its own, and every parameter
-    # naming one is refused under it.
     native_request_type: type | None = None
 
     @abstractmethod
