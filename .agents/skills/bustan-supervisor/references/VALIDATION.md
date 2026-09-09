@@ -88,10 +88,12 @@ for the specific run on the specific branch you are about to change.
 Rewrite the ticket from what you found: the verified finding list, a corrected `Owns`,
 and the target branch's own verification commands rather than another branch's.
 
-Then post the evidence as a comment on the wave epic, in a table with one row per claim
-and a column saying what you actually observed. Include what you dropped and why. That
-comment is the reason the release scope is what it is, and it is the only place anyone
-will be able to find it later.
+Then post the evidence as a comment on the wave epic. First line `Validation: T-NNN`,
+then a table with one row per claim: the claim, what was observed, what was done about
+it. A dropped claim is a row with its reason, not a paragraph. Status lines, not pasted
+output; no account of the checking itself, the table is the account (see
+[WRITING.md](WRITING.md)). That comment is the reason the release scope is what it is,
+and it is the only place anyone will be able to find it later.
 
 ## Leave the gate in the agent's tree
 
@@ -172,6 +174,8 @@ That refusal is correct and should not be worked around with `--owns`. Fix the t
 - Everything a reader needs about those paths goes underneath, behind a bold lead-in of
   its own - `**Notes on that list.**` works and terminates the section cleanly.
 - A path the ticket will create is still a path. Write it out.
+- Never wrap the section in `<details>`. The tags are not terminators, so the section
+  runs on to the next heading and parses whatever sits between as a path.
 
 Two lists in one wave failed this: one named three test functions in trailing prose, and
 one said "the nine `__init__.py` files listed above", which is a cross-reference the gate

@@ -33,11 +33,12 @@ Make both of these true in the issue body as well.
 | base revision | the ticket's base branch or tag |
 | outcome branch | the ticket's branch name, so the agent's own branch instruction agrees with its issue |
 | permission mode | anything except a mode that waits for human approval - an autonomous agent nobody is watching will stall there forever, and a child cannot be granted more than the parent holds |
-| title | the ticket id and title, so the session list is readable |
+| title | the ticket id and the issue title. The id belongs here, in a list only you read, not in the issue title |
 | tags | programme, wave, ticket id |
 
-Record the session id next to the ticket. You will want it when the pull request does
-not appear and you need to tell "still working" from "died on turn one".
+Record the session id in your own notes, never in the issue, the pull request or a
+commit trailer. You will want it when the pull request does not appear and you need to
+tell "still working" from "died on turn one".
 
 ## After dispatching
 
@@ -62,8 +63,8 @@ going, a webhook that may not arrive.
 flight, the one or two things that decide whether it is good, and what to do next. Facts
 you can look up when it fires do not belong in it - state that moves is stale by the time
 it arrives, and re-reading a long prompt costs more than re-querying the two things that
-matter. If a check-in has grown into a status report, the status belongs on the epic where
-people can read it, and the check-in should point there.
+matter. If a check-in has grown into a status report, the status belongs on the epic as a
+table (see [WRITING.md](WRITING.md)), and the check-in should point there.
 
 ## Dependencies inside a wave
 

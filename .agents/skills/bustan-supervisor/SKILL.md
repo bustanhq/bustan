@@ -1,11 +1,11 @@
 ---
 name: bustan-supervisor
-description: Supervise a wave-based delivery programme in which remote AI agents each take one ticket, work alone, and reach you only through a GitHub pull request. Use when opening a wave's issues from a backlog, validating a ticket before dispatching anyone, dispatching a delivery agent, reviewing a delivery pull request against its file-ownership boundary and acceptance criteria, reviewing the default branch after a merge, filing follow-up issues, or cutting a release. Triggers on "dispatch an agent", "open the next wave", "review the PR against the ticket", "supervise", "orchestrate the agents", "check main after the merge".
+description: Supervise a wave-based delivery programme in which remote AI agents each take one ticket, work alone, and reach you only through a GitHub pull request. Use when opening a wave's issues from a backlog, validating a ticket before dispatching anyone, dispatching a delivery agent, reviewing a delivery pull request against its file-ownership boundary and acceptance criteria, reviewing the default branch after a merge, filing follow-up issues, or cutting a release. Triggers on "dispatch an agent", "open the next wave", "review the PR against the ticket", "supervise", "orchestrate the agents", "check main after the merge", "rewrite this issue for a person".
 license: Apache-2.0
 compatibility: Requires git, curl, python3, a GitHub token in GH_TOKEN or GITHUB_TOKEN, and a tool for creating remote agent sessions.
 metadata:
   author: bustanhq
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Supervising a wave-based delivery programme
@@ -33,15 +33,20 @@ dispatch, review, then review the branch the merges landed on.
    to wait.
 4. **Dispatch is the claim.** One agent per ticket, assigned by you. An agent never
    picks up a second ticket and never starts one it was not dispatched for.
-5. **Run the verification yourself.** The agent's pasted output proves it ran the
-   checks. Your own run proves they pass.
+5. **Run the verification yourself.** The agent's verification summary says it ran
+   the checks. Your own run proves they pass.
 
 ## 1. Open the wave's issues
 
-One issue per ticket. The body is the ticket copied **verbatim** from the backlog, plus
-a working agreement naming the branch, the base branch, the pull-request-only channel,
-the blocked protocol, and the exact verification block. Never write "see the backlog for
-details": the issue is what the agent reads and it has to stand alone.
+One issue per ticket, in the shape [references/WRITING.md](references/WRITING.md) gives:
+the ticket's context, change and acceptance written for a reader, `Owns` and `Must not
+touch` as bullet lists of literal paths, and a one-line `## Delivery` naming the branch,
+with the base branch or a ticket-specific verification command only when they differ
+from the backlog's defaults. The issue stands alone for the work: never write "see the
+backlog for details" for any of that. It does not repeat the programme's rules. The
+dispatch prompt sends every agent to the backlog for those, and a rule copied into
+thirty issues is a rule with thirty versions. Run
+`scripts/check_writeup.py --file issue.md --kind issue --title "..."` before posting.
 
 Attach each ticket issue as a sub-issue of a wave epic, so the epic's sub-issue summary
 becomes the wave's progress bar and no separate tracker is needed. Set the milestone to
@@ -78,22 +83,27 @@ for a human approval nobody is watching. See
 
 In this order, so the cheap mechanical gates fail before anyone reads logic:
 
+0. **The writeup.** Run `scripts/check_writeup.py --repo OWNER/REPO --pr N`. A failing
+   writeup goes back with the script's report as the review comment, before anything
+   else is read.
 1. **Changed paths against `Owns`.** Run
    `scripts/check_ownership.py --repo OWNER/REPO --pr N --owns-from-issue M`. A
    violation is an immediate `REQUEST_CHANGES`.
 2. **CI.** A red pull request is not reviewed.
-3. **The pull request contract.** Ticket id, findings closed, prose summary,
-   verification output pasted verbatim, every decision the ticket left open, and what
-   the agent deliberately did not do. A missing "did not do" section is a returned pull
-   request: a reviewer who cannot ask questions depends on it.
+3. **The pull request contract.** `Closes #N` and `Refs T-NNN` with the finding ids, a
+   prose summary, a verification summary of one line per command with its final status
+   line, the decisions the ticket left open, and what in scope was not done. A missing
+   "Not done" section is a returned pull request: a reviewer who cannot ask questions
+   depends on it. So is pasted output in place of the summary: your own run in step 5
+   is the proof. The form is in [references/WRITING.md](references/WRITING.md).
 4. **The diff, against one acceptance criterion at a time.**
 5. **Your own run of the verification block on the branch.**
 
 Then open a pending review, add each finding as an inline comment, and submit as
 `APPROVE` or `REQUEST_CHANGES`. A review comment is the only way to answer a `BLOCKED:`
-or `DECISION REQUIRED:` draft, so make it complete enough to unblock in one round: give
-the decision and the reason, not just the verdict. See
-[references/REVIEW.md](references/REVIEW.md).
+or `DECISION REQUIRED:` draft, so it must unblock in one round: the decision and the
+reason, stated once, inside the budgets [references/WRITING.md](references/WRITING.md)
+sets. Complete does not mean long. See [references/REVIEW.md](references/REVIEW.md).
 
 ## 5. Review the branch, not just the diff
 
@@ -111,7 +121,9 @@ branch worse. After each merge, and always before closing a wave:
 Anything you find becomes a **follow-up issue** - never a silent fix, never an
 unrecorded complaint. Name the pull request that introduced it and the acceptance
 criterion it undermines. Attach it to the wave epic if it blocks the release, or to a
-later wave if it does not.
+later wave if it does not. Write it in the issue shape
+[references/WRITING.md](references/WRITING.md) gives, with the pull request on its
+`Refs` line.
 
 ## Cutting a release
 
@@ -135,11 +147,13 @@ concluding anything went wrong.
 
 **Write the reason down where the work lives.** A decision recorded in your own session
 is lost. On the epic, on the pull request, or in the issue body - somewhere an agent or
-a human will read it without asking you.
+a human will read it without asking you. Write it as a fact and a reason, in the form
+[references/WRITING.md](references/WRITING.md) gives, never as an account of how you
+arrived at it.
 
 **Say what you did not do.** You are asking every agent for this in their pull requests.
 When you re-scope a ticket, stand down from a fix, or defer a finding, hold yourself to
-the same standard in the same place.
+the same standard in the same place: one line per omission, with its reason.
 
 ## When a fix reveals another finding
 

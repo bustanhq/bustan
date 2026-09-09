@@ -3,6 +3,18 @@
 Cheap mechanical gates first. Never read logic in a pull request that a later gate is
 going to reject anyway.
 
+## 0. The writeup
+
+```bash
+scripts/check_writeup.py --repo OWNER/REPO --pr N
+```
+
+A title over budget, a body over budget, pasted output, a banned phrase, a footer, a
+session link, template checkboxes or a `Closes #N` inside backticks fails here, and the
+pull request goes back with the script's report as the review comment. Nothing else is
+read first: a body that fails this is a body the next reader cannot use either. The rules
+are in [WRITING.md](WRITING.md).
+
 ## 1. Ownership
 
 ```bash
@@ -20,7 +32,7 @@ pass the patterns explicitly with repeated `--owns` flags instead of trusting th
 file in a review comment is invisible to the gate, which reads the body, so the next run
 reports the granted file as a violation and the reviewer has no reason to doubt it. It is
 also invisible to an agent that read the issue before the comment existed. Edit the body,
-then say in the comment that you did.
+then one line on the pull request: "Owns amended: added `path` (issue #N)."
 
 ## 1b. When a ticket edits the acceptance gate
 
@@ -53,14 +65,17 @@ checks reject it.
 
 ## 3. The pull request contract
 
-Every element, in order: ticket id and title; findings closed; a prose summary a
-reviewer can read without opening the diff; which probes moved from failing to passing;
-the verification output pasted verbatim; every decision where the ticket left more than
-one defensible option, each with its reason; and everything the agent deliberately did
-not do.
+Every element, in order: `Closes #N` and `Refs T-NNN` with the finding ids; a prose
+summary a reviewer can read without opening the diff; a verification summary of one line
+per command with the command's final status line, `run_repros.py` reported as the
+findings that moved from `REPRODUCED` to `FIXED`; each decision where the ticket left more
+than one defensible option, with its reason; and what in scope was not done, with its
+reason, or the one line saying nothing was. The full form is in
+[WRITING.md](WRITING.md).
 
 The last one is not a formality. A silent omission and an oversight look identical to a
-reviewer who cannot ask a question. A pull request missing it goes back unread.
+reviewer who cannot ask a question. A pull request missing it goes back unread. So does
+one that carries pasted output in place of the summary.
 
 ## 4. The diff against the acceptance criteria
 
@@ -77,7 +92,7 @@ the branch:
 
 ## 5. Your own run
 
-Run the verification block on the branch yourself. The agent's paste proves it ran; your
+Run the verification block on the branch yourself. The agent's summary says it ran; your
 run proves it passes. This catches the case where a check passes only in the agent's
 container.
 
@@ -91,6 +106,12 @@ let an account approve or request changes on its own pull request. Submit the re
 `COMMENT` instead and say in the first line which verdict it carries, so the record is
 unambiguous for anyone reading the thread later. Do not let the tooling limitation soften
 the verdict into a suggestion.
+
+A review is a verdict and a list of findings, each inline on the line it concerns: what
+is wrong, what to change, why. Budgets and banned content are in [WRITING.md](WRITING.md).
+A wrong comment is edited, with a line saying what changed, never followed by a
+correcting comment. Nothing about your own tooling goes on the pull request: not the
+limitation, not the workaround.
 
 ## Before you merge, check the issue actually closes
 
@@ -109,14 +130,16 @@ working `Closes #N`, and a formatted one does not qualify.
 
 ## Answering a blocked or decision-required draft
 
-A review comment is your only channel. Make it complete enough to unblock in one round:
+A review comment is your only channel. Make it complete enough to unblock in one round,
+and no longer: the decision, the reason, the required change. Complete is measured in
+questions answered, not in words:
 
 - State the decision, not the verdict. "Use the second option" without the reason leaves
   the agent unable to apply the same judgement to the next case.
 - Answer everything the draft raised, including the parts you think are obvious.
 - If the draft found that the ticket contradicts the code, the agent is probably right
-  and the ticket is probably wrong. Fix the ticket, say you fixed it, and say what
-  changed.
+  and the ticket is probably wrong. Fix the ticket body, and say in one line that it
+  changed and how.
 
 ## What is worth a follow-up rather than a change request
 
