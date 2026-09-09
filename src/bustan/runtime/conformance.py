@@ -60,7 +60,7 @@ from ..common.decorators.parameter import (
     create_param_decorator,
 )
 from ..common.decorators.route import Get, Post
-from ..contracts import HttpRequest, HttpResponse
+from ..contracts import HttpRequest, HttpResponse, NativeHttpRequest
 from ..kernel.module.decorators import Module
 from ..pipeline.context import ExecutionContext
 from ..pipeline.decorators import UseFilters
@@ -372,6 +372,19 @@ def _payload_controller() -> type[object]:
         def read_request(self, request: HttpRequest) -> dict[str, object]:
             return {"method": request.method, "path": request.path}
 
+        @Post("/native-request")
+        async def read_native_request(self, request: NativeHttpRequest) -> dict[str, object]:
+            """Read the body through whichever request object the transport built.
+
+            This is the one spelling that names a transport's own request without naming
+            a transport, so it is the one a case shared by every adapter can use: each
+            adapter hands over the object it produces, and each is held to reading the
+            same body out of it. An adapter whose request cannot stream a body fails the
+            case rather than passing it by reading the body some other way.
+            """
+
+            return {"streamed": b"".join([chunk async for chunk in request.stream()]).decode()}
+
         @Get("/custom")
         def read_custom(self, path: Annotated[str, CurrentRequestPath]) -> dict[str, object]:
             return {"path": path}
@@ -571,6 +584,19 @@ PARAMETER_CASES: tuple[ConformanceCase, ...] = (
         dimension="parameter source: request",
         request=ConformanceRequest(path="/parameters/request"),
         expected=_expect_json({"method": "GET", "path": "/parameters/request"}),
+    ),
+    ConformanceCase(
+        name="parameter_source_native_request",
+        # The same source as the neutral spelling beside it: a parameter naming the
+        # transport's own request is bound from the request, and what differs is only
+        # which of the two objects standing for it the handler is handed.
+        dimension="parameter source: request",
+        request=ConformanceRequest(
+            method="POST",
+            path="/parameters/native-request",
+            content=b"read from the transport's own request",
+        ),
+        expected=_expect_json({"streamed": "read from the transport's own request"}),
     ),
     ConformanceCase(
         name="parameter_source_custom",

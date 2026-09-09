@@ -21,7 +21,7 @@ from ...contracts import (
 from .forms import parse_form_body
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import AsyncGenerator, AsyncIterator, Mapping
 
     from .types import Message, Receive, Scope
 
@@ -63,9 +63,22 @@ class AsgiHttpRequest:
     application itself declared, so a later reader is handed it rather than having it
     judged again here; what the framework accepts for a particular parameter is the
     framework's own check, made on the bytes it is handed.
+
+    A caller that wants the body as it arrives rather than whole asks for ``stream``,
+    which hands over each chunk the server delivers and keeps none of them. That is the
+    one reader here which does not fill the cache, because filling it would spend the
+    memory streaming was asked for in order to avoid.
     """
 
-    __slots__ = ("_body", "_max_body_bytes", "_path_params", "_receive", "_scope", "_state")
+    __slots__ = (
+        "_body",
+        "_max_body_bytes",
+        "_path_params",
+        "_receive",
+        "_scope",
+        "_state",
+        "_streamed",
+    )
 
     def __init__(
         self,
@@ -81,6 +94,7 @@ class AsgiHttpRequest:
         self._max_body_bytes = max_body_bytes
         self._body: bytes | None = None
         self._state: RequestState | None = None
+        self._streamed = False
 
     @property
     def native_request(self) -> AsgiHttpRequest:
@@ -186,6 +200,31 @@ class AsgiHttpRequest:
 
         return self._scope.get("app")
 
+    async def stream(self) -> AsyncGenerator[bytes]:
+        """Yield the body chunk by chunk, as the server delivers it.
+
+        Each chunk is handed over as it arrives and none of them are kept, so a caller
+        that streams a body never holds more of it than the chunk it is looking at. The
+        bounds a whole read is made under still apply: the count runs across chunks and
+        the stream stops at the one that carries the body past the application's limit,
+        so streaming is not a way around a bound.
+
+        A body that was already read whole cannot be asked for again, because ASGI
+        delivers it once and is not rewindable, so a stream opened after that yields the
+        bytes that were kept rather than pretending to have read them from the
+        connection. A second stream, where nothing was kept, raises instead: it has
+        nothing left to read and an empty body would read as a request that carried none.
+        """
+
+        if self._body is not None:
+            yield self._body
+            return
+        self._refuse_if_streamed()
+        self._streamed = True
+        body_bound, _ = self._declared_bounds()
+        async for chunk in self._receive_body(body_bound):
+            yield chunk
+
     async def body(self) -> bytes:
         """Read the whole request body, refusing one over the application's body limit.
 
@@ -194,9 +233,14 @@ class AsgiHttpRequest:
         The limit is the one the application serving this request declared, read now
         rather than when the request was wrapped, because an application declares its
         limits after its routes are built.
+
+        A body that was streamed away chunk by chunk was never kept, so there is nothing
+        here to hand back and asking raises rather than answering with an empty body that
+        would read as a request that carried none.
         """
 
         if self._body is None:
+            self._refuse_if_streamed()
             body_bound, _ = self._declared_bounds()
             self._body = await self._read_body(body_bound)
         return self._body
@@ -217,6 +261,7 @@ class AsgiHttpRequest:
         """
 
         if self._body is None:
+            self._refuse_if_streamed()
             _, upload_bound = self._declared_bounds()
             self._body = await self._read_body(upload_bound)
         return parse_form_body(self._body, self.headers.get("content-type"))
@@ -226,8 +271,24 @@ class AsgiHttpRequest:
 
         self._path_params = dict(path_params)
 
+    def _refuse_if_streamed(self) -> None:
+        """Refuse a second read of a body whose only copy was handed out chunk by chunk.
+
+        A programming error rather than a client one: the caller asked for bytes this
+        request never kept, and answering with an empty body would report a request that
+        carried none.
+        """
+
+        if self._streamed:
+            raise RuntimeError("The request body has already been streamed and was not kept")
+
     async def _read_body(self, declared: int | None) -> bytes:
-        """Read the body, stopping at the chunk that carries it past a bound.
+        """Read the whole body, stopping at the chunk that carries it past a bound."""
+
+        return b"".join([chunk async for chunk in self._receive_body(declared)])
+
+    async def _receive_body(self, declared: int | None) -> AsyncIterator[bytes]:
+        """Yield the body as it arrives, stopping at the chunk that carries it past a bound.
 
         Two bounds, checked in this order because they belong to different owners and a
         caller is owed the answer of whichever refused. *declared* is the limit the
@@ -237,7 +298,6 @@ class AsgiHttpRequest:
         past the ceiling without the ceiling being raised too.
         """
 
-        chunks: list[bytes] = []
         received = 0
         more = True
         while more:
@@ -255,9 +315,8 @@ class AsgiHttpRequest:
             ceiling = self._max_body_bytes
             if ceiling is not None and received > ceiling:
                 self._refuse(f"The request body carries more than the {ceiling} byte limit")
-            chunks.append(chunk)
+            yield chunk
             more = bool(message.get("more_body", False))
-        return b"".join(chunks)
 
     def _refuse(self, message: str) -> NoReturn:
         """Refuse a body over a bound, in the terms the framework refuses one in.

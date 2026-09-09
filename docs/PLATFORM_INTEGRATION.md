@@ -113,57 +113,66 @@ with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
 {'path': '/users/7', 'user_id': 7}
 ```
 
-### A Native Annotation Names A Role, Not A Class
+### A Native Annotation Names The Adapter That Serves It
 
-A parameter annotated with the transport's own request type is not read as that class. It is read as *the request object of whichever transport is serving*, and the framework decides whether an annotation qualifies **structurally**: the class must carry the whole of the internal native-request protocol, `stream` included.
+A parameter annotated with a transport's own request type is handed `request.native_request` - the object the serving adapter built - so the annotation is true only when the adapter serving that route is the one that builds that type. The framework checks exactly that, and it checks it while the application is assembled.
 
-That test cuts both ways, and neither side is refused.
+The reading happens in two steps, because neither answers the whole question alone.
 
-An annotation that passes it is satisfied by the serving adapter's object, whatever that is. Under the Starlette adapter `starlette.requests.Request` passes and the annotation is exactly true; under the raw ASGI adapter the same annotation is satisfied by an `AsgiHttpRequest`, and it is not.
+**Shape** says the parameter asked for a transport's request rather than the neutral one: the annotation must be a class carrying the whole of the internal native-request protocol - a body reachable as a stream, as bytes and as parsed JSON. `HttpRequest` carries no way to stream a body, which is what keeps the two spellings apart.
 
-An annotation that fails it is not treated as a request at all. `AsgiHttpRequest` itself fails - it has no `stream` method - so a handler naming the ASGI adapter's own request type is bound as an ordinary parameter, and every call to it is answered `400 Missing required query parameter 'request'`.
+**Identity** says *which* transport. Every transport's request object has the same shape, so shape cannot tell one from another. Each adapter declares the type it produces - `AbstractHttpAdapter.native_request_type`, the counterpart of `from_native_request` - and the annotation is satisfied when the object that adapter hands over is an instance of what the parameter asked for. The Starlette adapter produces `starlette.requests.Request`; the raw ASGI adapter produces `AsgiHttpRequest`, which is its own request object because raw ASGI defines none.
+
+A parameter the serving adapter cannot satisfy is refused with `RouteDefinitionError` when the routes are compiled, before any server starts. That is where it belongs: the mismatch is a property of how the application was wired rather than of any one request, and refusing it per request would turn a wiring error into a failure on every call.
 
 ```python
 from typing import Any, cast
 
 from starlette.requests import Request
 
-from bustan import Controller, Get, Module, create_app
+from bustan import Controller, Get, Module, RouteDefinitionError, create_app
 from bustan.adapters.asgi import AsgiAdapter, AsgiHttpRequest
 from bustan.testing import AsgiTestClient
 
 
 @Controller("/users")
-class UsersController:
-    @Get("/passes")
-    def passes(self, request: Request) -> dict[str, object]:
-        return {"handed": type(request).__name__, "is_starlette": isinstance(request, Request)}
-
-    @Get("/fails")
-    def fails(self, request: AsgiHttpRequest) -> dict[str, object]:
-        return {"path": request.path}
+class ItsOwnRequestController:
+    @Get("/own")
+    def own(self, request: AsgiHttpRequest) -> dict[str, object]:
+        return {"handed": type(request).__name__, "path": request.path}
 
 
-@Module(controllers=[UsersController])
-class AppModule:
-    pass
+@Controller("/users")
+class AnotherTransportsRequestController:
+    @Get("/other")
+    def other(self, request: Request) -> dict[str, object]:
+        return {"handed": type(request).__name__}
 
 
-app = create_app(AppModule, adapter=lambda runtime: AsgiAdapter(lifespan=runtime.lifespan))
-with AsgiTestClient(cast(Any, app)) as client:
-    print(client.get("/users/passes").json())
-    failed = client.get("/users/fails")
-    print(failed.status_code, failed.json()["detail"])
+def serve(controller: type[object]) -> Any:
+    module = Module(controllers=[controller])(type("AppModule", (), {}))
+    return create_app(module, adapter=lambda runtime: AsgiAdapter(lifespan=runtime.lifespan))
+
+
+with AsgiTestClient(cast(Any, serve(ItsOwnRequestController))) as client:
+    print(client.get("/users/own").json())
+
+try:
+    serve(AnotherTransportsRequestController)
+except RouteDefinitionError as refusal:
+    print(refusal)
 ```
 
 ```text
-{'handed': 'AsgiHttpRequest', 'is_starlette': False}
-400 Missing required query parameter 'request'
+{'handed': 'AsgiHttpRequest', 'path': '/users/own'}
+__main__.AnotherTransportsRequestController.other parameter 'request' names starlette.requests.Request, which AsgiAdapter does not produce: it produces bustan.adapters.asgi.requests.AsgiHttpRequest. Annotate HttpRequest and reach for request.native_request, or serve this application through the adapter whose request type the parameter names.
 ```
 
-Nothing refuses either case, at startup or on the request. The first hands a handler an object of a type its own annotation denies, and it finds out on the first attribute the other transport's object does not have; the second turns every call into a `400` that names a query parameter the caller never heard of.
+An annotation naming a transport is therefore a statement about the deployment that the framework will hold you to. Write it where the application genuinely serves on that transport and you want its object; the refusal is what stops it from quietly becoming false when the adapter changes.
 
-So a handler that names a transport's request type is making a claim about the deployment rather than one the framework will check. Write `HttpRequest`, and reach for `request.native_request` where you genuinely need the transport's own object - the spelling that says what is actually happening.
+One native spelling stays true under every adapter: `bustan.contracts.NativeHttpRequest`, the protocol itself. Every adapter's request satisfies it, so a handler that wants the transport's own object without naming a transport can write that instead of naming one.
+
+Where you do not need the transport's object, write `HttpRequest` and reach for `request.native_request` at the point you want it. That is the spelling that never has to be re-checked when the adapter changes.
 
 ## Response Control
 

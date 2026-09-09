@@ -26,6 +26,8 @@ from bustan import (
     Scope,
     create_app,
 )
+from bustan.adapters.asgi import AsgiAdapter, AsgiTestClient
+from bustan.adapters.asgi.requests import AsgiHttpRequest
 from bustan.adapters.starlette.requests import from_starlette_request
 from bustan.kernel.ioc.tokens import APPLICATION, REQUEST
 
@@ -168,3 +170,58 @@ def build_starlette_request(app: Starlette) -> Request:
             "app": app,
         }
     )
+
+
+ASGI_SEEN: dict[str, object] = {}
+
+
+@Injectable(scope=Scope.REQUEST)
+class HoldsTheRawAsgiRequest:
+    """A provider that asked for the request by the type raw ASGI's adapter defines."""
+
+    def __init__(self, request: AsgiHttpRequest) -> None:
+        self.request = request
+
+
+@Controller("/raw", scope=Scope.REQUEST)
+class RawAsgiController:
+    def __init__(self, contract: HoldsTheContract, transport: HoldsTheRawAsgiRequest) -> None:
+        ASGI_SEEN["contract"] = contract.request
+        ASGI_SEEN["transport"] = transport.request
+
+    @Get("/")
+    def read(self, request: AsgiHttpRequest) -> dict[str, str]:
+        ASGI_SEEN["parameter"] = request
+        return {"status": "ok"}
+
+
+@Module(controllers=[RawAsgiController], providers=[HoldsTheContract, HoldsTheRawAsgiRequest])
+class RawAsgiModule:
+    pass
+
+
+def test_a_handler_naming_the_serving_adapter_s_own_request_type_is_served_it() -> None:
+    """Raw ASGI's request type is its adapter's own, and naming it must be served.
+
+    The framework built this class, so a handler that writes it is naming the object the
+    serving adapter hands over. It is bound as the request rather than looked for in the
+    query string, and both the parameter and a provider constructor see the same object.
+    """
+
+    ASGI_SEEN.clear()
+    application = create_app(
+        RawAsgiModule, adapter=lambda runtime: AsgiAdapter(lifespan=runtime.lifespan)
+    )
+
+    with AsgiTestClient(cast(Any, application)) as client:
+        response = client.get("/raw/")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+    parameter_request = ASGI_SEEN["parameter"]
+    contract_request = cast(HttpRequest, ASGI_SEEN["contract"])
+
+    assert isinstance(parameter_request, AsgiHttpRequest)
+    assert parameter_request is contract_request.native_request
+    assert ASGI_SEEN["transport"] is parameter_request

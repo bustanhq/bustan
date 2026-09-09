@@ -461,3 +461,103 @@ def test_anything_else_is_taken_to_be_a_request_contract_already() -> None:
     marker = object()
 
     assert from_asgi_request(marker) is marker
+
+
+@pytest.mark.anyio
+async def test_a_streamed_body_is_handed_over_chunk_by_chunk_as_the_server_delivers_it(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """The point of streaming is that the whole body is never held, so the chunks are the test.
+
+    A stream that answered with the buffered body in one piece would pass a test that only
+    joined what it yielded, which is why what is asserted here is the shape of the delivery
+    rather than the bytes alone.
+    """
+
+    request = AsgiHttpRequest(build_scope(), build_receive(b"hello streamed body", chunks=4))
+
+    chunks = [chunk async for chunk in request.stream()]
+
+    assert len(chunks) == 4
+    assert b"".join(chunks) == b"hello streamed body"
+
+
+@pytest.mark.anyio
+async def test_a_stream_reads_no_more_of_the_body_than_the_chunk_it_is_yielding(
+    build_scope: ScopeFactory,
+) -> None:
+    """Nothing is read ahead of the caller, which is what makes the memory bounded."""
+
+    meter = _Meter(b"x" * 4096, chunk_bytes=1024)
+    request = AsgiHttpRequest(build_scope(), meter)
+
+    stream = request.stream()
+    first = await anext(stream)
+
+    assert first == b"x" * 1024
+    assert meter.consumed == 1024
+
+    await stream.aclose()
+
+
+@pytest.mark.anyio
+async def test_a_streamed_body_is_bounded_by_the_limit_a_whole_read_is_bounded_by(
+    build_scope: ScopeFactory,
+) -> None:
+    """Streaming is not a way past the bound; the count runs across the chunks."""
+
+    meter = _Meter(b"x" * (4 * 1024 * 1024), chunk_bytes=1024)
+    request = AsgiHttpRequest(build_scope(app=_application(max_body_bytes=1024)), meter)
+
+    with pytest.raises(RequestBodyTooLargeError, match="exceeds the 1024 byte limit"):
+        async for _chunk in request.stream():
+            pass
+
+    assert meter.consumed <= 1024 + 1024
+
+
+@pytest.mark.anyio
+async def test_a_stream_opened_after_the_body_was_read_yields_what_was_kept(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """ASGI delivers a body once, so a stream after a whole read has only the kept bytes."""
+
+    request = AsgiHttpRequest(build_scope(), build_receive(b"already read", chunks=3))
+
+    assert await request.body() == b"already read"
+    assert [chunk async for chunk in request.stream()] == [b"already read"]
+
+
+@pytest.mark.anyio
+async def test_a_body_that_was_streamed_away_is_refused_rather_than_answered_as_empty(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """The bytes were handed out and never kept, so there is nothing left to answer with."""
+
+    request = AsgiHttpRequest(build_scope(), build_receive(b"streamed away", chunks=2))
+
+    assert [chunk async for chunk in request.stream()] == [b"streame", b"d away"]
+
+    with pytest.raises(RuntimeError, match="already been streamed"):
+        await request.body()
+
+    with pytest.raises(RuntimeError, match="already been streamed"):
+        await request.form()
+
+    with pytest.raises(RuntimeError, match="already been streamed"):
+        async for _chunk in request.stream():
+            pass
+
+
+@pytest.mark.anyio
+async def test_a_stream_reports_a_client_that_went_away_before_its_body_arrived(
+    build_scope: ScopeFactory,
+) -> None:
+    async def receive() -> Message:
+        return {"type": "http.disconnect"}
+
+    request = AsgiHttpRequest(build_scope(), receive)
+
+    with pytest.raises(ClientDisconnected):
+        async for _chunk in request.stream():
+            pass

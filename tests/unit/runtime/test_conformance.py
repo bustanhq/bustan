@@ -92,6 +92,25 @@ def test_the_form_body_cases_post_a_form_body() -> None:
         assert case.request.content
 
 
+def test_every_adapter_is_certified_on_the_transport_s_own_request_object(
+    results: dict[str, AdapterConformanceResult],
+) -> None:
+    """Both spellings of the request are certified, not only the neutral one.
+
+    The case names the transport's request without naming a transport, so each adapter
+    answers it with the object it produces, and each has to reach the same body out of
+    it. An adapter whose own request cannot be streamed fails the case here rather than
+    failing an application that wrote the annotation the framework recognises.
+    """
+
+    for adapter, result in results.items():
+        check = next(
+            check for check in result.checks if check.name == "parameter_source_native_request"
+        )
+
+        assert check.passed, f"{adapter}: {check.detail}"
+
+
 def test_the_suite_covers_every_response_strategy() -> None:
     covered = {
         dimension.removeprefix("response strategy: ")

@@ -41,12 +41,17 @@ from ..common.decorators.parameter import (
     _UploadedFilesMarker,
 )
 from ..contracts import HttpRequest, as_http_request, names_native_request
-from ..kernel.errors import BustanError, ParameterBindingError
+from ..contracts.requests import produces_native_request
+from ..kernel.errors import BustanError, ParameterBindingError, RouteDefinitionError
 from ..kernel.utils import _qualname
 from .metadata import ControllerRouteDefinition, get_controller_metadata
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from ..contracts import AbstractHttpAdapter, AdapterRoute
     from ..pipeline.context import ExecutionContext
+    from .execution import ExecutionPlan
 
 _MISSING = object()
 _NO_BODY = object()
@@ -278,6 +283,75 @@ def compile_parameter_bindings(
         body_model=_infer_body_model(tuple(bindings), tuple(inferred_parameter_names)),
         validation_mode=validation_mode,
         validate_custom_decorators=validate_custom_decorators,
+    )
+
+
+def refuse_foreign_native_requests(
+    adapter: AbstractHttpAdapter, routes: Iterable[AdapterRoute]
+) -> None:
+    """Refuse any handler parameter naming a request type *adapter* does not produce.
+
+    A parameter that names a transport's own request type is handed
+    :attr:`HttpRequest.native_request`, so the annotation is true only where the adapter
+    serving the route is the one that builds that type. Every transport's request has
+    the same shape, so the annotation cannot say on its own which transport it named;
+    the adapter declares the type it produces, and the two are compared by identity.
+
+    This is a property of how an application was wired rather than of any one request,
+    so it is answered where an adapter is handed the routes it will serve, before any
+    server starts. Left to the request, the same mistake is answered on every call -
+    with another transport's object, or with a query parameter nobody wrote - and reads
+    as a fault in the application rather than in how it was wired.
+
+    Raises ``RouteDefinitionError`` naming the parameter, what it asked for and what the
+    adapter produces.
+    """
+
+    for route in routes:
+        for binding_plan in _handler_binding_plans(route):
+            for binding in binding_plan.parameters:
+                if binding.source is not ParameterSource.REQUEST:
+                    continue
+                if not names_native_request(binding.annotation):
+                    continue
+                if produces_native_request(adapter.native_request_type, binding.annotation):
+                    continue
+                raise RouteDefinitionError(
+                    _foreign_native_request_message(adapter, binding_plan, binding)
+                )
+
+
+def _handler_binding_plans(route: AdapterRoute) -> tuple[HandlerBindingPlan, ...]:
+    """Return the binding plans of every handler one compiled route serves.
+
+    A route the framework compiled carries the execution plans it was compiled from. One
+    built by hand - by a test, or by an adapter registering a route of its own - carries
+    none, and so names no handler parameter for anything to check.
+    """
+
+    plans = cast("tuple[ExecutionPlan, ...]", getattr(route, "execution_plans", ()))
+    return tuple(plan.binding_plan for plan in plans)
+
+
+def _foreign_native_request_message(
+    adapter: AbstractHttpAdapter,
+    binding_plan: HandlerBindingPlan,
+    binding: ParameterBinding,
+) -> str:
+    """Return the refusal for a parameter the serving adapter cannot satisfy."""
+
+    produced = adapter.native_request_type
+    produces = (
+        f"produces {_qualname(produced)}"
+        if produced is not None
+        else "produces no request type of its own"
+    )
+    return (
+        f"{_qualname(binding_plan.controller)}.{binding_plan.handler_name} parameter "
+        f"{binding.name!r} names {_qualname(binding.annotation)}, which "
+        f"{type(adapter).__name__} does not produce: it {produces}. Annotate HttpRequest and "
+        "reach for request.native_request, or serve this application through the adapter "
+        "whose request type the parameter names."
     )
 
 

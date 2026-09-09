@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+from starlette.requests import Request
+
 from bustan import VERSION_NEUTRAL, Controller, Get, Module, VersioningOptions, VersioningType
+from bustan.adapters.asgi import AsgiAdapter
+from bustan.adapters.asgi.requests import AsgiHttpRequest
 from bustan.adapters.starlette import StarletteAdapter
+from bustan.contracts import AbstractHttpAdapter, HttpRequest
+from bustan.kernel.errors import RouteDefinitionError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
 from bustan.runtime.adapter import CompiledAdapterRoute, compile_adapter_routes
@@ -92,3 +99,69 @@ def test_the_plan_hands_an_adapter_a_neutral_handler_and_no_transport_object() -
 
     assert compiled_routes[0].handler is not None
     assert compiled_routes[0].contracts[0].controller_cls is UsersController
+
+
+def _compile_for(adapter: AbstractHttpAdapter, controller: type[object]) -> None:
+    """Compile one controller for *adapter*, which is where a route is refused or accepted."""
+
+    module = Module(controllers=[controller])(type("AppModule", (), {}))
+    graph = build_module_graph(module)
+    container = build_container(graph)
+    compile_adapter_routes(adapter, compile_route_contracts(graph, container), container)
+
+
+def test_a_handler_naming_another_transport_s_request_type_is_refused_at_assembly() -> None:
+    """The wiring is judged where the adapter and the route plan first meet.
+
+    A parameter naming a transport request type the serving adapter does not build could
+    only ever be handed the wrong object, and the mistake belongs to how the application
+    was assembled rather than to any request, so it is answered once here instead of on
+    every call.
+    """
+
+    @Controller("/probe")
+    class ProbeController:
+        @Get("/")
+        def probe(self, request: Request) -> None:
+            return None
+
+    with pytest.raises(RouteDefinitionError) as info:
+        _compile_for(AsgiAdapter(), ProbeController)
+
+    message = str(info.value)
+    assert "parameter 'request'" in message
+    assert "starlette.requests.Request" in message
+    assert "AsgiAdapter" in message
+    assert "bustan.adapters.asgi.requests.AsgiHttpRequest" in message
+
+
+def test_a_handler_naming_the_serving_adapter_s_own_request_type_compiles() -> None:
+    """Each adapter accepts the annotation naming the request type it produces."""
+
+    @Controller("/probe")
+    class StarletteProbeController:
+        @Get("/")
+        def probe(self, request: Request) -> None:
+            return None
+
+    @Controller("/probe")
+    class AsgiProbeController:
+        @Get("/")
+        def probe(self, request: AsgiHttpRequest) -> None:
+            return None
+
+    _compile_for(StarletteAdapter(), StarletteProbeController)
+    _compile_for(AsgiAdapter(), AsgiProbeController)
+
+
+def test_the_neutral_request_contract_compiles_under_every_adapter() -> None:
+    """Writing the framework's own request type is what stays true under any transport."""
+
+    @Controller("/probe")
+    class NeutralProbeController:
+        @Get("/")
+        def probe(self, request: HttpRequest) -> None:
+            return None
+
+    _compile_for(StarletteAdapter(), NeutralProbeController)
+    _compile_for(AsgiAdapter(), NeutralProbeController)

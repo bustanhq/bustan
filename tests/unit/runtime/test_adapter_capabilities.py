@@ -170,6 +170,18 @@ def test_the_port_declares_the_conversions_and_lifecycle_an_adapter_owes() -> No
     }
 
 
+def test_an_adapter_that_declares_no_request_type_of_its_own_produces_none() -> None:
+    """The declaration is optional, and its absence says the adapter produces nothing.
+
+    An adapter that says nothing cannot have a handler's transport-request annotation
+    checked against it, so the safe reading of silence is that it satisfies none - which
+    is what keeps the smallest adapter the port admits from being a way past the check.
+    """
+
+    assert AbstractHttpAdapter.native_request_type is None
+    assert MinimalAdapter().native_request_type is None
+
+
 def test_no_port_method_asks_for_a_container_or_names_an_asgi_argument() -> None:
     import inspect
 

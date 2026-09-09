@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from ...contracts import AbstractHttpAdapter, AdapterCapabilities, HttpRequest
 from .application import AsgiApplication
-from .requests import DEFAULT_MAX_BODY_BYTES, from_asgi_request
+from .requests import DEFAULT_MAX_BODY_BYTES, AsgiHttpRequest, from_asgi_request
 from .responses import AsgiResponseValue, to_asgi_response
 from .server import AsgiServer
 from .testclient import AsgiTestClient
@@ -39,6 +39,10 @@ class AsgiAdapter(AbstractHttpAdapter):
         supports_streaming_responses=True,
         supports_websocket_upgrade=False,
     )
+    # Raw ASGI defines no request object, so the one this transport builds is the wrapper
+    # itself: it is what ``native_request`` returns, and so what a handler naming this
+    # transport's request type is handed.
+    native_request_type = AsgiHttpRequest
 
     def __init__(
         self,
