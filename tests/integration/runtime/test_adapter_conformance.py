@@ -21,6 +21,13 @@ from bustan.testing import AsgiTestClient
 
 _STREAMED_BODY_CASE = "request_limit_refuses_a_streamed_body_over_the_limit"
 
+# The one case the suite holds two adapters to different documents for. An encoded
+# separator is a separator to a transport that decodes the whole target before it routes
+# and a character to one that decodes it segment by segment, so the two land the request
+# on different routes and no single document can hold both. It is named here rather than
+# counted, so that a second case reaching for the same facility fails this file.
+DECLARED_DIVERGENCE = "request_target_keeps_an_encoded_slash_inside_its_segment"
+
 
 @dataclass(frozen=True, slots=True)
 class Payload:
@@ -75,13 +82,13 @@ def _case(name: str) -> ConformanceCase:
     raise AssertionError(f"no conformance case named {name!r}")
 
 
-def test_no_case_narrows_what_is_compared_between_adapters() -> None:
-    """A narrowed comparison is a debt, so the suite has to say how much of it there is.
+def test_one_case_is_held_apart_and_it_is_the_one_named_here() -> None:
+    """A comparison the suite steps over is a debt, so it has to be counted by name.
 
-    None, today: every case is compared whole, member for member, across every adapter,
-    and no case holds one adapter to a document another is not held to. A case appearing
-    that does either without this test being changed is the thing worth catching, because
-    the facility that allows it is general and reaching for it is cheap.
+    One case is held apart and no case narrows a body member. A second case doing either
+    without this test being changed is the thing worth catching, because the facility that
+    allows it is general and reaching for it is cheap: a divergence nobody wrote down
+    reads exactly like one that was argued for.
     """
 
     narrowed = [
@@ -98,7 +105,25 @@ def test_no_case_narrows_what_is_compared_between_adapters() -> None:
     ]
 
     assert narrowed == []
-    assert held_apart == []
+    assert held_apart == [DECLARED_DIVERGENCE]
+
+
+def test_the_case_held_apart_names_one_adapter_and_two_answers() -> None:
+    """Being named buys an adapter its own document and nothing else.
+
+    The case still has to say which adapter answers differently, and the two documents
+    still have to differ, or the exemption covers a case the adapters agree on and the
+    comparison has a hole in it that nothing else would report. Both answers are pinned
+    here, so a transport that stopped routing an encoded separator this way fails.
+    """
+
+    case = _case(DECLARED_DIVERGENCE)
+
+    assert [adapter for adapter, _observation in case.expected_by_adapter] == ["asgi"]
+    assert case.expected_for("starlette") is case.expected
+    assert case.expected.status_code == 404
+    assert case.expected_for("asgi").status_code == 200
+    assert case.diverging_body_members == ()
 
 
 def test_the_streamed_body_case_holds_every_adapter_to_one_document() -> None:

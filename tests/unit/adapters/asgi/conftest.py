@@ -25,6 +25,7 @@ class ScopeFactory(Protocol):
         *,
         method: str = "GET",
         path: str = "/",
+        raw_path: bytes | None = None,
         query_string: bytes = b"",
         headers: list[tuple[bytes, bytes]] | None = None,
         client: tuple[str, int] | None = ("testclient", 50000),
@@ -42,12 +43,18 @@ class ReceiveFactory(Protocol):
 
 @pytest.fixture
 def build_scope() -> ScopeFactory:
-    """Return a factory for connection scopes, defaulting to a bare ``GET /``."""
+    """Return a factory for connection scopes, defaulting to a bare ``GET /``.
+
+    ``raw_path`` defaults to the path encoded, which is what it is for a target carrying
+    no percent escapes. A test about a target that carries one passes the two separately,
+    because the difference between them is the whole of what it is asking about.
+    """
 
     def factory(
         *,
         method: str = "GET",
         path: str = "/",
+        raw_path: bytes | None = None,
         query_string: bytes = b"",
         headers: list[tuple[bytes, bytes]] | None = None,
         client: tuple[str, int] | None = ("testclient", 50000),
@@ -60,7 +67,7 @@ def build_scope() -> ScopeFactory:
             "method": method,
             "scheme": "http",
             "path": path,
-            "raw_path": path.encode(),
+            "raw_path": path.encode() if raw_path is None else raw_path,
             "query_string": query_string,
             "root_path": "",
             "headers": _DEFAULT_HEADERS if headers is None else headers,

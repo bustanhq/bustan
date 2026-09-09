@@ -17,6 +17,7 @@ from urllib.parse import urlencode, urlsplit
 
 from ...contracts import Headers
 from .lifespan import LifespanRunner
+from .targets import HttpParseError, parse_request_target
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine, Iterable, Mapping
@@ -204,7 +205,14 @@ class AsgiTestClient:
         declares_length: bool,
         cookies: Mapping[str, str] | None,
     ) -> AsgiTestResponse:
-        scope = self._build_scope(method, target, headers, body, declares_length, cookies)
+        try:
+            scope = self._build_scope(method, target, headers, body, declares_length, cookies)
+        except HttpParseError as refusal:
+            # A target the transport will not read never reaches an application, over a
+            # socket or here, so the client answers it the way the server does rather
+            # than raising. A client that raised instead would be a client through which
+            # the refusal could not be observed at all.
+            return _refusal_response(refusal, target)
         messages: list[Message] = []
         channel = _RequestChannel(body)
 
@@ -225,6 +233,9 @@ class AsgiTestClient:
         cookies: Mapping[str, str] | None,
     ) -> Scope:
         split = urlsplit(target if "://" in target else f"{self._base_url}{target}")
+        # Read through the parser the server reads a request line with, so that a path
+        # this client sends and the same path arriving over a socket produce one scope.
+        parsed = parse_request_target(_request_target(split.path, split.query).encode("utf-8"))
         sent = {
             "host": split.netloc,
             "user-agent": DEFAULT_USER_AGENT,
@@ -243,9 +254,9 @@ class AsgiTestClient:
             "http_version": "1.1",
             "method": method,
             "scheme": split.scheme or "http",
-            "path": split.path or "/",
-            "raw_path": (split.path or "/").encode("latin-1"),
-            "query_string": split.query.encode("latin-1"),
+            "path": parsed.path,
+            "raw_path": parsed.raw_path,
+            "query_string": parsed.query_string,
             "root_path": "",
             "headers": [
                 (name.encode("latin-1"), value.encode("latin-1")) for name, value in sent.items()
@@ -293,6 +304,30 @@ class AsgiTestClient:
             loop.call_soon_threadsafe(loop.stop)
             thread.join()
             loop.close()
+
+
+def _request_target(path: str, query: str) -> str:
+    """Rebuild the target a client puts on a request line, from the parts of a URL.
+
+    A URL with nothing after its host addresses the root, which is what a request line
+    has to say; there is no spelling of a request line that leaves the target out.
+    """
+
+    return f"{path or '/'}?{query}" if query else (path or "/")
+
+
+def _refusal_response(refusal: HttpParseError, url: str) -> AsgiTestResponse:
+    """Answer a request the transport refused before it built a scope for it.
+
+    The status and the sentence are the ones the server writes over a socket, because
+    they come from the same refusal; only the framing differs.
+    """
+
+    body = refusal.reason.encode("utf-8")
+    headers = Headers(
+        [("content-type", "text/plain; charset=utf-8"), ("content-length", str(len(body)))]
+    )
+    return AsgiTestResponse(refusal.status, headers, body, url)
 
 
 def _target(url: str, params: Mapping[str, str] | None) -> str:

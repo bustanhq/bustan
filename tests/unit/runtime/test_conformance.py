@@ -45,6 +45,22 @@ def results() -> dict[str, AdapterConformanceResult]:
     return {name: evaluate_adapter_conformance(load_adapter(name)) for name in ADAPTER_NAMES}
 
 
+# The one case whose adapters answer different documents by declaration, so that the two
+# tests below exempt that case by name rather than exempting whatever asks to be exempt.
+DECLARED_DIVERGENCE = "request_target_keeps_an_encoded_slash_inside_its_segment"
+
+
+def _declared_divergences() -> set[str]:
+    """Return the cases that hold a named adapter to a document of its own."""
+
+    return {
+        case.name
+        for scenario in conformance_module.SCENARIOS
+        for case in scenario.cases
+        if case.expected_by_adapter
+    }
+
+
 def _dimensions() -> set[str]:
     return {case.dimension for scenario in conformance_module.SCENARIOS for case in scenario.cases}
 
@@ -173,15 +189,47 @@ def test_every_adapter_passes_the_suite(
     assert result.adapter == adapter_name
 
 
-def test_every_adapter_answers_every_case_identically(
+def test_every_adapter_answers_every_case_identically_but_the_one_that_says_otherwise(
     results: dict[str, AdapterConformanceResult],
 ) -> None:
+    """Identical answers everywhere except the case that declares where they cannot be.
+
+    The exempt case is named rather than counted, so a second case reaching for the same
+    facility fails here instead of being skipped along with it.
+    """
+
+    declared = _declared_divergences()
     baseline_name, *others = ADAPTER_NAMES
     baseline = results[baseline_name].observations()
 
+    assert declared == {DECLARED_DIVERGENCE}
     for name in others:
         for case, observation in results[name].observations().items():
+            if case in declared:
+                continue
             assert describe_difference(baseline_name, baseline[case], name, observation) == ()
+
+
+def test_the_case_held_apart_is_answered_differently_and_passed_by_every_adapter(
+    results: dict[str, AdapterConformanceResult],
+) -> None:
+    """The exemption has to be needed, and it has to buy nothing beyond itself.
+
+    Needed, because an exemption covering a case the adapters agree on is a hole in the
+    comparison that nothing else would report. And nothing beyond itself, because each
+    adapter is still held to the document the case names for it: a declared divergence
+    excuses the two answers from matching each other, not from being right.
+    """
+
+    baseline_name, *others = ADAPTER_NAMES
+    baseline = results[baseline_name].observations()[DECLARED_DIVERGENCE]
+
+    for name in others:
+        observation = results[name].observations()[DECLARED_DIVERGENCE]
+        assert describe_difference(baseline_name, baseline, name, observation) != ()
+    for adapter, result in results.items():
+        check = next(check for check in result.checks if check.name == DECLARED_DIVERGENCE)
+        assert check.passed, f"{adapter}: {check.detail}"
 
 
 def test_the_result_reports_capabilities_and_serialises(

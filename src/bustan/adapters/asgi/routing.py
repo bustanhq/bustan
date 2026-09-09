@@ -31,6 +31,18 @@ CONVERTERS: dict[str, str] = {
 _PARAMETER = re.compile(r"{([a-zA-Z_][a-zA-Z0-9_]*)(?::([a-zA-Z_][a-zA-Z0-9_]*))?}")
 
 
+def alternate_path(path: str) -> str:
+    """Return *path* spelled the other way round: its trailing slash added or removed.
+
+    A route written one way and a request written the other are the same request. This is
+    the one other spelling worth trying, and it is also the spelling a redirect sends the
+    caller to, so the two are the same function: a redirect built by a second expression
+    would eventually send a caller somewhere the router had not agreed to answer.
+    """
+
+    return path.removesuffix("/") if path.endswith("/") else f"{path}/"
+
+
 def compile_path(path: str) -> re.Pattern[str]:
     """Compile one path template into the expression that matches a request path.
 
@@ -154,7 +166,7 @@ class AsgiRouter:
             allowed |= route.methods
         if allowed:
             return MethodMismatch(tuple(sorted(allowed)))
-        alternate = path.removesuffix("/") if path.endswith("/") else f"{path}/"
+        alternate = alternate_path(path)
         if alternate and any(route.match(alternate) is not None for route in self.routes):
             return Redirect(alternate)
         return Unmatched()
@@ -188,6 +200,7 @@ __all__ = (
     "Redirect",
     "Resolution",
     "Unmatched",
+    "alternate_path",
     "build_asgi_routes",
     "compile_path",
 )

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from bustan.adapters.asgi.application import AsgiApplication, Lifespan
+from bustan.adapters.asgi.requests import AsgiHttpRequest
 from bustan.adapters.asgi.responses import AsgiResponse
 from bustan.adapters.asgi.testclient import AsgiTestClient
 from bustan.contracts import AdapterRoute, HttpRequest, HttpResponse, QueryParams
@@ -60,6 +61,20 @@ async def _loop(_request: HttpRequest) -> HttpResponse:
     return HttpResponse(status_code=307, headers={"location": "/loop"}, body=b"")
 
 
+async def _scope_fields(request: HttpRequest) -> HttpResponse:
+    """Report what this client made of the request target, field by field."""
+
+    scope = cast(AsgiHttpRequest, request).scope
+    return HttpResponse.json(
+        {
+            "path": scope["path"],
+            "raw_path": cast(bytes, scope["raw_path"]).decode("ascii"),
+            "query_string": cast(bytes, scope["query_string"]).decode("ascii"),
+            "name": request.path_params.get("name"),
+        }
+    )
+
+
 def _client(lifespan: Lifespan | None = None) -> AsgiTestClient:
     application = AsgiApplication(lifespan=lifespan)
     application.register(
@@ -75,6 +90,7 @@ def _client(lifespan: Lifespan | None = None) -> AsgiTestClient:
             AdapterRoute(path="/redirect", methods=("GET", "POST"), handler=_redirect),
             AdapterRoute(path="/see-other", methods=("POST",), handler=_see_other),
             AdapterRoute(path="/loop", methods=("GET",), handler=_loop),
+            AdapterRoute(path="/names/{name}", methods=("GET",), handler=_scope_fields),
         ]
     )
     return AsgiTestClient(application)
@@ -192,6 +208,35 @@ def test_a_see_other_redirect_turns_the_followed_request_into_a_get() -> None:
 
     assert response.json()["method"] == "GET"
     assert response.json()["body"] == ""
+
+
+def test_a_target_is_read_into_the_same_scope_the_server_builds_for_it() -> None:
+    """The client and the server share one parser, so they cannot disagree about this.
+
+    Two scope builders in this package once read a target two ways, and the suite that
+    certifies the adapter runs through this one, so the difference was invisible.
+    """
+
+    payload = _client().get("/names/John%20Doe?page=2").json()
+
+    assert payload["path"] == "/names/John Doe"
+    assert payload["raw_path"] == "/names/John%20Doe"
+    assert payload["query_string"] == "page=2"
+    assert payload["name"] == "John Doe"
+
+
+def test_an_encoded_separator_stays_inside_its_segment_here_too() -> None:
+    assert _client().get("/names/a%2Fb").json()["name"] == "a%2Fb"
+
+
+def test_a_target_the_transport_refuses_is_answered_rather_than_raised() -> None:
+    """It never reaches an application over a socket either, and is answered there."""
+
+    response = _client().get("/names/%FF")
+
+    assert response.status_code == 400
+    assert response.text == "Undecodable percent-encoding in the request target"
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
 
 
 def test_a_redirect_is_returned_unfollowed_when_the_caller_asked_for_that() -> None:

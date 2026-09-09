@@ -121,6 +121,39 @@ async def test_a_trailing_slash_is_redirected_with_the_query_string_kept(
 
 
 @pytest.mark.anyio
+async def test_a_redirect_is_built_from_the_target_the_caller_wrote(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """A location built from the decoded path would send the caller somewhere else."""
+
+    application = _application(_plan("/users/{user_id}"))
+
+    _status, headers, _body = await _call(
+        application,
+        build_scope(path="/users/John Doe/", raw_path=b"/users/John%20Doe/"),
+        build_receive(),
+    )
+
+    assert headers["location"] == "/users/John%20Doe"
+
+
+@pytest.mark.anyio
+async def test_a_redirect_falls_back_to_the_path_when_a_scope_carries_no_raw_path(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """A scope built by something other than this transport still gets redirected."""
+
+    application = _application(_plan("/users/{user_id}"))
+    scope = build_scope(path="/users/7/")
+    del scope["raw_path"]
+
+    status, headers, _body = await _call(application, scope, build_receive())
+
+    assert status == 307
+    assert headers["location"] == "/users/7"
+
+
+@pytest.mark.anyio
 async def test_a_head_request_carries_the_headers_of_its_get_and_none_of_the_body(
     build_scope: ScopeFactory, build_receive: ReceiveFactory
 ) -> None:
