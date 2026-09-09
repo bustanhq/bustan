@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from ...common.constants import BUSTAN_MODULE_ATTR as MODULE_METADATA_ATTR
 from ...kernel.utils import _get_metadata
@@ -12,9 +11,15 @@ from .dynamic import DynamicModule
 
 @dataclass(frozen=True, slots=True)
 class ModuleMetadata:
-    """Static metadata captured from a @Module declaration."""
+    """Static metadata captured from a @Module declaration.
 
-    providers: tuple[object | dict[str, Any], ...] = ()
+    ``providers`` holds what the author wrote, entry by entry, before anything has judged
+    it. Every other declaration surface names the provider union, but this one cannot:
+    the entries reach here unvalidated, and refusing one by name, with the module it was
+    declared in, is what normalization exists to do.
+    """
+
+    providers: tuple[object, ...] = ()
     imports: tuple[type[object] | DynamicModule, ...] = ()
     controllers: tuple[type[object], ...] = ()
     exports: tuple[object, ...] = ()

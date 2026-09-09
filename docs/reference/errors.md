@@ -113,8 +113,7 @@ Common conditions and fixes:
 - `... asks for a durable 'use_factory'` - a durable lifetime is partitioned by a `get_durable_context_key` hook, which only a class can carry. Use a `ClassProvider`.
 - `... asks for a durable lifetime but declares no 'get_durable_context_key'`, or the hook is not a `classmethod` or `staticmethod` - the key selects the instance, so it must be derivable without one.
 - `... and ... are equal but are not the same token, so one would silently take the other's binding` - two tokens in one module compare equal but are different objects or types, such as a `str` and a `StrEnum` member spelling the same value. Declare one of them under a distinct token.
-
-The older way of writing a provider, a `{"provide": ..., "use_*": ...}` dict, is still accepted and is read into the same four types before it is bound. It has refusals of its own that the types make unwritable: `unknown provider keys`, `the definition has no 'provide' key`, `declares none of use_class, use_factory, use_value, use_existing`, `declares more than one of ...`, `declares 'inject' beside '<key>', which takes no dependencies`, and `declares 'scope' beside '<key>', which cannot honour a lifetime of its own`. Writing the declaration as one of the four types instead turns each of them into an error the type checker reports where the provider is written.
+- `a dict is no longer a provider` - a dict was a second way of writing these same four declarations until 2.0, and declares nothing now. The rest of the message names the value type that binds what the dict wrote, chosen by the `use_*` key in it; `scope` and `inject` are fields of the same name on the two arms that carry them. [Migrating From 1.x To 2.0](../how-to/migrate-from-1x.md#providers-declared-as-a-dict) shows all four dicts beside their replacements.
 
 ## `InvalidControllerError`
 

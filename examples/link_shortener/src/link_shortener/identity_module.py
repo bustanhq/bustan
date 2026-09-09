@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bustan import AUTHENTICATOR_REGISTRY, Module
+from bustan import AUTHENTICATOR_REGISTRY, FactoryProvider, Module
 
 from .bearer_authenticator import BearerAuthenticator
 
@@ -15,11 +15,11 @@ def _registry(authenticator: BearerAuthenticator) -> dict[str, object]:
 @Module(
     providers=[
         BearerAuthenticator,
-        {
-            "provide": AUTHENTICATOR_REGISTRY,
-            "use_factory": _registry,
-            "inject": (BearerAuthenticator,),
-        },
+        FactoryProvider(
+            provide=AUTHENTICATOR_REGISTRY,
+            use_factory=_registry,
+            inject=(BearerAuthenticator,),
+        ),
     ],
     exports=[AUTHENTICATOR_REGISTRY],
 )

@@ -32,17 +32,16 @@ DURABLE_CONTEXT_KEY_HOOK = "get_durable_context_key"
 # the four values are written here rather than described, and a fifth cannot be spelled.
 type ResolverKind = Literal["class", "factory", "value", "existing"]
 
-# The keys of the provider definition dict, which is the older way to write a provider
-# and is read here into the value type that describes the same declaration. Order is the
-# order the keys are reported in, so it is also the order an author reads.
-_USE_KEYS = ("use_class", "use_factory", "use_value", "use_existing")
-
-# Only a constructed provider has a lifetime of its own to name. A value is one object
-# and an alias borrows the lifetime of the token it points at, so a scope written beside
-# either one cannot be honoured and is refused rather than dropped.
-_SCOPED_USE_KEYS = frozenset({"use_class", "use_factory"})
-
-_ALLOWED_KEYS = frozenset({"provide", "scope", "inject", *_USE_KEYS})
+# Each target key a provider dict could name, paired with the value type that binds what
+# such a dict declared. A dict is refused rather than read, and this pairing is what the
+# refusal hands its author instead. Order is the order a dict naming several is answered
+# for, and the first entry answers a dict naming none.
+_DICT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("use_class", "ClassProvider"),
+    ("use_factory", "FactoryProvider"),
+    ("use_value", "ValueProvider"),
+    ("use_existing", "ExistingProvider"),
+)
 
 # How long a context each lifetime keeps an instance for, shortest first. A binding
 # may narrow the lifetime a class declares but never widen it, and this is the order
@@ -164,8 +163,9 @@ def normalize_provider(defn: object, declaring_module: ModuleKey) -> Binding:
     the class it was written on and never its subclasses, so an undecorated subclass
     binds as itself with the default singleton lifetime instead of as its parent.
 
-    A definition dict is read into the value type describing the same declaration and
-    then bound the same way, so the two ways of writing a provider cannot drift apart.
+    A mapping is not a provider. It was a second way of writing these same four
+    declarations, so it is refused by name and the refusal carries the value type that
+    binds what it declared, rather than reporting it as an unrecognised object.
 
     Every malformed declaration is refused as an ``InvalidProviderError`` naming the
     declaring module and the key at fault, because the author's next action is to edit
@@ -178,10 +178,8 @@ def normalize_provider(defn: object, declaring_module: ModuleKey) -> Binding:
     if isinstance(defn, (ClassProvider, FactoryProvider, ValueProvider, ExistingProvider)):
         return _bind_definition(defn, declaring_module)
 
-    if isinstance(defn, dict):
-        return _bind_definition(
-            _definition_from_dict(cast("dict[str, Any]", defn), declaring_module), declaring_module
-        )
+    if isinstance(defn, Mapping):
+        raise _refuse_mapping(cast("Mapping[object, object]", defn), declaring_module)
 
     raise _refused(declaring_module, f"{defn!r} is not a class or a provider definition")
 
@@ -189,23 +187,22 @@ def normalize_provider(defn: object, declaring_module: ModuleKey) -> Binding:
 def declared_token_identity(entry: object) -> TokenKey | None:
     """Return the identity of the token a provider declaration binds, or ``None``.
 
-    ``None`` means the entry binds no token that can be read: it is not a class, a
-    provider definition or a definition dict, or the token it names cannot be a key.
-    That is not the same as binding ``None``, which is a token like any other and comes
-    back as its own identity.
+    ``None`` means the entry binds no token that can be read: it is not a class or a
+    provider definition, or the token it names cannot be a key. That is not the same as
+    binding ``None``, which is a token like any other and comes back as its own identity.
 
     Reading a token is deliberately forgiving, because the caller uses it to match one
     declaration against another rather than to accept it. An entry this cannot read is
     left for ``normalize_provider`` to refuse by name, so a malformed provider is
     reported as the malformed provider it is rather than by silently failing to match.
+    A mapping is one of those: reading the token out of it would let a declaration an
+    overlay happens to replace be dropped instead of refused.
     """
 
     if inspect.isclass(entry):
         token: object = entry
     elif isinstance(entry, (ClassProvider, FactoryProvider, ValueProvider, ExistingProvider)):
         token = entry.provide
-    elif isinstance(entry, dict) and "provide" in entry:
-        token = cast("dict[str, object]", entry)["provide"]
     else:
         return None
 
@@ -246,69 +243,25 @@ def _normalize_class_provider(provider_cls: type[object], declaring_module: Modu
     )
 
 
-def _definition_from_dict(defn: dict[str, Any], declaring_module: ModuleKey) -> ProviderDefinition:
-    """Read a provider definition dict into the value type describing the same provider.
+def _refuse_mapping(
+    defn: Mapping[object, object], declaring_module: ModuleKey
+) -> InvalidProviderError:
+    """Refuse a mapping, naming the value type that binds what it was written to declare.
 
-    Every rule enforced here is a rule the value types make unwritable: which keys exist,
-    that exactly one target is named, and that ``inject`` and ``scope`` appear only beside
-    a target that can carry them. A declaration written as a value type therefore reaches
-    the binder having already satisfied all of them.
+    A dict was the older way to write these four declarations, so the author's whole fix
+    is the one arm it stands for and the refusal carries that arm rather than a pointer
+    to the guide. A mapping naming no target has no arm of its own and is answered with
+    the class form, which every other arm is written by analogy to.
     """
 
-    unknown_keys = sorted(str(key) for key in defn if key not in _ALLOWED_KEYS)
-    if unknown_keys:
-        raise _refused(declaring_module, f"unknown provider keys: {', '.join(unknown_keys)}")
-
-    if "provide" not in defn:
-        raise _refused(declaring_module, "the definition has no 'provide' key")
-
-    token = defn["provide"]
-    declared = [key for key in _USE_KEYS if key in defn]
-    if not declared:
-        raise _refused(declaring_module, f"{token!r} declares none of {', '.join(_USE_KEYS)}")
-    if len(declared) > 1:
-        raise _refused(
-            declaring_module, f"{token!r} declares more than one of {', '.join(declared)}"
-        )
-
-    use_key = declared[0]
-    if "inject" in defn and use_key != "use_factory":
-        raise _refused(
-            declaring_module,
-            f"{token!r} declares 'inject' beside '{use_key}', which takes no dependencies",
-        )
-
-    scope = _declared_scope(defn, token, use_key, declaring_module)
-    if use_key == "use_class":
-        return ClassProvider(token, defn["use_class"], scope)
-    if use_key == "use_factory":
-        inject = _coerce_inject(defn.get("inject", ()), token, declaring_module)
-        return FactoryProvider(token, defn["use_factory"], inject, scope)
-    if use_key == "use_value":
-        return ValueProvider(token, defn["use_value"])
-    return ExistingProvider(token, defn["use_existing"])
-
-
-def _declared_scope(
-    defn: dict[str, Any], token: object, use_key: str, declaring_module: ModuleKey
-) -> ProviderScope | None:
-    """Return the lifetime a definition dict names, refusing one it cannot honour.
-
-    A dict with no ``scope`` key named no lifetime, which is not the same as naming the
-    default: a ``use_class`` that names none takes the one its target declares. Writing
-    the key is naming a lifetime, so every value written there has to be one.
-    """
-
-    if "scope" not in defn:
-        return None
-
-    if use_key not in _SCOPED_USE_KEYS:
-        raise _refused(
-            declaring_module,
-            f"{token!r} declares 'scope' beside '{use_key}', which cannot honour a lifetime "
-            "of its own",
-        )
-    return _coerce_scope(defn["scope"], token, declaring_module)
+    use_key, replacement = next(
+        (pair for pair in _DICT_REPLACEMENTS if pair[0] in defn), _DICT_REPLACEMENTS[0]
+    )
+    return _refused(
+        declaring_module,
+        f'a dict is no longer a provider. Replace {{"provide": X, "{use_key}": Y}} with '
+        f"{replacement}(provide=X, {use_key}=Y)",
+    )
 
 
 def _coerce_scope(

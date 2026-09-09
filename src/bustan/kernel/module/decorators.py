@@ -90,7 +90,7 @@ def _coerce_tuple(
     if isinstance(values, Mapping):
         raise InvalidModuleError(
             f"Module {field_name} must be an iterable of objects, and a mapping is read as its "
-            "keys; a single provider definition must still be written inside a sequence"
+            "keys; a single provider must still be written inside a sequence"
         )
     # Declaration order decides construction and lifecycle-hook order, so a set makes
     # those orders vary between interpreter runs. A view over a mapping is exempt:

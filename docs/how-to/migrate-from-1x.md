@@ -161,7 +161,8 @@ That is a useful scan and it is not a migration. Everything below is the rest of
 
 Every item below was reproduced by taking one small 1.x application, running it on
 `1.1.0`, running it on 2.0, and recording the difference. **None of them is reported by
-`bustan doctor`**, because none leaves a trace in the text of a program.
+`bustan doctor`.** All but one leave no trace in the text of a program; the exception is
+the dict provider, which the doctor carries no rule for and which a grep finds instead.
 
 ### Two Lifecycle Hooks Were Renamed, And The Old Names Fail Silently
 
@@ -249,6 +250,73 @@ the cost of the request-scoped choice. **Audit every route that read per-caller 
 off a singleton**: a build that now fails is the good case, and the applications worth
 worrying about are the ones that were quietly serving one caller's data to another and
 had no reason to notice.
+
+### Providers Declared As A Dict
+
+1.x declared a provider either as a class or as a dict. 2.0 keeps the class and replaces
+the dict with four frozen value types, one for each target a provider can name, all
+exported from `bustan`. A dict left in `providers` is refused while the application is
+being built:
+
+```
+bustan.kernel.errors.InvalidProviderError: Invalid provider in IdentityModule: a dict is
+no longer a provider. Replace {"provide": X, "use_factory": Y} with
+FactoryProvider(provide=X, use_factory=Y)
+```
+
+The type named is the one for the `use_*` key that dict wrote. A build reports one module
+at a time, so a tree holding several is worked through one refusal after another; a grep
+finds them all at once:
+
+```bash
+grep -rn '"provide"' .
+```
+
+The translation is mechanical, one type for each `use_*` key:
+
+```python
+# 1.x
+providers = [
+    {"provide": DATABASE, "use_class": PostgresDatabase},
+    {"provide": CLOCK, "use_factory": build_clock},
+    {"provide": SETTINGS, "use_value": Settings()},
+    {"provide": "database", "use_existing": DATABASE},
+]
+
+# 2.0
+from bustan import ClassProvider, ExistingProvider, FactoryProvider, ValueProvider
+
+providers = [
+    ClassProvider(provide=DATABASE, use_class=PostgresDatabase),
+    FactoryProvider(provide=CLOCK, use_factory=build_clock),
+    ValueProvider(provide=SETTINGS, use_value=Settings()),
+    ExistingProvider(provide="database", use_existing=DATABASE),
+]
+```
+
+`scope` and `inject` are keyword arguments of the same name on the two arms that can
+honour them, and `inject` is now a tuple rather than a list:
+
+```python
+# 1.x
+{"provide": SESSION, "use_factory": open_session, "inject": [DATABASE], "scope": "request"}
+{"provide": AUDIT, "use_class": RequestAudit, "scope": "request"}
+
+# 2.0
+FactoryProvider(provide=SESSION, use_factory=open_session, inject=(DATABASE,), scope="request")
+ClassProvider(provide=AUDIT, use_class=RequestAudit, scope="request")
+```
+
+`ValueProvider` and `ExistingProvider` take neither, and there is nowhere to move such a
+key to: one object has one lifetime, and an alias hands over whatever the token it points
+at would have handed over. Delete the key. `FactoryProvider` takes `scope`, but not
+`durable`: a durable lifetime is partitioned by a `get_durable_context_key` hook, which
+only a class can carry.
+
+The gain is that the mistakes the dict allowed are now unwritable rather than reported:
+a declaration naming two targets, or none, or a key no provider has, is a type error
+where it is written. Run your type checker over the result rather than only starting the
+application.
 
 ### Every Error Body Changed Shape
 
@@ -482,6 +550,7 @@ the supported name and the one to move to.
   `on_application_shutdown` and `before_application_shutdown` takes a `signal`
   parameter.
 - Your tests assert on the problem-details shape rather than on `{"detail": ...}`.
+- `grep -rn '"provide"' .` finds no provider still declared as a dict.
 - No controller injects a request-scoped provider without being request-scoped itself.
 - Your body-size and timeout limits are the ones you chose, or you have confirmed the
   defaults fit.

@@ -341,15 +341,15 @@ def test_a_registration_replaces_a_provider_its_base_module_declares() -> None:
     assert container.resolve(options, module=container.module_graph.root_key) == "configured"
 
 
-def test_a_registration_written_as_a_definition_dict_still_replaces_a_base_provider() -> None:
-    # Both spellings name the same token, so both are matched the same way: an
-    # application part-way through moving off the dict still gets one binding per token
-    # rather than a collision between the default and the value configured over it. The
-    # dict is refused where it is written, which is why the base module carries the
-    # suppression, and it still binds, which is what this asserts.
+def test_a_dict_a_registration_overlays_is_refused_rather_than_dropped() -> None:
+    # An overlay replaces the base module's provider for a token it redeclares, and the
+    # base entry is dropped from the merge before anything normalizes it. A dict is
+    # therefore not read for a token at all: reading one would leave the retired shape
+    # binding in the single place an overlay covers it, unrefused while every other
+    # declaration of it is refused, which is the hardest kind of exception to find.
     options = InjectionToken[str]("OPTIONS")
 
-    written_as_a_dict = {"provide": options, "use_value": "default"}
+    written_as_a_dict: dict[str, object] = dict(provide=options, use_value="default")
 
     @Module(
         providers=[written_as_a_dict],  # ty: ignore[invalid-argument-type]
@@ -361,9 +361,9 @@ def test_a_registration_written_as_a_definition_dict_still_replaces_a_base_provi
     registration = DynamicModule(
         BaseModule, providers=(ValueProvider(provide=options, use_value="configured"),)
     )
-    container = build_container(build_module_graph(registration))
 
-    assert container.resolve(options, module=container.module_graph.root_key) == "configured"
+    with pytest.raises(InvalidProviderError, match="a dict is no longer a provider"):
+        build_module_graph(registration)
 
 
 def test_a_registration_entry_that_names_no_readable_token_is_refused_by_name() -> None:
@@ -378,7 +378,10 @@ def test_a_registration_entry_that_names_no_readable_token_is_refused_by_name() 
         ("not a provider", "is not a class or a provider definition"),
         (ValueProvider(provide=["unhashable"], use_value=1), "cannot be used as a key"),
     ):
-        registration = DynamicModule(BaseModule, providers=(cast(object, entry),))
+        registration = DynamicModule(
+            BaseModule,
+            providers=(entry,),  # ty: ignore[invalid-argument-type]
+        )
 
         with pytest.raises(InvalidProviderError, match=expected):
             build_module_graph(registration)

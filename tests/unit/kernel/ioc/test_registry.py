@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from enum import StrEnum
+from types import MappingProxyType
 from typing import cast
 
 import pytest
@@ -86,35 +87,20 @@ def test_normalize_provider_covers_class_factory_value_and_existing_forms() -> N
     )
 
 
-def test_normalize_provider_refuses_a_scope_it_cannot_honour() -> None:
-    # A provider definition is a contract, so every key in it is either honoured or
-    # refused. A value binding is inherently one shared object, so the only honest
-    # answer to a narrower scope written beside it is to reject the definition;
-    # dropping the key hands the author a singleton they explicitly did not ask for.
-    with pytest.raises(InvalidProviderError) as ignored_scope:
-        normalize_provider({"provide": "value", "use_value": 1, "scope": "transient"}, AppModule)
-
-    message = str(ignored_scope.value)
-    assert "scope" in message
-    assert "value" in message
-
-
 def test_normalize_provider_reports_malformed_definitions_as_provider_errors() -> None:
     # Every rejection at this boundary is a Bustan error naming the module that
     # declared the provider and the key at fault, because the author's next action
     # is to edit that module and a builtin exception tells them neither. Each form
     # is normalized before anything is asserted so that one report names every
     # definition still rejected the wrong way, not only the first.
-    missing_provide = _rejection({"use_value": 1})
-    missing_target = _rejection({"provide": "broken"})
     not_a_provider = _rejection(123)
+    nothing_at_all = _rejection(None)
 
-    rejections = (missing_provide, missing_target, not_a_provider)
-    assert [type(rejected) for rejected in rejections] == [InvalidProviderError] * 3
+    rejections = (not_a_provider, nothing_at_all)
+    assert [type(rejected) for rejected in rejections] == [InvalidProviderError] * 2
     assert all("AppModule" in str(rejected) for rejected in rejections)
-    assert "provide" in str(missing_provide)
-    assert "use_value" in str(missing_target)
     assert "123" in str(not_a_provider)
+    assert "None" in str(nothing_at_all)
 
 
 def test_registry_stores_bindings_visibility_and_controller_ownership() -> None:
@@ -170,6 +156,51 @@ _USE_ENTRIES: dict[str, object] = {
     "use_existing": Service,
 }
 
+# Each target key the dict spelling could name, beside the value type that binds what a
+# dict naming it declared. The refusal is judged against this, so a caller reading it is
+# reading the arm that replaces the declaration they wrote.
+_DICT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("use_class", "ClassProvider"),
+    ("use_factory", "FactoryProvider"),
+    ("use_value", "ValueProvider"),
+    ("use_existing", "ExistingProvider"),
+)
+
+
+def test_a_mapping_is_refused_naming_the_value_type_that_replaces_it() -> None:
+    # The dict was a second spelling of these same four declarations, and a second
+    # spelling is far more expensive to withdraw once applications are written against
+    # it. What is refused is therefore the shape rather than any malformed instance of
+    # it, and the refusal carries the whole of the author's next edit.
+    for use_key, replacement in _DICT_REPLACEMENTS:
+        written_as_a_dict: dict[str, object] = dict(provide="t")
+        written_as_a_dict[use_key] = _USE_ENTRIES[use_key]
+        # The dict the refusal quotes back is the one it was handed, its two values
+        # standing in as X and Y, so the expectation is derived rather than transcribed.
+        quoted = ", ".join(
+            f'"{key}": {placeholder}'
+            for key, placeholder in zip(written_as_a_dict, "XY", strict=True)
+        )
+
+        with pytest.raises(InvalidProviderError) as refusal:
+            normalize_provider(written_as_a_dict, AppModule)
+
+        assert str(refusal.value) == (
+            f"Invalid provider in AppModule: a dict is no longer a provider. "
+            f"Replace {{{quoted}}} with {replacement}(provide=X, {use_key}=Y)"
+        )
+
+
+def test_a_mapping_naming_no_target_is_still_refused_as_the_shape_it_is() -> None:
+    # A dict that named nothing to bind has no arm of its own to be told about, and a
+    # mapping that is not a dict is the same declaration written in another container.
+    # Neither is a provider, so neither is read for a token before it is refused.
+    for empty in (dict[str, object](), MappingProxyType(dict(provide="t"))):
+        with pytest.raises(InvalidProviderError, match="a dict is no longer a provider") as refusal:
+            normalize_provider(empty, AppModule)
+
+        assert "ClassProvider(provide=X, use_class=Y)" in str(refusal.value)
+
 
 def test_normalize_provider_binds_an_undecorated_subclass_under_its_own_identity() -> None:
     # Metadata written on a base class describes that class. Reading it through the
@@ -210,10 +241,17 @@ def test_normalize_provider_refuses_a_class_carrying_foreign_provider_metadata()
 
 def test_normalize_provider_reads_a_single_token_inject_as_a_mistake() -> None:
     # A string is a sequence of characters, so "dep" used to normalize to three tokens
-    # named 'd', 'e' and 'p' and only failed much later, at resolution.
+    # named 'd', 'e' and 'p' and only failed much later, at resolution. The field is
+    # declared as a tuple, so this is now a type error where it is written and the
+    # suppression is what lets the test reach the refusal a caller from unchecked code
+    # still gets.
     with pytest.raises(InvalidProviderError, match="inject") as refusal:
         normalize_provider(
-            {"provide": "f", "use_factory": _factory, "inject": "dep"},
+            FactoryProvider(
+                provide="f",
+                use_factory=_factory,
+                inject="dep",  # ty: ignore[invalid-argument-type]
+            ),
             AppModule,
         )
 
@@ -256,12 +294,6 @@ def test_normalize_provider_refuses_a_durable_lifetime_it_cannot_partition() -> 
             AppModule,
         )
 
-    with pytest.raises(InvalidProviderError, match="scope"):
-        normalize_provider(
-            {"provide": "tenant", "use_value": {"tenant": "a"}, "scope": "durable"},
-            AppModule,
-        )
-
 
 def test_injectable_durable_class_needs_an_unbound_context_key_hook() -> None:
     decorated = Injectable(scope=ProviderScope.DURABLE)(
@@ -270,39 +302,6 @@ def test_injectable_durable_class_needs_an_unbound_context_key_hook() -> None:
 
     with pytest.raises(InvalidProviderError, match="classmethod or a staticmethod"):
         normalize_provider(decorated, AppModule)
-
-
-def test_a_definition_dict_binds_exactly_as_the_value_type_it_describes() -> None:
-    # The dict is the older way to write a provider and still has to work while both
-    # spellings are in the field. It is read into the value type first, so the two
-    # cannot answer differently: the same declaration written either way binds the same.
-    pairs: tuple[tuple[dict[str, object], ProviderDefinition], ...] = (
-        (
-            {"provide": "t", "use_class": Service},
-            ClassProvider(provide="t", use_class=Service),
-        ),
-        (
-            {"provide": "t", "use_class": Service, "scope": "transient"},
-            ClassProvider(provide="t", use_class=Service, scope=ProviderScope.TRANSIENT),
-        ),
-        (
-            {"provide": "t", "use_factory": _factory, "inject": ["dep", Service]},
-            FactoryProvider(provide="t", use_factory=_factory, inject=("dep", Service)),
-        ),
-        (
-            {"provide": "t", "use_value": None},
-            ValueProvider(provide="t", use_value=None),
-        ),
-        (
-            {"provide": "t", "use_existing": Service},
-            ExistingProvider(provide="t", use_existing=Service),
-        ),
-    )
-
-    for written_as_a_dict, written_as_a_value in pairs:
-        assert normalize_provider(written_as_a_dict, AppModule) == normalize_provider(
-            written_as_a_value, AppModule
-        )
 
 
 def test_every_valid_provider_declaration_is_accepted() -> None:
@@ -325,9 +324,11 @@ def test_every_valid_provider_declaration_is_accepted() -> None:
 
 def test_every_invalid_provider_declaration_is_refused_naming_the_module_and_key() -> None:
     # The breadth is the point: a validator that only rejects the shapes someone thought
-    # to write down is how 'inject' beside 'use_class' stayed silent for a whole release.
-    shapes = (*_invalid_dict_provider_shapes(), *_invalid_provider_declarations())
-    assert len(shapes) > 60
+    # to write down is how a silently ignored 'inject' stayed silent for a whole release.
+    # Every field of every arm is reachable from code the type checker never saw, so each
+    # is generated rather than chosen.
+    shapes = tuple(_invalid_provider_declarations())
+    assert len(shapes) > 20
 
     unreported: list[str] = []
     for definition, expected_key in shapes:
@@ -343,33 +344,6 @@ def test_every_invalid_provider_declaration_is_refused_naming_the_module_and_key
             unreported.append(f"{definition!r} -> accepted")
 
     assert unreported == []
-
-
-def _invalid_dict_provider_shapes() -> Iterator[tuple[dict[str, object], str]]:
-    """Generate malformed provider definitions paired with the key each must name."""
-
-    for use_key, target in _USE_ENTRIES.items():
-        yield {use_key: target}, "provide"
-
-        for unknown in ("useClass", "provider", "Scope", "inject_tokens", "1"):
-            yield {"provide": "t", use_key: target, unknown: 1}, unknown
-
-        for other_key, other_target in _USE_ENTRIES.items():
-            if other_key != use_key:
-                yield {"provide": "t", use_key: target, other_key: other_target}, other_key
-
-        if use_key != "use_factory":
-            yield {"provide": "t", use_key: target, "inject": ["dep"]}, "inject"
-
-        if use_key not in ("use_class", "use_factory"):
-            for scope in ProviderScope:
-                yield {"provide": "t", use_key: target, "scope": scope.value}, "scope"
-        else:
-            for scope in ("Request", "bogus", "", None, 1, ["request"], {"scope": 1}):
-                yield {"provide": "t", use_key: target, "scope": scope}, "scope"
-
-    for empty in ({}, {"scope": "request"}, {"provide": "t"}, {"provide": "t", "inject": ()}):
-        yield dict(empty), "provide" if "provide" not in empty else "use_value"
 
 
 def _invalid_provider_declarations() -> Iterator[tuple[ProviderDefinition, str]]:
@@ -407,6 +381,25 @@ def _invalid_provider_declarations() -> Iterator[tuple[ProviderDefinition, str]]
                 inject=bad_inject,  # ty: ignore[invalid-argument-type]
             ),
             "inject",
+        )
+
+    # Only the two arms that carry a lifetime can name one that is not a lifetime.
+    for bad_scope in ("Request", "bogus", "", 1, ["request"]):
+        yield (
+            ClassProvider(
+                provide="t",
+                use_class=Service,
+                scope=bad_scope,  # ty: ignore[invalid-argument-type]
+            ),
+            "scope",
+        )
+        yield (
+            FactoryProvider(
+                provide="t",
+                use_factory=_factory,
+                scope=bad_scope,  # ty: ignore[invalid-argument-type]
+            ),
+            "scope",
         )
 
     yield (
