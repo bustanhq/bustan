@@ -121,7 +121,7 @@ your own.
 
 The correlation helpers themselves live in `bustan.observability.correlation` and are
 not part of the supported surface, so read the ids off your log records rather than
-importing them. See [STABILITY.md](STABILITY.md).
+importing them. See [reference/stability.md](../reference/stability.md).
 
 ## Metrics And Traces
 
@@ -170,7 +170,7 @@ are where the interesting latency usually is.
 
 A sink written without `duration_seconds` is still called, with the labels alone. The
 request is counted and never timed. `bustan doctor` reports such a sink;
-[MIGRATION_1x_to_2x.md](MIGRATION_1x_to_2x.md) has the edit.
+[how-to/migrate-from-1x.md](../how-to/migrate-from-1x.md) has the edit.
 
 ### `RequestTracer` And `TraceSpan`
 
@@ -321,10 +321,10 @@ fails permanently.
 
 ## Where To Go Next
 
-- [DEPLOYMENT.md](DEPLOYMENT.md) - wiring the probes to a scheduler, and the drain
+- [how-to/deploy.md](../how-to/deploy.md) - wiring the probes to a scheduler, and the drain
   sequence readiness is part of.
-- [SECURITY_HARDENING.md](SECURITY_HARDENING.md) - what a refusal is allowed to say,
+- [how-to/harden-security.md](../how-to/harden-security.md) - what a refusal is allowed to say,
   and what never reaches a log.
-- [BENCHMARKS.md](BENCHMARKS.md) - what the framework itself costs.
-- [MIGRATION_1x_to_2x.md](MIGRATION_1x_to_2x.md) - the shape these protocols had before,
+- [how-to/run-benchmarks.md](../how-to/run-benchmarks.md) - what the framework itself costs.
+- [how-to/migrate-from-1x.md](../how-to/migrate-from-1x.md) - the shape these protocols had before,
   and the edit to each.

@@ -19,7 +19,7 @@ The HTTP transport sits behind an adapter port. Bustan ships two adapters - Star
 
 - The release being prepared is the `version` field in `pyproject.toml`; read it there rather than from a list that cannot notice it moved.
 - The supported Python floor is currently `>=3.13`.
-- Compatibility promises apply only to `bustan`, `bustan.errors`, and `bustan.testing`. [docs/STABILITY.md](docs/STABILITY.md) is the authority on what is inside that boundary, and the export sets derive from it.
+- Compatibility promises apply only to `bustan`, `bustan.errors`, and `bustan.testing`. [docs/reference/stability.md](docs/reference/stability.md) is the authority on what is inside that boundary, and the export sets derive from it.
 - Internal modules such as `bustan.kernel.*`, `bustan.app.*`, `bustan.runtime.*` and `bustan.adapters.*` are implementation details and may be restructured without notice.
 
 ## Installation
@@ -106,7 +106,7 @@ Expected response:
 {"message":"Hello from My App"}
 ```
 
-For the full walkthrough, generated file contents, and first test, see [docs/FIRST_APP.md](docs/FIRST_APP.md).
+For the full walkthrough, generated file contents, and first test, see [docs/tutorials/first-app.md](docs/tutorials/first-app.md).
 
 ## What You Get Today
 
@@ -159,23 +159,23 @@ from bustan.errors import ProviderResolutionError
 from bustan.testing import create_test_app, create_testing_module
 ```
 
-The generated reference for those stable modules lives in [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
+The generated reference for those stable modules lives in [docs/reference/api.md](docs/reference/api.md).
 
 ## Guides
 
 - [docs/README.md](docs/README.md)
-- [docs/FIRST_APP.md](docs/FIRST_APP.md)
-- [docs/ROUTING.md](docs/ROUTING.md)
-- [docs/REQUEST_PIPELINE.md](docs/REQUEST_PIPELINE.md)
-- [docs/REQUEST_SCOPED_PROVIDERS.md](docs/REQUEST_SCOPED_PROVIDERS.md)
-- [docs/LIFECYCLE.md](docs/LIFECYCLE.md)
-- [docs/PLATFORM_INTEGRATION.md](docs/PLATFORM_INTEGRATION.md)
-- [docs/CLI.md](docs/CLI.md)
-- [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
-- [docs/STABILITY.md](docs/STABILITY.md)
-- [docs/VERSIONING.md](docs/VERSIONING.md)
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-- [docs/COMPARISONS.md](docs/COMPARISONS.md)
+- [docs/tutorials/first-app.md](docs/tutorials/first-app.md)
+- [docs/reference/routing.md](docs/reference/routing.md)
+- [docs/reference/request-pipeline.md](docs/reference/request-pipeline.md)
+- [docs/explanation/request-scope.md](docs/explanation/request-scope.md)
+- [docs/reference/lifecycle.md](docs/reference/lifecycle.md)
+- [docs/reference/adapters.md](docs/reference/adapters.md)
+- [docs/reference/cli.md](docs/reference/cli.md)
+- [docs/how-to/run-benchmarks.md](docs/how-to/run-benchmarks.md)
+- [docs/reference/stability.md](docs/reference/stability.md)
+- [docs/reference/versioning.md](docs/reference/versioning.md)
+- [docs/reference/errors.md](docs/reference/errors.md)
+- [docs/explanation/comparisons.md](docs/explanation/comparisons.md)
 
 ## Open Source Project Docs
 
@@ -184,7 +184,7 @@ The generated reference for those stable modules lives in [docs/API_REFERENCE.md
 - [SECURITY.md](SECURITY.md)
 - [GOVERNANCE.md](GOVERNANCE.md)
 - [CHANGELOG.md](CHANGELOG.md)
-- [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
+- [docs/how-to/cut-a-release.md](docs/how-to/cut-a-release.md)
 
 ## Examples
 

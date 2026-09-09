@@ -2,28 +2,28 @@
 
 These guides sit on top of the main [README.md](../README.md). Start there for the project overview, installation, supported public modules, and the CLI scaffold. Then use the guides below to go deeper into routing, the request pipeline, request scope, lifecycle hooks, platform access, operations, and release policy.
 
-Upgrading from 1.x? Start at [MIGRATION_1x_to_2x.md](MIGRATION_1x_to_2x.md). 2.0 is a clean break and a 1.x application will not start on it until it is corrected.
+Upgrading from 1.x? Start at [how-to/migrate-from-1x.md](how-to/migrate-from-1x.md). 2.0 is a clean break and a 1.x application will not start on it until it is corrected.
 
 ## Recommended Reading Order
 
-1. [FIRST_APP.md](FIRST_APP.md) for the generated project layout and the normal `bustan init` workflow.
-2. [ROUTING.md](ROUTING.md) for controller prefixes, parameter binding, validation modes, and response coercion.
-3. [REQUEST_PIPELINE.md](REQUEST_PIPELINE.md) for guards, pipes, interceptors, exception filters, and global pipeline tokens.
-4. [REQUEST_SCOPED_PROVIDERS.md](REQUEST_SCOPED_PROVIDERS.md) for request-local state and scope constraints.
-5. [LIFECYCLE.md](LIFECYCLE.md) for startup and shutdown ordering across modules and providers.
+1. [tutorials/first-app.md](tutorials/first-app.md) for the generated project layout and the normal `bustan init` workflow.
+2. [reference/routing.md](reference/routing.md) for controller prefixes, parameter binding, validation modes, and response coercion.
+3. [reference/request-pipeline.md](reference/request-pipeline.md) for guards, pipes, interceptors, exception filters, and global pipeline tokens.
+4. [explanation/request-scope.md](explanation/request-scope.md) for request-local state and scope constraints.
+5. [reference/lifecycle.md](reference/lifecycle.md) for startup and shutdown ordering across modules and providers.
 
 ## Getting Started
 
-- [FIRST_APP.md](FIRST_APP.md): scaffold a runnable app, inspect the generated files, run it locally, and add a first test.
-- [ROUTING.md](ROUTING.md): controller structure, inferred versus explicit binding, `Annotated[...]` markers, and return-type behavior.
-- [REQUEST_PIPELINE.md](REQUEST_PIPELINE.md): execution order, `ExecutionContext`, automatic validation, and custom pipeline components.
-- [REQUEST_SCOPED_PROVIDERS.md](REQUEST_SCOPED_PROVIDERS.md): request-scoped providers, request-scoped controllers, and safe dependency direction.
-- [LIFECYCLE.md](LIFECYCLE.md): `on_module_init`, `on_application_bootstrap`, shutdown hooks, and `create_app_context()`.
-- [CLI.md](CLI.md): the `bustan` command line tool - `init`, `doctor`, `graph`, `config`, `routes`, and `governance`.
+- [tutorials/first-app.md](tutorials/first-app.md): scaffold a runnable app, inspect the generated files, run it locally, and add a first test.
+- [reference/routing.md](reference/routing.md): controller structure, inferred versus explicit binding, `Annotated[...]` markers, and return-type behavior.
+- [reference/request-pipeline.md](reference/request-pipeline.md): execution order, `ExecutionContext`, automatic validation, and custom pipeline components.
+- [explanation/request-scope.md](explanation/request-scope.md): request-scoped providers, request-scoped controllers, and safe dependency direction.
+- [reference/lifecycle.md](reference/lifecycle.md): `on_module_init`, `on_application_bootstrap`, shutdown hooks, and `create_app_context()`.
+- [reference/cli.md](reference/cli.md): the `bustan` command line tool - `init`, `doctor`, `graph`, `config`, `routes`, and `governance`.
 
 ## Upgrading
 
-- [MIGRATION_1x_to_2x.md](MIGRATION_1x_to_2x.md): what `bustan doctor` finds, what only you can find, and a worked migration validated against a real 1.x application.
+- [how-to/migrate-from-1x.md](how-to/migrate-from-1x.md): what `bustan doctor` finds, what only you can find, and a worked migration validated against a real 1.x application.
 - [../CHANGELOG.md](../CHANGELOG.md): every change, release by release, with the issue each one closed.
 
 ## Examples
@@ -40,17 +40,17 @@ The checked-in examples now mirror the standalone mini-project layout rather tha
 
 ## Platform And Operations
 
-- [PLATFORM_INTEGRATION.md](PLATFORM_INTEGRATION.md): `Application`, `ApplicationContext`, accessors for the underlying adapter, and runtime artifacts.
-- [DEPLOYMENT.md](DEPLOYMENT.md): installing, serving, choosing an adapter, health probes, draining, workers, and gating a release.
-- [OBSERVABILITY.md](OBSERVABILITY.md): structured logging, correlation and trace context, the metrics and tracing protocols, and the two health probes.
-- [SECURITY_HARDENING.md](SECURITY_HARDENING.md): request limits, throttling, authentication policy, what a refusal is allowed to say, and what the framework does not do.
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md): the common module graph, binding, scope, and lifecycle failures.
-- [COMPARISONS.md](COMPARISONS.md): how Bustan fits beside Starlette, FastAPI, and NestJS-style architecture.
+- [reference/adapters.md](reference/adapters.md): `Application`, `ApplicationContext`, accessors for the underlying adapter, and runtime artifacts.
+- [how-to/deploy.md](how-to/deploy.md): installing, serving, choosing an adapter, health probes, draining, workers, and gating a release.
+- [how-to/observe-an-application.md](how-to/observe-an-application.md): structured logging, correlation and trace context, the metrics and tracing protocols, and the two health probes.
+- [how-to/harden-security.md](how-to/harden-security.md): request limits, throttling, authentication policy, what a refusal is allowed to say, and what the framework does not do.
+- [reference/errors.md](reference/errors.md): the common module graph, binding, scope, and lifecycle failures.
+- [explanation/comparisons.md](explanation/comparisons.md): how Bustan fits beside Starlette, FastAPI, and NestJS-style architecture.
 
 ## Architecture And Performance
 
-- [ARCHITECTURE.md](ARCHITECTURE.md): the package layering rule, why crossing it is a defect, why the check is advisory for now, and the violations still open.
-- [BENCHMARKS.md](BENCHMARKS.md): what is measured, how run-to-run variation is divided out, and the CI gate that fails a regression.
+- [explanation/layering.md](explanation/layering.md): the package layering rule, why crossing it is a defect, why the check is advisory for now, and the violations still open.
+- [how-to/run-benchmarks.md](how-to/run-benchmarks.md): what is measured, how run-to-run variation is divided out, and the CI gate that fails a regression.
 
 ## Audits
 
@@ -59,10 +59,10 @@ The checked-in examples now mirror the standalone mini-project layout rather tha
 
 ## Stability And Release
 
-- [STABILITY.md](STABILITY.md): what counts as public, what does not, and how to read the generated API reference safely.
-- [VERSIONING.md](VERSIONING.md): alpha compatibility expectations and the current release contract.
-- [API_REFERENCE.md](API_REFERENCE.md): generated reference for `bustan`, `bustan.errors`, and `bustan.testing`.
-- [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): release validation, automation prerequisites, and post-publish smoke checks.
+- [reference/stability.md](reference/stability.md): what counts as public, what does not, and how to read the generated API reference safely.
+- [reference/versioning.md](reference/versioning.md): alpha compatibility expectations and the current release contract.
+- [reference/api.md](reference/api.md): generated reference for `bustan`, `bustan.errors`, and `bustan.testing`.
+- [how-to/cut-a-release.md](how-to/cut-a-release.md): release validation, automation prerequisites, and post-publish smoke checks.
 - [../GOVERNANCE.md](../GOVERNANCE.md): maintainer roles, release ownership, and pause policy.
 
 ## Delivery

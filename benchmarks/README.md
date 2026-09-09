@@ -11,7 +11,7 @@ PYTHONHASHSEED=0 uv run pytest
 
 What each benchmark measures, how the baseline was captured, why the gate compares
 ratios rather than wall time, and how to move the baseline are in
-[../docs/BENCHMARKS.md](../docs/BENCHMARKS.md).
+[../docs/how-to/run-benchmarks.md](../docs/how-to/run-benchmarks.md).
 
 | File | What it is |
 | --- | --- |

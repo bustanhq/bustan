@@ -17,7 +17,7 @@ This document defines how Bustan is currently reviewed, merged, released, and ke
 ## Release Ownership
 
 - Releases are currently cut by the maintainer through the release PR and trusted publishing workflow.
-- The maintainer is responsible for confirming [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) before tagging a release.
+- The maintainer is responsible for confirming [docs/how-to/cut-a-release.md](docs/how-to/cut-a-release.md) before tagging a release.
 - Post-publish verification runs through [published-package-verification.yml](.github/workflows/published-package-verification.yml).
 
 ## Issue Triage And Release Cadence

@@ -5,7 +5,7 @@ so, and what it does not do at all. The order matters: the last section is the o
 gets deployments hurt, because it is the set of protections people assume are there.
 
 The framework's own vulnerability-reporting policy is in
-[SECURITY.md](../SECURITY.md); this document is about the application you build with
+[SECURITY.md](../../SECURITY.md); this document is about the application you build with
 it.
 
 ## The Defaults You Already Have
@@ -80,8 +80,8 @@ plain mapping. The offending field is named in the problem's `errors` array.
 This is worth stating in a security document because the alternative is worse than a
 type error: a handler annotated `int` that is handed a `str` behaves in whatever way its
 own arithmetic and comparisons happen to behave, and reaches the database with that
-value. See [ROUTING.md](ROUTING.md) for the binding and validation modes, and
-[TROUBLESHOOTING.md](TROUBLESHOOTING.md) for what a binding failure looks like.
+value. See [reference/routing.md](../reference/routing.md) for the binding and validation modes, and
+[reference/errors.md](../reference/errors.md) for what a binding failure looks like.
 
 ## Refusals Say Nothing Useful To An Attacker
 
@@ -113,7 +113,7 @@ Three rules hold:
 "Every refusal" includes the ones decided before a handler runs: a path no route
 answers, a method no route answers and a version nothing serves are all answered with
 the problem document their status names, on every adapter. See
-[ROUTING.md](ROUTING.md#refusals-before-a-handler-runs). A caller probing for paths
+[reference/routing.md](../reference/routing.md#refusals-before-a-handler-runs). A caller probing for paths
 therefore learns from a `404` only that nothing answered, which is what it would learn
 from a line of text, and every refusal it can provoke is masked by the same three rules.
 
@@ -203,7 +203,7 @@ implementation every worker can see. The contract is one asynchronous
 `count_request(key, ttl, limit)`; where processes share the store, counting and
 reporting must happen as one atomic operation, or two workers racing on one key will
 both be told they are within the limit. See
-[MIGRATION_1x_to_2x.md](MIGRATION_1x_to_2x.md#throttlerstorage) for the full contract.
+[how-to/migrate-from-1x.md](../how-to/migrate-from-1x.md#throttlerstorage) for the full contract.
 
 **Setting `trusted_proxies` too wide.** It is empty by default, which counts every
 request under the address it arrived from and ignores forwarding headers entirely. Set
@@ -253,7 +253,7 @@ CorsOptions(origins=[...]), or omit the call to leave cross-origin requests refu
 
 `CorsOptions` names no origins until you name them, so a policy that permits every page
 on the internet is one you wrote rather than one you inherited. Every other field has a
-default, listed in the [API reference](API_REFERENCE.md#corsoptions).
+default, listed in the [API reference](../reference/api.md#corsoptions).
 
 ```python
 from bustan import CorsOptions
@@ -284,9 +284,9 @@ whole set with `Logger.set_redacted_keys(...)`.
 connection string, a URL with a password in it, a command line - is printed in full.
 Do not log those, redaction will not save you. The same limit applies to `bustan config`,
 which additionally reports the whole process environment; see
-[CLI.md](CLI.md#bustan-config).
+[reference/cli.md](../reference/cli.md#bustan-config).
 
-[OBSERVABILITY.md](OBSERVABILITY.md#redaction) has the details.
+[how-to/observe-an-application.md](../how-to/observe-an-application.md#redaction) has the details.
 
 ## Probes Are Not Authenticated For You
 
@@ -337,7 +337,7 @@ Assume none of the following unless you have arranged it yourself.
 
 ## Where To Go Next
 
-- [OBSERVABILITY.md](OBSERVABILITY.md) - logging, redaction, and what the probes report.
-- [DEPLOYMENT.md](DEPLOYMENT.md) - workers, proxies, draining.
-- [REQUEST_PIPELINE.md](REQUEST_PIPELINE.md) - where guards and filters run.
-- [MIGRATION_1x_to_2x.md](MIGRATION_1x_to_2x.md) - which of these are new since 1.x.
+- [how-to/observe-an-application.md](../how-to/observe-an-application.md) - logging, redaction, and what the probes report.
+- [how-to/deploy.md](../how-to/deploy.md) - workers, proxies, draining.
+- [reference/request-pipeline.md](../reference/request-pipeline.md) - where guards and filters run.
+- [how-to/migrate-from-1x.md](../how-to/migrate-from-1x.md) - which of these are new since 1.x.

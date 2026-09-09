@@ -133,16 +133,16 @@ This document covers layering and nothing else, because layering is the constrai
 contributor can break without noticing. The rest is spread across the guides that own
 each part:
 
-- [STABILITY.md](STABILITY.md) - what is public, what is internal, and which side
+- [reference/stability.md](../reference/stability.md) - what is public, what is internal, and which side
   derives from which. It is the authority; the `__all__` tuples derive from it.
-- [PLATFORM_INTEGRATION.md](PLATFORM_INTEGRATION.md) - the adapter port, and what an
+- [reference/adapters.md](../reference/adapters.md) - the adapter port, and what an
   adapter has to implement.
-- [REQUEST_PIPELINE.md](REQUEST_PIPELINE.md) - the order a request runs through guards,
+- [reference/request-pipeline.md](../reference/request-pipeline.md) - the order a request runs through guards,
   pipes, interceptors and filters.
-- [REQUEST_SCOPED_PROVIDERS.md](REQUEST_SCOPED_PROVIDERS.md) - the scope rules the
+- [explanation/request-scope.md](../explanation/request-scope.md) - the scope rules the
   container enforces, and why an owner may not outlive what it injects.
-- [LIFECYCLE.md](LIFECYCLE.md) - startup and shutdown ordering.
-- [BENCHMARKS.md](BENCHMARKS.md) - what the framework costs, and the gate that fails a
+- [reference/lifecycle.md](../reference/lifecycle.md) - startup and shutdown ordering.
+- [how-to/run-benchmarks.md](../how-to/run-benchmarks.md) - what the framework costs, and the gate that fails a
   regression.
-- [OBSERVABILITY.md](OBSERVABILITY.md) - what the runtime emits, and the two protocols
+- [how-to/observe-an-application.md](../how-to/observe-an-application.md) - what the runtime emits, and the two protocols
   it emits through.

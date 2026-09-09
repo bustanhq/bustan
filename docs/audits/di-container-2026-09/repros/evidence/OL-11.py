@@ -14,7 +14,7 @@ Checks (all through a real TestClient request unless noted):
      without request fails; with request=native it works (the PolicyGuard route)
   5. the only working route from a handler is the internal container.resolve(..., request=)
   6. ApplicationContext.get docstring points to app.resolve(); ctx.get(R) and ctx.resolve(R)
-     raise identically (application.py:124-139); docs/API_REFERENCE.md mirrors it.
+     raise identically (application.py:124-139); docs/reference/api.md mirrors it.
 """
 from __future__ import annotations
 
@@ -136,7 +136,7 @@ for name in ("get", "resolve"):
         print(f"ctx.{name}(Identity): ProviderResolutionError: {exc}")
         checks[f"ctx.{name} fails"] = "requires an active request" in str(exc)
 checks["docstring points to app.resolve()"] = "app.resolve()" in doc
-api_ref = open("/home/user/bustan/docs/API_REFERENCE.md", encoding="utf-8").read()
+api_ref = open("/home/user/bustan/docs/reference/api.md", encoding="utf-8").read()
 checks["API_REFERENCE mirrors docstring"] = "decorators (@Param, @Body, etc.) or app.resolve()." in api_ref
 
 # public surface: any public resolve entry point that accepts a request?

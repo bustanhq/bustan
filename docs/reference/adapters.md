@@ -20,7 +20,7 @@ An adapter subclasses `AbstractHttpAdapter`, sets `name` and `capabilities`, and
 
 An adapter is never handed the dependency injection container, a compiled execution plan or a middleware registry. Those belong to the framework, and an adapter that received them would have to understand them.
 
-`capabilities` is an `AdapterCapabilities` value stating what the transport can serve: host routing, raw body access, streaming responses, websocket upgrades. The framework checks each route's requirements against it while routes are compiled, so an adapter that cannot serve a route says so at startup rather than at the first request that needs the missing capability. The refusals are listed under [`RouteDefinitionError`](TROUBLESHOOTING.md#routedefinitionerror).
+`capabilities` is an `AdapterCapabilities` value stating what the transport can serve: host routing, raw body access, streaming responses, websocket upgrades. The framework checks each route's requirements against it while routes are compiled, so an adapter that cannot serve a route says so at startup rather than at the first request that needs the missing capability. The refusals are listed under [`RouteDefinitionError`](../reference/errors.md#routedefinitionerror).
 
 ## The Two Shipped Adapters
 
@@ -255,7 +255,7 @@ The `Application` wrapper also exposes helper methods for common integrations:
 
 - `app.enable_cors(...)`
 - `app.enable_swagger(...)`
-- `await app.listen(...)`, which serves and drains gracefully; see [LIFECYCLE.md](LIFECYCLE.md#graceful-shutdown).
+- `await app.listen(...)`, which serves and drains gracefully; see [reference/lifecycle.md](../reference/lifecycle.md#graceful-shutdown).
 
 ## Runtime Artifacts And Inspection
 

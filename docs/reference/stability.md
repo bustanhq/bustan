@@ -87,7 +87,7 @@ implementation delegates to for the values it does not handle itself.
 
 ## How To Read The API Reference
 
-[API_REFERENCE.md](API_REFERENCE.md) is generated from the stable public modules above.
+[reference/api.md](../reference/api.md) is generated from the stable public modules above.
 When it says a symbol is "Defined in ...", that line identifies the implementation
 origin for browsing only. It is not a promise that the implementation module is itself
 public.
@@ -186,10 +186,10 @@ derives from. To promote a symbol:
 3. Export it from `bustan`, `bustan.errors`, or `bustan.testing`.
 4. Add or update its docstring so the generated API reference is meaningful.
 5. Add it to the exact-order tuple in the public-surface test for that module.
-6. Regenerate [API_REFERENCE.md](API_REFERENCE.md).
+6. Regenerate [reference/api.md](../reference/api.md).
 7. Update the guides and examples to use the public import path.
 
 Steps 1, 3 and 5 are three copies of one decision, and the tests named earlier fail
 when they disagree, so a promotion that stops halfway is caught rather than shipped.
 
-For the release policy behind this guide, see [VERSIONING.md](VERSIONING.md).
+For the release policy behind this guide, see [reference/versioning.md](../reference/versioning.md).

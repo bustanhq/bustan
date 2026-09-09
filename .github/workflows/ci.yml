@@ -256,7 +256,7 @@ jobs:
       # request that happens to be open on the day it lands. Blocking would hand an
       # upstream disclosure to whoever pushes next as a red build, and the fix - raise the
       # floor, relock - does not belong inside their unrelated change. The finding goes to
-      # the run summary instead, and `docs/RELEASE_CHECKLIST.md` makes reading that summary
+      # the run summary instead, and `docs/how-to/cut-a-release.md` makes reading that summary
       # a release step, which is the point at which acting on it is somebody's job. This is
       # the last advisory step in the workflow, and it is advisory because the finding
       # arrives from outside the repository rather than out of the diff.

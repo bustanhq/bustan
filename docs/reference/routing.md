@@ -192,4 +192,4 @@ This means `response.json()["detail"]` reads on every error the framework produc
 - When multiple parameters read from the body, the request body must be a JSON object.
 - Variadic handler parameters such as `*args` and `**kwargs` are rejected during route compilation.
 
-Continue with [REQUEST_PIPELINE.md](REQUEST_PIPELINE.md) after the route shape is clear. Routing determines what values are available; the pipeline determines how those values are validated, transformed, or rejected.
+Continue with [reference/request-pipeline.md](../reference/request-pipeline.md) after the route shape is clear. Routing determines what values are available; the pipeline determines how those values are validated, transformed, or rejected.

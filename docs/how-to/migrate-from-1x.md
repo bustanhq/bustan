@@ -3,7 +3,7 @@
 2.0 is a clean break. The framework carries no compatibility shim for a construct it
 changed, so an application written against 1.x fails at import, at build, at the first
 request that reaches a route - or, for one construct, not at all. This guide is what
-stands in for those shims, together with [`bustan doctor`](CLI.md#bustan-doctor), which
+stands in for those shims, together with [`bustan doctor`](../reference/cli.md#bustan-doctor), which
 finds the half of the migration that leaves a trace in your source.
 
 Read the second half of this guide even if the doctor reports nothing. **A clean scan
@@ -34,7 +34,7 @@ Every name a 1.x application imported from `bustan`, `bustan.errors` or
 `bustan.testing` still imports from the same place in 2.0. That is the whole of the
 good news, and it is worth stating first because it locates the work: what breaks is
 what a 1.x application imported from *inside* the package, and what it assumed about
-behaviour. [STABILITY.md](STABILITY.md) says which modules those three are and why the
+behaviour. [reference/stability.md](../reference/stability.md) says which modules those three are and why the
 rest were free to move.
 
 ## The Order To Work In
@@ -59,7 +59,7 @@ bustan doctor path/to/your/app
 
 It parses your files rather than importing them, because the code it is looking for is
 exactly the code that no longer imports. It exits `1` on a finding, so it can gate a
-migration in a pipeline. [CLI.md](CLI.md#bustan-doctor) documents the command;
+migration in a pipeline. [reference/cli.md](../reference/cli.md#bustan-doctor) documents the command;
 what follows is the migration behind each rule.
 
 ### The Four Renamed Packages
@@ -72,7 +72,7 @@ what follows is the migration behind each rule.
 | `bustan.config.*` | `bustan.configuration.*` |
 
 All four are internal, and they moved because 2.0 enforces a layering rule that the
-old names contradicted; [ARCHITECTURE.md](ARCHITECTURE.md) is where that rule is
+old names contradicted; [explanation/layering.md](../explanation/layering.md) is where that rule is
 written down. Renaming the import is the mechanical fix, and it is the wrong one if
 the symbol is supported: prefer the same name from `bustan`, `bustan.errors` or
 `bustan.testing`, which is a path that is now promised not to move.
@@ -127,7 +127,7 @@ compiles and throttles wrongly:
 ThrottlerModule.for_root(ttl=60, limit=100, storage=RedisThrottlerStorage())
 ```
 
-Read [SECURITY_HARDENING.md](SECURITY_HARDENING.md#throttling) before setting
+Read [how-to/harden-security.md](../how-to/harden-security.md#throttling) before setting
 `trusted_proxies`, which is the one option on that list that can be set wrongly in a
 way that helps an attacker.
 
@@ -145,7 +145,7 @@ Four of the doctor's ten rules name constructs that **did not exist in 1.1.0**:
 They cannot fire on a genuine 1.x codebase. They are there for the other migration the
 doctor serves: code written against a 2.0 release candidate. If you are coming from
 1.x, expect these four to stay silent, and read
-[OBSERVABILITY.md](OBSERVABILITY.md) as new surface rather than as a change.
+[how-to/observe-an-application.md](../how-to/observe-an-application.md) as new surface rather than as a change.
 
 The same is true of `@RateLimit`: the decorator arrived in `2.0.0-rc.2`, so the window
 rule finds nothing in a 1.x tree either. It matters the first time you write one.
@@ -205,7 +205,7 @@ is the name of the signal that stopped the process, or `None` when nothing signa
 
 `before_application_shutdown` is new and has no 1.x equivalent. It runs before the
 teardown begins, which is where a process withdraws itself from rotation; see
-[DEPLOYMENT.md](DEPLOYMENT.md#withdraw-from-rotation-before-you-stop-serving).
+[how-to/deploy.md](../how-to/deploy.md#withdraw-from-rotation-before-you-stop-serving).
 
 ### A Request-Scoped Provider In A Default-Scoped Controller Now Refuses To Build
 
@@ -244,7 +244,7 @@ injects:
 class OrderController: ...
 ```
 
-[REQUEST_SCOPED_PROVIDERS.md](REQUEST_SCOPED_PROVIDERS.md) covers the scope rules and
+[explanation/request-scope.md](../explanation/request-scope.md) covers the scope rules and
 the cost of the request-scoped choice. **Audit every route that read per-caller state
 off a singleton**: a build that now fails is the good case, and the applications worth
 worrying about are the ones that were quietly serving one caller's data to another and
@@ -325,7 +325,7 @@ app = create_app(AppModule, request_limits=RequestLimits(max_body_bytes=8 * 1024
 ```
 
 `None` removes a bound for a deployment that has measured that it needs to, and is
-never what you get by not choosing. [SECURITY_HARDENING.md](SECURITY_HARDENING.md#request-limits)
+never what you get by not choosing. [how-to/harden-security.md](../how-to/harden-security.md#request-limits)
 explains what each bound is protecting and why raising one is a decision rather than a
 default.
 
@@ -339,7 +339,7 @@ released, so a caller may bind that port again or start the application afresh.
 A rolling deploy that dropped in-flight requests will stop dropping them. A test that
 called `close()` as a formality is now really tearing the application down, which is
 usually what it wanted and occasionally a surprise. See
-[DEPLOYMENT.md](DEPLOYMENT.md#shutdown-and-draining) for the whole sequence.
+[how-to/deploy.md](../how-to/deploy.md#shutdown-and-draining) for the whole sequence.
 
 ### Log Records Are JSON
 
@@ -359,7 +359,7 @@ the request's correlation and trace ids attached:
 Anything that parsed the old line - a log-shipping regex, a dashboard, an alert - needs
 rewriting against the fields. Configuring the `bustan` logger now configures the
 framework's records and the framework's own internal records together, which it did not
-before. [OBSERVABILITY.md](OBSERVABILITY.md#logging) has the field list and the
+before. [how-to/observe-an-application.md](../how-to/observe-an-application.md#logging) has the field list and the
 redaction rules.
 
 ### `coerce_response` Returns A Neutral Response
@@ -486,16 +486,16 @@ the supported name and the one to move to.
 - Your body-size and timeout limits are the ones you chose, or you have confirmed the
   defaults fit.
 - Your throttler has a shared store if you run more than one worker
-  ([SECURITY_HARDENING.md](SECURITY_HARDENING.md#throttling)).
+  ([how-to/harden-security.md](../how-to/harden-security.md#throttling)).
 - Your readiness probe is wired to your scheduler
-  ([DEPLOYMENT.md](DEPLOYMENT.md#health-and-readiness)).
+  ([how-to/deploy.md](../how-to/deploy.md#health-and-readiness)).
 
 ## Where To Go Next
 
-- [CLI.md](CLI.md) - the whole of `bustan doctor`, and the other four commands.
-- [ARCHITECTURE.md](ARCHITECTURE.md) - why the packages moved.
-- [OBSERVABILITY.md](OBSERVABILITY.md) - logging, correlation, metrics and tracing.
-- [SECURITY_HARDENING.md](SECURITY_HARDENING.md) - limits, throttling, refusals.
-- [DEPLOYMENT.md](DEPLOYMENT.md) - serving, probes, draining, workers.
-- [CHANGELOG.md](../CHANGELOG.md) - every change, release by release, with the issue
+- [reference/cli.md](../reference/cli.md) - the whole of `bustan doctor`, and the other four commands.
+- [explanation/layering.md](../explanation/layering.md) - why the packages moved.
+- [how-to/observe-an-application.md](../how-to/observe-an-application.md) - logging, correlation, metrics and tracing.
+- [how-to/harden-security.md](../how-to/harden-security.md) - limits, throttling, refusals.
+- [how-to/deploy.md](../how-to/deploy.md) - serving, probes, draining, workers.
+- [CHANGELOG.md](../../CHANGELOG.md) - every change, release by release, with the issue
   each one closed.

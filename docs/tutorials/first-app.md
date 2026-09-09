@@ -211,4 +211,4 @@ with compiled.create_client() as client:
 - `app.listen()` is the supported runtime entry point for local serving.
 - `bustan.testing` is the supported way to build test applications and apply overrides.
 
-After this walkthrough, continue with [ROUTING.md](ROUTING.md) and [REQUEST_PIPELINE.md](REQUEST_PIPELINE.md) to understand how handlers bind inputs and how cross-cutting request logic is composed.
+After this walkthrough, continue with [reference/routing.md](../reference/routing.md) and [reference/request-pipeline.md](../reference/request-pipeline.md) to understand how handlers bind inputs and how cross-cutting request logic is composed.

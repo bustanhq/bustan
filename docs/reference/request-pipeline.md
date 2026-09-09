@@ -20,7 +20,7 @@ Two consequences are worth stating on their own, because applications are writte
 
 **Nothing is constructed for a request a guard refuses.** Authentication happens before the controller, its request-scoped dependencies and any durable partition the route names exist, so a rejected caller costs the application a guard and nothing else. It also means a request-scoped provider can read what a guard wrote on `request.state` in its own constructor.
 
-**The request scope spans the whole of that list, middleware included.** It opens before stage 1 and closes after stage 9, so a middleware resolving a request-scoped provider after `call_next` gets the instance the handler used rather than a fresh one. [REQUEST_SCOPED_PROVIDERS.md](REQUEST_SCOPED_PROVIDERS.md#what-request-scope-gives-you) states the rest of that contract.
+**The request scope spans the whole of that list, middleware included.** It opens before stage 1 and closes after stage 9, so a middleware resolving a request-scoped provider after `call_next` gets the instance the handler used rather than a fresh one. [explanation/request-scope.md](../explanation/request-scope.md#what-request-scope-gives-you) states the rest of that contract.
 
 Exception filters wrap the downstream path. A filter can translate binding errors, guard rejections, interceptor failures, or handler exceptions into a normal response payload.
 
@@ -40,7 +40,7 @@ When building custom pipeline components, stay on the stable exports from `busta
 - `CallHandler` is the continuation contract passed into interceptors.
 - `Guard`, `Pipe`, `Interceptor`, `ExceptionFilter` and `Middleware` are the public base classes.
 
-`bustan`, `bustan.errors` and `bustan.testing` are the whole supported surface; every other import path is an implementation detail that may be restructured without notice. [STABILITY.md](STABILITY.md) is the authority on which side of that line a symbol is on.
+`bustan`, `bustan.errors` and `bustan.testing` are the whole supported surface; every other import path is an implementation detail that may be restructured without notice. [reference/stability.md](../reference/stability.md) is the authority on which side of that line a symbol is on.
 
 ## Example
 
@@ -530,10 +530,10 @@ A body over a byte bound raises `RequestBodyTooLargeError`, and a request over t
 budget raises `RequestTimeoutError`. Both are exported from `bustan.errors`, so an
 application can catch either in an exception filter and answer it with a status of its
 own. What a caller sees for each, and the four message shapes a body refusal takes, are
-in [`RequestBodyTooLargeError`](TROUBLESHOOTING.md#requestbodytoolargeerror) and
-[`RequestTimeoutError`](TROUBLESHOOTING.md#requesttimeouterror); the problem-details
+in [`RequestBodyTooLargeError`](../reference/errors.md#requestbodytoolargeerror) and
+[`RequestTimeoutError`](../reference/errors.md#requesttimeouterror); the problem-details
 contract those responses are rendered into is described under
-[`HttpException`](TROUBLESHOOTING.md#httpexception).
+[`HttpException`](../reference/errors.md#httpexception).
 
 One property to hold while sizing the byte bounds: a body that declares a
 `Content-Length` is refused before it is read, but a body sent without one can only be
@@ -579,4 +579,4 @@ that needs two different thread ceilings needs two event loops to hold them.
 - Request-scoped pipeline components can inject `HttpRequest`, the serving transport's own request object, and any other request-scoped provider.
 - Interceptors execute in declaration order on the way in and unwind in reverse order on the way out.
 
-See [REQUEST_SCOPED_PROVIDERS.md](REQUEST_SCOPED_PROVIDERS.md) for the rules that make request-local guards, interceptors, and controllers safe.
+See [explanation/request-scope.md](../explanation/request-scope.md) for the rules that make request-local guards, interceptors, and controllers safe.

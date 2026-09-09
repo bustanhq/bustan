@@ -44,7 +44,7 @@ SCHEMA = 1
 
 # Only the default for a newly written baseline; a gate run reads the threshold out of the
 # baseline it judges against, so the number a reader sees in the file is the number that
-# was applied. How it was chosen is in docs/BENCHMARKS.md.
+# was applied. How it was chosen is in docs/how-to/run-benchmarks.md.
 DEFAULT_THRESHOLD = 0.20
 
 _MACHINE_FIELDS = (
@@ -207,7 +207,7 @@ def _warn_on_mismatched_machine(baseline: dict[str, Any], paths: list[Path]) -> 
                 f"warning: {path} ran on {machine.get('cpu_brand')}, the baseline was "
                 f"captured on {captured.get('cpu_brand')}. Ratios are not comparable "
                 f"across processors and this verdict is not evidence of a regression; "
-                f"see docs/BENCHMARKS.md for comparing a change on one machine."
+                f"see docs/how-to/run-benchmarks.md for comparing a change on one machine."
             )
 
 

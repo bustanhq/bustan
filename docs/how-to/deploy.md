@@ -1,7 +1,7 @@
 # Deployment
 
 How to install, serve, probe, scale and stop a `Bustan` application. It assumes the
-application already runs locally; [FIRST_APP.md](FIRST_APP.md) is where that starts.
+application already runs locally; [tutorials/first-app.md](../tutorials/first-app.md) is where that starts.
 
 ## Install
 
@@ -76,7 +76,7 @@ worker = context.get(QueueWorker)
 a queue consumer, a scheduled job or a management command that has to share the
 application's providers. `ApplicationContext` supports `get()`, `resolve()`, `init()`
 and `close()` and nothing HTTP. See
-[PLATFORM_INTEGRATION.md](PLATFORM_INTEGRATION.md#non-http-bootstrapping).
+[reference/adapters.md](../reference/adapters.md#non-http-bootstrapping).
 
 ## Choosing An Adapter
 
@@ -131,7 +131,7 @@ together, so it bounds the whole probe however many are registered.
 
 **The two probes are not interchangeable**, and putting a dependency on the wrong one
 turns an outage in something else into a restart loop.
-[OBSERVABILITY.md](OBSERVABILITY.md#health-and-readiness) has the rule and the
+[how-to/observe-an-application.md](../how-to/observe-an-application.md#health-and-readiness) has the rule and the
 registration example.
 
 **Neither probe is authenticated, and neither is exempt from a global guard you
@@ -198,9 +198,9 @@ in a deploy.
 If your application came from 1.x, check the method names before you deploy: 1.x called
 these `on_app_startup` and `on_app_shutdown`, and a class still carrying those names has
 a startup and a shutdown that silently do nothing. See
-[MIGRATION_1x_to_2x.md](MIGRATION_1x_to_2x.md#two-lifecycle-hooks-were-renamed-and-the-old-names-fail-silently).
+[how-to/migrate-from-1x.md](../how-to/migrate-from-1x.md#two-lifecycle-hooks-were-renamed-and-the-old-names-fail-silently).
 
-[LIFECYCLE.md](LIFECYCLE.md) has the full ordering.
+[reference/lifecycle.md](../reference/lifecycle.md) has the full ordering.
 
 ## Running More Than One Worker
 
@@ -210,7 +210,7 @@ in memory is per-process. Two of those matter in production:
 - **The throttler.** The default store counts each worker separately, so N workers allow
   N times the configured limit. Pass a `storage` implementation every worker can see.
   This is the most common way a rate limit turns out not to be one; see
-  [SECURITY_HARDENING.md](SECURITY_HARDENING.md#throttling).
+  [how-to/harden-security.md](../how-to/harden-security.md#throttling).
 - **Anything a singleton provider caches.** A cache, a counter, an in-memory session
   store: each worker has its own, and a caller striped across workers sees whichever one
   it lands on.
@@ -243,7 +243,7 @@ bustan config myapp.app_module:AppModule
 prints what the application actually resolved, with credential-looking keys withheld.
 Two limits before you paste that anywhere: redaction reads the name of a key and never
 its value, and the report covers the whole process environment because that is what
-configuration is overlaid from. [CLI.md](CLI.md#bustan-config) says the rest.
+configuration is overlaid from. [reference/cli.md](../reference/cli.md#bustan-config) says the rest.
 
 ## Gating A Release
 
@@ -259,7 +259,7 @@ that output itself:
 
 Commit the route snapshot and diff each candidate against it, and an unintended route
 removal is caught before it reaches a caller rather than after.
-[CLI.md](CLI.md#bustan-routes) documents both.
+[reference/cli.md](../reference/cli.md#bustan-routes) documents both.
 
 ## Before You Ship
 
@@ -273,12 +273,12 @@ removal is caught before it reaches a caller rather than after.
 - `trusted_proxies` names your load balancer and nothing wider.
 - TLS and security response headers are handled in front of the application.
 - Request limits fit what your routes actually accept
-  ([SECURITY_HARDENING.md](SECURITY_HARDENING.md#request-limits)).
+  ([how-to/harden-security.md](../how-to/harden-security.md#request-limits)).
 
 ## Where To Go Next
 
-- [OBSERVABILITY.md](OBSERVABILITY.md) - logs, correlation, metrics, traces, probes.
-- [SECURITY_HARDENING.md](SECURITY_HARDENING.md) - limits, throttling, refusals.
-- [PLATFORM_INTEGRATION.md](PLATFORM_INTEGRATION.md) - the adapter surface.
-- [LIFECYCLE.md](LIFECYCLE.md) - startup and shutdown ordering.
-- [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) - releasing the framework itself.
+- [how-to/observe-an-application.md](../how-to/observe-an-application.md) - logs, correlation, metrics, traces, probes.
+- [how-to/harden-security.md](../how-to/harden-security.md) - limits, throttling, refusals.
+- [reference/adapters.md](../reference/adapters.md) - the adapter surface.
+- [reference/lifecycle.md](../reference/lifecycle.md) - startup and shutdown ordering.
+- [how-to/cut-a-release.md](../how-to/cut-a-release.md) - releasing the framework itself.

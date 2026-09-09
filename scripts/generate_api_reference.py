@@ -12,7 +12,7 @@ from types import ModuleType
 from typing import Any, cast
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-OUTPUT_PATH = REPO_ROOT / "docs" / "API_REFERENCE.md"
+OUTPUT_PATH = REPO_ROOT / "docs" / "reference" / "api.md"
 GENERATE_COMMAND = "uv run python scripts/generate_api_reference.py"
 
 STABLE_MODULES = (
@@ -74,7 +74,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="fail when docs/API_REFERENCE.md does not match the generated output",
+        help="fail when docs/reference/api.md does not match the generated output",
     )
     return parser.parse_args(argv)
 

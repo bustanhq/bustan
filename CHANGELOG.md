@@ -36,7 +36,7 @@ It previously reached the visibility lookup as `TypeError: unhashable type: 'dic
 registration may now replace a provider its base module declares rather than colliding with it.
 
 `INQUIRER` yields the requesting class rather than the requesting instance. That is documented in
-[COMPARISONS.md](docs/COMPARISONS.md) as a deliberate difference from NestJS: this framework injects
+[COMPARISONS.md](docs/explanation/comparisons.md) as a deliberate difference from NestJS: this framework injects
 through the constructor only, so at the moment the token is answered the consumer's `__init__` has
 not run and no instance of it exists.
 

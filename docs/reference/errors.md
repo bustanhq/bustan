@@ -111,7 +111,7 @@ Common conditions and fixes:
 - `the 'provide' token ... cannot be used as a key` - a token must be hashable. Use a class, a string, or an `InjectionToken`.
 - `... declares 'inject' beside '<key>', which takes no dependencies` - only `use_factory` takes an `inject` list.
 - `... declares 'scope' beside '<key>', which cannot honour a lifetime of its own` - `use_value` is one object and `use_existing` borrows the lifetime of the token it points at, so neither can be given a scope.
-- `... binds C as <scope>-scoped, but the class declares <scope> scope. A binding may narrow a declared scope, never widen it` - a `use_class` may bind a request-scoped class as transient, but not as a singleton. See [Binding Forms And Scope](REQUEST_SCOPED_PROVIDERS.md#binding-forms-and-scope).
+- `... binds C as <scope>-scoped, but the class declares <scope> scope. A binding may narrow a declared scope, never widen it` - a `use_class` may bind a request-scoped class as transient, but not as a singleton. See [Binding Forms And Scope](../explanation/request-scope.md#binding-forms-and-scope).
 - `... asks for a durable 'use_factory'` - a durable lifetime is partitioned by a `get_durable_context_key` hook, which only a class can carry. Use `use_class`.
 - `... asks for a durable lifetime but declares no 'get_durable_context_key'`, or the hook is not a `classmethod` or `staticmethod` - the key selects the instance, so it must be derivable without one.
 - `... and ... are equal but are not the same token, so one would silently take the other's binding` - two tokens in one module compare equal but are different objects or types, such as a `str` and a `StrEnum` member spelling the same value. Declare one of them under a distinct token.
@@ -157,7 +157,7 @@ Cause: a dependency the container cannot find, cannot read, or cannot let its ow
 - `... is variadic and cannot be injected` - `*args` and `**kwargs` cannot be supplied.
 - `... is positional-only and follows a parameter left to its default, so it cannot be supplied`.
 
-**The owner would outlive what it holds.** These are the scope rules, and each message names the owner, the parameter, and the state it reaches. [REQUEST_SCOPED_PROVIDERS.md](REQUEST_SCOPED_PROVIDERS.md) states the rule the messages enforce.
+**The owner would outlive what it holds.** These are the scope rules, and each message names the owner, the parameter, and the state it reaches. [explanation/request-scope.md](../explanation/request-scope.md) states the rule the messages enforce.
 
 - `... depends on request-scoped provider P, which can only be injected into an owner that lives no longer than it does` - the direct refusal. Move the consumer to request scope, move the request-local dependency into a request-scoped collaborator, or pass the request-derived data as a method argument instead of constructor state. The same message names a durable provider when a singleton reaches durable scope.
 - `... depends on X, which keeps no instance of its own and reaches <state>` - the transitive refusal. `X` is a transient or a `use_existing` alias, so it carries whatever it reaches into whoever holds it. The phrase after `reaches` names the provider whose own lifetime is the reason.
@@ -193,7 +193,7 @@ Common conditions and fixes:
 - `Use either 'host' or 'hosts', not both`.
 - `... defines duplicate route <METHOD> <path> on handlers A and B`, `Duplicate application route ...`, or `Conflicting route path pattern for ...` - two handlers claim one path. The last of these fires when the paths differ only by parameter name, such as `/users/{id}` and `/users/{user_id}`, which match the same requests.
 - `Duplicate version-neutral route ...` or `Overlapping versions [...] for route ...` - two versioned declarations of one path answer the same version.
-- `... does not support host routing for ...`, `raw body access`, or `streaming responses` - the route asks for a capability the configured adapter does not advertise. See [PLATFORM_INTEGRATION.md](PLATFORM_INTEGRATION.md).
+- `... does not support host routing for ...`, `raw body access`, or `streaming responses` - the route asks for a capability the configured adapter does not advertise. See [reference/adapters.md](../reference/adapters.md).
 - `... declares @Public together with auth/roles/permissions at the <level> level` - remove one of the contradictory declarations.
 - `... uses raw response mode and cannot apply interceptor I because it mutates the response body` - a raw response is handed to the client as written, so an interceptor that rewrites the body has nothing to rewrite.
 
@@ -369,7 +369,7 @@ The message becomes the problem's `detail`, except at 500 and above: those statu
 
 An exception that is not one of these and not otherwise modelled still renders as a `500` whose `type` is `about:blank` and which carries no `code`, because that is what the standard defines that value to mean: a problem with no semantics beyond its status.
 
-The framework answers with these documents too, without an application raising anything. A path no route answers and a version nothing serves both produce the `NotFoundException` document, and a method no route answers produces the `MethodNotAllowedException` one with an `Allow` header; see [ROUTING.md](ROUTING.md#refusals-before-a-handler-runs). So a `404` carrying `not-found` does not tell you whether a handler raised it or the router did, and the two are told apart by `detail`, which an application sets and the router leaves as the status reason.
+The framework answers with these documents too, without an application raising anything. A path no route answers and a version nothing serves both produce the `NotFoundException` document, and a method no route answers produces the `MethodNotAllowedException` one with an `Allow` header; see [reference/routing.md](../reference/routing.md#refusals-before-a-handler-runs). So a `404` carrying `not-found` does not tell you whether a handler raised it or the router did, and the two are told apart by `detail`, which an application sets and the router leaves as the status reason.
 
 Fix: nothing to fix. Raise the subclass whose status says what happened.
 
@@ -554,7 +554,7 @@ Provider lifecycle hook FirstSink.on_module_destroy failed: first sink would not
 
 Both hooks ran even though the first one raised, and the members arrive in teardown order, which reverses construction order.
 
-[LIFECYCLE.md](LIFECYCLE.md) documents the stages, the ordering, and the failure contract in full.
+[reference/lifecycle.md](../reference/lifecycle.md) documents the stages, the ordering, and the failure contract in full.
 
 `bustan.testing` also raises it directly, as `The application was built without a lifecycle manager`, when a testing module is asked to start or stop an application built without one.
 

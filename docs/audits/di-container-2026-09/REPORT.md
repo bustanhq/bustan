@@ -289,12 +289,12 @@ verbatim evidence script in `repros/evidence/` otherwise.
 | EX-04 | low | Confirmed | 403 responses disclose guard class paths and strategy names | `evidence/EX-04.py` |
 
 Documentation statements contradicted by behavior are listed with the
-finding that contradicts them: RI-01 (`docs/REQUEST_SCOPED_PROVIDERS.md:33`
-and `:113`, `docs/TROUBLESHOOTING.md:26`), OL-05 (`docs/LIFECYCLE.md:88`),
-OL-11 (the `ApplicationContext.get` docstring and `docs/API_REFERENCE.md`),
-CR-04 ("one cached instance per request"), OL-15 (`docs/LIFECYCLE.md:30`),
-MG-07 (`docs/TROUBLESHOOTING.md:11`), RI-13 (`docs/REQUEST_SCOPED_PROVIDERS.md:24`),
-RI-11 (`docs/REQUEST_SCOPED_PROVIDERS.md:87`), OL-16 (`docs/LIFECYCLE.md:9`).
+finding that contradicts them: RI-01 (`docs/explanation/request-scope.md:33`
+and `:113`, `docs/reference/errors.md:26`), OL-05 (`docs/reference/lifecycle.md:88`),
+OL-11 (the `ApplicationContext.get` docstring and `docs/reference/api.md`),
+CR-04 ("one cached instance per request"), OL-15 (`docs/reference/lifecycle.md:30`),
+MG-07 (`docs/reference/errors.md:11`), RI-13 (`docs/explanation/request-scope.md:24`),
+RI-11 (`docs/explanation/request-scope.md:87`), OL-16 (`docs/reference/lifecycle.md:9`).
 
 ## 4. Detailed findings
 
@@ -315,7 +315,7 @@ has no owner check at all), `resolver.py:515` (`owner_is_controller` is derived
 from class identity only), `src/bustan/platform/http/controller_factory.py:49-76`
 (`@Controller(scope=...)` is read but never passed to the resolver as
 `binding_scope`; the singleton instance is cached in `controller_singletons`),
-`docs/REQUEST_SCOPED_PROVIDERS.md:33` and `:113`, `docs/TROUBLESHOOTING.md:26`.
+`docs/explanation/request-scope.md:33` and `:113`, `docs/reference/errors.md:26`.
 
 Mechanism: the guard that stops singletons from depending on request-scoped
 providers exempts every controller regardless of the controller's own scope,
@@ -537,7 +537,7 @@ Where: `src/bustan/core/ioc/resolver.py:770-779` (`INQUIRER` read from
 `construction_stack[-2]` with no owner-scope check), `resolver.py:387`
 (`call_factory` pushes no construction frame),
 `src/bustan/core/lifecycle/runner.py:83-87` (eager pass resolves singletons at
-top level in binding order), `docs/API_REFERENCE.md:697`.
+top level in binding order), `docs/reference/api.md:697`.
 
 Mechanism: a singleton that injects `INQUIRER` is built once for whichever
 dependent asks first and then shared, so every later dependent sees the wrong
@@ -680,7 +680,7 @@ Where: `src/bustan/platform/http/adapters/starlette.py:99-106` (middleware
 resolved and awaited around the route), `src/bustan/platform/http/execution.py:212`
 (request-scope caches cleared inside `execute_http_route`'s `finally`),
 `execution.py:114` (the `Response` context is pushed only after the middleware
-phase has begun), `docs/REQUEST_SCOPED_PROVIDERS.md:24-26`.
+phase has begun), `docs/explanation/request-scope.md:24-26`.
 
 Evidence: `repros/evidence/RI-13.py`: `Ident constructions during one request:
 ['Ident(u2)#...708544', 'Ident(u2)#...358288']`, `audit events visible after
@@ -1022,7 +1022,7 @@ whether controllers may declare hooks.
 
 Severity: low. Category: API ergonomics. Status: Confirmed (lead spot check).
 
-Where: `src/bustan/core/module/graph.py:219-223`, `docs/TROUBLESHOOTING.md:11`.
+Where: `src/bustan/core/module/graph.py:219-223`, `docs/reference/errors.md:11`.
 
 Mechanism: `exports=[SharedModule]` raises `ExportViolationError` naming the
 module as an unavailable provider; the troubleshooting doc then tells the user
@@ -1510,7 +1510,7 @@ Where: `src/bustan/app/application.py:60` (pushes the context itself as
 `APPLICATION`), `src/bustan/addons/module_ref.py:20-22` and `:57-64`,
 `src/bustan/addons/discovery.py:23-24` and `:72-79` (both accept only
 `Application` or a Starlette app and raise `TypeError` otherwise),
-`docs/LIFECYCLE.md:65-68` (presents `create_app_context` as the supported
+`docs/reference/lifecycle.md:65-68` (presents `create_app_context` as the supported
 non-HTTP entry point).
 
 Evidence: `repros/evidence/RF-10.py`: `ctx.get(ModuleRef) -> RAW TypeError:
@@ -1674,7 +1674,7 @@ Severity: medium. Category: correctness. Status: Confirmed.
 Where: `src/bustan/core/lifecycle/manager.py:51-58` (state assigned only after
 every stage succeeds), `manager.py:62-64` (`shutdown` returns when not
 initialized), `src/bustan/app/lifespan.py:19-25` (the startup await is outside
-the `try`), `docs/LIFECYCLE.md:88`.
+the `try`), `docs/reference/lifecycle.md:88`.
 
 Evidence: `repros/evidence/OL-05.py`: `events after failed init():
 ['poolmodule:init', 'pool:open']`, `events after close(): [same]`, `lifecycle
@@ -1839,7 +1839,7 @@ the floor) or attach the errors and chain the first.
 Severity: info. Category: docs drift. Status: Confirmed (lead spot check).
 
 Where: `src/bustan/core/lifecycle/manager.py:103` (`reversed(nodes)`),
-`src/bustan/core/lifecycle/runner.py:85-102`, `docs/LIFECYCLE.md:17` and `:30`.
+`src/bustan/core/lifecycle/runner.py:85-102`, `docs/reference/lifecycle.md:17` and `:30`.
 
 Evidence: for `Root -> Leaf` with async factories in both and a sync singleton
 in root, the init order is `['LeafAsync', 'RootAsync', 'RootSvc']`.
@@ -1853,7 +1853,7 @@ Severity: info. Category: docs drift. Status: Confirmed (critic round).
 
 Where: `src/bustan/core/lifecycle/manager.py:61` (`shutdown(*, signal=None)`),
 `src/bustan/app/lifespan.py:25` and `src/bustan/app/application.py:83` (the
-only callers, both without a signal), `docs/LIFECYCLE.md:9-10`, `:43-44`, `:61-62`.
+only callers, both without a signal), `docs/reference/lifecycle.md:9-10`, `:43-44`, `:61-62`.
 
 Evidence: `repros/evidence/OL-16.py`: both shutdown paths deliver
 `signal=None` to every hook; no caller passes `signal=`.
@@ -1984,7 +1984,7 @@ Severity: low. Category: API ergonomics. Status: Confirmed (workflow reproducer,
 
 Where: `src/bustan/core/ioc/registry.py:91-93`, `src/bustan/core/ioc/scopes.py:31-39`,
 `src/bustan/app/application.py:33` (`app.container` is a documented accessor),
-`docs/PLATFORM_INTEGRATION.md:13`.
+`docs/reference/adapters.md:13`.
 
 Mechanism: `Registry.bindings`, `module_visibility`, `controller_modules` and
 every `ScopeManager` cache are plain attributes; mutating `module_visibility`
@@ -2183,7 +2183,7 @@ Severity: medium. Category: parity gap. Status: Confirmed.
 
 Where: `src/bustan/addons/module_ref.py:20-22` (`_module_key = application.root_key`
 regardless of the receiving module), `module_ref.py:46-48` (`strict=False`
-also resolves against the root), `docs/API_REFERENCE.md:849-866` (signature
+also resolves against the root), `docs/reference/api.md:849-866` (signature
 only, no semantics).
 
 Evidence: `repros/evidence/DP-01.py`: `ModuleRef` injected into a
@@ -2199,7 +2199,7 @@ with an ambiguity error; document the semantics.
 Severity: low. Category: parity gap. Status: Confirmed (lead spot check).
 
 Where: `src/bustan/core/module/builder.py:102-131` (the generated
-`DynamicModule` carries providers and exports only), `docs/API_REFERENCE.md:1342`.
+`DynamicModule` carries providers and exports only), `docs/reference/api.md:1342`.
 
 Evidence: `for_root_async(use_factory=make, inject=(HostConfig,))` imported by
 a module that provides `HostConfig`: `HostConfig is not available to
@@ -2222,9 +2222,9 @@ Severity: low. Category: parity gap. Status: Confirmed (workflow reproducer, sec
 - Only constructor injection exists; no property injection, no lazy module
   loading, no scope bubbling (NestJS makes a singleton that depends on a
   request-scoped provider request-scoped; Bustan errors, which is defensible
-  but undocumented in `docs/COMPARISONS.md`).
+  but undocumented in `docs/explanation/comparisons.md`).
 
-Fix: document each gap in `COMPARISONS.md` and `TROUBLESHOOTING.md`; validate
+Fix: document each gap in `explanation/comparisons.md` and `reference/errors.md`; validate
 `inject` entries in `normalize_provider`; decide which gaps 2.0 closes.
 
 ### 4.9 Request execution order and error contract
@@ -2371,7 +2371,7 @@ intended breaks and are marked as such.
 | 0.2 One effective-scope rule at container build time: `use_existing` inherits its target's scope, a factory's scope must be at least as strict as every `inject` token's, `use_class` defaults to the class's declared scope, singleton and durable owners may not reach request scope, singletons may not reach durable scope; `ApplicationContext.get` and `ModuleRef.get` clear the active request | RI-02, RI-03, RI-06, RI-07 | `core/ioc/registry.py`, `core/ioc/container.py`, `core/ioc/resolver.py`, `app/application.py`, `addons/module_ref.py` | M | Intended: scope errors surface at bootstrap with the documented message |
 | 0.3 Durable scope containment: no `Request` injection into durable owners (pass the durable key instead), bounded store with `evict_durable` and `clear_durable`, per-key locks released after construction, key computed once and validated hashable, `on_module_destroy` on eviction and at shutdown | RI-04, CR-01, CR-06, OL-12 | `core/ioc/resolver.py`, `core/ioc/scopes.py`, `core/ioc/container.py`, `core/lifecycle/runner.py`, `docs/` | M | Yes for durable providers that inject `Request` (rare); document the migration |
 | 0.4 Guards before construction: resolve and run guards before instantiating the controller, request-scoped providers and durable partitions; evict partitions created by a rejected request; give `get_durable_context_key` an authenticated context; generate `request_context_id` once per request | RI-11, RI-12 | `platform/http/execution.py`, `pipeline/guards.py`, `addons/context.py`, `core/ioc/scopes.py` | M | Intended: constructors no longer run for rejected requests |
-| 0.5 Disclosure and release: security advisory for RI-01 through RI-05 (cross-request identity disclosure in 1.1.0), `CHANGELOG.md` entry, 1.1.1 release once 0.1 to 0.3 land; until then update `docs/REQUEST_SCOPED_PROVIDERS.md` and `docs/TROUBLESHOOTING.md` to say the controller rule is not enforced | RI-01 | `SECURITY.md`, `CHANGELOG.md`, `docs/` | S | No |
+| 0.5 Disclosure and release: security advisory for RI-01 through RI-05 (cross-request identity disclosure in 1.1.0), `CHANGELOG.md` entry, 1.1.1 release once 0.1 to 0.3 land; until then update `docs/explanation/request-scope.md` and `docs/reference/errors.md` to say the controller rule is not enforced | RI-01 | `SECURITY.md`, `CHANGELOG.md`, `docs/` | S | No |
 
 ### Phase 1: correctness and hardening (two to six weeks)
 
@@ -2420,7 +2420,7 @@ intended breaks and are marked as such.
 - Remove the `mini` workspace member; add `ruff format --check` and `uv lock --check` to CI (QA-08, QA-03).
 - Rewrite the `ApplicationContext.get` docstring so it stops pointing at `app.resolve()` (OL-11).
 - Add the override caveat to the README until 1.5 lands (OL-01).
-- Correct `docs/REQUEST_SCOPED_PROVIDERS.md` and `docs/TROUBLESHOOTING.md` about singleton controllers until 0.1 lands (RI-01).
+- Correct `docs/explanation/request-scope.md` and `docs/reference/errors.md` about singleton controllers until 0.1 lands (RI-01).
 - Name the token, not `type`, in provider hook errors (OL-04).
 - Generate `request_context_id` from `uuid4` stored on `request.state` (RI-12).
 - Set `precision = 2` on the coverage gate (QA-11).
