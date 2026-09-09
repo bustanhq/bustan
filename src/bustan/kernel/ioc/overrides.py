@@ -221,8 +221,11 @@ def _evict_reach(
     """
 
     invalidated = _binding_with_dependents(binding_identity, registry, plan)
-    _drop_cached(scopes.singletons, invalidated)
-    _drop_cached(scopes.durable_instances, invalidated)
+    # Sweeping the two caches from here reaches past the scope manager into what it
+    # holds. Which key belongs to which binding is the cache's own business, so the
+    # sweep belongs on it as a method taking the invalidated set.
+    _drop_cached(scopes._singletons, invalidated)
+    _drop_cached(scopes._durable_instances, invalidated)
     # Every controller is built from the graph the override just changed, and a
     # controller is cheap to rebuild, so they go rather than being traced one by one.
     scopes.clear_controller_singletons()

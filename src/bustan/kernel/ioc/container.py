@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import MappingProxyType
 from typing import TYPE_CHECKING, overload
 
 from ..errors import InvalidModuleError, ProviderResolutionError
@@ -111,13 +110,13 @@ class Container:
     def singleton_instance_view(self) -> Mapping[tuple[ModuleKey, object], object]:
         """A live read-only window onto the singletons this container has built."""
 
-        return MappingProxyType(self.scope_manager.singletons)
+        return self.scope_manager.singleton_instance_view
 
     @property
     def controller_instance_view(self) -> Mapping[tuple[ModuleKey, type[object]], object]:
         """A live read-only window onto the controller instances kept for the whole run."""
 
-        return MappingProxyType(self.scope_manager.controller_singletons)
+        return self.scope_manager.controller_instance_view
 
     @property
     def durable_instance_view(self) -> Mapping[object, object]:
@@ -128,7 +127,7 @@ class Container:
         does. Nothing is evicted by reading, but what is evicted next may change.
         """
 
-        return MappingProxyType(self.scope_manager.durable_instances)
+        return self.scope_manager.durable_instance_view
 
     def mark_startup_begun(self) -> None:
         """Report that a startup has begun, so providers may be resolved again.

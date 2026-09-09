@@ -172,7 +172,7 @@ async def test_shutdown_drops_the_instances_it_destroyed() -> None:
     before = container.resolve(Pool, module=AppModule)
     await manager.shutdown()
 
-    assert container.scope_manager.singletons == {}
+    assert container.singleton_instance_view == {}
 
     await manager.startup()
     assert container.resolve(Pool, module=AppModule) is not before

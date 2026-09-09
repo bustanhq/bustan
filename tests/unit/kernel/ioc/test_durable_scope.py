@@ -13,7 +13,7 @@ from bustan import Injectable, Module, Scope
 from bustan.kernel.errors import InvalidProviderError, ProviderResolutionError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.ioc.registry import Binding
-from bustan.kernel.ioc.scopes import CACHE_MISS, ScopeManager
+from bustan.kernel.ioc.scopes import CACHE_MISS, DURABLE_INSTANCE_LIMIT, ScopeManager
 from bustan.kernel.module.graph import build_module_graph
 
 if TYPE_CHECKING:
@@ -160,7 +160,7 @@ def test_a_caller_varying_the_context_key_cannot_grow_the_durable_store(
 
     container = build_container(build_module_graph(AppModule))
     scope_manager = container.scope_manager
-    limit = scope_manager.durable_instances.limit
+    limit = DURABLE_INSTANCE_LIMIT
 
     for index in range(limit * 3):
         request = build_http_request(
@@ -168,7 +168,7 @@ def test_a_caller_varying_the_context_key_cannot_grow_the_durable_store(
         )
         container.resolve(DurableService, module=AppModule, request=request)
 
-    assert len(scope_manager.durable_instances) == limit
+    assert len(container.durable_instance_view) == limit
     # The lock table holds the constructions in flight, and none is.
     assert len(scope_manager.construction_locks) == 0
 
@@ -194,7 +194,7 @@ def test_a_tenant_evicted_from_the_durable_store_is_built_again_when_it_returns(
         return container.resolve(DurableService, module=AppModule, request=request)
 
     first = resolve(b"tenant-a")
-    for index in range(container.scope_manager.durable_instances.limit):
+    for index in range(DURABLE_INSTANCE_LIMIT):
         resolve(f"tenant-{index}".encode())
 
     # An evicted partition is a cache miss, not a wrong answer: the tenant that comes
@@ -341,10 +341,10 @@ def test_two_equal_tokens_of_different_types_keep_separate_durable_partitions() 
 
     assert manager.get_durable(enum_key) == "from enum"
     assert manager.get_durable(str_key) == "from str"
-    assert len(manager.durable_instances) == 2
-    assert list(manager.durable_instances) == [enum_key, str_key]
+    assert len(manager.durable_instance_view) == 2
+    assert list(manager.durable_instance_view) == [enum_key, str_key]
 
-    del manager.durable_instances[enum_key]
+    del manager._durable_instances[enum_key]
 
     assert manager.get_durable(enum_key) is CACHE_MISS
     assert manager.get_durable(str_key) == "from str"
@@ -360,7 +360,7 @@ def test_a_true_token_and_a_one_token_keep_separate_durable_partitions() -> None
 
     assert manager.get_durable(true_key) == "from true"
     assert manager.get_durable(one_key) == "from one"
-    assert len(manager.durable_instances) == 2
+    assert len(manager.durable_instance_view) == 2
 
 
 def test_telling_two_equal_tokens_apart_does_not_widen_the_durable_store() -> None:
@@ -372,5 +372,5 @@ def test_telling_two_equal_tokens_apart_does_not_widen_the_durable_store() -> No
     manager.set_durable((DeclaringModule, "db", "tenant-a"), "b")
     manager.set_durable((DeclaringModule, "db", "tenant-b"), "c")
 
-    assert len(manager.durable_instances) == 2
+    assert len(manager.durable_instance_view) == 2
     assert manager.get_durable((DeclaringModule, Tokens.DB, "tenant-a")) is CACHE_MISS

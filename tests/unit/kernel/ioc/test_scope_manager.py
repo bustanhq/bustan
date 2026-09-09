@@ -8,6 +8,7 @@ produce and a probe that cannot tell the two apart rebuilds that provider foreve
 from __future__ import annotations
 
 import threading
+from collections.abc import Mapping, MutableMapping
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, cast
 
@@ -172,7 +173,7 @@ def test_the_durable_store_is_bounded_and_drops_the_partition_used_longest_ago()
 
     manager.set_durable(third, "c")
 
-    assert len(manager.durable_instances) == 2
+    assert len(manager.durable_instance_view) == 2
     assert manager.get_durable(second) is CACHE_MISS
     assert manager.get_durable(first) == "a"
     assert manager.get_durable(third) == "c"
@@ -281,10 +282,10 @@ def test_the_durable_store_answers_the_whole_mapping_protocol_it_is_read_through
     key = (AppModule, Service, "tenant-a")
     manager.set_durable(key, "a")
 
-    assert list(manager.durable_instances) == [key]
-    assert dict(manager.durable_instances) == {key: "a"}
+    assert list(manager.durable_instance_view) == [key]
+    assert dict(manager.durable_instance_view) == {key: "a"}
 
-    del manager.durable_instances[key]
+    del manager._durable_instances[key]
 
     assert manager.get_durable(key) is CACHE_MISS
 
@@ -303,7 +304,7 @@ def test_two_equal_tokens_of_different_types_keep_separate_singleton_slots() -> 
 
     assert manager.get_singleton((AppModule, Tokens.DB)) is from_enum
     assert manager.get_singleton((AppModule, "db")) is from_str
-    assert len(manager.singletons) == 2
+    assert len(manager.singleton_instance_view) == 2
 
 
 def test_a_true_token_and_a_one_token_keep_separate_singleton_slots() -> None:
@@ -318,7 +319,7 @@ def test_a_true_token_and_a_one_token_keep_separate_singleton_slots() -> None:
 
     assert manager.get_singleton((AppModule, True)) is from_true
     assert manager.get_singleton((AppModule, 1)) is from_one
-    assert len(manager.singletons) == 2
+    assert len(manager.singleton_instance_view) == 2
 
 
 def test_two_equal_tokens_of_different_types_keep_separate_request_scoped_slots(
@@ -346,24 +347,24 @@ def test_a_singleton_slot_is_read_back_under_the_key_it_was_written_with() -> No
     manager.set_singleton((AppModule, Tokens.DB), "from enum")
     manager.set_singleton((AppModule, "db"), "from str")
 
-    assert list(manager.singletons) == [(AppModule, Tokens.DB), (AppModule, "db")]
-    assert dict(manager.singletons) == {
+    assert list(manager.singleton_instance_view) == [(AppModule, Tokens.DB), (AppModule, "db")]
+    assert dict(manager.singleton_instance_view) == {
         (AppModule, Tokens.DB): "from enum",
         (AppModule, "db"): "from str",
     }
     # A diagnostic reading the table has to show which of the two equal tokens each
     # slot belongs to, which the default object repr cannot.
-    assert repr(manager.singletons).startswith("InstanceTable({")
-    assert "<Tokens.DB: 'db'>" in repr(manager.singletons)
+    assert repr(manager._singletons).startswith("InstanceTable({")
+    assert "<Tokens.DB: 'db'>" in repr(manager._singletons)
 
-    del manager.singletons[(AppModule, Tokens.DB)]
+    del manager._singletons[(AppModule, Tokens.DB)]
 
     assert manager.get_singleton((AppModule, Tokens.DB)) is CACHE_MISS
     assert manager.get_singleton((AppModule, "db")) == "from str"
 
-    manager.singletons.clear()
+    manager._singletons.clear()
 
-    assert len(manager.singletons) == 0
+    assert len(manager.singleton_instance_view) == 0
 
 
 def test_a_consumer_seeing_two_modules_gets_each_one_s_own_instance() -> None:
@@ -401,8 +402,8 @@ def test_a_consumer_seeing_two_modules_gets_each_one_s_own_instance() -> None:
     assert isinstance(consumer.from_enum, FromEnumToken)
     assert isinstance(consumer.from_str, FromStrToken)
     assert consumer.from_enum is not consumer.from_str
-    assert (EnumModule, Tokens.DB) in container.scope_manager.singletons
-    assert (StrModule, "db") in container.scope_manager.singletons
+    assert (EnumModule, Tokens.DB) in container.singleton_instance_view
+    assert (StrModule, "db") in container.singleton_instance_view
 
 
 def test_a_consumer_seeing_a_true_token_and_a_one_token_gets_each_one_s_own_instance() -> None:
@@ -433,3 +434,26 @@ def test_a_consumer_seeing_a_true_token_and_a_one_token_gets_each_one_s_own_inst
     assert isinstance(consumer.from_true, FromEnumToken)
     assert isinstance(consumer.from_one, FromStrToken)
     assert consumer.from_true is not consumer.from_one
+
+
+def test_the_scope_manager_holds_no_cache_a_caller_can_write_to() -> None:
+    # An instance put into a cache by hand is served to every later consumer of that
+    # binding as though the container had built it, because nothing between the cache
+    # and the caller looks at it again. The public attributes are walked rather than the
+    # caches named, so a fourth cache added later fails here instead of shipping writable.
+    manager = ScopeManager()
+    manager.set_singleton((AppModule, "db"), object())
+    manager.set_controller_singleton((AppModule, FromEnumToken), object())
+    manager.set_durable((AppModule, "db", "tenant-a"), object())
+
+    writable = sorted(
+        name
+        for name in dir(manager)
+        if not name.startswith("_") and isinstance(getattr(manager, name), MutableMapping)
+    )
+
+    # A dict is a MutableMapping, so the one check answers for both.
+    assert writable == []
+    assert isinstance(manager.singleton_instance_view, Mapping)
+    assert isinstance(manager.controller_instance_view, Mapping)
+    assert isinstance(manager.durable_instance_view, Mapping)

@@ -397,11 +397,14 @@ class ResolutionKernel:
     def _cache_for(self, binding: Binding, key: tuple[ModuleKey, object]) -> InstanceCache:
         """Return the slot a binding's instance is kept in for its declared lifetime."""
 
+        # Both arms reach past the scope manager into the cache it holds, and the wrapper
+        # then writes the constructed instance straight in rather than through
+        # set_singleton or set_durable. The scope manager should hand out the wrapper.
         if binding.scope is ProviderScope.SINGLETON:
-            return InstanceCache(self.scope_manager.singletons, key, shared=True)
+            return InstanceCache(self.scope_manager._singletons, key, shared=True)
         if binding.scope is ProviderScope.DURABLE:
             return InstanceCache(
-                self.scope_manager.durable_instances, self._durable_key(binding, key), shared=True
+                self.scope_manager._durable_instances, self._durable_key(binding, key), shared=True
             )
         if binding.scope is ProviderScope.REQUEST:
             request = self.scope_manager.active_request.get()
