@@ -142,7 +142,9 @@ Full output, if a reviewer could need it, goes in one collapsed
 pytest collection listing, an example application's stdout or a JSON dump.
 
 `Closes #N` is plain text on its own line. Inside backticks it is a code span, and GitHub
-does not read closing keywords from a code span.
+does not read closing keywords from a code span. A change with no issue behind it, such
+as repository maintenance, carries `Refs` alone and is checked with `--no-issue`; a
+delivery pull request always closes its ticket.
 
 Not in the body: a "Files touched" list (the diff tab is that list), a note on how the
 work was directed, the repository's pull request template and its checkboxes,

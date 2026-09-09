@@ -316,11 +316,13 @@ def _without_fences(body: str) -> str:
     return "\n".join(kept)
 
 
-def _closes(body: str, expected: int | None) -> Finding:
+def _closes(body: str, expected: int | None, no_issue: bool = False) -> Finding:
     plain = CODE_SPAN.sub(" ", _without_fences(body))
     match = CLOSES.search(plain)
     if match is None and CLOSES_IN_CODE.search(body):
         return Finding("FAIL", "pr.closes", "Closes #N is inside a code span, which GitHub ignores")
+    if match is None and no_issue:
+        return Finding("ok", "pr.closes", "no issue to close (--no-issue)")
     if match is None:
         return Finding("FAIL", "pr.closes", "no Closes #N line")
     number = int(match.group(1))
@@ -336,6 +338,7 @@ def check_body(
     *,
     draft: bool = False,
     closes: int | None = None,
+    no_issue: bool = False,
 ) -> list[Finding]:
     """Apply every body rule for `kind` (issue, pr or comment) and return the findings."""
     parts = segment(body, EXCLUDED_SECTIONS.get(kind, ()))
@@ -370,7 +373,7 @@ def check_body(
         )
         findings.extend(_owns(body, parts))
     if kind == "pr":
-        findings.append(_closes(body, closes))
+        findings.append(_closes(body, closes, no_issue))
         has_verification = any(text.lower() == "verification" for _, text, _ in parts.headings)
         findings.append(
             _verdict(
@@ -471,6 +474,11 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument("--title", help="the title to check alongside --file")
     parser.add_argument("--closes", type=int, metavar="M", help="the issue a PR must close")
     parser.add_argument(
+        "--no-issue",
+        action="store_true",
+        help="the pull request closes no issue, so a missing Closes line is not a failure",
+    )
+    parser.add_argument(
         "--comments", action="store_true", help="also check every comment on the PR"
     )
     parser.add_argument("--max-title", type=int, default=TITLE_LIMIT)
@@ -487,6 +495,8 @@ def _parse_arguments() -> argparse.Namespace:
         parser.error("--issue and --pr need --repo")
     if arguments.comments and arguments.pr is None:
         parser.error("--comments needs --pr")
+    if arguments.no_issue and arguments.closes is not None:
+        parser.error("--no-issue and --closes contradict each other")
     return arguments
 
 
@@ -538,7 +548,11 @@ def main() -> int:
         findings.extend(check_title(title, limits.title))
     else:
         findings.append(Finding("WARN", "title.missing", "no --title given; title rules skipped"))
-    findings.extend(check_body(kind, body, limits, draft=draft, closes=arguments.closes))
+    findings.extend(
+        check_body(
+            kind, body, limits, draft=draft, closes=arguments.closes, no_issue=arguments.no_issue
+        )
+    )
 
     report = [_summary(label, title, body, kind), *_format(findings)]
     failed = sum(finding.level == "FAIL" for finding in findings)

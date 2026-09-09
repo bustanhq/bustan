@@ -192,6 +192,16 @@ def test_a_pasted_transcript_body_fails_on_each_rule_it_breaks(writeup: ModuleTy
     }
 
 
+def test_a_pull_request_that_closes_no_issue_can_say_so(writeup: ModuleType) -> None:
+    limits = writeup.Limits(
+        title=72, words=300, verification_lines=12, fenced_lines=20, chars=10_000
+    )
+    body = CLEAN_PR.replace("Closes #241\n", "")
+
+    assert "pr.closes" in _failing(writeup.check_body("pr", body, limits))
+    assert "pr.closes" not in _failing(writeup.check_body("pr", body, limits, no_issue=True))
+
+
 def test_closes_inside_a_code_span_is_named_as_the_reason(writeup: ModuleType) -> None:
     finding = writeup._closes("Summary.\n\n`Closes #12`\n", None)
 
