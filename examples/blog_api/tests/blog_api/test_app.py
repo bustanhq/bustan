@@ -29,3 +29,14 @@ def test_blog_api_uses_request_actor_for_post_creation() -> None:
 
     assert response.status_code == 200
     assert response.json()["created_by"] == "ada"
+
+
+def test_blog_api_answers_404_for_a_post_that_does_not_exist() -> None:
+    application = build_application()
+
+    with AsgiTestClient(application) as client:
+        response = client.get("/posts/999")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["code"] == "not-found"
