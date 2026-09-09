@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import pytest
 
 from bustan import VERSION_NEUTRAL, Controller, Get, Module, VersioningOptions, VersioningType
+from bustan.contracts import HttpResponse
 from bustan.kernel.errors import RouteDefinitionError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
@@ -14,7 +16,7 @@ from bustan.runtime.routing import compile_routes
 from bustan.runtime.versioning import extract_request_version, normalize_versions
 
 if TYPE_CHECKING:
-    from tests.conftest import RequestFactory
+    from tests.conftest import HttpRequestFactory, RequestFactory
 
 
 def test_compile_routes_applies_uri_versioning() -> None:
@@ -192,3 +194,41 @@ def test_versioning_helpers_extract_versions_from_header_and_media_type_requests
         )
         == "1"
     )
+
+
+@pytest.mark.anyio
+async def test_a_version_nothing_serves_is_refused_the_way_an_unmatched_path_is(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    """A retired version and a path nothing is registered at are one answer to a caller.
+
+    Both mean nothing here serves what was asked for, and a client on a version the
+    deployment has moved past is the caller most likely to meet one of them, so the
+    document it reads is the document the error model documents.
+    """
+
+    @Controller("/users", version="1")
+    class UsersController:
+        @Get("/")
+        def index(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    routes = compile_routes(
+        graph,
+        build_container(graph),
+        versioning=VersioningOptions(type=VersioningType.HEADER),
+    )
+    handler = next(route.handler for route in routes if route.path == "/users")
+    assert handler is not None
+
+    response = await handler(build_http_request(path="/users", headers=[(b"x-api-version", b"9")]))
+
+    assert isinstance(response, HttpResponse)
+    assert response.status_code == 404
+    assert response.media_type == "application/problem+json"
+    assert json.loads(response.body)["type"] == "https://bustan.dev/problems/not-found"

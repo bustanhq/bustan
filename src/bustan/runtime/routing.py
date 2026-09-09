@@ -13,13 +13,18 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..common.types import PipelineOverrides
-from ..contracts import AdapterRoute, HttpRequest, HttpResponse, RouteHandler
+from ..contracts import AdapterRoute, HttpRequest, RouteHandler
 from ..kernel.errors import RouteDefinitionError
 from ..kernel.ioc.container import Container
 from ..kernel.module.graph import ModuleGraph
 from ..kernel.utils import _join_paths, _qualname
 from .compiler import ResponseStrategy, RouteContract, compile_route_contracts
-from .execution import ExecutionPlan, compile_execution_plans, create_route_handler
+from .execution import (
+    ExecutionPlan,
+    compile_execution_plans,
+    create_route_handler,
+    not_found_response,
+)
 from .params import ParameterSource
 from .registry import RouteRegistry
 from .versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType, extract_request_version
@@ -319,7 +324,11 @@ def _build_version_dispatcher(
         for entry in handlers:
             if _is_neutral_version(entry.versions) or requested_version in entry.versions:
                 return await entry.handler(request)
-        return HttpResponse.json({"detail": "Not Found"}, status_code=404)
+        # A route exists at this path and serves no version the request asked for, which
+        # leaves the caller with nothing here. That is the same answer as a path nothing
+        # is registered at, and it is written the same way, so a client on a version the
+        # deployment has retired reads the refusal it already knows how to read.
+        return not_found_response(request.path)
 
     return dispatch
 

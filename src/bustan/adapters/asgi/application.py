@@ -107,19 +107,27 @@ class AsgiApplication:
         await response(send)
 
     async def _resolve(self, request: AsgiHttpRequest) -> AsgiResponseValue:
+        """Answer one request from the router's decision about it.
+
+        A request no route answers and a request whose method no route answers are
+        refusals, and the framework writes both rather than this transport, so that a
+        caller reads one error model whether a route turned the request away or a
+        handler did and so that every transport answers them the same way.
+        """
+
+        from ...runtime.execution import method_not_allowed_response, not_found_response
+
         resolution = self.router.resolve(request.path, request.method)
         if isinstance(resolution, Matched):
             request.set_path_params(resolution.path_params)
             return to_asgi_response(await resolution.route.handler(request))
         if isinstance(resolution, MethodMismatch):
-            return plain_text(
-                "Method Not Allowed", status_code=405, allow=", ".join(resolution.allowed)
-            )
+            return to_asgi_response(method_not_allowed_response(request.path, resolution.allowed))
         if isinstance(resolution, Redirect):
             query = cast(bytes, request.scope.get("query_string", b"")).decode("latin-1")
             location = f"{resolution.path}?{query}" if query else resolution.path
             return plain_text("", status_code=307, location=location)
-        return plain_text("Not Found", status_code=404)
+        return to_asgi_response(not_found_response(request.path))
 
     async def _run_lifespan(self, receive: Receive, send: Send) -> None:
         """Run the ASGI lifespan protocol until the server says shutdown."""

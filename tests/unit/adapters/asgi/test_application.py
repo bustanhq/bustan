@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -63,15 +64,23 @@ async def test_a_matching_request_reaches_the_handler_with_its_path_parameters(
 
 
 @pytest.mark.anyio
-async def test_a_path_no_route_answers_is_answered_by_the_transport_itself(
+async def test_a_path_no_route_answers_is_refused_in_the_framework_error_model(
     build_scope: ScopeFactory, build_receive: ReceiveFactory
 ) -> None:
     application = _application(_plan("/users/{user_id}"))
 
     status, headers, body = await _call(application, build_scope(path="/orders"), build_receive())
 
-    assert (status, body) == (404, b"Not Found")
-    assert headers["content-type"] == "text/plain; charset=utf-8"
+    assert status == 404
+    assert headers["content-type"] == "application/problem+json"
+    assert json.loads(body) == {
+        "type": "https://bustan.dev/problems/not-found",
+        "title": "Not Found",
+        "status": 404,
+        "detail": "Not Found",
+        "instance": "/orders",
+        "code": "not-found",
+    }
 
 
 @pytest.mark.anyio
@@ -84,8 +93,17 @@ async def test_a_method_no_route_answers_reports_the_methods_that_do(
         application, build_scope(method="DELETE", path="/users"), build_receive()
     )
 
-    assert (status, body) == (405, b"Method Not Allowed")
+    assert status == 405
     assert headers["allow"] == "POST"
+    assert headers["content-type"] == "application/problem+json"
+    assert json.loads(body) == {
+        "type": "https://bustan.dev/problems/method-not-allowed",
+        "title": "Method Not Allowed",
+        "status": 405,
+        "detail": "Method Not Allowed",
+        "instance": "/users",
+        "code": "method-not-allowed",
+    }
 
 
 @pytest.mark.anyio

@@ -263,3 +263,74 @@ def test_an_unrelated_runtime_failure_while_importing_is_left_alone(monkeypatch)
 
     with pytest.raises(RuntimeError, match="something else"):
         StarletteAdapter().create_test_client()
+
+
+def _refusing_client(methods: list[str]) -> Any:
+    """A client for an application serving one route, so any other request is refused."""
+
+    adapter = StarletteAdapter()
+    adapter.register_routes(
+        [AdapterRoute(path="/orders", methods=tuple(methods), handler=_handler, name="orders")]
+    )
+    return cast(Any, adapter.create_test_client())
+
+
+def test_a_path_this_router_does_not_serve_is_refused_in_the_framework_error_model() -> None:
+    """The transport's own 404 would be plain text, which is outside the error model.
+
+    A caller reading the documented model meets this refusal before any other, so the
+    transport answering it its own way is the one place a documented universal breaks.
+    """
+
+    with _refusing_client(["GET"]) as client:
+        response = client.get("/absent")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "https://bustan.dev/problems/not-found",
+        "title": "Not Found",
+        "status": 404,
+        "detail": "Not Found",
+        "instance": "/absent",
+        "code": "not-found",
+    }
+
+
+def test_a_method_this_router_does_not_serve_keeps_the_allow_it_worked_out() -> None:
+    with _refusing_client(["GET", "POST"]) as client:
+        response = client.delete("/orders")
+
+    assert response.status_code == 405
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.headers["allow"] == "GET, HEAD, POST"
+    assert response.json()["code"] == "method-not-allowed"
+
+
+def test_the_allow_header_does_not_depend_on_the_order_the_router_declared_methods() -> None:
+    """Starlette holds a route's methods in a set, which has no order to promise.
+
+    The header a caller reads has to be the same on every transport, so an application
+    that changed adapters, or a set that iterated differently, cannot change it.
+    """
+
+    with _refusing_client(["POST", "GET"]) as client:
+        declared_one_way = client.delete("/orders").headers["allow"]
+    with _refusing_client(["GET", "POST"]) as client:
+        declared_the_other = client.delete("/orders").headers["allow"]
+
+    assert declared_one_way == declared_the_other == "GET, HEAD, POST"
+
+
+def test_an_application_handed_in_is_given_the_error_model_too() -> None:
+    """The error model is the framework's promise, so it does not depend on which
+    Starlette application the adapter was handed."""
+
+    application = Starlette()
+    adapter = StarletteAdapter(application)
+    adapter.register_routes(
+        [AdapterRoute(path="/orders", methods=("GET",), handler=_handler, name="orders")]
+    )
+
+    with cast(Any, adapter.create_test_client()) as client:
+        assert client.get("/absent").headers["content-type"] == "application/problem+json"

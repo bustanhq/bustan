@@ -166,6 +166,25 @@ class ResponseController:
         return Path("./status.txt")
 ```
 
+## Refusals Before A Handler Runs
+
+A request can be turned away before any controller is reached: no route answers the path, a route answers the path but not the method, or a route answers both but serves no version the request asked for. **All three are answered as RFC 9457 problem details, with the same document the matching `HttpException` produces when an application raises it, and identically on every adapter.**
+
+```
+GET  /absent            404 application/problem+json
+  {"type":"https://bustan.dev/problems/not-found","title":"Not Found","status":404,
+   "detail":"Not Found","instance":"/absent","code":"not-found"}
+
+POST /orders            405 application/problem+json  Allow: GET, HEAD
+  {"type":"https://bustan.dev/problems/method-not-allowed","title":"Method Not Allowed",
+   "status":405,"detail":"Method Not Allowed","instance":"/orders",
+   "code":"method-not-allowed"}
+```
+
+A version nothing serves is a `404` carrying the same document as an unregistered path, because a caller cannot see which part of the framework looked and has nothing to do differently for either. A `405` also carries `Allow`, naming the methods that would have been answered in alphabetical order, so the header is the same header whichever adapter serves the application.
+
+This means `response.json()["detail"]` reads on every error the framework produces, including the two an API returns most often. It also means a `404` is not a signal that a request never reached your application: a handler raising `NotFoundException` produces the same document, distinguished only by the `detail` it was given.
+
 ## Failure Modes
 
 - Conversion errors raise `ParameterBindingError` and become HTTP `400` unless an exception filter handles them.
