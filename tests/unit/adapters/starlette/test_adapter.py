@@ -31,6 +31,22 @@ def test_the_adapter_owns_one_starlette_application() -> None:
     assert isinstance(StarletteAdapter().get_instance(), Starlette)
 
 
+def test_the_adapter_declares_the_request_type_it_produces(
+    build_request: RequestFactory,
+) -> None:
+    """Both directions are declared: what it converts, and what it hands over.
+
+    A handler naming this transport's request type is handed exactly this class, so this
+    is what makes such an annotation checkable rather than a claim about the deployment.
+    """
+
+    adapter = StarletteAdapter()
+    wrapped = adapter.from_native_request(build_request(path="/users"))
+
+    assert adapter.native_request_type is Request
+    assert isinstance(wrapped.native_request, adapter.native_request_type)
+
+
 def test_the_adapter_converts_in_both_directions(build_request: RequestFactory) -> None:
     adapter = StarletteAdapter()
     native = build_request(path="/users")

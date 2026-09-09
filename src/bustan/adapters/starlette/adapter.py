@@ -6,6 +6,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import Response
 
 from ...contracts import AbstractHttpAdapter, AdapterCapabilities, HttpRequest
@@ -53,6 +54,9 @@ class StarletteAdapter(AbstractHttpAdapter):
         supports_streaming_responses=True,
         supports_websocket_upgrade=False,
     )
+    # What this transport builds for every request it carries, and so what a handler
+    # naming this transport's request type is handed.
+    native_request_type = Request
 
     def __init__(
         self,

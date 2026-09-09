@@ -85,6 +85,16 @@ class AbstractHttpAdapter(ABC):
 
     name: str
     capabilities: AdapterCapabilities
+    # The request type this transport builds, which is what ``HttpRequest.native_request``
+    # returns for a request this adapter wrapped. It is the counterpart of
+    # ``from_native_request``: that names the type an adapter converts, this names the type
+    # it produces. A handler may write a transport's request type on a parameter, and every
+    # transport's request has the same shape, so shape cannot say which transport an
+    # annotation named; this declaration can, and it is what lets such a parameter be
+    # refused before a server starts rather than handed another transport's object. An
+    # adapter leaving this unset produces no request type of its own, and every parameter
+    # naming one is refused under it.
+    native_request_type: type | None = None
 
     @abstractmethod
     def from_native_request(self, native_request: object) -> HttpRequest:

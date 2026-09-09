@@ -73,6 +73,22 @@ def test_the_adapter_names_the_transport_it_binds_and_what_it_can_serve() -> Non
     )
 
 
+def test_the_adapter_declares_the_request_type_it_produces(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """Both directions are declared: what it converts, and what it hands over.
+
+    A handler naming this transport's request type is handed exactly this class, so this
+    is what makes such an annotation checkable rather than a claim about the deployment.
+    """
+
+    adapter = AsgiAdapter()
+    wrapped = adapter.from_native_request((build_scope(), build_receive()))
+
+    assert adapter.native_request_type is AsgiHttpRequest
+    assert isinstance(wrapped.native_request, adapter.native_request_type)
+
+
 def test_the_adapter_drives_the_application_it_was_given() -> None:
     application = AsgiApplication()
 

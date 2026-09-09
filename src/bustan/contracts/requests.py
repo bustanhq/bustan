@@ -207,7 +207,15 @@ class NativeHttpRequest(Protocol):
     recognised by the shape every such object has and no neutral one does: the body is
     reachable as a stream, as bytes, and as parsed JSON. What is handed to a parameter
     spelled this way is :attr:`HttpRequest.native_request`, the transport's object
-    itself, so the annotation stays true.
+    itself.
+
+    The shape says that an annotation names *a* transport's request. It cannot say
+    *which*, because every transport's request has this same shape, so it is not on its
+    own enough to keep the annotation true. What settles that is the adapter, which
+    declares the request type it produces: a handler naming a request type the serving
+    adapter does not produce is refused before the server starts, rather than handed
+    another transport's object and left to discover it on the first attribute that
+    object does not have.
 
     Membership is decided with ``issubclass`` against the annotation, so only the
     method names matter; the signatures declared here describe the shape rather than
@@ -225,15 +233,44 @@ class NativeHttpRequest(Protocol):
 
 
 def names_native_request(annotation: object) -> bool:
-    """Return whether an annotation names the transport's own request object.
+    """Return whether an annotation names some transport's own request object.
 
     Only a class can, and only one carrying the whole of :class:`NativeHttpRequest`.
     The neutral contract is not one: it is answered before this is asked, and it
     declares no way to stream a body, so a caller that asked in the wrong order would
     still not mistake the two.
+
+    This is where the parameter is read as asking for a transport's request rather than
+    for the neutral one. It is not where the annotation is checked against the transport
+    that will serve it: shape cannot tell one transport from another, so that check is
+    made against what the serving adapter declares it produces, once the adapter is
+    known and before it is asked to serve anything.
     """
 
     return isinstance(annotation, type) and issubclass(annotation, NativeHttpRequest)
+
+
+def produces_native_request(produced: type | None, annotation: object) -> bool:
+    """Return whether an adapter producing *produced* satisfies *annotation*.
+
+    *produced* is the request type one adapter builds for every request it carries, and
+    *annotation* is what a parameter named. The answer is true when the object the
+    adapter hands over is an instance of what the parameter asked for, which is the only
+    reading under which the annotation stays true; an adapter declaring no request type
+    of its own satisfies no such parameter.
+
+    An annotation that cannot take part in a subclass test - a protocol that was never
+    made runtime checkable, for instance - is not satisfied rather than assumed to be,
+    because a parameter whose truth cannot be established is exactly the one a caller
+    must not be quietly handed an object for.
+    """
+
+    if produced is None or not isinstance(annotation, type):
+        return False
+    try:
+        return issubclass(produced, annotation)
+    except TypeError:
+        return False
 
 
 def as_http_request(request: HttpRequest | object) -> HttpRequest:
@@ -260,5 +297,6 @@ __all__ = (
     "RequestSlots",
     "as_http_request",
     "names_native_request",
+    "produces_native_request",
     "request_slots",
 )
