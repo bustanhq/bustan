@@ -22,6 +22,7 @@ from bustan import (
     Header,
     HostParam,
     Ip,
+    Module,
     Param,
     Post,
     Query,
@@ -29,9 +30,14 @@ from bustan import (
     UploadedFiles,
     create_param_decorator,
 )
-from bustan.contracts import HttpRequest
-from bustan.kernel.errors import ParameterBindingError
+from bustan.adapters.asgi import AsgiAdapter
+from bustan.adapters.starlette import StarletteAdapter
+from bustan.contracts import AdapterRoute, HttpRequest
+from bustan.kernel.errors import ParameterBindingError, RouteDefinitionError
+from bustan.kernel.ioc.container import build_container
+from bustan.kernel.module.graph import build_module_graph
 from bustan.pipeline.context import ExecutionContext
+from bustan.runtime.compiler import compile_route_contracts
 from bustan.runtime.metadata import ControllerRouteDefinition, iter_controller_routes
 from bustan.runtime.params import (
     _MISSING,
@@ -63,7 +69,9 @@ from bustan.runtime.params import (
     _source_from_marker,
     bind_handler_arguments,
     compile_parameter_bindings,
+    refuse_foreign_native_requests,
 )
+from bustan.runtime.routing import CompiledAdapterRoute, compile_route_plan
 
 if TYPE_CHECKING:
     from tests.conftest import HttpRequestFactory
@@ -1899,3 +1907,98 @@ def test_bind_body_value_binds_a_target_whose_annotations_cannot_be_resolved() -
     bound = _bind_body({"value": 7}, unresolvable)
 
     assert bound.value == 7
+
+
+def _compiled_routes(controller: type[object]) -> tuple[CompiledAdapterRoute, ...]:
+    """Compile one controller into the route plan an adapter is handed at startup."""
+
+    module = Module(controllers=[controller])(type("AppModule", (), {}))
+    graph = build_module_graph(module)
+    container = build_container(graph)
+    return compile_route_plan(compile_route_contracts(graph, container), container)
+
+
+@Controller("/probe")
+class NativeRequestController:
+    @Get("/")
+    def probe(self, request: Request) -> None:
+        return None
+
+
+@Controller("/probe")
+class NeutralRequestController:
+    @Get("/")
+    def probe(self, request: HttpRequest) -> None:
+        return None
+
+
+def test_a_parameter_naming_the_serving_adapter_s_own_request_type_is_allowed() -> None:
+    routes = _compiled_routes(NativeRequestController)
+
+    assert refuse_foreign_native_requests(StarletteAdapter(), routes) is None
+
+
+def test_a_parameter_naming_another_transport_s_request_type_is_refused() -> None:
+    """The whole defect: shape says yes, and only the adapter can say which transport."""
+
+    with pytest.raises(RouteDefinitionError) as info:
+        refuse_foreign_native_requests(AsgiAdapter(), _compiled_routes(NativeRequestController))
+
+    message = str(info.value)
+    assert "parameter 'request'" in message
+    assert "starlette.requests.Request" in message
+    assert "AsgiAdapter" in message
+    assert "bustan.adapters.asgi.requests.AsgiHttpRequest" in message
+
+
+def test_the_refusal_names_the_handler_the_annotation_and_the_adapter() -> None:
+    with pytest.raises(RouteDefinitionError) as info:
+        refuse_foreign_native_requests(AsgiAdapter(), _compiled_routes(NativeRequestController))
+
+    assert str(info.value).startswith(
+        f"{__name__}.NativeRequestController.probe parameter 'request' names "
+    )
+
+
+def test_the_neutral_request_contract_is_refused_by_no_adapter() -> None:
+    routes = _compiled_routes(NeutralRequestController)
+
+    assert refuse_foreign_native_requests(AsgiAdapter(), routes) is None
+    assert refuse_foreign_native_requests(StarletteAdapter(), routes) is None
+
+
+def test_an_adapter_declaring_no_request_type_refuses_every_native_parameter() -> None:
+    class TypelessAdapter(StarletteAdapter):
+        native_request_type = None
+
+    with pytest.raises(RouteDefinitionError, match="produces no request type of its own"):
+        refuse_foreign_native_requests(TypelessAdapter(), _compiled_routes(NativeRequestController))
+
+
+def test_a_route_carrying_no_compiled_plan_names_no_parameter_to_check() -> None:
+    """A route built by hand carries no handler plan, so there is nothing to judge."""
+
+    route = AdapterRoute(path="/probe", methods=("GET",))
+
+    assert refuse_foreign_native_requests(AsgiAdapter(), (route,)) is None
+
+
+def test_a_parameter_that_named_a_request_type_but_binds_elsewhere_is_left_alone() -> None:
+    """Only a parameter actually bound from the request is the request's to satisfy."""
+
+    binding = ParameterBinding(
+        name="payload",
+        kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        source=ParameterSource.BODY,
+        annotation=Request,
+        has_default=False,
+    )
+    plan = HandlerBindingPlan(
+        controller=NativeRequestController,
+        handler_name="probe",
+        parameters=(binding,),
+        inferred_parameter_names=(),
+    )
+    route = SimpleNamespace(execution_plans=(SimpleNamespace(binding_plan=plan),))
+
+    assert refuse_foreign_native_requests(AsgiAdapter(), cast("Any", (route,))) is None
