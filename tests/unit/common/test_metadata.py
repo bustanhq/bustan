@@ -1,4 +1,4 @@
-"""Unit tests for HTTP metadata helpers."""
+"""Unit tests for controller and route metadata accessors."""
 
 from __future__ import annotations
 
@@ -6,9 +6,7 @@ from typing import cast
 
 import pytest
 
-from bustan.common.types import ControllerMetadata, RouteMetadata
-from bustan.kernel.errors import InvalidControllerError
-from bustan.runtime.metadata import (
+from bustan.common.metadata import (
     get_controller_metadata,
     get_route_metadata,
     iter_controller_routes,
@@ -17,6 +15,8 @@ from bustan.runtime.metadata import (
     set_controller_metadata,
     set_route_metadata,
 )
+from bustan.common.types import ControllerMetadata, RouteMetadata
+from bustan.kernel.errors import InvalidControllerError
 
 
 def test_normalize_controller_prefix_errors() -> None:

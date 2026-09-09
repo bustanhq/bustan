@@ -55,10 +55,10 @@ def test_a_request_no_throttler_ran_for_carries_an_empty_slot() -> None:
 
 @pytest.mark.anyio
 async def test_the_guard_records_its_decision_on_the_typed_slot(build_request) -> None:
+    from bustan.common.metadata import ControllerRouteDefinition
     from bustan.common.types import RouteMetadata
     from bustan.kernel.module.dynamic import ModuleInstanceKey
     from bustan.pipeline.context import RequestContext
-    from bustan.runtime.metadata import ControllerRouteDefinition
 
     request = StarletteHttpRequest(build_request(path="/limited"))
     guard = ThrottlerGuard(

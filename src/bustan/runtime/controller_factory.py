@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TypeVar, cast
 
 from ..common.decorators.injectable import get_provider_metadata
+from ..common.metadata import get_controller_metadata
 from ..common.types import PipelineOverrides, ProviderScope
 from ..contracts import HttpRequest
 from ..kernel.errors import InvalidControllerError, InvalidPipelineError
@@ -20,7 +21,6 @@ from ..pipeline.interceptors import Interceptor
 from ..pipeline.metadata import PipelineMetadata
 from ..pipeline.pipes import Pipe
 from .compiler import GlobalPipelineProvider
-from .metadata import get_controller_metadata
 
 ComponentT = TypeVar("ComponentT")
 

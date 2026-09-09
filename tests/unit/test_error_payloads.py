@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from bustan import Controller, Get, Module, create_app
+from bustan.common.metadata import ControllerRouteDefinition
 from bustan.common.types import RouteMetadata
 from bustan.contracts import HttpResponse
 from bustan.kernel.errors import (
@@ -21,7 +22,6 @@ from bustan.kernel.errors import (
 from bustan.kernel.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.context import RequestContext
 from bustan.pipeline.filters import handle_exception
-from bustan.runtime.metadata import ControllerRouteDefinition
 from bustan.security import AUTHENTICATOR_REGISTRY, Auth, Permissions, Roles
 from bustan.testing import AsgiTestClient
 from tests.unit.kernel.test_errors import STATUS_CONTRACT

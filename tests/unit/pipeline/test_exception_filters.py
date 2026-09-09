@@ -9,6 +9,7 @@ import pytest
 from starlette.requests import Request
 
 from bustan.adapters.starlette import StarletteHttpRequest
+from bustan.common.metadata import ControllerRouteDefinition
 from bustan.common.types import RouteMetadata
 from bustan.contracts import HttpResponse, RateLimitDecision
 from bustan.kernel.errors import (
@@ -28,7 +29,6 @@ from bustan.pipeline.filters import (
     _problem_kind,
     handle_exception,
 )
-from bustan.runtime.metadata import ControllerRouteDefinition
 
 
 @pytest.mark.anyio

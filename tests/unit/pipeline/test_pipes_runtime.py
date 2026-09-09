@@ -8,12 +8,12 @@ import pytest
 from pydantic import BaseModel
 from starlette.requests import Request
 
+from bustan.common.metadata import ControllerRouteDefinition
 from bustan.common.types import RouteMetadata
 from bustan.kernel.module.dynamic import ModuleInstanceKey
 from bustan.pipeline.built_in_pipes import ValidationPipe
 from bustan.pipeline.context import ExecutionContext, RequestContext
 from bustan.pipeline.pipes import Pipe, _supports_automatic_validation, run_pipes
-from bustan.runtime.metadata import ControllerRouteDefinition
 
 if TYPE_CHECKING:
     from bustan.kernel.ioc.container import Container

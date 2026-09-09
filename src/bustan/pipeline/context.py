@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal
 
+from ..common.metadata import ControllerRouteDefinition
 from ..contracts import HttpRequest, as_http_request
-from ..runtime.metadata import ControllerRouteDefinition
 
 if TYPE_CHECKING:
     from ..kernel.ioc.container import Container

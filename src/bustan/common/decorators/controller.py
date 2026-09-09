@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ...kernel.errors import InvalidControllerError, RouteDefinitionError
-from ...kernel.utils import _normalize_path
+from ...kernel.errors import InvalidControllerError
 from ..constants import BUSTAN_CONTROLLER_ATTR
+from ..metadata import normalize_controller_prefix
 from ..types import ClassT, ControllerMetadata, HostInput, ProviderScope, normalize_hosts
 
 
@@ -31,7 +31,7 @@ def Controller(
     resolved_hosts = _resolve_hosts(host=host, hosts=hosts)
 
     controller_metadata = ControllerMetadata(
-        prefix=_normalize_controller_prefix(prefix),
+        prefix=normalize_controller_prefix(prefix),
         scope=resolved_scope,
         version=version,
         hosts=resolved_hosts,
@@ -47,14 +47,6 @@ def Controller(
         return controller_cls
 
     return decorate
-
-
-def _normalize_controller_prefix(prefix: str) -> str:
-    """Normalize controller prefixes into the canonical stored form."""
-    try:
-        return _normalize_path(prefix, allow_empty=True, kind="controller prefix")
-    except RouteDefinitionError as exc:
-        raise InvalidControllerError(str(exc)) from exc
 
 
 def _resolve_hosts(*, host: HostInput | None, hosts: HostInput | None) -> tuple[str, ...]:
