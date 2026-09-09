@@ -50,4 +50,4 @@ The `Application` wrapper also exposes helper methods for common integrations:
 
 ## Non-HTTP Bootstrapping
 
-Use `create_app_context()` when you want DI plus lifecycle behavior without an HTTP server. `ApplicationContext` supports `get()`, `resolve()`, `init()`, and `close()` but does not expose `listen()` or HTTP adapter access. It needs no adapter and no web server, so it is the shape a `pip install bustan` with no extra can run.
+Use `create_app_context()` when you want DI plus lifecycle behavior without an HTTP server. `ApplicationContext` supports `get()`, `resolve()`, `init()`, and `close()` but does not expose `listen()` or HTTP adapter access. It needs no adapter and no web server, so it is the shape a `uv add bustan` with no extra can run.

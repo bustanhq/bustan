@@ -3,6 +3,9 @@
 These guides sit on top of the [project README](../README.md), which covers the pitch, installation
 and the supported public surface.
 
+**Requirements.** Python 3.13 or newer, and [uv](https://docs.astral.sh/uv/) as the package
+manager. uv is the only one supported: the project is built, locked, tested and released with it.
+
 **Upgrading from 1.x?** Start at [Migrate from 1.x](how-to/migrate-from-1x.md). 2.0 is a clean break
 and a 1.x application will not start on it until it is corrected.
 

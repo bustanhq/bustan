@@ -29,7 +29,7 @@ An adapter is never handed the dependency injection container, a compiled execut
 | Starlette | `bustan.adapters.starlette` | the `starlette` extra | The default. Serves through Uvicorn, and is the one `app.listen()` drains gracefully on a signal. |
 | Raw ASGI | `bustan.adapters.asgi` | nothing beyond the framework | No third-party web framework at all. Used to prove the port is real, and to serve an application installed without the extra. |
 
-`create_app(AppModule)` with no `adapter=` argument serves through the Starlette adapter, so `pip install bustan` on its own is not enough to serve HTTP; `pip install 'bustan[starlette]'` is. Pass `adapter=` a built adapter to serve through that one as it stands, or a callable, which the framework calls with an `AdapterRuntime` carrying `debug` and the lifespan that starts and stops the module graph.
+`create_app(AppModule)` with no `adapter=` argument serves through the Starlette adapter, so `uv add bustan` on its own is not enough to serve HTTP; `uv add 'bustan[starlette]'` is. Pass `adapter=` a built adapter to serve through that one as it stands, or a callable, which the framework calls with an `AdapterRuntime` carrying `debug` and the lifespan that starts and stops the module graph.
 
 Both adapters are held to the same conformance suite, and `scripts/conformance_matrix.py` runs it over both and fails when they answer any case differently. That comparison, rather than the existence of the port, is what makes "the transport is replaceable" a fact about this repository.
 

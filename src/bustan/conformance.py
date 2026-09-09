@@ -1610,7 +1610,7 @@ def describe_difference(
 _STARLETTE_EXTRA_MISSING = (
     "The starlette adapter needs the starlette extra, which is not installed.\n\n"
     "Install it with:\n\n"
-    "    pip install 'bustan[starlette]'"
+    "    uv add 'bustan[starlette]'"
 )
 
 

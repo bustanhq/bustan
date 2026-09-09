@@ -68,7 +68,7 @@ except ImportError as error:
 else:
     raise SystemExit("create_app served HTTP with no web server installed")
 
-for expected in ("Starlette", "pip install 'bustan[starlette]'", "adapter="):
+for expected in ("Starlette", "uv add 'bustan[starlette]'", "adapter="):
     if expected not in message:
         raise SystemExit(f"the error does not mention {expected!r}: {message!r}")
 
@@ -193,7 +193,14 @@ def _build_venv(venv_dir: Path) -> Path:
 
 
 def _check_kernel_installs_without_a_web_server(wheel: Path) -> None:
-    """Install the wheel with no extras and check what that install can and cannot do."""
+    """Install the wheel with no extras and check what that install can and cannot do.
+
+    Installed with pip into a bare venv on purpose, and not with uv, even though uv is the
+    only package manager the project supports. This is the hostile environment: pip resolves
+    the published metadata with nothing else present, so an accidental dependency on a web
+    server shows up here. `uv sync` would resolve from a lockfile and prove nothing about
+    what the wheel actually declares.
+    """
 
     kernel_python = _build_venv(KERNEL_VENV_DIR)
     _run(str(kernel_python), "-m", "pip", "install", str(wheel))

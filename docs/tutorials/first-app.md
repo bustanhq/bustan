@@ -2,6 +2,10 @@
 
 This walkthrough uses the current CLI scaffold, which is the recommended starting point for new Bustan projects. The scaffold produces the same package shape the checked-in examples now follow: an application package with `__init__.py`, a root module, a controller, a service, and focused tests.
 
+**Before you start.** You need Python 3.13 or newer and [uv](https://docs.astral.sh/uv/), which
+is the only supported package manager. `uv init` writes the floor from the interpreter it finds, so
+on an older Python this fails at `uv add` with a resolver message rather than at import.
+
 ## Create The Project
 
 ```bash
