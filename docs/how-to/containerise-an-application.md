@@ -2,12 +2,43 @@
 
 How to build a Bustan application into a container image and wire its probes to an orchestrator.
 
-This is a starting point rather than a specification. Base images, registries and orchestrators
-change faster than anything else here, so treat the Dockerfile as a shape to adapt, and check the
-versions against what your platform actually offers.
+Everything here was built and run before it was written down. Base images, registries and
+orchestrators still change faster than documentation does, so check the versions against what your
+platform offers, but the shape works.
 
 For what happens once the container is running - draining, workers, proxies - see
-[Deploy An Application](deploy.md). This page only gets it built and scheduled.
+[Deploy An Application](deploy.md). This page gets it built and reachable.
+
+## First, Let The Application Bind Somewhere Else
+
+This is the step that catches everyone, so it comes before the Dockerfile.
+
+A scaffolded application listens on `127.0.0.1`, which is right on your laptop and useless in a
+container: loopback inside the container is not reachable from outside it, whatever you publish with
+`-p`. The container builds, starts, logs `Application startup complete`, and answers nothing.
+
+Take the host from the environment. In `src/my_app/__init__.py`:
+
+```python
+import asyncio
+import os
+
+from bustan import create_app
+
+from .app_module import AppModule
+
+
+async def bootstrap(reload: bool = False) -> None:
+    app = create_app(AppModule)
+    await app.listen(
+        port=int(os.environ.get("PORT", 3000)),
+        host=os.environ.get("HOST", "127.0.0.1"),
+        reload=reload,
+    )
+```
+
+The default stays loopback, so nothing changes when you run it locally. The container sets
+`HOST=0.0.0.0` and becomes reachable.
 
 ## The Dockerfile
 
@@ -22,8 +53,10 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
 WORKDIR /app
 
-# Dependencies first, so a source change does not re-resolve them.
-COPY pyproject.toml uv.lock ./
+# Dependencies first, so a source change does not re-resolve them. README.md is here
+# because uv init writes `readme = "README.md"` into pyproject.toml, and building the
+# project without it fails.
+COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-install-project --no-dev
 
 COPY src ./src
@@ -46,17 +79,26 @@ EXPOSE 3000
 CMD ["start"]
 ```
 
-Three things there are deliberate.
+Four things there are deliberate.
+
+**`README.md` is copied with the manifest.** Leaving it out is the first failure you will hit:
+`failed to open file /app/README.md`, from the second `uv sync`, because that is where the project
+itself gets built.
 
 **`uv sync --frozen` and nothing else.** `--frozen` fails rather than silently re-resolving, so the
 image gets the dependencies the lockfile names and a stale lockfile is a build failure instead of a
 surprise in production. uv is the only supported package manager; see
 [the project README](../../README.md#install).
 
-**Dependencies are copied and installed before the source.** A change to your code then reuses the
+**Dependencies are installed before the source is copied.** A change to your code then reuses the
 dependency layer, which is most of the image.
 
-**`--no-dev` in both stages.** Test and lint tools have no business in a running image.
+**`--no-dev` in both stages.** Test and lint tools have no business in a running image. The result
+is about 50 MB.
+
+`CMD ["start"]` works because `bustan init` adds a `start` script to `pyproject.toml`, so
+`/app/.venv/bin/start` exists. If you renamed it, or your project predates that, use the console
+script your `[project.scripts]` actually defines.
 
 ## The `.dockerignore`
 
@@ -76,30 +118,35 @@ tests/
 
 `.env` matters most. A local `.env` copied into an image is a credential in a layer, readable by
 anyone who can pull it. Configuration reaches a container as environment variables, which is what
-[Configuration End To End](../tutorials/configuration-end-to-end.md) set up.
+[Settings That Live Outside The Code](../tutorials/configuration-end-to-end.md) set up.
 
 ## Build And Run It
 
 ```bash
 docker build -t my-app:local .
-docker run --rm -p 3000:3000 \
-  -e DATABASE_PATH=/data/tasks.db \
-  -e API_TOKEN=... \
-  my-app:local
+docker run --rm -p 3000:3000 -e HOST=0.0.0.0 my-app:local
 ```
-
-Check the probes answer before going further:
 
 ```bash
-curl -fsS http://127.0.0.1:3000/health/live
-curl -fsS http://127.0.0.1:3000/health/ready
+curl http://127.0.0.1:3000/
 ```
+
+```json
+{"message":"Hello from My App"}
+```
+
+If that hangs or refuses instead, check the log. `Uvicorn running on http://127.0.0.1:3000` means
+`HOST` did not reach the application; `http://0.0.0.0:3000` means it did.
 
 ## Wire The Probes
 
-The two probes answer different questions and must be wired to different things. Liveness asks
-whether the process is worth keeping; readiness asks whether it should be sent traffic. Wiring
-readiness to the liveness slot causes restart loops under load, and the reasoning is in
+The probes exist once you have added the health module, which
+[Links That Survive A Restart](../tutorials/a-datastore-and-a-readiness-probe.md) does. Without it
+both paths answer `404`, and a `404` on a liveness probe reads as a dead container.
+
+The two answer different questions and must be wired to different things. Liveness asks whether the
+process is worth keeping; readiness asks whether it should be sent traffic. Wiring a database check
+to liveness turns a brief database blip into a restart loop, and the reasoning is in
 [the two probes](observe-an-application.md#the-two-probes-answer-different-questions).
 
 ```yaml
@@ -127,12 +174,11 @@ terminationGracePeriodSeconds: 45
 
 ## What This Page Does Not Cover
 
-TLS, ingress, secrets management, image scanning and registry policy are all platform decisions with
-no Bustan-specific answer. The application reads configuration from the environment and answers two
-probes; everything else is your platform's business.
+TLS, ingress, secrets management, image scanning and registry policy are platform decisions with no
+Bustan-specific answer. The application reads its configuration from the environment and answers two
+probes; the rest is your platform's business.
 
-Databases in particular: the example uses sqlite so it needs no service, and a real deployment
-points `DATABASE_PATH` or its equivalent at a managed one. Whatever you connect to, open it in
-`on_application_bootstrap` and dispose it in `on_module_destroy` as
-[A Datastore And A Readiness Probe](../tutorials/a-datastore-and-a-readiness-probe.md) shows, so a
-restart does not leak connections.
+Databases in particular. The tutorial uses sqlite so it needs no service, and a container writing to
+a file in its own layer loses that file on every deploy. Point `DATABASE_PATH` at a mounted volume,
+or at a managed database, and open it in `on_application_bootstrap` and dispose it in
+`on_module_destroy` as the tutorial shows, so a restart does not leak connections.
