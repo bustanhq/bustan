@@ -856,6 +856,69 @@ FILTER_CASES: tuple[ConformanceCase, ...] = (
 )
 
 
+def _build_router_refusal_module(_fixtures: Path) -> type[object]:
+    """An application with one route, so every other request is a refusal by the router."""
+
+    @Controller("/orders")
+    class OrdersController:
+        @Get("/")
+        def index(self) -> dict[str, object]:
+            return {"orders": []}
+
+    @Module(controllers=[OrdersController])
+    class RouterRefusalModule:
+        pass
+
+    return RouterRefusalModule
+
+
+# The refusals a caller meets before any handler runs. They are compared on the media
+# type as well as the status because a status alone cannot tell a problem document from
+# a line of text: two transports answering 404 and 405 with the same numbers and
+# different shapes agree on every figure this suite would otherwise read, and a caller
+# reading the documented error model breaks on whichever of the two it did not expect.
+ROUTER_REFUSAL_CASES: tuple[ConformanceCase, ...] = (
+    ConformanceCase(
+        name="router_refuses_an_unmatched_route_with_problem_details",
+        dimension="router refusal",
+        request=ConformanceRequest(path="/no-route-is-registered-here"),
+        expected=_expect_json(
+            {
+                "type": "https://bustan.dev/problems/not-found",
+                "title": "Not Found",
+                "status": 404,
+                "detail": "Not Found",
+                "instance": "/no-route-is-registered-here",
+                "code": "not-found",
+            },
+            status_code=404,
+            media_type=PROBLEM_MEDIA_TYPE,
+        ),
+    ),
+    ConformanceCase(
+        name="router_refuses_a_wrong_method_with_problem_details",
+        dimension="router refusal",
+        request=ConformanceRequest(method="POST", path="/orders"),
+        # ``allow`` is named because a 405 without it tells a client it guessed wrong
+        # without telling it what to send instead, and because the header is what a
+        # client already written against this framework reads to correct itself.
+        expected=_expect_json(
+            {
+                "type": "https://bustan.dev/problems/method-not-allowed",
+                "title": "Method Not Allowed",
+                "status": 405,
+                "detail": "Method Not Allowed",
+                "instance": "/orders",
+                "code": "method-not-allowed",
+            },
+            status_code=405,
+            media_type=PROBLEM_MEDIA_TYPE,
+            headers={"allow": "GET, HEAD"},
+        ),
+    ),
+)
+
+
 # What the request-limit scenario's application accepts as a body, and a body two bytes
 # past it. The limit is the largest body the framework's own limits accept anywhere under
 # their defaults, so a body over it is past every bound those defaults set. That is what
@@ -1049,11 +1112,21 @@ def _build_versioning_module(_fixtures: Path) -> type[object]:
 
 
 # A version the URI strategy does not know is a path no route was registered at, so the
-# transport answers it; under the other two strategies the route exists and the
-# framework's own version dispatcher answers. The two answers differ by design, and a
-# matrix that did not distinguish them would be asserting one of them was wrong.
-TRANSPORT_NOT_FOUND = _expect_text(
-    "Not Found", status_code=404, media_type="text/plain; charset=utf-8"
+# router answers it and answers it as the refusal every router refusal is; under the
+# other two strategies the route exists and the framework's own version dispatcher
+# answers. The two answers differ, and a matrix that did not distinguish them would be
+# asserting one of them was wrong.
+TRANSPORT_NOT_FOUND = _expect_json(
+    {
+        "type": "https://bustan.dev/problems/not-found",
+        "title": "Not Found",
+        "status": 404,
+        "detail": "Not Found",
+        "instance": "/v3/reports",
+        "code": "not-found",
+    },
+    status_code=404,
+    media_type=PROBLEM_MEDIA_TYPE,
 )
 DISPATCHER_NOT_FOUND = _expect_json({"detail": "Not Found"}, status_code=404)
 
@@ -1214,6 +1287,7 @@ SCENARIOS: tuple[ConformanceScenario, ...] = (
     ConformanceScenario("responses", _build_response_module, RESPONSE_CASES),
     ConformanceScenario("middleware", _build_middleware_module, MIDDLEWARE_CASES),
     ConformanceScenario("exception filters", _build_filter_module, FILTER_CASES),
+    ConformanceScenario("router refusals", _build_router_refusal_module, ROUTER_REFUSAL_CASES),
     ConformanceScenario(
         "request limits",
         _build_request_limit_module,
