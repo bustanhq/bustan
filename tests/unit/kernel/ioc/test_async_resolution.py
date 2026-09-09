@@ -15,7 +15,7 @@ import anyio
 import pytest
 from starlette.requests import Request
 
-from bustan import Injectable, Module, Scope, create_app_context
+from bustan import FactoryProvider, Injectable, Module, Scope, create_app_context
 from bustan.common.decorators.injectable import Inject
 from bustan.errors import ProviderResolutionError
 from bustan.kernel.ioc.container import build_container
@@ -41,7 +41,7 @@ def test_a_class_is_instantiated_with_awaited_dependencies() -> None:
             self.connection = connection
 
     @Module(
-        providers=[{"provide": CONNECTION, "use_factory": open_connection}],
+        providers=[FactoryProvider(provide=CONNECTION, use_factory=open_connection)],
         exports=[CONNECTION],
     )
     class AppModule:
@@ -63,7 +63,7 @@ def test_a_factory_called_asynchronously_awaits_both_itself_and_its_dependencies
         return f"using {connection}"
 
     @Module(
-        providers=[{"provide": CONNECTION, "use_factory": open_connection}],
+        providers=[FactoryProvider(provide=CONNECTION, use_factory=open_connection)],
         exports=[CONNECTION],
     )
     class AppModule:
@@ -102,7 +102,7 @@ def test_an_awaited_singleton_is_constructed_once_under_its_own_lock() -> None:
         return "connected"
 
     @Module(
-        providers=[{"provide": CONNECTION, "use_factory": open_connection}],
+        providers=[FactoryProvider(provide=CONNECTION, use_factory=open_connection)],
         exports=[CONNECTION],
     )
     class AppModule:
@@ -180,7 +180,9 @@ def test_an_async_provider_that_returns_none_starts_a_standalone_context() -> No
     async def build_client() -> None:
         return None
 
-    @Module(providers=[{"provide": "client", "use_factory": build_client}], exports=["client"])
+    @Module(
+        providers=[FactoryProvider(provide="client", use_factory=build_client)], exports=["client"]
+    )
     class AppModule:
         pass
 
@@ -288,7 +290,9 @@ def test_two_resolutions_at_once_inside_one_request_share_one_instance(
         return object()
 
     @Module(
-        providers=[{"provide": "identity", "use_factory": open_identity, "scope": Scope.REQUEST}],
+        providers=[
+            FactoryProvider(provide="identity", use_factory=open_identity, scope=Scope.REQUEST)
+        ],
         exports=["identity"],
     )
     class AppModule:

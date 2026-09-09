@@ -7,13 +7,13 @@ from unittest.mock import MagicMock
 
 import anyio
 
-from bustan import InjectionToken, Module, create_app_context
+from bustan import InjectionToken, Module, ValueProvider, create_app_context
 
 CLIENT = InjectionToken("CLIENT")
 client = MagicMock()
 
 
-@Module(providers=[{"provide": CLIENT, "use_value": client}])
+@Module(providers=[ValueProvider(provide=CLIENT, use_value=client)])
 class AppModule:
     pass
 

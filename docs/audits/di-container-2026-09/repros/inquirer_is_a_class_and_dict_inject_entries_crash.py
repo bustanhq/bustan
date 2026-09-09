@@ -10,7 +10,7 @@ difference in docs/COMPARISONS.md, and this script holds the framework to it.
 
 from typing import Annotated
 
-from bustan import INQUIRER, Inject, Injectable, Module, Scope, create_app_context
+from bustan import INQUIRER, FactoryProvider, Inject, Injectable, Module, Scope, create_app_context
 from bustan.errors import BustanError
 
 
@@ -33,11 +33,11 @@ class InquirerModule:
 
 @Module(
     providers=[
-        {
-            "provide": "settings",
-            "use_factory": lambda value: value,
-            "inject": ({"token": "missing", "optional": True},),
-        }
+        FactoryProvider(
+            provide="settings",
+            use_factory=lambda value: value,
+            inject=({"token": "missing", "optional": True},),
+        )
     ]
 )
 class MappingInjectModule:

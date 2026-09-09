@@ -17,7 +17,14 @@ import pytest
 from starlette.requests import Request
 
 from bustan.adapters.starlette.requests import from_starlette_request
-from bustan.common.types import ProviderScope
+from bustan.common.types import (
+    ClassProvider,
+    ExistingProvider,
+    FactoryProvider,
+    Provider,
+    ProviderScope,
+    ValueProvider,
+)
 from bustan.contracts import HttpRequest, HttpResponse
 from bustan.kernel.ioc.planning.scopes import (
     ScopeDependency,
@@ -96,22 +103,26 @@ REJECTING_OWNERS: dict[ProviderScope, frozenset[ProviderScope]] = {
     ProviderScope.TRANSIENT: frozenset(),
 }
 
-BASE_PROVIDERS: tuple[dict[str, object], ...] = (
-    {"provide": SingletonService, "use_class": SingletonService, "scope": "singleton"},
-    {"provide": DurableTenant, "use_class": DurableTenant, "scope": "durable"},
-    {"provide": RequestIdentity, "use_class": RequestIdentity, "scope": "request"},
-    {"provide": TransientProbe, "use_class": TransientProbe, "scope": "transient"},
-    {"provide": TransientBridge, "use_class": TransientBridge, "scope": "transient"},
-    {"provide": ALIAS_TO_REQUEST, "use_existing": RequestIdentity},
-    {"provide": ALIAS_TO_ALIAS, "use_existing": ALIAS_TO_REQUEST},
-    {"provide": ALIAS_TO_SINGLETON, "use_existing": SingletonService},
-    {"provide": CONFIG_VALUE, "use_value": {"retries": 3}},
-    {
-        "provide": REQUEST_FACTORY,
-        "use_factory": make_snapshot,
-        "inject": [RequestIdentity],
-        "scope": "request",
-    },
+BASE_PROVIDERS: tuple[Provider, ...] = (
+    ClassProvider(
+        provide=SingletonService, use_class=SingletonService, scope=ProviderScope.SINGLETON
+    ),
+    ClassProvider(provide=DurableTenant, use_class=DurableTenant, scope=ProviderScope.DURABLE),
+    ClassProvider(provide=RequestIdentity, use_class=RequestIdentity, scope=ProviderScope.REQUEST),
+    ClassProvider(provide=TransientProbe, use_class=TransientProbe, scope=ProviderScope.TRANSIENT),
+    ClassProvider(
+        provide=TransientBridge, use_class=TransientBridge, scope=ProviderScope.TRANSIENT
+    ),
+    ExistingProvider(provide=ALIAS_TO_REQUEST, use_existing=RequestIdentity),
+    ExistingProvider(provide=ALIAS_TO_ALIAS, use_existing=ALIAS_TO_REQUEST),
+    ExistingProvider(provide=ALIAS_TO_SINGLETON, use_existing=SingletonService),
+    ValueProvider(provide=CONFIG_VALUE, use_value={"retries": 3}),
+    FactoryProvider(
+        provide=REQUEST_FACTORY,
+        use_factory=make_snapshot,
+        inject=(RequestIdentity,),
+        scope=ProviderScope.REQUEST,
+    ),
 )
 
 # TransientBridge is the one fixture class with a dependency of its own.
@@ -121,7 +132,7 @@ BASE_CLASS_DEPENDENCIES: dict[type[object], tuple[ScopeDependency, ...]] = {
 
 
 def build_table(
-    declarations: tuple[dict[str, object], ...],
+    declarations: tuple[Provider, ...],
     *,
     module: ModuleKey = AppModule,
 ) -> tuple[dict[tuple[ModuleKey, object], Binding], dict[ModuleKey, dict[object, ModuleKey]]]:
@@ -138,7 +149,7 @@ def build_table(
 
 
 def plan(
-    *declarations: dict[str, object],
+    *declarations: Provider,
     class_dependencies: dict[type[object], tuple[ScopeDependency, ...]] | None = None,
 ) -> ScopePlan:
     """Plan the scopes of the base table extended with the given declarations."""
@@ -148,10 +159,10 @@ def plan(
     return plan_scopes(bindings, visibility=visibility, class_dependencies=dependencies)
 
 
-def owner_declaration(scope: ProviderScope) -> dict[str, object]:
+def owner_declaration(scope: ProviderScope) -> ClassProvider:
     """Return the declaration of the matrix owner at one scope."""
 
-    return {"provide": OWNER_TOKEN, "use_class": Owner, "scope": scope.value}
+    return ClassProvider(provide=OWNER_TOKEN, use_class=Owner, scope=scope)
 
 
 def plan_owner(scope: ProviderScope, token: object) -> ScopePlan:
@@ -273,11 +284,9 @@ def test_singleton_factory_inject_list_is_checked_against_the_factory_scope() ->
     """A factory's inject list is judged by the scope its result is cached under."""
 
     violations = plan(
-        {
-            "provide": InjectionToken("SNAPSHOT"),
-            "use_factory": make_snapshot,
-            "inject": [RequestIdentity],
-        }
+        FactoryProvider(
+            provide=InjectionToken("SNAPSHOT"), use_factory=make_snapshot, inject=(RequestIdentity,)
+        )
     ).violations
 
     assert len(violations) == 1
@@ -401,8 +410,8 @@ def test_a_cyclic_binding_table_settles_instead_of_recursing() -> None:
         pass
 
     result = plan(
-        {"provide": LeftProbe, "use_class": LeftProbe, "scope": "transient"},
-        {"provide": RightProbe, "use_class": RightProbe, "scope": "transient"},
+        ClassProvider(provide=LeftProbe, use_class=LeftProbe, scope=ProviderScope.TRANSIENT),
+        ClassProvider(provide=RightProbe, use_class=RightProbe, scope=ProviderScope.TRANSIENT),
         class_dependencies={
             LeftProbe: (ScopeDependency(token=RightProbe, site="parameter 'right'"),),
             RightProbe: (ScopeDependency(token=LeftProbe, site="parameter 'left'"),),
@@ -424,8 +433,8 @@ def test_a_cycle_that_reaches_request_scope_is_still_reported() -> None:
         pass
 
     result = plan(
-        {"provide": LeftProbe, "use_class": LeftProbe, "scope": "transient"},
-        {"provide": RightProbe, "use_class": RightProbe, "scope": "transient"},
+        ClassProvider(provide=LeftProbe, use_class=LeftProbe, scope=ProviderScope.TRANSIENT),
+        ClassProvider(provide=RightProbe, use_class=RightProbe, scope=ProviderScope.TRANSIENT),
         owner_declaration(ProviderScope.SINGLETON),
         class_dependencies={
             LeftProbe: (ScopeDependency(token=RightProbe, site="parameter 'right'"),),
@@ -452,8 +461,8 @@ def test_an_alias_cycle_terminates() -> None:
     second = InjectionToken("SECOND")
 
     result = plan(
-        {"provide": first, "use_existing": second},
-        {"provide": second, "use_existing": first},
+        ExistingProvider(provide=first, use_existing=second),
+        ExistingProvider(provide=second, use_existing=first),
     )
 
     assert result.effective_scopes[(AppModule, first)] is ProviderScope.TRANSIENT
@@ -467,7 +476,7 @@ def test_a_cyclic_witness_walk_reports_the_scope_without_a_provider_name() -> No
         pass
 
     result = plan(
-        {"provide": Loop, "use_class": Loop, "scope": "transient"},
+        ClassProvider(provide=Loop, use_class=Loop, scope=ProviderScope.TRANSIENT),
         owner_declaration(ProviderScope.SINGLETON),
         class_dependencies={
             Loop: (
@@ -486,11 +495,11 @@ def test_every_illegal_edge_of_one_graph_is_reported_together() -> None:
     """A caller reporting a broken graph gets all of its failures at once."""
 
     result = plan(
-        {
-            "provide": InjectionToken("SNAPSHOT"),
-            "use_factory": make_snapshot,
-            "inject": [RequestIdentity, DurableTenant],
-        },
+        FactoryProvider(
+            provide=InjectionToken("SNAPSHOT"),
+            use_factory=make_snapshot,
+            inject=(RequestIdentity, DurableTenant),
+        ),
         owner_declaration(ProviderScope.SINGLETON),
         class_dependencies={
             Owner: (
@@ -538,7 +547,11 @@ def test_a_dependency_declared_in_another_module_is_invisible() -> None:
         pass
 
     bindings, visibility = build_table(
-        ({"provide": RequestIdentity, "use_class": RequestIdentity, "scope": "request"},),
+        (
+            ClassProvider(
+                provide=RequestIdentity, use_class=RequestIdentity, scope=ProviderScope.REQUEST
+            ),
+        ),
         module=OtherModule,
     )
     owner_bindings, owner_visibility = build_table((owner_declaration(ProviderScope.SINGLETON),))
@@ -587,7 +600,9 @@ def test_a_transient_holding_the_request_names_the_request_it_reaches() -> None:
         pass
 
     result = plan(
-        {"provide": RequestHelper, "use_class": RequestHelper, "scope": "transient"},
+        ClassProvider(
+            provide=RequestHelper, use_class=RequestHelper, scope=ProviderScope.TRANSIENT
+        ),
         owner_declaration(ProviderScope.SINGLETON),
         class_dependencies={
             RequestHelper: (ScopeDependency(token=Request, site="parameter 'request'"),),
@@ -613,7 +628,9 @@ def test_a_transient_holding_the_request_is_legal_under_a_request_scoped_owner()
         pass
 
     result = plan(
-        {"provide": RequestHelper, "use_class": RequestHelper, "scope": "transient"},
+        ClassProvider(
+            provide=RequestHelper, use_class=RequestHelper, scope=ProviderScope.TRANSIENT
+        ),
         owner_declaration(ProviderScope.REQUEST),
         class_dependencies={
             RequestHelper: (ScopeDependency(token=Request, site="parameter 'request'"),),
@@ -629,11 +646,9 @@ def test_a_factory_without_a_qualified_name_is_still_named() -> None:
 
     factory = partial(make_snapshot)
     violations = plan(
-        {
-            "provide": InjectionToken("PARTIAL"),
-            "use_factory": factory,
-            "inject": [RequestIdentity],
-        }
+        FactoryProvider(
+            provide=InjectionToken("PARTIAL"), use_factory=factory, inject=(RequestIdentity,)
+        )
     ).violations
 
     assert violations[0].message.startswith(f"Factory {factory!r} inject entry depends on ")
@@ -646,7 +661,7 @@ def test_a_pass_through_binding_may_reach_a_token_no_module_declares() -> None:
         pass
 
     result = plan(
-        {"provide": Bridge, "use_class": Bridge, "scope": "transient"},
+        ClassProvider(provide=Bridge, use_class=Bridge, scope=ProviderScope.TRANSIENT),
         owner_declaration(ProviderScope.SINGLETON),
         class_dependencies={
             Bridge: (

@@ -11,6 +11,7 @@ from ..adapters.asgi.testclient import AsgiTestClient
 from ..adapters.asgi.types import AsgiApp
 from ..app.application import Application
 from ..app.bootstrap import _create_app, create_app
+from ..common.types import Provider
 from ..kernel.errors import LifecycleError
 from ..kernel.ioc.container import Container
 from ..kernel.ioc.registry import token_identity
@@ -270,7 +271,7 @@ def create_test_module(
     name: str = "TestModule",
     imports: Iterable[type[object]] | None = None,
     controllers: Iterable[type[object]] | None = None,
-    providers: Iterable[type[object] | dict[str, object]] | None = None,
+    providers: Iterable[Provider] | None = None,
     exports: Iterable[object] | None = None,
 ) -> type[object]:
     """Create a throwaway decorated module for isolated tests."""

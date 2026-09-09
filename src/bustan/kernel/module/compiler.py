@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from dataclasses import dataclass, replace
 from typing import cast
 
@@ -11,7 +10,13 @@ from ..errors import (
     InvalidModuleError,
     InvalidProviderError,
 )
-from ..ioc.registry import Binding, TokenKey, normalize_provider, token_identity
+from ..ioc.registry import (
+    Binding,
+    TokenKey,
+    declared_token_identity,
+    normalize_provider,
+    token_identity,
+)
 from ..ioc.tokens import APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, InjectionToken
 from ..utils import _display_name, _qualname
 from .dynamic import DynamicModule, ModuleInstanceKey, ModuleKey
@@ -132,23 +137,14 @@ def _overlaid_providers(
 def _replaceable_token_identity(entry: object) -> TokenKey | None:
     """Return the token an overlay entry replaces, or ``None`` when it replaces nothing.
 
-    Reading the token here is deliberately forgiving: an entry this cannot read is left
-    in place for the normalizer to refuse by name, so a malformed provider is reported
-    as the malformed provider it is rather than by silently failing to match.
+    A multi-provider token replaces nothing, because a second declaration of one of
+    those adds a component to a slot that runs them all.
     """
 
-    if inspect.isclass(entry):
-        token: object = entry
-    elif isinstance(entry, dict) and "provide" in entry:
-        token = cast("dict[str, object]", entry)["provide"]
-    else:
+    identity = declared_token_identity(entry)
+    if identity is None or identity in _MULTI_PROVIDER_TOKENS_BY_IDENTITY:
         return None
-    try:
-        identity = token_identity(token)
-        hash(identity)
-    except TypeError:
-        return None
-    return None if identity in _MULTI_PROVIDER_TOKENS_BY_IDENTITY else identity
+    return identity
 
 
 def validate_module_compiled(

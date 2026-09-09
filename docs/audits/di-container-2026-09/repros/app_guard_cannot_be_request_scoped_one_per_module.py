@@ -5,7 +5,16 @@ one-binding-per-token rule allows at most one global guard per module.
 
 from starlette.requests import Request
 
-from bustan import APP_GUARD, ExecutionContext, Guard, Injectable, Module, Scope, create_app
+from bustan import (
+    APP_GUARD,
+    ClassProvider,
+    ExecutionContext,
+    Guard,
+    Injectable,
+    Module,
+    Scope,
+    create_app,
+)
 from bustan.errors import InvalidModuleError, ProviderResolutionError
 
 
@@ -28,7 +37,7 @@ class AllowAllToo(Guard):
         return True
 
 
-@Module(providers=[{"provide": APP_GUARD, "use_class": RequestGuard, "scope": "request"}])
+@Module(providers=[ClassProvider(provide=APP_GUARD, use_class=RequestGuard, scope=Scope.REQUEST)])
 class RequestScopedGuardModule:
     pass
 
@@ -43,8 +52,8 @@ def main() -> None:
     try:
         module = Module(
             providers=[
-                {"provide": APP_GUARD, "use_class": AllowAll},
-                {"provide": APP_GUARD, "use_class": AllowAllToo},
+                ClassProvider(provide=APP_GUARD, use_class=AllowAll),
+                ClassProvider(provide=APP_GUARD, use_class=AllowAllToo),
             ]
         )(type("TwoGuards", (), {}))
         create_app(module)

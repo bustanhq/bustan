@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import cast
 
+from ...common.types import (
+    ClassProvider,
+    ExistingProvider,
+    FactoryProvider,
+    Provider,
+    ValueProvider,
+)
 from ..ioc.tokens import InjectionToken
 from .decorators import Module
 from .dynamic import DynamicModule
@@ -23,7 +31,7 @@ class ConfigurableModuleDefinition[OptionsT]:
     @staticmethod
     def for_root_async(
         *,
-        use_factory: object | None = None,
+        use_factory: Callable[..., object] | None = None,
         use_class: type[object] | None = None,
         use_existing: object | None = None,
         inject: tuple[object, ...] = (),
@@ -35,7 +43,7 @@ class ConfigurableModuleDefinition[OptionsT]:
     @staticmethod
     def register_async(
         *,
-        use_factory: object | None = None,
+        use_factory: Callable[..., object] | None = None,
         use_class: type[object] | None = None,
         use_existing: object | None = None,
         inject: tuple[object, ...] = (),
@@ -50,7 +58,7 @@ class ConfigurableModuleBuilder[OptionsT]:
 
     def __init__(self) -> None:
         self._class_name = "ConfigurableModule"
-        self._extras_providers: tuple[object | dict[str, object], ...] = ()
+        self._extras_providers: tuple[Provider, ...] = ()
         self._token: InjectionToken[OptionsT] | None = None
 
     def set_class_name(self, name: str) -> ConfigurableModuleBuilder[OptionsT]:
@@ -60,7 +68,7 @@ class ConfigurableModuleBuilder[OptionsT]:
     def set_extras(
         self,
         *,
-        providers: tuple[object | dict[str, object], ...] = (),
+        providers: tuple[Provider, ...] = (),
     ) -> ConfigurableModuleBuilder[OptionsT]:
         self._extras_providers = providers
         return self
@@ -86,7 +94,7 @@ class ConfigurableModuleBuilder[OptionsT]:
                 return DynamicModule(
                     module=GeneratedModule,
                     providers=(
-                        {"provide": token, "use_value": options},
+                        ValueProvider(provide=token, use_value=options),
                         *extras,
                     ),
                     exports=(token,),
@@ -104,23 +112,22 @@ class ConfigurableModuleBuilder[OptionsT]:
             @staticmethod
             def for_root_async(
                 *,
-                use_factory: object | None = None,
+                use_factory: Callable[..., object] | None = None,
                 use_class: type[object] | None = None,
                 use_existing: object | None = None,
                 inject: tuple[object, ...] = (),
                 imports: tuple[type[object] | DynamicModule, ...] = (),
                 is_global: bool = False,
             ) -> DynamicModule:
+                provider: Provider
                 if use_factory is not None:
-                    provider: dict[str, object] = {
-                        "provide": token,
-                        "use_factory": use_factory,
-                        "inject": inject,
-                    }
+                    provider = FactoryProvider(
+                        provide=token, use_factory=use_factory, inject=inject
+                    )
                 elif use_class is not None:
-                    provider = {"provide": token, "use_class": use_class}
+                    provider = ClassProvider(provide=token, use_class=use_class)
                 elif use_existing is not None:
-                    provider = {"provide": token, "use_existing": use_existing}
+                    provider = ExistingProvider(provide=token, use_existing=use_existing)
                 else:
                     raise ValueError(
                         "for_root_async requires use_factory, use_class, or use_existing"
@@ -137,7 +144,7 @@ class ConfigurableModuleBuilder[OptionsT]:
             @staticmethod
             def register_async(
                 *,
-                use_factory: object | None = None,
+                use_factory: Callable[..., object] | None = None,
                 use_class: type[object] | None = None,
                 use_existing: object | None = None,
                 inject: tuple[object, ...] = (),

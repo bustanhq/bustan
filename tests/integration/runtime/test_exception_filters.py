@@ -18,6 +18,7 @@ from bustan import (
     Module,
     Scope,
     UseFilters,
+    ValueProvider,
     create_app,
 )
 from bustan.errors import BadRequestException, ProviderResolutionError
@@ -171,7 +172,7 @@ def test_an_app_filter_maps_an_exception_a_constructor_raised() -> None:
 
     @Module(
         controllers=[MeController],
-        providers=[CurrentUser, {"provide": APP_FILTER, "use_value": ApplicationFilter()}],
+        providers=[CurrentUser, ValueProvider(provide=APP_FILTER, use_value=ApplicationFilter())],
     )
     class AppModule:
         pass
@@ -284,7 +285,7 @@ def test_the_application_wide_chain_answers_when_the_route_chain_cannot_be_built
 
     @Module(
         controllers=[BrokenFilterController],
-        providers=[BrokenFilter, {"provide": APP_FILTER, "use_value": ApplicationFilter()}],
+        providers=[BrokenFilter, ValueProvider(provide=APP_FILTER, use_value=ApplicationFilter())],
     )
     class AppModule:
         pass

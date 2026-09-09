@@ -15,7 +15,18 @@ import pytest
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
-from bustan import Controller, Get, Injectable, Module, Scope, create_app, create_app_context
+from bustan import (
+    ClassProvider,
+    Controller,
+    FactoryProvider,
+    Get,
+    Injectable,
+    Module,
+    Scope,
+    ValueProvider,
+    create_app,
+    create_app_context,
+)
 from bustan.common.decorators.injectable import Inject, OptionalDep
 from bustan.contracts import HttpRequest
 from bustan.errors import InvalidControllerError, ProviderResolutionError
@@ -206,7 +217,7 @@ def test_an_optional_dependency_something_supplies_is_resolved_not_substituted()
             self.maybe = maybe
 
     @Module(
-        providers=[UsesOptional, {"provide": CONFIG, "use_value": "real"}],
+        providers=[UsesOptional, ValueProvider(provide=CONFIG, use_value="real")],
         exports=[UsesOptional],
     )
     class AppModule:
@@ -294,12 +305,12 @@ def test_a_factory_may_inject_the_request_and_the_response(
     @Module(
         controllers=[SnapshotController],
         providers=[
-            {
-                "provide": SNAPSHOT,
-                "use_factory": describe,
-                "inject": [REQUEST, RESPONSE],
-                "scope": "request",
-            }
+            FactoryProvider(
+                provide=SNAPSHOT,
+                use_factory=describe,
+                inject=(REQUEST, RESPONSE),
+                scope=Scope.REQUEST,
+            )
         ],
     )
     class AppModule:
@@ -316,7 +327,7 @@ def test_a_singleton_factory_may_not_inject_the_request() -> None:
     def describe(request: Request) -> str:
         return request.headers.get("x-user-id", "anonymous")
 
-    @Module(providers=[{"provide": SNAPSHOT, "use_factory": describe, "inject": [REQUEST]}])
+    @Module(providers=[FactoryProvider(provide=SNAPSHOT, use_factory=describe, inject=(REQUEST,))])
     class AppModule:
         pass
 
@@ -329,7 +340,7 @@ def test_a_factory_may_inject_the_application(build_request: RequestFactory) -> 
         return type(application).__name__
 
     @Module(
-        providers=[{"provide": SNAPSHOT, "use_factory": describe, "inject": [APPLICATION]}],
+        providers=[FactoryProvider(provide=SNAPSHOT, use_factory=describe, inject=(APPLICATION,))],
         exports=[SNAPSHOT],
     )
     class AppModule:
@@ -347,8 +358,8 @@ def test_a_class_bound_twice_in_one_module_is_planned_once() -> None:
 
     @Module(
         providers=[
-            {"provide": "first", "use_class": Service},
-            {"provide": "second", "use_class": Service},
+            ClassProvider(provide="first", use_class=Service),
+            ClassProvider(provide="second", use_class=Service),
         ],
         exports=["first", "second"],
     )
@@ -449,15 +460,17 @@ def test_a_factory_injecting_equal_tokens_of_different_types_is_given_both() -> 
     def combine(enum_dsn: str, string_dsn: str) -> str:
         return f"{enum_dsn}|{string_dsn}"
 
-    @Module(providers=[{"provide": DsnTokens.DB, "use_value": "enum-db"}], exports=[DsnTokens.DB])
+    @Module(
+        providers=[ValueProvider(provide=DsnTokens.DB, use_value="enum-db")], exports=[DsnTokens.DB]
+    )
     class SharedModule:
         pass
 
     @Module(
         imports=[SharedModule],
         providers=[
-            {"provide": "db", "use_value": "string-db"},
-            {"provide": "dsn", "use_factory": combine, "inject": [DsnTokens.DB, "db"]},
+            ValueProvider(provide="db", use_value="string-db"),
+            FactoryProvider(provide="dsn", use_factory=combine, inject=(DsnTokens.DB, "db")),
         ],
     )
     class FeatureModule:
@@ -527,7 +540,10 @@ def test_a_transport_request_type_a_module_declares_is_a_binding_and_not_the_req
             self.request = request
 
     @Module(
-        providers=[{"provide": Request, "use_value": replacement}, HoldsWhatTheModuleDeclared],
+        providers=[
+            ValueProvider(provide=Request, use_value=replacement),
+            HoldsWhatTheModuleDeclared,
+        ],
     )
     class AppModule:
         pass

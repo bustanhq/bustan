@@ -37,6 +37,7 @@ from .common.decorators.parameter import (
     create_param_decorator,
 )
 from .common.decorators.route import Delete, Get, Patch, Post, Put
+from .common.types import ClassProvider, ExistingProvider, FactoryProvider, ValueProvider
 from .common.types import ProviderScope as Scope
 from .configuration import ConfigModule, ConfigService
 
@@ -214,6 +215,7 @@ __all__ = (
     "create_param_decorator",
     "BustanError",
     "Cache",
+    "ClassProvider",
     "ContextId",
     "Controller",
     "DefaultResponseSerializer",
@@ -226,7 +228,9 @@ __all__ = (
     "DocumentBuilder",
     "ExecutionContext",
     "ExceptionFilter",
+    "ExistingProvider",
     "ExportViolationError",
+    "FactoryProvider",
     "Get",
     "Global",
     "Guard",
@@ -312,6 +316,7 @@ __all__ = (
     "UploadedFile",
     "UploadedFiles",
     "ValidationPipe",
+    "ValueProvider",
     "application_context_id",
     "durable_context_id",
     "Ip",

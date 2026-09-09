@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from bustan import Controller, Get, Module, create_app
+from bustan import Controller, Get, Module, ValueProvider, create_app
 from bustan.common.metadata import ControllerRouteDefinition
 from bustan.common.types import RouteMetadata
 from bustan.contracts import HttpResponse
@@ -181,10 +181,9 @@ def _secured_module(principal: _PrincipalStub | None) -> type[object]:
     @Module(
         controllers=[InvoicesController],
         providers=[
-            {
-                "provide": AUTHENTICATOR_REGISTRY,
-                "use_value": {_STRATEGY: _AuthenticatorStub(principal)},
-            }
+            ValueProvider(
+                provide=AUTHENTICATOR_REGISTRY, use_value={_STRATEGY: _AuthenticatorStub(principal)}
+            )
         ],
     )
     class SecuredModule:

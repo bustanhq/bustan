@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bustan import Module, create_app_context
+from bustan import Module, ValueProvider, create_app_context
 from bustan.kernel.ioc.tokens import InjectionToken
 
 
@@ -21,7 +21,7 @@ def test_two_tokens_of_the_same_name_are_two_tokens() -> None:
     assert first != second
     assert len({first, second}) == 2
 
-    @Module(providers=[{"provide": first, "use_value": "declared"}])
+    @Module(providers=[ValueProvider(provide=first, use_value="declared")])
     class AppModule:
         pass
 
@@ -34,7 +34,7 @@ def test_two_tokens_of_the_same_name_are_two_tokens() -> None:
 def test_one_token_is_the_same_token_wherever_it_is_written() -> None:
     token = InjectionToken("CONFIG")
 
-    @Module(providers=[{"provide": token, "use_value": "declared"}], exports=[token])
+    @Module(providers=[ValueProvider(provide=token, use_value="declared")], exports=[token])
     class SharedModule:
         pass
 

@@ -2,19 +2,19 @@
 depends on module discovery order (first global wins), so re-ordering imports changes behavior.
 """
 
-from bustan import Global, InjectionToken, Module, create_app_context
+from bustan import Global, InjectionToken, Module, ValueProvider, create_app_context
 
 TOKEN = InjectionToken("SHARED")
 
 
 @Global()
-@Module(providers=[{"provide": TOKEN, "use_value": "from-G1"}], exports=[TOKEN])
+@Module(providers=[ValueProvider(provide=TOKEN, use_value="from-G1")], exports=[TOKEN])
 class G1:
     pass
 
 
 @Global()
-@Module(providers=[{"provide": TOKEN, "use_value": "from-G2"}], exports=[TOKEN])
+@Module(providers=[ValueProvider(provide=TOKEN, use_value="from-G2")], exports=[TOKEN])
 class G2:
     pass
 

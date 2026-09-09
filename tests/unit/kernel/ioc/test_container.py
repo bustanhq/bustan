@@ -10,14 +10,18 @@ import pytest
 from starlette.requests import Request
 
 from bustan import (
+    ClassProvider,
     Controller,
     DynamicModule,
+    ExistingProvider,
+    FactoryProvider,
     Get,
     Global,
     Injectable,
     InjectionToken,
     Module,
     Scope,
+    ValueProvider,
 )
 from bustan.kernel.errors import InvalidModuleError, ProviderResolutionError
 from bustan.kernel.ioc.container import build_container
@@ -257,7 +261,7 @@ def test_container_resolves_value_provider_def() -> None:
     DATABASE_URL = "database_url"
 
     @Module(
-        providers=[{"provide": DATABASE_URL, "use_value": "postgres://localhost/mydb"}],
+        providers=[ValueProvider(provide=DATABASE_URL, use_value="postgres://localhost/mydb")],
         exports=[DATABASE_URL],
     )
     class AppModule:
@@ -283,7 +287,9 @@ def test_container_resolves_factory_provider_def_with_inject() -> None:
     @Module(
         providers=[
             ConfigService,
-            {"provide": "http_client", "use_factory": build_client, "inject": [ConfigService]},
+            FactoryProvider(
+                provide="http_client", use_factory=build_client, inject=(ConfigService,)
+            ),
         ],
     )
     class AppModule:
@@ -309,7 +315,7 @@ def test_container_resolves_class_provider_def_with_interface_token() -> None:
         pass
 
     @Module(
-        providers=[{"provide": IUserRepo, "use_class": SqlUserRepo}],
+        providers=[ClassProvider(provide=IUserRepo, use_class=SqlUserRepo)],
         exports=[IUserRepo],
     )
     class AppModule:
@@ -331,7 +337,7 @@ def test_container_resolves_existing_provider_def() -> None:
     @Module(
         providers=[
             UserService,
-            {"provide": "user_service_alias", "use_existing": UserService},
+            ExistingProvider(provide="user_service_alias", use_existing=UserService),
         ],
     )
     class AppModule:
@@ -354,7 +360,9 @@ def test_container_resolves_transient_factory_provider_def() -> None:
         return {"id": call_count}
 
     @Module(
-        providers=[{"provide": "handler", "use_factory": build_handler, "scope": "transient"}],
+        providers=[
+            FactoryProvider(provide="handler", use_factory=build_handler, scope=Scope.TRANSIENT)
+        ],
     )
     class AppModule:
         pass
@@ -467,7 +475,7 @@ def test_container_visibility_is_the_graph_visibility_and_every_entry_has_a_bind
         pass
 
     @Global()
-    @Module(providers=[{"provide": "config", "use_value": "value"}], exports=["config"])
+    @Module(providers=[ValueProvider(provide="config", use_value="value")], exports=["config"])
     class SettingsModule:
         pass
 
@@ -520,13 +528,13 @@ def test_a_local_binding_and_an_imported_export_of_an_equal_token_resolve_apart(
     class Tokens(StrEnum):
         DB = "db"
 
-    @Module(providers=[{"provide": Tokens.DB, "use_value": "enum-db"}], exports=[Tokens.DB])
+    @Module(providers=[ValueProvider(provide=Tokens.DB, use_value="enum-db")], exports=[Tokens.DB])
     class SharedModule:
         pass
 
     @Module(
         imports=[SharedModule],
-        providers=[{"provide": "db", "use_value": "string-db"}],
+        providers=[ValueProvider(provide="db", use_value="string-db")],
     )
     class FeatureModule:
         pass
@@ -541,7 +549,7 @@ def test_a_token_equal_to_a_visible_one_but_of_another_type_resolves_to_nothing(
     class Tokens(StrEnum):
         DB = "db"
 
-    @Module(providers=[{"provide": Tokens.DB, "use_value": "enum-db"}], exports=[Tokens.DB])
+    @Module(providers=[ValueProvider(provide=Tokens.DB, use_value="enum-db")], exports=[Tokens.DB])
     class SharedModule:
         pass
 
@@ -559,13 +567,13 @@ def test_an_override_replaces_the_token_it_names_and_not_an_equal_one() -> None:
     class Tokens(StrEnum):
         DB = "db"
 
-    @Module(providers=[{"provide": Tokens.DB, "use_value": "enum-db"}], exports=[Tokens.DB])
+    @Module(providers=[ValueProvider(provide=Tokens.DB, use_value="enum-db")], exports=[Tokens.DB])
     class SharedModule:
         pass
 
     @Module(
         imports=[SharedModule],
-        providers=[{"provide": "db", "use_value": "string-db"}],
+        providers=[ValueProvider(provide="db", use_value="string-db")],
     )
     class FeatureModule:
         pass
@@ -579,11 +587,11 @@ def test_an_override_replaces_the_token_it_names_and_not_an_equal_one() -> None:
 
 
 def test_a_true_token_and_a_one_token_are_two_providers() -> None:
-    @Module(providers=[{"provide": 1, "use_value": "int-one"}], exports=[1])
+    @Module(providers=[ValueProvider(provide=1, use_value="int-one")], exports=[1])
     class IntModule:
         pass
 
-    @Module(imports=[IntModule], providers=[{"provide": True, "use_value": "bool-true"}])
+    @Module(imports=[IntModule], providers=[ValueProvider(provide=True, use_value="bool-true")])
     class BoolModule:
         pass
 
@@ -673,12 +681,10 @@ def test_an_override_of_a_factory_binding_reaches_what_the_factory_injects() -> 
     # the reach of an override has to be read from the binding as well as from the plan.
     @Module(
         providers=[
-            {"provide": "dsn", "use_value": "postgres://real"},
-            {
-                "provide": "connection",
-                "use_factory": lambda dsn: f"connected:{dsn}",
-                "inject": ["dsn"],
-            },
+            ValueProvider(provide="dsn", use_value="postgres://real"),
+            FactoryProvider(
+                provide="connection", use_factory=lambda dsn: f"connected:{dsn}", inject=("dsn",)
+            ),
         ]
     )
     class AppModule:
@@ -755,7 +761,7 @@ def test_a_provider_a_dynamic_module_declares_is_overridden_through_its_class() 
         imports=[
             DynamicModule(
                 module=ConfigModule,
-                providers=({"provide": CONFIG, "use_value": "prod"},),
+                providers=(ValueProvider(provide=CONFIG, use_value="prod"),),
                 exports=(CONFIG,),
             )
         ]
@@ -814,12 +820,10 @@ def test_an_override_reaches_a_dependent_that_holds_the_token_through_an_alias()
     @Module(
         providers=[
             Clock,
-            {"provide": "clock-alias", "use_existing": Clock},
-            {
-                "provide": "stamp",
-                "use_factory": lambda clock: clock.now(),
-                "inject": ["clock-alias"],
-            },
+            ExistingProvider(provide="clock-alias", use_existing=Clock),
+            FactoryProvider(
+                provide="stamp", use_factory=lambda clock: clock.now(), inject=("clock-alias",)
+            ),
         ]
     )
     class AppModule:
@@ -839,8 +843,8 @@ def test_an_override_survives_a_graph_naming_a_token_no_module_declares() -> Non
     # failure in an unrelated place.
     @Module(
         providers=[
-            {"provide": "config", "use_value": "real"},
-            {"provide": "broken", "use_factory": lambda value: value, "inject": ["missing"]},
+            ValueProvider(provide="config", use_value="real"),
+            FactoryProvider(provide="broken", use_factory=lambda value: value, inject=("missing",)),
         ]
     )
     class AppModule:

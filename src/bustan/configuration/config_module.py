@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from ..common.types import FactoryProvider, ValueProvider
 from ..kernel.ioc.tokens import InjectionToken
 from ..kernel.module.decorators import Module
 from ..kernel.module.dynamic import DynamicModule
@@ -36,12 +37,12 @@ class ConfigModule:
         return DynamicModule(
             module=_ConfigModuleBase,
             providers=(
-                {"provide": CONFIG_VALUES, "use_value": values},
-                {
-                    "provide": ConfigService,
-                    "use_factory": _build_config_service,
-                    "inject": (CONFIG_VALUES,),
-                },
+                ValueProvider(provide=CONFIG_VALUES, use_value=values),
+                FactoryProvider(
+                    provide=ConfigService,
+                    use_factory=_build_config_service,
+                    inject=(CONFIG_VALUES,),
+                ),
             ),
             exports=(ConfigService, CONFIG_VALUES),
             is_global=is_global,

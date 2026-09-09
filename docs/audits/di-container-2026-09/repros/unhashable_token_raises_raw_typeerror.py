@@ -2,13 +2,13 @@
 escapes as a raw TypeError instead of InvalidProviderError.
 """
 
-from bustan import Module, create_app_context
+from bustan import Module, ValueProvider, create_app_context
 from bustan.errors import BustanError
 
 
 def main() -> None:
     try:
-        module = Module(providers=[{"provide": {"name": "x"}, "use_value": 1}])(
+        module = Module(providers=[ValueProvider(provide={"name": "x"}, use_value=1)])(
             type("BadModule", (), {})
         )
         create_app_context(module)

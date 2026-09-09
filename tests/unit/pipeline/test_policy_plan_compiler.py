@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from bustan import Controller, Get, Module, SkipThrottle
+from bustan import Controller, Get, Module, SkipThrottle, ValueProvider
 from bustan.kernel.errors import RouteDefinitionError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
@@ -117,7 +117,7 @@ def test_public_controller_does_not_disable_handler_access_requirements() -> Non
     # serving them, so what the registry holds never comes up.
     @Module(
         controllers=[MixedController],
-        providers=[{"provide": AUTHENTICATOR_REGISTRY, "use_value": {}}],
+        providers=[ValueProvider(provide=AUTHENTICATOR_REGISTRY, use_value={})],
     )
     class AppModule:
         pass

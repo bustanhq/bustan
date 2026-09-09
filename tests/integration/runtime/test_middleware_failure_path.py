@@ -14,6 +14,7 @@ from bustan import (
     Middleware,
     Module,
     UseFilters,
+    ValueProvider,
     create_app,
 )
 from bustan.contracts import HttpRequest
@@ -143,7 +144,7 @@ def test_an_app_filter_answers_the_middleware_failure_path() -> None:
 
     @Module(
         controllers=[RecordingController],
-        providers=[{"provide": APP_FILTER, "use_value": ApplicationFilter()}],
+        providers=[ValueProvider(provide=APP_FILTER, use_value=ApplicationFilter())],
     )
     class AppModule:
         def configure(self, consumer: MiddlewareConsumer) -> None:

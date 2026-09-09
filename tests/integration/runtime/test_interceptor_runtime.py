@@ -13,6 +13,7 @@ from bustan import (
     Interceptor,
     Module,
     UseInterceptors,
+    ValueProvider,
     create_app,
 )
 from bustan.pipeline.interceptors import CallHandler
@@ -54,7 +55,7 @@ def test_create_app_executes_interceptors_in_canonical_attachment_order() -> Non
 
     @Module(
         controllers=[UsersController],
-        providers=[{"provide": APP_INTERCEPTOR, "use_value": GlobalInterceptor()}],
+        providers=[ValueProvider(provide=APP_INTERCEPTOR, use_value=GlobalInterceptor())],
     )
     class AppModule:
         pass

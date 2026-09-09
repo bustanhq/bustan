@@ -9,6 +9,7 @@ import pytest
 from bustan import (
     APPLICATION,
     ApplicationContext,
+    FactoryProvider,
     Inject,
     Injectable,
     Module,
@@ -60,7 +61,7 @@ async def test_application_context_init_matches_http_startup_semantics() -> None
         return "ready"
 
     @Module(
-        providers=[{"provide": "token", "use_factory": build_value}],
+        providers=[FactoryProvider(provide="token", use_factory=build_value)],
         exports=["token"],
     )
     class FeatureModule:

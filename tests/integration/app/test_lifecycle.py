@@ -13,6 +13,7 @@ from bustan import (
     InjectionToken,
     Module,
     ModuleRef,
+    ValueProvider,
     create_app,
     create_app_context,
 )
@@ -202,7 +203,7 @@ def test_a_value_provider_takes_no_part_in_the_lifecycle() -> None:
 
     token = InjectionToken("UNBOUND")
 
-    @Module(providers=[{"provide": token, "use_value": UnboundHooks}])
+    @Module(providers=[ValueProvider(provide=token, use_value=UnboundHooks)])
     class AppModule:
         pass
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bustan import Injectable, InjectionToken, Module
+from bustan import Injectable, InjectionToken, Module, ValueProvider
 
 from .shared import SharedModule
 
@@ -22,7 +22,7 @@ class FeatureService:
 
 @Module(
     imports=[SharedModule],
-    providers=[FeatureService, {"provide": CONFIG, "use_value": Config()}],
+    providers=[FeatureService, ValueProvider(provide=CONFIG, use_value=Config())],
 )
 class FeatureModule:
     pass

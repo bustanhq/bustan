@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, cast
 import anyio
 import pytest
 
-from bustan import Module
+from bustan import ClassProvider, FactoryProvider, Module
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.ioc.scopes import (
     CACHE_MISS,
@@ -370,11 +370,13 @@ def test_a_consumer_seeing_two_modules_gets_each_one_s_own_instance() -> None:
     # Two equal tokens cannot be declared by one module, so the shape that reaches a
     # consumer is two modules exporting one each. Both instances are cached, and the
     # consumer holds one of each rather than whichever was built first twice.
-    @Module(providers=[{"provide": Tokens.DB, "use_class": FromEnumToken}], exports=[Tokens.DB])
+    @Module(
+        providers=[ClassProvider(provide=Tokens.DB, use_class=FromEnumToken)], exports=[Tokens.DB]
+    )
     class EnumModule:
         pass
 
-    @Module(providers=[{"provide": "db", "use_class": FromStrToken}], exports=["db"])
+    @Module(providers=[ClassProvider(provide="db", use_class=FromStrToken)], exports=["db"])
     class StrModule:
         pass
 
@@ -385,7 +387,9 @@ def test_a_consumer_seeing_two_modules_gets_each_one_s_own_instance() -> None:
 
     @Module(
         imports=[EnumModule, StrModule],
-        providers=[{"provide": Consumer, "use_factory": Consumer, "inject": [Tokens.DB, "db"]}],
+        providers=[
+            FactoryProvider(provide=Consumer, use_factory=Consumer, inject=(Tokens.DB, "db"))
+        ],
         exports=[Consumer],
     )
     class ConsumingModule:
@@ -402,11 +406,11 @@ def test_a_consumer_seeing_two_modules_gets_each_one_s_own_instance() -> None:
 
 
 def test_a_consumer_seeing_a_true_token_and_a_one_token_gets_each_one_s_own_instance() -> None:
-    @Module(providers=[{"provide": True, "use_class": FromEnumToken}], exports=[True])
+    @Module(providers=[ClassProvider(provide=True, use_class=FromEnumToken)], exports=[True])
     class TrueModule:
         pass
 
-    @Module(providers=[{"provide": 1, "use_class": FromStrToken}], exports=[1])
+    @Module(providers=[ClassProvider(provide=1, use_class=FromStrToken)], exports=[1])
     class OneModule:
         pass
 
@@ -417,7 +421,7 @@ def test_a_consumer_seeing_a_true_token_and_a_one_token_gets_each_one_s_own_inst
 
     @Module(
         imports=[TrueModule, OneModule],
-        providers=[{"provide": Consumer, "use_factory": Consumer, "inject": [True, 1]}],
+        providers=[FactoryProvider(provide=Consumer, use_factory=Consumer, inject=(True, 1))],
         exports=[Consumer],
     )
     class ConsumingModule:

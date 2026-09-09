@@ -11,6 +11,7 @@ from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_add
 from typing import Protocol, runtime_checkable
 
 from ..common.decorators.injectable import Injectable
+from ..common.types import ExistingProvider, FactoryProvider, ValueProvider
 from ..contracts import HttpResponse, RateLimitDecision
 from ..kernel.errors import InvalidPipelineError
 from ..kernel.ioc.tokens import APP_GUARD, InjectionToken
@@ -298,21 +299,21 @@ class ThrottlerModule:
         return DynamicModule(
             module=_ThrottlerModuleBase,
             providers=(
-                {"provide": THROTTLER_TTL, "use_value": ttl},
-                {"provide": THROTTLER_LIMIT, "use_value": limit},
-                {"provide": THROTTLER_STORAGE, "use_value": resolved_storage},
-                {"provide": THROTTLER_KEY_RESOLVER, "use_value": resolved_resolver},
-                {
-                    "provide": ThrottlerGuard,
-                    "use_factory": ThrottlerGuard,
-                    "inject": (
+                ValueProvider(provide=THROTTLER_TTL, use_value=ttl),
+                ValueProvider(provide=THROTTLER_LIMIT, use_value=limit),
+                ValueProvider(provide=THROTTLER_STORAGE, use_value=resolved_storage),
+                ValueProvider(provide=THROTTLER_KEY_RESOLVER, use_value=resolved_resolver),
+                FactoryProvider(
+                    provide=ThrottlerGuard,
+                    use_factory=ThrottlerGuard,
+                    inject=(
                         THROTTLER_STORAGE,
                         THROTTLER_TTL,
                         THROTTLER_LIMIT,
                         THROTTLER_KEY_RESOLVER,
                     ),
-                },
-                {"provide": APP_GUARD, "use_existing": ThrottlerGuard},
+                ),
+                ExistingProvider(provide=APP_GUARD, use_existing=ThrottlerGuard),
             ),
             exports=(ThrottlerGuard, THROTTLER_STORAGE),
         )

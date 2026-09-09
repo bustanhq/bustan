@@ -11,11 +11,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "_pkgs"))
 from inherit_pkg.base import SETTINGS  # noqa: E402
 from inherit_pkg.child import UserRepository  # noqa: E402
 
-from bustan import Module, create_app_context  # noqa: E402
+from bustan import Module, ValueProvider, create_app_context  # noqa: E402
 from bustan.errors import ProviderResolutionError  # noqa: E402
 
 
-@Module(providers=[UserRepository, {"provide": SETTINGS, "use_value": {"dsn": "sqlite://"}}])
+@Module(providers=[UserRepository, ValueProvider(provide=SETTINGS, use_value={"dsn": "sqlite://"})])
 class AppModule:
     pass
 

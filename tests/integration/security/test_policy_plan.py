@@ -7,7 +7,7 @@ from typing import Any, cast
 
 from starlette.testclient import TestClient
 
-from bustan import Controller, Get, Module, SkipThrottle, create_app
+from bustan import Controller, Get, Module, SkipThrottle, ValueProvider, create_app
 from bustan.contracts import HttpRequest
 from bustan.security import AUTHENTICATOR_REGISTRY, Auth, Public, RateLimit, Roles
 
@@ -44,10 +44,9 @@ def test_create_app_attaches_compiled_policy_plans_to_routes() -> None:
     @Module(
         controllers=[SecureController],
         providers=[
-            {
-                "provide": AUTHENTICATOR_REGISTRY,
-                "use_value": {"jwt": AuthenticatorStub(None)},
-            }
+            ValueProvider(
+                provide=AUTHENTICATOR_REGISTRY, use_value={"jwt": AuthenticatorStub(None)}
+            )
         ],
     )
     class AppModule:
@@ -81,9 +80,9 @@ def test_create_app_binds_authenticated_principals_for_policy_guard_protected_ro
     @Module(
         controllers=[SecureController],
         providers=[
-            {
-                "provide": AUTHENTICATOR_REGISTRY,
-                "use_value": {
+            ValueProvider(
+                provide=AUTHENTICATOR_REGISTRY,
+                use_value={
                     "jwt": AuthenticatorStub(
                         PrincipalStub(
                             id="user-1",
@@ -92,7 +91,7 @@ def test_create_app_binds_authenticated_principals_for_policy_guard_protected_ro
                         )
                     )
                 },
-            }
+            )
         ],
     )
     class AppModule:
@@ -123,10 +122,9 @@ def test_public_controller_does_not_bypass_handler_level_auth() -> None:
     @Module(
         controllers=[MixedController],
         providers=[
-            {
-                "provide": AUTHENTICATOR_REGISTRY,
-                "use_value": {"jwt": AuthenticatorStub(None)},
-            }
+            ValueProvider(
+                provide=AUTHENTICATOR_REGISTRY, use_value={"jwt": AuthenticatorStub(None)}
+            )
         ],
     )
     class AppModule:
@@ -158,9 +156,9 @@ def test_create_app_returns_deterministic_policy_denial_responses() -> None:
     @Module(
         controllers=[SecureController],
         providers=[
-            {
-                "provide": AUTHENTICATOR_REGISTRY,
-                "use_value": {
+            ValueProvider(
+                provide=AUTHENTICATOR_REGISTRY,
+                use_value={
                     "jwt": AuthenticatorStub(
                         PrincipalStub(
                             id="user-1",
@@ -169,7 +167,7 @@ def test_create_app_returns_deterministic_policy_denial_responses() -> None:
                         )
                     )
                 },
-            }
+            )
         ],
     )
     class AppModule:

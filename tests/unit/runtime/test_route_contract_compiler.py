@@ -18,8 +18,11 @@ from bustan import (
     APP_GUARD,
     APP_INTERCEPTOR,
     APP_PIPE,
+    ClassProvider,
     Controller,
     ExecutionContext,
+    ExistingProvider,
+    FactoryProvider,
     Get,
     HttpResponse,
     Interceptor,
@@ -28,7 +31,9 @@ from bustan import (
     UseGuards,
     UseInterceptors,
     UsePipes,
+    ValueProvider,
 )
+from bustan.common.types import Provider
 from bustan.kernel.errors import RouteDefinitionError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
@@ -80,7 +85,7 @@ def _return_the_interceptor(interceptor: object) -> object:
 
 
 def _compile_routes(
-    controller: type[object], providers: list[dict[str, object]]
+    controller: type[object], providers: list[Provider]
 ) -> tuple[RouteContract, ...]:
     """Compile one controller's routes under the given global pipeline declarations."""
 
@@ -96,22 +101,21 @@ def _compile_routes(
 # The same two global interceptors, written every way a module may write them. The last
 # two spell the components out one at a time, which the module compiler folds into a
 # single binding that builds them together.
-_AS_A_LIST: list[dict[str, object]] = [
-    {
-        "provide": APP_INTERCEPTOR,
-        "use_value": [_PassThroughInterceptor(), _BodyRewritingInterceptor()],
-    }
+_AS_A_LIST: list[Provider] = [
+    ValueProvider(
+        provide=APP_INTERCEPTOR, use_value=[_PassThroughInterceptor(), _BodyRewritingInterceptor()]
+    )
 ]
-_AS_ONE_ENTRY: list[dict[str, object]] = [
-    {"provide": APP_INTERCEPTOR, "use_class": _BodyRewritingInterceptor}
+_AS_ONE_ENTRY: list[Provider] = [
+    ClassProvider(provide=APP_INTERCEPTOR, use_class=_BodyRewritingInterceptor)
 ]
-_AS_TWO_ENTRIES: list[dict[str, object]] = [
-    {"provide": APP_INTERCEPTOR, "use_class": _PassThroughInterceptor},
-    {"provide": APP_INTERCEPTOR, "use_class": _BodyRewritingInterceptor},
+_AS_TWO_ENTRIES: list[Provider] = [
+    ClassProvider(provide=APP_INTERCEPTOR, use_class=_PassThroughInterceptor),
+    ClassProvider(provide=APP_INTERCEPTOR, use_class=_BodyRewritingInterceptor),
 ]
-_AS_TWO_MIXED_ENTRIES: list[dict[str, object]] = [
-    {"provide": APP_INTERCEPTOR, "use_class": _PassThroughInterceptor},
-    {"provide": APP_INTERCEPTOR, "use_value": _BodyRewritingInterceptor()},
+_AS_TWO_MIXED_ENTRIES: list[Provider] = [
+    ClassProvider(provide=APP_INTERCEPTOR, use_class=_PassThroughInterceptor),
+    ValueProvider(provide=APP_INTERCEPTOR, use_value=_BodyRewritingInterceptor()),
 ]
 
 
@@ -162,8 +166,8 @@ def test_route_contracts_attach_companion_plans_once_in_stable_order() -> None:
     @Module(
         controllers=[UsersController],
         providers=[
-            {"provide": APP_GUARD, "use_value": global_guard},
-            {"provide": APP_PIPE, "use_value": global_pipe},
+            ValueProvider(provide=APP_GUARD, use_value=global_guard),
+            ValueProvider(provide=APP_PIPE, use_value=global_pipe),
         ],
     )
     class AppModule:
@@ -361,7 +365,7 @@ def test_global_pipeline_components_are_named_rather_than_built_while_routes_com
 
     @Module(
         controllers=[UsersController],
-        providers=[{"provide": APP_GUARD, "use_class": CountingGuard}],
+        providers=[ClassProvider(provide=APP_GUARD, use_class=CountingGuard)],
     )
     class AppModule:
         pass
@@ -425,8 +429,8 @@ def test_a_folded_declaration_beside_a_factory_still_reads_the_declarations_it_c
         _compile_routes(
             _RawController,
             [
-                {"provide": APP_INTERCEPTOR, "use_factory": _PassThroughInterceptor},
-                {"provide": APP_INTERCEPTOR, "use_class": _BodyRewritingInterceptor},
+                FactoryProvider(provide=APP_INTERCEPTOR, use_factory=_PassThroughInterceptor),
+                ClassProvider(provide=APP_INTERCEPTOR, use_class=_BodyRewritingInterceptor),
             ],
         )
 
@@ -453,12 +457,12 @@ def test_a_global_interceptor_only_a_factory_can_produce_is_still_not_read() -> 
     [contract] = _compile_routes(
         _RawController,
         [
-            {"provide": _BodyRewritingInterceptor, "use_class": _BodyRewritingInterceptor},
-            {
-                "provide": APP_INTERCEPTOR,
-                "use_factory": _return_the_interceptor,
-                "inject": [_BodyRewritingInterceptor],
-            },
+            ClassProvider(provide=_BodyRewritingInterceptor, use_class=_BodyRewritingInterceptor),
+            FactoryProvider(
+                provide=APP_INTERCEPTOR,
+                use_factory=_return_the_interceptor,
+                inject=(_BodyRewritingInterceptor,),
+            ),
         ],
     )
 
@@ -473,8 +477,8 @@ def test_a_global_interceptor_declared_as_an_alias_names_no_component() -> None:
     [contract] = _compile_routes(
         _RawController,
         [
-            {"provide": _PassThroughInterceptor, "use_class": _PassThroughInterceptor},
-            {"provide": APP_INTERCEPTOR, "use_existing": _PassThroughInterceptor},
+            ClassProvider(provide=_PassThroughInterceptor, use_class=_PassThroughInterceptor),
+            ExistingProvider(provide=APP_INTERCEPTOR, use_existing=_PassThroughInterceptor),
         ],
     )
 
@@ -489,7 +493,7 @@ def test_a_global_interceptor_declared_as_an_alias_names_no_component() -> None:
     ids=["list", "one entry", "two entries", "two mixed entries"],
 )
 def test_a_standard_route_accepts_a_body_mutating_global_interceptor_in_every_spelling(
-    providers: list[dict[str, object]],
+    providers: list[Provider],
 ) -> None:
     """The refusal is about the raw strategy, so no spelling of it touches a standard route."""
 

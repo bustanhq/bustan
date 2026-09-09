@@ -8,7 +8,7 @@ from typing import cast
 
 import pytest
 
-from bustan import APP_GUARD, Module
+from bustan import APP_GUARD, ClassProvider, FactoryProvider, Module, ValueProvider
 from bustan.common.types import ProviderScope
 from bustan.kernel.errors import InvalidModuleError, InvalidProviderError
 from bustan.kernel.ioc.registry import Binding
@@ -139,8 +139,8 @@ def test_validate_module_compiled_separates_duplicate_tokens_from_aliasing_ones(
         module=_OwnerModule,
         metadata=ModuleMetadata(
             providers=(
-                {"provide": Tokens.DB, "use_value": "from-enum"},
-                {"provide": "db", "use_value": "from-string"},
+                ValueProvider(provide=Tokens.DB, use_value="from-enum"),
+                ValueProvider(provide="db", use_value="from-string"),
             )
         ),
     )
@@ -152,8 +152,8 @@ def test_validate_module_compiled_separates_duplicate_tokens_from_aliasing_ones(
         module=_OwnerModule,
         metadata=ModuleMetadata(
             providers=(
-                {"provide": "db", "use_value": 1},
-                {"provide": "db", "use_value": 2},
+                ValueProvider(provide="db", use_value=1),
+                ValueProvider(provide="db", use_value=2),
             )
         ),
     )
@@ -165,7 +165,13 @@ def test_validate_module_compiled_names_the_module_and_the_key_it_refused() -> N
     compiled = CompiledModuleDef(
         key=_OwnerModule,
         module=_OwnerModule,
-        metadata=ModuleMetadata(providers=({"provide": "http", "use_factory": 42},)),
+        # A factory that is not callable: the checker refuses the declaration, and the
+        # container has to refuse it too, for a caller that reaches it untyped.
+        metadata=ModuleMetadata(
+            providers=(
+                FactoryProvider(provide="http", use_factory=42),  # ty: ignore[invalid-argument-type]
+            )
+        ),
     )
 
     with pytest.raises(InvalidProviderError) as refusal:
@@ -183,7 +189,7 @@ def test_one_entry_for_a_multi_provider_token_is_bound_exactly_as_it_was_written
     compiled = CompiledModuleDef(
         key=_OwnerModule,
         module=_OwnerModule,
-        metadata=ModuleMetadata(providers=({"provide": APP_GUARD, "use_class": Guard},)),
+        metadata=ModuleMetadata(providers=(ClassProvider(provide=APP_GUARD, use_class=Guard),)),
     )
 
     bindings = validate_module_compiled(compiled)
@@ -206,8 +212,8 @@ def test_several_entries_for_a_multi_provider_token_accumulate_instead_of_collid
         module=_OwnerModule,
         metadata=ModuleMetadata(
             providers=(
-                {"provide": APP_GUARD, "use_class": FirstGuard},
-                {"provide": APP_GUARD, "use_class": SecondGuard},
+                ClassProvider(provide=APP_GUARD, use_class=FirstGuard),
+                ClassProvider(provide=APP_GUARD, use_class=SecondGuard),
             )
         ),
     )
@@ -233,9 +239,9 @@ def test_the_joining_binding_returns_its_components_in_declaration_order() -> No
         module=_OwnerModule,
         metadata=ModuleMetadata(
             providers=(
-                {"provide": APP_GUARD, "use_value": "first"},
-                {"provide": APP_GUARD, "use_value": ["second", "third"]},
-                {"provide": APP_GUARD, "use_value": "fourth"},
+                ValueProvider(provide=APP_GUARD, use_value="first"),
+                ValueProvider(provide=APP_GUARD, use_value=["second", "third"]),
+                ValueProvider(provide=APP_GUARD, use_value="fourth"),
             )
         ),
     )
@@ -259,8 +265,8 @@ def test_every_multi_provider_token_accumulates() -> None:
             module=_OwnerModule,
             metadata=ModuleMetadata(
                 providers=(
-                    {"provide": token, "use_value": "first"},
-                    {"provide": token, "use_value": "second"},
+                    ValueProvider(provide=token, use_value="first"),
+                    ValueProvider(provide=token, use_value="second"),
                 )
             ),
         )
@@ -278,10 +284,10 @@ def test_an_ordinary_token_declared_beside_an_accumulating_one_is_still_refused(
         module=_OwnerModule,
         metadata=ModuleMetadata(
             providers=(
-                {"provide": APP_GUARD, "use_value": "first"},
-                {"provide": APP_GUARD, "use_value": "second"},
-                {"provide": "db", "use_value": 1},
-                {"provide": "db", "use_value": 2},
+                ValueProvider(provide=APP_GUARD, use_value="first"),
+                ValueProvider(provide=APP_GUARD, use_value="second"),
+                ValueProvider(provide="db", use_value=1),
+                ValueProvider(provide="db", use_value=2),
             )
         ),
     )
@@ -316,11 +322,11 @@ def test_a_factory_inject_entry_that_cannot_name_a_provider_is_refused_by_name()
     # the module nor the entry.
     @Module(
         providers=[
-            {
-                "provide": "settings",
-                "use_factory": lambda value: value,
-                "inject": ({"token": "missing", "optional": True},),
-            }
+            FactoryProvider(
+                provide="settings",
+                use_factory=lambda value: value,
+                inject=({"token": "missing", "optional": True},),
+            )
         ]
     )
     class AppModule:
@@ -333,8 +339,8 @@ def test_a_factory_inject_entry_that_cannot_name_a_provider_is_refused_by_name()
 def test_a_factory_inject_entry_that_can_name_a_provider_is_left_alone() -> None:
     @Module(
         providers=[
-            {"provide": "value", "use_value": 1},
-            {"provide": "settings", "use_factory": lambda value: value, "inject": ("value",)},
+            ValueProvider(provide="value", use_value=1),
+            FactoryProvider(provide="settings", use_factory=lambda value: value, inject=("value",)),
         ]
     )
     class AppModule:

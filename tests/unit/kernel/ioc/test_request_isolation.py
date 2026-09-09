@@ -18,7 +18,16 @@ import pytest
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
-from bustan import Controller, Get, HttpResponse, Injectable, Module, Scope, create_app
+from bustan import (
+    ClassProvider,
+    Controller,
+    Get,
+    HttpResponse,
+    Injectable,
+    Module,
+    Scope,
+    create_app,
+)
 from bustan.common.decorators.injectable import Inject
 from bustan.errors import InvalidControllerError, ProviderResolutionError
 from bustan.kernel.ioc.tokens import REQUEST, RESPONSE, InjectionToken
@@ -125,7 +134,7 @@ def provider_app(holder: type[object], scope: Scope) -> Any:
 
     @Module(
         controllers=[ProbeController],
-        providers=[Identity, {"provide": OWNER, "use_class": target, "scope": scope}],
+        providers=[Identity, ClassProvider(provide=OWNER, use_class=target, scope=scope)],
     )
     class AppModule:
         pass

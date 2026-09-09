@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..common.types import FactoryProvider, ValueProvider
 from ..kernel.ioc.tokens import InjectionToken
 from ..kernel.module.decorators import Module
 from ..kernel.module.dynamic import DynamicModule
@@ -47,12 +48,12 @@ class HealthModule:
             module=_HealthModuleBase,
             providers=(
                 ReadinessState,
-                {"provide": HEALTH_CHECK_TIMEOUT, "use_value": check_timeout},
-                {
-                    "provide": HealthService,
-                    "use_factory": _build_health_service,
-                    "inject": (ReadinessState, HEALTH_CHECK_TIMEOUT),
-                },
+                ValueProvider(provide=HEALTH_CHECK_TIMEOUT, use_value=check_timeout),
+                FactoryProvider(
+                    provide=HealthService,
+                    use_factory=_build_health_service,
+                    inject=(ReadinessState, HEALTH_CHECK_TIMEOUT),
+                ),
             ),
             controllers=(HealthController,),
             exports=(HealthService, ReadinessState),

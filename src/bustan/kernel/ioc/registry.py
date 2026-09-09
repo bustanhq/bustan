@@ -6,7 +6,7 @@ import inspect
 from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from ...common.constants import BUSTAN_PROVIDER_ATTR
 from ...common.decorators.injectable import get_provider_metadata
@@ -14,14 +14,27 @@ from ...common.decorators.injectable import get_provider_metadata
 # Re-exported: the module graph, the compiler, the scope keys, the override ledger and
 # the test builder all name the token identity rule through this module.
 from ...common.tokens import TokenKey, token_identity
-from ...common.types import ProviderScope
+from ...common.types import (
+    ClassProvider,
+    ExistingProvider,
+    FactoryProvider,
+    ProviderDefinition,
+    ProviderScope,
+    ValueProvider,
+)
 from ..errors import InvalidProviderError
 from ..module.dynamic import ModuleKey
 from ..utils import _display_name
 
 DURABLE_CONTEXT_KEY_HOOK = "get_durable_context_key"
 
-# Order is the order the keys are reported in, so it is also the order an author reads.
+# Which resolver a binding was built for. Every reader of a binding branches on this, so
+# the four values are written here rather than described, and a fifth cannot be spelled.
+type ResolverKind = Literal["class", "factory", "value", "existing"]
+
+# The keys of the provider definition dict, which is the older way to write a provider
+# and is read here into the value type that describes the same declaration. Order is the
+# order the keys are reported in, so it is also the order an author reads.
 _USE_KEYS = ("use_class", "use_factory", "use_value", "use_existing")
 
 # Only a constructed provider has a lifetime of its own to name. A value is one object
@@ -49,7 +62,7 @@ class Binding:
 
     token: object
     declaring_module: ModuleKey
-    resolver_kind: str  # class | factory | value | existing
+    resolver_kind: ResolverKind
     target: object
     scope: ProviderScope
 
@@ -144,14 +157,17 @@ class BindingTable(MutableMapping[tuple[ModuleKey, object], Binding]):
         return f"{type(self).__name__}({{{shown}}})"
 
 
-def normalize_provider(defn: object | dict[str, Any], declaring_module: ModuleKey) -> Binding:
-    """Transform a provider definition into a canonical binding, or refuse it.
+def normalize_provider(defn: object, declaring_module: ModuleKey) -> Binding:
+    """Transform a provider declaration into a canonical binding, or refuse it.
 
     A class binds under its own identity. Metadata written by ``@Injectable`` describes
     the class it was written on and never its subclasses, so an undecorated subclass
     binds as itself with the default singleton lifetime instead of as its parent.
 
-    Every malformed definition is refused as an ``InvalidProviderError`` naming the
+    A definition dict is read into the value type describing the same declaration and
+    then bound the same way, so the two ways of writing a provider cannot drift apart.
+
+    Every malformed declaration is refused as an ``InvalidProviderError`` naming the
     declaring module and the key at fault, because the author's next action is to edit
     that module and a builtin exception tells them neither.
     """
@@ -159,10 +175,46 @@ def normalize_provider(defn: object | dict[str, Any], declaring_module: ModuleKe
     if inspect.isclass(defn):
         return _normalize_class_provider(defn, declaring_module)
 
-    if isinstance(defn, dict):
-        return _normalize_dict_provider(cast(dict[str, Any], defn), declaring_module)
+    if isinstance(defn, (ClassProvider, FactoryProvider, ValueProvider, ExistingProvider)):
+        return _bind_definition(defn, declaring_module)
 
-    raise _refused(declaring_module, f"{defn!r} is not a class or a provider definition dict")
+    if isinstance(defn, dict):
+        return _bind_definition(
+            _definition_from_dict(cast("dict[str, Any]", defn), declaring_module), declaring_module
+        )
+
+    raise _refused(declaring_module, f"{defn!r} is not a class or a provider definition")
+
+
+def declared_token_identity(entry: object) -> TokenKey | None:
+    """Return the identity of the token a provider declaration binds, or ``None``.
+
+    ``None`` means the entry binds no token that can be read: it is not a class, a
+    provider definition or a definition dict, or the token it names cannot be a key.
+    That is not the same as binding ``None``, which is a token like any other and comes
+    back as its own identity.
+
+    Reading a token is deliberately forgiving, because the caller uses it to match one
+    declaration against another rather than to accept it. An entry this cannot read is
+    left for ``normalize_provider`` to refuse by name, so a malformed provider is
+    reported as the malformed provider it is rather than by silently failing to match.
+    """
+
+    if inspect.isclass(entry):
+        token: object = entry
+    elif isinstance(entry, (ClassProvider, FactoryProvider, ValueProvider, ExistingProvider)):
+        token = entry.provide
+    elif isinstance(entry, dict) and "provide" in entry:
+        token = cast("dict[str, object]", entry)["provide"]
+    else:
+        return None
+
+    try:
+        identity = token_identity(token)
+        hash(identity)
+    except TypeError:
+        return None
+    return identity
 
 
 def _refused(declaring_module: ModuleKey, detail: str) -> InvalidProviderError:
@@ -194,8 +246,14 @@ def _normalize_class_provider(provider_cls: type[object], declaring_module: Modu
     )
 
 
-def _normalize_dict_provider(defn: dict[str, Any], declaring_module: ModuleKey) -> Binding:
-    """Validate a provider definition dict key by key before binding it."""
+def _definition_from_dict(defn: dict[str, Any], declaring_module: ModuleKey) -> ProviderDefinition:
+    """Read a provider definition dict into the value type describing the same provider.
+
+    Every rule enforced here is a rule the value types make unwritable: which keys exist,
+    that exactly one target is named, and that ``inject`` and ``scope`` appear only beside
+    a target that can carry them. A declaration written as a value type therefore reaches
+    the binder having already satisfied all of them.
+    """
 
     unknown_keys = sorted(str(key) for key in defn if key not in _ALLOWED_KEYS)
     if unknown_keys:
@@ -205,13 +263,6 @@ def _normalize_dict_provider(defn: dict[str, Any], declaring_module: ModuleKey) 
         raise _refused(declaring_module, "the definition has no 'provide' key")
 
     token = defn["provide"]
-    try:
-        hash(token)
-    except TypeError as exc:
-        raise _refused(
-            declaring_module, f"the 'provide' token {token!r} cannot be used as a key"
-        ) from exc
-
     declared = [key for key in _USE_KEYS if key in defn]
     if not declared:
         raise _refused(declaring_module, f"{token!r} declares none of {', '.join(_USE_KEYS)}")
@@ -227,17 +278,25 @@ def _normalize_dict_provider(defn: dict[str, Any], declaring_module: ModuleKey) 
             f"{token!r} declares 'inject' beside '{use_key}', which takes no dependencies",
         )
 
-    declared_scope = _resolve_declared_scope(defn, token, use_key, declaring_module)
-    return _bind_dict_provider(defn, token, use_key, declared_scope, declaring_module)
+    scope = _declared_scope(defn, token, use_key, declaring_module)
+    if use_key == "use_class":
+        return ClassProvider(token, defn["use_class"], scope)
+    if use_key == "use_factory":
+        inject = _coerce_inject(defn.get("inject", ()), token, declaring_module)
+        return FactoryProvider(token, defn["use_factory"], inject, scope)
+    if use_key == "use_value":
+        return ValueProvider(token, defn["use_value"])
+    return ExistingProvider(token, defn["use_existing"])
 
 
-def _resolve_declared_scope(
+def _declared_scope(
     defn: dict[str, Any], token: object, use_key: str, declaring_module: ModuleKey
 ) -> ProviderScope | None:
-    """Resolve the lifetime a definition asks for, refusing one it cannot honour.
+    """Return the lifetime a definition dict names, refusing one it cannot honour.
 
-    ``None`` means the definition named no lifetime, which is not the same as naming
-    the default: a ``use_class`` that names none takes the one its target declares.
+    A dict with no ``scope`` key named no lifetime, which is not the same as naming the
+    default: a ``use_class`` that names none takes the one its target declares. Writing
+    the key is naming a lifetime, so every value written there has to be one.
     """
 
     if "scope" not in defn:
@@ -249,8 +308,14 @@ def _resolve_declared_scope(
             f"{token!r} declares 'scope' beside '{use_key}', which cannot honour a lifetime "
             "of its own",
         )
+    return _coerce_scope(defn["scope"], token, declaring_module)
 
-    declared_scope = defn["scope"]
+
+def _coerce_scope(
+    declared_scope: object, token: object, declaring_module: ModuleKey
+) -> ProviderScope:
+    """Read a named lifetime as one this container has a rule for, or refuse it."""
+
     try:
         return ProviderScope(declared_scope)
     except (TypeError, ValueError) as exc:
@@ -259,57 +324,87 @@ def _resolve_declared_scope(
         ) from exc
 
 
-def _bind_dict_provider(
-    defn: dict[str, Any],
-    token: object,
-    use_key: str,
-    declared_scope: ProviderScope | None,
-    declaring_module: ModuleKey,
-) -> Binding:
-    """Build the binding for the single ``use_*`` key the definition declared."""
+def _carried_scope(
+    declared_scope: ProviderScope | None, token: object, declaring_module: ModuleKey
+) -> ProviderScope | None:
+    """Return the lifetime a definition carries, or ``None`` where it names none.
 
-    if use_key == "use_class":
-        target = defn["use_class"]
-        if not inspect.isclass(target):
-            raise _refused(
-                declaring_module,
-                f"{token!r} declares a 'use_class' that is not a class: {target!r}",
-            )
-        scope = _use_class_scope(declared_scope, token, target, declaring_module)
-        _refuse_unusable_durable_key_hook(target, scope, declaring_module)
-        return Binding(token, declaring_module, "class", target, scope)
+    The field is declared as a lifetime, so this has only the caller who reached the
+    container from unchecked code left to refuse.
+    """
 
-    if use_key == "use_factory":
-        scope = declared_scope if declared_scope is not None else ProviderScope.SINGLETON
-        factory = defn["use_factory"]
-        if not callable(factory):
-            raise _refused(
-                declaring_module,
-                f"{token!r} declares a 'use_factory' that is not callable: {factory!r}",
-            )
-        if scope is ProviderScope.DURABLE:
-            raise _refused(
-                declaring_module,
-                f"{token!r} asks for a durable 'use_factory'; a durable lifetime is partitioned "
-                f"by a '{DURABLE_CONTEXT_KEY_HOOK}' hook, which only a class can carry",
-            )
+    if declared_scope is None:
+        return None
+    return _coerce_scope(declared_scope, token, declaring_module)
+
+
+def _bind_definition(definition: ProviderDefinition, declaring_module: ModuleKey) -> Binding:
+    """Build the binding one provider definition asks for, whichever arm it is."""
+
+    token = definition.provide
+    try:
+        hash(token)
+    except TypeError as exc:
+        raise _refused(
+            declaring_module, f"the 'provide' token {token!r} cannot be used as a key"
+        ) from exc
+
+    if isinstance(definition, ClassProvider):
+        return _bind_class_definition(definition, token, declaring_module)
+    if isinstance(definition, FactoryProvider):
+        return _bind_factory_definition(definition, token, declaring_module)
+
+    # Neither a value nor an alias carries a lifetime to name, so both are bound under
+    # the one they always had: a value is the single object it was written as, and an
+    # alias keeps nothing of its own and borrows the lifetime of the token it points at.
+    if isinstance(definition, ValueProvider):
         return Binding(
-            token,
+            token, declaring_module, "value", definition.use_value, ProviderScope.SINGLETON
+        )
+    return Binding(
+        token, declaring_module, "existing", definition.use_existing, ProviderScope.TRANSIENT
+    )
+
+
+def _bind_class_definition(
+    definition: ClassProvider, token: object, declaring_module: ModuleKey
+) -> Binding:
+    """Bind a token to the class it names, under the lifetime the two of them settle."""
+
+    target = definition.use_class
+    if not inspect.isclass(target):
+        raise _refused(
             declaring_module,
-            "factory",
-            (factory, _coerce_inject(defn.get("inject", ()), token, declaring_module)),
-            scope,
+            f"{token!r} declares a 'use_class' that is not a class: {target!r}",
         )
 
-    # Neither a value nor an alias may name a lifetime, so both are bound under the one
-    # they always had: a value is the single object it was written as, and an alias
-    # keeps nothing of its own and borrows the lifetime of the token it points at.
-    if use_key == "use_value":
-        return Binding(token, declaring_module, "value", defn["use_value"], ProviderScope.SINGLETON)
+    declared_scope = _carried_scope(definition.scope, token, declaring_module)
+    scope = _use_class_scope(declared_scope, token, target, declaring_module)
+    _refuse_unusable_durable_key_hook(target, scope, declaring_module)
+    return Binding(token, declaring_module, "class", target, scope)
 
-    return Binding(
-        token, declaring_module, "existing", defn["use_existing"], ProviderScope.TRANSIENT
-    )
+
+def _bind_factory_definition(
+    definition: FactoryProvider, token: object, declaring_module: ModuleKey
+) -> Binding:
+    """Bind a token to the callable that builds it, with the tokens it is called with."""
+
+    declared_scope = _carried_scope(definition.scope, token, declaring_module)
+    scope = declared_scope if declared_scope is not None else ProviderScope.SINGLETON
+    factory = definition.use_factory
+    if not callable(factory):
+        raise _refused(
+            declaring_module,
+            f"{token!r} declares a 'use_factory' that is not callable: {factory!r}",
+        )
+    if scope is ProviderScope.DURABLE:
+        raise _refused(
+            declaring_module,
+            f"{token!r} asks for a durable 'use_factory'; a durable lifetime is partitioned "
+            f"by a '{DURABLE_CONTEXT_KEY_HOOK}' hook, which only a class can carry",
+        )
+    inject = _coerce_inject(definition.inject, token, declaring_module)
+    return Binding(token, declaring_module, "factory", (factory, inject), scope)
 
 
 def _use_class_scope(
