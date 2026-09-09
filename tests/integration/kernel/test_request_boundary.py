@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, cast
 
+import pytest
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.testclient import TestClient
@@ -29,6 +30,7 @@ from bustan import (
 from bustan.adapters.asgi import AsgiAdapter, AsgiTestClient
 from bustan.adapters.asgi.requests import AsgiHttpRequest
 from bustan.adapters.starlette.requests import from_starlette_request
+from bustan.errors import RouteDefinitionError
 from bustan.kernel.ioc.tokens import APPLICATION, REQUEST
 
 SEEN: dict[str, object] = {}
@@ -225,3 +227,62 @@ def test_a_handler_naming_the_serving_adapter_s_own_request_type_is_served_it() 
     assert isinstance(parameter_request, AsgiHttpRequest)
     assert parameter_request is contract_request.native_request
     assert ASGI_SEEN["transport"] is parameter_request
+
+
+@Injectable(scope=Scope.REQUEST)
+class HoldsAForeignTransportRequest:
+    """A provider that asked for the request by a type its transport will not build."""
+
+    def __init__(self, request: Request) -> None:
+        self.request = request
+
+
+@Controller("/foreign", scope=Scope.REQUEST)
+class ForeignRequestController:
+    def __init__(self, holder: HoldsAForeignTransportRequest) -> None:
+        self.holder = holder
+
+    @Get("/")
+    def read(self) -> dict[str, str]:
+        return {"handed": type(self.holder.request).__name__}
+
+
+@Module(controllers=[ForeignRequestController], providers=[HoldsAForeignTransportRequest])
+class ForeignRequestModule:
+    pass
+
+
+def test_a_provider_naming_a_request_type_the_serving_adapter_will_not_build_is_refused() -> None:
+    """The constructor spelling is held to the adapter exactly as the handler one is.
+
+    Served through raw ASGI, this provider used to be handed an ``AsgiHttpRequest`` under
+    an annotation promising a Starlette one, and told nothing: the two overlap widely
+    enough that such a provider passes its own tests while holding the wrong object. The
+    application is refused while it is assembled instead, before a server starts.
+    """
+
+    with pytest.raises(RouteDefinitionError) as info:
+        create_app(
+            ForeignRequestModule,
+            adapter=lambda runtime: AsgiAdapter(lifespan=runtime.lifespan),
+        )
+
+    message = str(info.value)
+    assert "HoldsAForeignTransportRequest.__init__ parameter 'request'" in message
+    assert "starlette.requests.Request" in message
+    assert "AsgiAdapter does not produce" in message
+    assert "bustan.adapters.asgi.requests.AsgiHttpRequest" in message
+
+
+def test_the_same_provider_serves_under_the_adapter_that_does_build_that_type() -> None:
+    """The refusal is about the wiring, not about the spelling.
+
+    The same provider, unchanged, is served the object it named as soon as the
+    application is served through the transport that builds it.
+    """
+
+    with TestClient(cast(Any, create_app(ForeignRequestModule))) as client:
+        response = client.get("/foreign/")
+
+    assert response.status_code == 200
+    assert response.json() == {"handed": "Request"}

@@ -13,6 +13,7 @@ next, so a graph that fails is reported once with every reason it failed.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -42,7 +43,13 @@ if TYPE_CHECKING:
 
     from ...module.dynamic import ModuleKey
 
-__all__ = ["controller_scope", "plan_container", "plan_target"]
+__all__ = [
+    "NativeRequestDependency",
+    "controller_scope",
+    "native_request_dependencies",
+    "plan_container",
+    "plan_target",
+]
 
 # A parameter may name the state the container owns either by token or by the
 # contract type standing for it, and both spellings plan to the same argument.
@@ -51,6 +58,23 @@ _CONTAINER_SOURCES: tuple[tuple[object, ArgumentSource], ...] = (
     (HttpRequest, ActiveRequest()),
     (HttpResponse, ActiveResponse()),
 )
+
+
+@dataclass(frozen=True, slots=True)
+class NativeRequestDependency:
+    """One constructor parameter that named its transport's own request object.
+
+    ``target`` is the class whose constructor asked for it, ``parameter`` is the name it
+    was written on, and ``annotation`` is the request type it named. Such a parameter is
+    handed the transport's object rather than the neutral contract wrapped around it, so
+    the annotation is true only under the transport that builds what it named. Which
+    transport that is cannot be settled while the plan is built, so the plan reports the
+    claim and whoever holds the serving adapter holds the parameter to it.
+    """
+
+    target: type[object]
+    parameter: str
+    annotation: object
 
 
 def controller_scope(controller_cls: type[object]) -> ProviderScope:
@@ -137,6 +161,56 @@ def plan_target(
     return plan
 
 
+def native_request_dependencies(plan: ContainerPlan) -> tuple[NativeRequestDependency, ...]:
+    """Return every constructor parameter a plan settles to the transport's own request.
+
+    The plan is built before any transport adapter exists, so which transport such a
+    parameter named cannot be judged while it is planned: there is nothing yet to
+    compare the annotation against. What the plan can report is which parameters made
+    the claim and what each of them named, which is what the check against the serving
+    adapter is made from once that adapter is known.
+
+    One entry is returned per parameter. A class more than one module can build is
+    planned once per module and those plans name the same parameters, so one mistake is
+    reported once rather than once per module that could have made it.
+    """
+
+    found: dict[NativeRequestDependency, None] = {}
+    for construction in plan.constructions.values():
+        asked_for = _tokens_by_site(construction)
+        for argument in construction.arguments:
+            source = argument.source
+            if not isinstance(source, ActiveRequest) or not source.native:
+                continue
+            found[
+                NativeRequestDependency(
+                    target=construction.target,
+                    parameter=argument.name,
+                    annotation=asked_for[_parameter_site(argument.name)],
+                )
+            ] = None
+    return tuple(found)
+
+
+def _tokens_by_site(construction: ConstructionPlan) -> Mapping[str, object]:
+    """Return what each of a plan's arguments asked for, keyed by where it asked.
+
+    A planned argument records where its value comes from and not what was written to
+    ask for it, so the token an author wrote survives only in what the built instance is
+    charged with holding. Every argument but one settled to a constant is charged, and a
+    parameter name is unique within the constructor declaring it, so an argument this
+    does not answer for is one that holds nothing.
+    """
+
+    return {dependency.site: dependency.token for dependency in construction.held}
+
+
+def _parameter_site(name: str) -> str:
+    """Return how a constructor parameter is named where one is reported."""
+
+    return f"parameter {name!r}"
+
+
 def _planning_targets(
     bindings: Mapping[BindingKey, Binding],
     controllers: Mapping[type[object], ModuleKey],
@@ -180,7 +254,7 @@ def _plan_target(
             PlannedArgument(name=dependency.name, positional=dependency.positional, source=source)
         )
         if not isinstance(source, FixedValue):
-            held.append(ScopeDependency(token=charged, site=f"parameter {dependency.name!r}"))
+            held.append(ScopeDependency(token=charged, site=_parameter_site(dependency.name)))
 
     if not planned:
         return None
@@ -203,6 +277,9 @@ def _source_for(
     A parameter naming the transport's own request type is settled after the binding
     table rather than before it, so a provider registered under such a class is still
     resolved from the table and only a class nothing declares is read as that request.
+    Which transport it named is not settled here at all: the plan is built before an
+    adapter exists, so the annotation is held to the adapter that will serve once that
+    adapter is known and before it is asked to serve anything.
     """
 
     for candidate, source in _CONTAINER_SOURCES:

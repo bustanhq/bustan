@@ -47,9 +47,10 @@ from ..kernel.utils import _qualname
 from .metadata import ControllerRouteDefinition, get_controller_metadata
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Iterator
 
     from ..contracts import AbstractHttpAdapter, AdapterRoute
+    from ..kernel.ioc.planning.container_plan import NativeRequestDependency
     from ..pipeline.context import ExecutionContext
     from .execution import ExecutionPlan
 
@@ -287,24 +288,53 @@ def compile_parameter_bindings(
 
 
 def refuse_foreign_native_requests(
-    adapter: AbstractHttpAdapter, routes: Iterable[AdapterRoute]
+    adapter: AbstractHttpAdapter,
+    routes: Iterable[AdapterRoute],
+    *,
+    constructor_dependencies: Iterable[NativeRequestDependency] = (),
 ) -> None:
-    """Refuse any handler parameter naming a request type *adapter* does not produce.
+    """Refuse any parameter naming a request type *adapter* does not produce.
 
     A parameter that names a transport's own request type is handed
     :attr:`HttpRequest.native_request`, so the annotation is true only where the adapter
-    serving the route is the one that builds that type. Every transport's request has
-    the same shape, so the annotation cannot say on its own which transport it named;
+    serving the application is the one that builds that type. Every transport's request
+    has the same shape, so the annotation cannot say on its own which transport it named;
     the adapter declares the type it produces, and the two are compared by identity.
 
+    Two surfaces can name one, and both are judged here under the same rule. A handler
+    parameter is named by ``routes``, the compiled plan the adapter will be asked to
+    register. A constructor parameter of a provider or a controller is named by
+    ``constructor_dependencies``, which the container plan reports because it settled
+    those parameters to the same object without yet knowing which transport would build
+    it. Passing neither judges nothing, which is what a caller holding no such plan
+    should get.
+
     This is a property of how an application was wired rather than of any one request,
-    so it is answered where an adapter is handed the routes it will serve, before any
+    so it is answered where an adapter and the plans it will serve first meet, before any
     server starts. Left to the request, the same mistake is answered on every call -
     with another transport's object, or with a query parameter nobody wrote - and reads
     as a fault in the application rather than in how it was wired.
 
     Raises ``RouteDefinitionError`` naming the parameter, what it asked for and what the
     adapter produces.
+    """
+
+    for site, annotation in _native_request_parameters(routes, constructor_dependencies):
+        if produces_native_request(adapter.native_request_type, annotation):
+            continue
+        raise RouteDefinitionError(_foreign_native_request_message(adapter, site, annotation))
+
+
+def _native_request_parameters(
+    routes: Iterable[AdapterRoute],
+    constructor_dependencies: Iterable[NativeRequestDependency],
+) -> Iterator[tuple[str, object]]:
+    """Yield every parameter naming a transport's request, with where it was written.
+
+    The site is the phrase an error names the parameter by, and it is built here rather
+    than by the caller so that a handler parameter and a constructor parameter are
+    refused in one wording. Handlers are yielded first because a route is the surface an
+    author reads a refusal against most readily.
     """
 
     for route in routes:
@@ -314,11 +344,12 @@ def refuse_foreign_native_requests(
                     continue
                 if not names_native_request(binding.annotation):
                     continue
-                if produces_native_request(adapter.native_request_type, binding.annotation):
-                    continue
-                raise RouteDefinitionError(
-                    _foreign_native_request_message(adapter, binding_plan, binding)
-                )
+                handler = f"{_qualname(binding_plan.controller)}.{binding_plan.handler_name}"
+                yield f"{handler} parameter {binding.name!r}", binding.annotation
+
+    for dependency in constructor_dependencies:
+        owner = f"{_qualname(dependency.target)}.__init__"
+        yield f"{owner} parameter {dependency.parameter!r}", dependency.annotation
 
 
 def _handler_binding_plans(route: AdapterRoute) -> tuple[HandlerBindingPlan, ...]:
@@ -335,10 +366,14 @@ def _handler_binding_plans(route: AdapterRoute) -> tuple[HandlerBindingPlan, ...
 
 def _foreign_native_request_message(
     adapter: AbstractHttpAdapter,
-    binding_plan: HandlerBindingPlan,
-    binding: ParameterBinding,
+    site: str,
+    annotation: object,
 ) -> str:
-    """Return the refusal for a parameter the serving adapter cannot satisfy."""
+    """Return the refusal for a parameter the serving adapter cannot satisfy.
+
+    *site* names where the parameter was written, and is the only part that differs
+    between the two surfaces: the mistake and the way out of it are the same one.
+    """
 
     produced = adapter.native_request_type
     produces = (
@@ -347,8 +382,7 @@ def _foreign_native_request_message(
         else "produces no request type of its own"
     )
     return (
-        f"{_qualname(binding_plan.controller)}.{binding_plan.handler_name} parameter "
-        f"{binding.name!r} names {_qualname(binding.annotation)}, which "
+        f"{site} names {_qualname(annotation)}, which "
         f"{type(adapter).__name__} does not produce: it {produces}. Annotate HttpRequest and "
         "reach for request.native_request, or serve this application through the adapter "
         "whose request type the parameter names."

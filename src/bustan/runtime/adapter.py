@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ..contracts import AbstractHttpAdapter, AdapterCapabilities, AdapterRoute
+from ..kernel.ioc.planning.container_plan import native_request_dependencies
 from .params import refuse_foreign_native_requests
 from .routing import CompiledAdapterRoute, compile_route_plan
 
@@ -88,10 +89,11 @@ def compile_adapter_routes(
     """Compile route contracts into the plan *adapter* will be asked to register.
 
     The plan is the framework's work and does not depend on which adapter was chosen;
-    the adapter is consulted only to reject a route it cannot serve, which happens here
+    the adapter is consulted only to reject what it cannot serve, which happens here
     rather than at the first request that would have needed it. Two things are rejected:
-    a route needing a capability the adapter lacks, and a handler parameter naming a
-    transport request type the adapter does not produce.
+    a route needing a capability the adapter lacks, and a parameter naming a transport
+    request type the adapter does not produce, whether it was written on a handler or on
+    the constructor of a provider or controller the container will build.
     """
 
     route_plan = compile_route_plan(
@@ -105,8 +107,14 @@ def compile_adapter_routes(
     _validate_adapter_capabilities(adapter, route_plan)
     # Which transport a parameter's annotation named is a property of how the
     # application was wired, so it is answered beside the capability check rather than
-    # on every request that would otherwise be handed the wrong transport's object.
-    refuse_foreign_native_requests(adapter, route_plan)
+    # on every request that would otherwise be handed the wrong transport's object. The
+    # container is asked for its share because its plan is settled before any adapter
+    # exists, which leaves this the first point at which both are in hand.
+    refuse_foreign_native_requests(
+        adapter,
+        route_plan,
+        constructor_dependencies=native_request_dependencies(container.plan),
+    )
     return route_plan
 
 

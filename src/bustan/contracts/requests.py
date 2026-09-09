@@ -212,10 +212,12 @@ class NativeHttpRequest(Protocol):
     The shape says that an annotation names *a* transport's request. It cannot say
     *which*, because every transport's request has this same shape, so it is not on its
     own enough to keep the annotation true. What settles that is the adapter, which
-    declares the request type it produces: a handler naming a request type the serving
+    declares the request type it produces: a parameter naming a request type the serving
     adapter does not produce is refused before the server starts, rather than handed
     another transport's object and left to discover it on the first attribute that
-    object does not have.
+    object does not have. That holds wherever the annotation is written - on a handler,
+    or on the constructor of a provider or controller the container builds for one
+    request - because all of them are handed the same object.
 
     Membership is decided with ``issubclass`` against the annotation, so only the
     method names matter; the signatures declared here describe the shape rather than
