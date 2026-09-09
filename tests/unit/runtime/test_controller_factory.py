@@ -10,8 +10,10 @@ from bustan import APP_GUARD, Controller, Get, Guard, Inject, Injectable, Module
 from bustan.kernel.errors import InvalidControllerError, InvalidPipelineError
 from bustan.kernel.ioc.container import build_container
 from bustan.kernel.module.graph import build_module_graph
+from bustan.pipeline.metadata import PipelineMetadata
 from bustan.runtime.compiler import GlobalPipelineProvider
 from bustan.runtime.controller_factory import ControllerFactory
+from bustan.testing import PipelineOverrideRegistry
 
 if TYPE_CHECKING:
     from tests.conftest import HttpRequestFactory
@@ -405,3 +407,81 @@ def test_a_component_that_does_not_implement_its_slot_is_refused(
             request=build_http_request(path="/users"),
             kind="guard",
         )
+
+
+@pytest.mark.anyio
+async def test_a_pipeline_override_replaces_the_component_a_route_declared(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    """A registry of replacements is honoured before anything is resolved.
+
+    The declaration a route compiled from is not edited: the substitution happens as
+    the pipeline is resolved for a request, so the replacement is what runs and the
+    route still carries the component its controller declared.
+    """
+
+    class DeclaredGuard(Guard):
+        def can_activate(self, context: object) -> bool:
+            return False
+
+    class ReplacementGuard(Guard):
+        def can_activate(self, context: object) -> bool:
+            return True
+
+    @Controller("/users")
+    class UsersController:
+        @Get("/")
+        def list_users(self) -> list[str]:
+            return ["Ada"]
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    replacement = ReplacementGuard()
+    overrides = PipelineOverrideRegistry()
+    overrides.guards[DeclaredGuard] = replacement
+
+    container = build_container(build_module_graph(AppModule))
+    factory = ControllerFactory(container, pipeline_override_registry=overrides)
+
+    resolved = await factory.resolve_pipeline_async(
+        PipelineMetadata(guards=(DeclaredGuard,)),
+        module=AppModule,
+        request=build_http_request(path="/users"),
+    )
+
+    assert resolved.guards == (replacement,)
+
+
+@pytest.mark.anyio
+async def test_a_pipeline_with_no_override_registered_resolves_what_it_declared(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    """A registry holding no replacement for a component leaves it alone."""
+
+    class DeclaredGuard(Guard):
+        def can_activate(self, context: object) -> bool:
+            return True
+
+    @Controller("/users")
+    class UsersController:
+        @Get("/")
+        def list_users(self) -> list[str]:
+            return ["Ada"]
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    container = build_container(build_module_graph(AppModule))
+    factory = ControllerFactory(container, pipeline_override_registry=PipelineOverrideRegistry())
+
+    resolved = await factory.resolve_pipeline_async(
+        PipelineMetadata(guards=(DeclaredGuard,)),
+        module=AppModule,
+        request=build_http_request(path="/users"),
+    )
+
+    (guard,) = resolved.guards
+    assert isinstance(guard, DeclaredGuard)

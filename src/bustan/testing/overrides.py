@@ -87,6 +87,10 @@ def _resolve_container(target: object) -> Container:
     raise TypeError("override_provider target does not expose a Bustan container")
 
 
+# Route compilation is handed one of these and never names it: it sits below the test
+# support that builds one, and compiles against the apply_to_metadata call alone, which
+# bustan.common.types declares as PipelineOverrides. That signature is therefore the
+# whole of what the framework requires here, and changing it changes what compiles.
 @dataclass(slots=True)
 class PipelineOverrideRegistry:
     """Stores replacements for pipeline classes in test contexts."""

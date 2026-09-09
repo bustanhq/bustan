@@ -12,6 +12,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ..common.types import PipelineOverrides
 from ..contracts import AdapterRoute, HttpRequest, HttpResponse, RouteHandler
 from ..kernel.errors import RouteDefinitionError
 from ..kernel.ioc.container import Container
@@ -24,8 +25,8 @@ from .registry import RouteRegistry
 from .versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType, extract_request_version
 
 if TYPE_CHECKING:
+    from ..pipeline.metadata import PipelineMetadata
     from ..pipeline.middleware import MiddlewareRegistry
-    from ..testing.overrides import PipelineOverrideRegistry
 
 ROUTE_CONTRACT_ATTR = "bustan_route_contract"
 ROUTE_CONTRACTS_ATTR = "bustan_route_contracts"
@@ -50,7 +51,7 @@ def compile_routes(
     module_graph: ModuleGraph,
     container: Container,
     *,
-    pipeline_override_registry: PipelineOverrideRegistry | None = None,
+    pipeline_override_registry: PipelineOverrides[PipelineMetadata] | None = None,
     versioning: VersioningOptions | None = None,
     middleware_registry: MiddlewareRegistry | None = None,
 ) -> tuple[CompiledAdapterRoute, ...]:
@@ -71,7 +72,7 @@ def compile_route_plan(
     container: Container,
     *,
     execution_plans: tuple[ExecutionPlan, ...] | None = None,
-    pipeline_override_registry: PipelineOverrideRegistry | None = None,
+    pipeline_override_registry: PipelineOverrides[PipelineMetadata] | None = None,
     versioning: VersioningOptions | None = None,
     middleware_registry: MiddlewareRegistry | None = None,
 ) -> tuple[CompiledAdapterRoute, ...]:
@@ -120,7 +121,7 @@ class _RoutePlanBuilder:
         *,
         versioning: VersioningOptions | None,
         middleware_registry: MiddlewareRegistry | None,
-        pipeline_override_registry: PipelineOverrideRegistry | None,
+        pipeline_override_registry: PipelineOverrides[PipelineMetadata] | None,
     ) -> None:
         self._container = container
         self._versioning = versioning

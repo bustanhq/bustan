@@ -20,6 +20,7 @@ from .adapter import (
     HttpResponseValue,
     RouteHandler,
 )
+from .application import ApplicationRuntime
 from .requests import (
     HttpClientInfo,
     HttpFormData,
@@ -41,6 +42,7 @@ __all__ = (
     "AbstractHttpAdapter",
     "AdapterCapabilities",
     "AdapterRoute",
+    "ApplicationRuntime",
     "Headers",
     "HttpClientInfo",
     "HttpFileResponse",

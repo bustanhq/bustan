@@ -14,6 +14,7 @@ from bustan import (
     APP_FILTER,
     APP_GUARD,
     APP_PIPE,
+    ApplicationContext,
     Controller,
     ExceptionFilter,
     ExecutionContext,
@@ -96,12 +97,35 @@ def test_the_application_a_route_runs_under_is_the_bustan_one_however_it_arrives
 
     application = create_app(AppModule)
     server = application.get_http_server()
+    context = ApplicationContext(build_container(build_module_graph(AppModule)))
     stranger = Starlette()
 
     assert _application_runtime(application) is application
     assert _application_runtime(server) is application
+    # A context assembled without a server serves no HTTP traffic, but it is still the
+    # application a provider resolved through it is running inside.
+    assert _application_runtime(context) is context
     # Nothing to unwrap, so the transport's own object is passed through unchanged.
     assert _application_runtime(stranger) is stranger
+
+
+def test_an_object_that_is_not_a_bustan_application_is_never_taken_for_one() -> None:
+    """Everything the unwrapping is handed belongs to someone else until proven otherwise.
+
+    An adapter passes whatever its transport calls the application, and a test passes
+    whatever stands in for one. Neither is recognised on a partial resemblance: an
+    object that is not an assembled application comes back as itself, so a stranger is
+    never seated where providers expect the application, and neither is a stranger a
+    transport attached to its own state.
+    """
+
+    partial = SimpleNamespace(container=object())
+    carrying_a_stranger = SimpleNamespace(state=SimpleNamespace(bustan_application=object()))
+    nothing_attached = SimpleNamespace(state=SimpleNamespace())
+
+    assert _application_runtime(partial) is partial
+    assert _application_runtime(carrying_a_stranger) is carrying_a_stranger
+    assert _application_runtime(nothing_attached) is nothing_attached
 
 
 def test_a_global_component_only_a_factory_can_build_is_named_by_its_token() -> None:
