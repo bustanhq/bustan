@@ -4,14 +4,17 @@
 Everything the programme posts is read later by a person who was not there, so a
 title, a body and every comment are held to the shape in references/WRITING.md: a
 one-clause title without ticket ids, a body inside its word budget with verification
-reported as one line per command, and nothing addressed to the agent or the reviewer as
-a person. This reports every rule a writeup breaks and exits non-zero when there is at
-least one. The supervisor runs it before dispatching an issue and before reading a pull
-request; an agent runs it on a draft body before opening the pull request.
+reported as one line per command, the ticket's acceptance criteria ticked one box each
+with their evidence, and nothing addressed to the agent or the reviewer as a person. An
+issue must hang under a parent unless it is the epic itself. This reports every rule a
+writeup breaks and exits non-zero when there is at least one. The supervisor runs it
+before dispatching an issue and before reading a pull request; an agent runs it on a
+draft body before opening the pull request.
 
 The text comes from GitHub (--issue or --pr, with a token in GH_TOKEN or GITHUB_TOKEN)
-or from a local file (--file, which needs --kind). The budgets are the defaults
-WRITING.md documents and move with the --max-* flags.
+or from a local file (--file, which needs --kind; --issue-body gives the ticket a draft
+pull request is checked against). The budgets are the defaults WRITING.md documents and
+move with the --max-* flags.
 """
 
 from __future__ import annotations
@@ -28,10 +31,15 @@ TITLE_LIMIT = 72
 ISSUE_WORD_LIMIT = 400
 PR_WORD_LIMIT = 300
 VERIFICATION_LINE_LIMIT = 12
+ACCEPTANCE_ITEM_LIMIT = 12
 FENCED_LINE_LIMIT = 20
 BODY_CHAR_LIMIT = 10_000
 REVIEW_WORD_LIMIT = 150
 COMMENT_WORD_LIMIT = 60
+# A criterion is recognised by this many characters of its normalised text, so a box
+# has to quote the issue rather than paraphrase it, and a short criterion still matches.
+CRITERION_PREFIX = 60
+EPIC_LABEL = "epic"
 
 TICKET_ID = re.compile(r"\bT-\d{3}\b")
 FINDING_ID = re.compile(r"\b(?:CR|DP|EX|MG|OL|PN|QA|RF|RI)-\d{2}\b")
@@ -41,7 +49,8 @@ FOOTER = re.compile(
     r"|Co-Authored-By:|Claude-Session:",
     re.IGNORECASE,
 )
-CHECKBOX = re.compile(r"^\s*[-*] \[[ xX]\] ")
+CHECKBOX = re.compile(r"^\s*[-*] \[([ xX])\] (.*)$")
+MARKUP = re.compile(r"[*`]")
 # A lone capital I followed by punctuation or a space, but not the I in I/O.
 FIRST_PERSON = re.compile(r"(?<![\w/])I(?=[\s,.;:'!?]|$)")
 SECOND_PERSON = re.compile(r"\b(?:you|your|yours)\b", re.IGNORECASE)
@@ -95,7 +104,10 @@ BANNED_HEADINGS = (
 # Banned only as a bold lead-in: an epic body legitimately carries a Sequencing table,
 # but a ticket that says "Sequencing." is publishing scheduler state as prose.
 BANNED_LEAD_INS = ("Sequencing",)
-EXCLUDED_SECTIONS = {"issue": ("owns", "must not touch"), "pr": ("verification",)}
+EXCLUDED_SECTIONS = {
+    "issue": ("owns", "must not touch"),
+    "pr": ("verification", "acceptance"),
+}
 VERDICTS = {
     "issue": "The issue goes back before it is dispatched.",
     "pr": "The writeup goes back before the diff is read.",
@@ -119,6 +131,15 @@ class Limits(NamedTuple):
     verification_lines: int
     fenced_lines: int
     chars: int
+    acceptance_items: int = ACCEPTANCE_ITEM_LIMIT
+
+
+class Item(NamedTuple):
+    """One box under a pull request's Acceptance: its line, its state and its text."""
+
+    line: int
+    ticked: bool
+    text: str
 
 
 class Segments(NamedTuple):
@@ -129,17 +150,27 @@ class Segments(NamedTuple):
     fenced_lines: int
     verification_lines: int
     owns_has_details: bool
+    acceptance: list[Item]
+    acceptance_plain: list[int]
+    stray_checkboxes: list[int]
+    not_done: list[str]
 
 
-def segment(body: str, excluded: tuple[str, ...]) -> Segments:
-    """Split a body into prose, headings and the counts the budgets need.
+def segment(body: str, excluded: tuple[str, ...], checkbox_section: str | None = None) -> Segments:
+    """Split a body into prose, headings, checkboxes and the counts the budgets need.
 
     Prose leaves out fenced blocks, `<details>` blocks, HTML comments, table rows and
     every line under a heading named in `excluded`, so a word count measures what a
-    reader has to read. Headings carry whether they were a bold lead-in.
+    reader has to read. Headings carry whether they were a bold lead-in. Checkboxes are
+    boxes under `checkbox_section`, with a wrapped box's later lines joined to it; a box
+    anywhere else is stray, and so is every box when no section may carry one.
     """
     prose: list[tuple[int, str]] = []
     headings: list[tuple[int, str, bool]] = []
+    acceptance: list[Item] = []
+    plain: list[int] = []
+    stray: list[int] = []
+    not_done: list[str] = []
     fenced = verification = 0
     owns_has_details = False
     in_fence = in_details = in_comment = False
@@ -177,12 +208,36 @@ def segment(body: str, excluded: tuple[str, ...]) -> Segments:
             if rest and section not in excluded:
                 prose.append((number, rest))
             continue
+        checkbox = CHECKBOX.match(line)
+        if checkbox:
+            if section == checkbox_section:
+                acceptance.append(Item(number, checkbox.group(1) != " ", checkbox.group(2).strip()))
+            else:
+                stray.append(number)
+        elif section == checkbox_section and stripped:
+            if acceptance and (line[:1].isspace() or not BULLET.match(line)):
+                last = acceptance[-1]
+                acceptance[-1] = last._replace(text=f"{last.text} {stripped}")
+            else:
+                plain.append(number)
+        if section == "not done" and stripped:
+            not_done.append(stripped)
         if section == "verification" and BULLET.match(stripped):
             verification += 1
         if section in excluded or not stripped or stripped.startswith("|"):
             continue
         prose.append((number, line))
-    return Segments(prose, headings, fenced, verification, owns_has_details)
+    return Segments(
+        prose,
+        headings,
+        fenced,
+        verification,
+        owns_has_details,
+        acceptance,
+        plain,
+        stray,
+        not_done,
+    )
 
 
 def _verdict(
@@ -268,12 +323,15 @@ def _footer(body: str) -> list[Finding]:
     return [Finding("FAIL", "body.footer", f"{text} (line {number})") for number, text in hits]
 
 
-def _checkboxes(body: str) -> Finding:
-    hits = _line_hits(body, CHECKBOX)
-    if not hits:
-        return Finding("ok", "body.checkbox", "no template checkbox")
-    lines = ", ".join(str(number) for number, _ in hits[:5])
-    return Finding("FAIL", "body.checkbox", f"{len(hits)} template checkboxes (lines {lines})")
+def _checkboxes(parts: Segments) -> Finding:
+    if not parts.stray_checkboxes:
+        return Finding("ok", "body.checkbox", "no checkbox outside Acceptance")
+    shown = ", ".join(str(number) for number in parts.stray_checkboxes[:5])
+    return Finding(
+        "FAIL",
+        "body.checkbox",
+        f"{len(parts.stray_checkboxes)} checkboxes outside ## Acceptance (lines {shown})",
+    )
 
 
 def _non_ascii(body: str) -> Finding:
@@ -316,19 +374,138 @@ def _without_fences(body: str) -> str:
     return "\n".join(kept)
 
 
+def _closed_issue(body: str) -> int | None:
+    """The issue a live `Closes #N` line names, ignoring one inside code."""
+    match = CLOSES.search(CODE_SPAN.sub(" ", _without_fences(body)))
+    return int(match.group(1)) if match else None
+
+
 def _closes(body: str, expected: int | None, no_issue: bool = False) -> Finding:
-    plain = CODE_SPAN.sub(" ", _without_fences(body))
-    match = CLOSES.search(plain)
-    if match is None and CLOSES_IN_CODE.search(body):
+    number = _closed_issue(body)
+    if number is None and CLOSES_IN_CODE.search(body):
         return Finding("FAIL", "pr.closes", "Closes #N is inside a code span, which GitHub ignores")
-    if match is None and no_issue:
+    if number is None and no_issue:
         return Finding("ok", "pr.closes", "no issue to close (--no-issue)")
-    if match is None:
+    if number is None:
         return Finding("FAIL", "pr.closes", "no Closes #N line")
-    number = int(match.group(1))
     if expected is not None and number != expected:
         return Finding("FAIL", "pr.closes", f"Closes #{number}, expected #{expected}")
     return Finding("ok", "pr.closes", f"Closes #{number} is a live closing keyword")
+
+
+def _normalise(text: str) -> str:
+    return " ".join(MARKUP.sub("", text).lower().split())
+
+
+def _key(text: str) -> str:
+    """The prefix a criterion is recognised by: normalised, cut, and shorn of punctuation."""
+    return _normalise(text)[:CRITERION_PREFIX].rstrip(" .,:;")
+
+
+def criteria(issue_body: str) -> list[str]:
+    """The top-level bullets under the issue's Acceptance, each with its wrapped lines joined."""
+    found: list[str] = []
+    inside = False
+    for line in issue_body.splitlines():
+        stripped = line.strip()
+        match = HEADING.match(stripped) or LEAD_IN.match(stripped)
+        if match:
+            inside = match.group(1).strip().rstrip(".:").lower() == "acceptance"
+            continue
+        if not inside or not stripped:
+            continue
+        if BULLET.match(line) and not line[:1].isspace():
+            found.append(BULLET.sub("", line, count=1).strip())
+        elif found:
+            found[-1] = f"{found[-1]} {stripped}"
+    return found
+
+
+def _acceptance(
+    parts: Segments, issue_body: str | None, limit: int, no_issue: bool
+) -> list[Finding]:
+    """Hold the pull request's Acceptance checklist to the issue's criteria.
+
+    Every box must quote a criterion closely enough that its first characters match,
+    every criterion must have a box, and an unticked box must be repeated under Not
+    done, where its reason lives.
+    """
+    if no_issue:
+        return [Finding("ok", "pr.acceptance", "no issue, so no criteria to list (--no-issue)")]
+    if not any(text.lower() == "acceptance" for _, text, _ in parts.headings):
+        return [Finding("FAIL", "pr.acceptance", "no ## Acceptance section")]
+    findings = [
+        Finding("FAIL", "pr.acceptance", f"line {number} under Acceptance is not a checkbox")
+        for number in parts.acceptance_plain
+    ]
+    if len(parts.acceptance) > limit:
+        findings.append(
+            Finding("FAIL", "pr.acceptance", f"{len(parts.acceptance)} boxes, limit {limit}")
+        )
+    if issue_body is None:
+        findings.append(
+            Finding("WARN", "pr.acceptance", "no issue body, so the criteria were not compared")
+        )
+        return findings
+    keys = [_key(criterion) for criterion in criteria(issue_body)]
+    if not keys:
+        findings.append(
+            Finding("WARN", "pr.acceptance", "the issue has no Acceptance bullets to compare")
+        )
+        return findings
+    texts = [_normalise(item.text) for item in parts.acceptance]
+    matched = [next((key for key in keys if key in text), None) for text in texts]
+    findings.extend(
+        Finding("FAIL", "pr.acceptance", f'criterion not in the checklist: "{key}"')
+        for key in keys
+        if key not in matched
+    )
+    not_done = _normalise(" ".join(parts.not_done))
+    for index, item in enumerate(parts.acceptance):
+        key = matched[index] or _key(texts[index])
+        if matched[index] is None:
+            findings.append(
+                Finding("WARN", "pr.acceptance", f"line {item.line} matches no criterion")
+            )
+        if not item.ticked and key not in not_done:
+            findings.append(
+                Finding("FAIL", "pr.acceptance", f'unticked but not under Not done: "{key}"')
+            )
+    if not any(finding.level == "FAIL" for finding in findings):
+        unticked = sum(not item.ticked for item in parts.acceptance)
+        findings.append(
+            Finding(
+                "ok",
+                "pr.acceptance",
+                f"{len(keys)} criteria in the checklist, {unticked} unticked and under Not done",
+            )
+        )
+    return findings
+
+
+def _parent(repo: str, number: int) -> dict[str, Any] | None:
+    """The issue's parent, or None when GitHub answers 404 because there is none."""
+    try:
+        return _fetch_object(f"/repos/{repo}/issues/{number}/parent")
+    except check_ownership.GitHubError as error:
+        if " returned 404:" in str(error):
+            return None
+        raise
+
+
+def check_parent(repo: str, number: int, epic: bool) -> Finding:
+    """A ticket or follow-up hangs under an epic or the issue it came from; an epic alone stands."""
+    if epic:
+        return Finding("ok", "issue.parent", "an epic has no parent")
+    parent = _parent(repo, number)
+    if parent is None:
+        return Finding(
+            "FAIL",
+            "issue.parent",
+            f"no parent issue; attach one with: gh issue edit {number} --parent P",
+        )
+    title = str(parent.get("title", ""))[:50]
+    return Finding("ok", "issue.parent", f"parent #{parent.get('number')}: {title}")
 
 
 def check_body(
@@ -339,9 +516,11 @@ def check_body(
     draft: bool = False,
     closes: int | None = None,
     no_issue: bool = False,
+    issue_body: str | None = None,
+    epic: bool = False,
 ) -> list[Finding]:
     """Apply every body rule for `kind` (issue, pr or comment) and return the findings."""
-    parts = segment(body, EXCLUDED_SECTIONS.get(kind, ()))
+    parts = segment(body, EXCLUDED_SECTIONS.get(kind, ()), "acceptance" if kind == "pr" else None)
     words = _word_count(parts.prose)
     findings = [
         _verdict("body.words", words <= limits.words, f"{words} words, limit {limits.words}"),
@@ -354,7 +533,7 @@ def check_body(
         *_banned_phrases(body),
         *_banned_headings(parts.headings),
         *_footer(body),
-        _checkboxes(body),
+        _checkboxes(parts),
         _non_ascii(body),
     ]
     first_person = _person(parts.prose, FIRST_PERSON)
@@ -371,9 +550,13 @@ def check_body(
         findings.append(
             _verdict("issue.second-person", second_person == 0, f"{second_person} addresses")
         )
-        findings.extend(_owns(body, parts))
+        if epic:
+            findings.append(Finding("ok", "issue.owns", "an epic owns no files"))
+        else:
+            findings.extend(_owns(body, parts))
     if kind == "pr":
         findings.append(_closes(body, closes, no_issue))
+        findings.extend(_acceptance(parts, issue_body, limits.acceptance_items, no_issue))
         has_verification = any(text.lower() == "verification" for _, text, _ in parts.headings)
         findings.append(
             _verdict(
@@ -415,7 +598,7 @@ def check_body(
 
 
 def _summary(label: str, title: str | None, body: str, kind: str) -> str:
-    parts = segment(body, EXCLUDED_SECTIONS.get(kind, ()))
+    parts = segment(body, EXCLUDED_SECTIONS.get(kind, ()), "acceptance" if kind == "pr" else None)
     title_part = f"title {len(title)} chars" if title is not None else "no title given"
     return (
         f"writeup ({label}): {title_part}; body {len(body)} chars, "
@@ -479,11 +662,23 @@ def _parse_arguments() -> argparse.Namespace:
         help="the pull request closes no issue, so a missing Closes line is not a failure",
     )
     parser.add_argument(
+        "--issue-body",
+        type=Path,
+        metavar="ISSUE.md",
+        help="with --file --kind pr: the issue body whose criteria the checklist must cover",
+    )
+    parser.add_argument(
+        "--epic",
+        action="store_true",
+        help="with --file --kind issue: the draft is an epic, which has no parent and no Owns",
+    )
+    parser.add_argument(
         "--comments", action="store_true", help="also check every comment on the PR"
     )
     parser.add_argument("--max-title", type=int, default=TITLE_LIMIT)
     parser.add_argument("--max-words", type=int, help="body budget; defaults by kind")
     parser.add_argument("--max-verification-lines", type=int, default=VERIFICATION_LINE_LIMIT)
+    parser.add_argument("--max-acceptance-items", type=int, default=ACCEPTANCE_ITEM_LIMIT)
     parser.add_argument("--max-fenced-lines", type=int, default=FENCED_LINE_LIMIT)
     parser.add_argument("--max-chars", type=int, default=BODY_CHAR_LIMIT)
     parser.add_argument("--max-comment-words", type=int, default=REVIEW_WORD_LIMIT)
@@ -497,6 +692,10 @@ def _parse_arguments() -> argparse.Namespace:
         parser.error("--comments needs --pr")
     if arguments.no_issue and arguments.closes is not None:
         parser.error("--no-issue and --closes contradict each other")
+    if arguments.issue_body is not None and arguments.kind != "pr":
+        parser.error("--issue-body goes with --file --kind pr")
+    if arguments.epic and arguments.kind != "issue":
+        parser.error("--epic goes with --file --kind issue")
     return arguments
 
 
@@ -512,6 +711,7 @@ def _limits(arguments: argparse.Namespace, kind: str) -> Limits:
         verification_lines=arguments.max_verification_lines,
         fenced_lines=arguments.max_fenced_lines,
         chars=arguments.max_chars,
+        acceptance_items=arguments.max_acceptance_items,
     )
 
 
@@ -521,21 +721,39 @@ def main() -> int:
     title: str | None
     body: str
     label: str
-    draft = False
+    draft = epic = False
+    issue_body: str | None = None
+    parent: Finding | None = None
     comments: list[tuple[str, str, str]] = []
     try:
         if arguments.file is not None:
             kind, title, label = arguments.kind, arguments.title, str(arguments.file)
             body = arguments.file.read_text(encoding="utf-8")
+            epic = arguments.epic
+            if arguments.issue_body is not None:
+                issue_body = arguments.issue_body.read_text(encoding="utf-8")
+            if kind == "issue":
+                parent = Finding(
+                    "WARN",
+                    "issue.parent",
+                    "not checked from a file; attach the parent after creation with "
+                    "gh issue edit N --parent P",
+                )
         elif arguments.issue is not None:
             kind, label = "issue", f"issue #{arguments.issue}"
             issue = _fetch_object(f"/repos/{arguments.repo}/issues/{arguments.issue}")
             title, body = str(issue.get("title", "")), str(issue.get("body") or "")
+            epic = any(label_.get("name") == EPIC_LABEL for label_ in issue.get("labels", []))
+            parent = check_parent(arguments.repo, arguments.issue, epic)
         else:
             kind, label = "pr", f"pull request #{arguments.pr}"
             pull = _fetch_object(f"/repos/{arguments.repo}/pulls/{arguments.pr}")
             title, body = str(pull.get("title", "")), str(pull.get("body") or "")
             draft = bool(pull.get("draft"))
+            closed = arguments.closes or _closed_issue(body)
+            if closed is not None and not arguments.no_issue:
+                issue = _fetch_object(f"/repos/{arguments.repo}/issues/{closed}")
+                issue_body = str(issue.get("body") or "")
             if arguments.comments:
                 comments = _fetch_comments(arguments.repo, arguments.pr)
     except (check_ownership.GitHubError, OSError) as error:
@@ -550,9 +768,18 @@ def main() -> int:
         findings.append(Finding("WARN", "title.missing", "no --title given; title rules skipped"))
     findings.extend(
         check_body(
-            kind, body, limits, draft=draft, closes=arguments.closes, no_issue=arguments.no_issue
+            kind,
+            body,
+            limits,
+            draft=draft,
+            closes=arguments.closes,
+            no_issue=arguments.no_issue,
+            issue_body=issue_body,
+            epic=epic,
         )
     )
+    if parent is not None:
+        findings.append(parent)
 
     report = [_summary(label, title, body, kind), *_format(findings)]
     failed = sum(finding.level == "FAIL" for finding in findings)

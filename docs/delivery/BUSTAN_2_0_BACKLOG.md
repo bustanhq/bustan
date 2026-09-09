@@ -122,18 +122,23 @@ comment on a draft PR.
 **The PR contract.** Every pull request description contains, in this order:
 `Closes #N` on its own line, not inside backticks; a `Refs T-NNN` line naming the
 ticket and the audit finding ids it closes; what changed and why, in one or two
-paragraphs a reviewer can read without opening the diff; a verification summary, one
+paragraphs a reviewer can read without opening the diff; the acceptance criteria as a
+checklist under `## Acceptance`, one box per criterion in the issue's order, quoting
+the criterion as the issue states it and naming the test, file or command that proves
+it, with a box left unticked for a criterion not met; a verification summary, one
 line per command of the block giving the command and its final status line, with
 `run_repros.py` reported as the findings that moved from `REPRODUCED` to `FIXED`; the
 decisions taken where the ticket left more than one defensible option, one bullet
-each with the reason; and what was left undone inside the ticket's scope, one bullet
-each with the reason, or the single line "Nothing in scope was left undone". That
-last item matters most: a silent omission is indistinguishable from an oversight to a
-reviewer who cannot ask you. Full command output goes nowhere in the body; if a
-reviewer could need it, it goes in one collapsed `<details>` block after the summary,
-and the body without it stays under 300 words. Not in the body: a list of files
-touched, a note on how the work was directed, the repository's pull request template
-or its checkboxes, a claim that every criterion is met, a footer, a session link.
+each with the reason, and for any new module, dependency, public symbol or
+abstraction the rung of the ladder (**Standards**, below) at which it stopped; and
+what was left undone inside the ticket's scope, one bullet each with the reason, an
+unticked criterion among them quoted as written, or the single line "Nothing in scope
+was left undone". That last item matters most: a silent omission is indistinguishable
+from an oversight to a reviewer who cannot ask you. Full command output goes nowhere
+in the body; if a reviewer could need it, it goes in one collapsed `<details>` block
+after the summary, and the body without it stays under 300 words. Not in the body: a
+list of files touched, a note on how the work was directed, a checkbox outside
+`## Acceptance`, a claim that every criterion is met, a footer, a session link.
 
 **Writing rules.** Everything you post is read by people, months later, without you
 there to explain it. Write as a maintainer writing to a colleague: facts, decisions
@@ -144,9 +149,11 @@ clause in sentence case, at most 72 characters, with the Conventional Commits pr
 and no ticket or finding id. A comment answering a review stays under 150 words and
 answers the finding it replies to. If a comment you posted is wrong, edit it; do not
 post a correction. Sentence case, ASCII only, one idea per paragraph. Before opening
-the pull request, run
-`python3 .agents/skills/bustan-supervisor/scripts/check_writeup.py --file body.md --kind pr --title "..."`
-on the description; the review starts with the same check.
+the pull request, save the issue body (`gh issue view N --json body -q .body > issue.md`)
+and run
+`python3 .agents/skills/bustan-supervisor/scripts/check_writeup.py --file body.md --kind pr --title "..." --issue-body issue.md`
+on the description, so the checklist is compared against the ticket before it is
+posted; the review starts with the same check.
 
 **When you are blocked.** You never wait. You open a draft PR whose description
 begins with `BLOCKED:` and a one-paragraph statement of the problem, containing
@@ -166,12 +173,14 @@ situations warrant it:
   on an assumption about what it will contain.
 
 For a design question that *is* cheaply reversible, do not block. Choose the option
-that keeps the public surface smallest, implement it, and record the choice and your
-reasoning in the PR description. A reviewer can redirect a merged decision far more
+that stops at the lowest rung of the ladder under **Standards** and keeps the public
+surface smallest, implement it, and record the choice and the rung in the PR
+description. A reviewer can redirect a merged decision far more
 easily than an idle agent.
 
-**Review gate.** The supervisor merges only when: acceptance criteria are each
-demonstrably met, the full verification block passes locally, the named repro scripts
+**Review gate.** The supervisor merges only when: every box under the pull request's
+`## Acceptance` is ticked and its evidence shows what it claims, the full verification
+block passes locally, the named repro scripts
 report `FIXED`, no file outside `Owns` is modified, and public docstrings on any
 changed public symbol read as plain English an unfamiliar engineer can act on.
 
@@ -226,9 +235,12 @@ At the start of each wave, one issue per ticket, created with `issue_write`:
   `architecture`, `operability`, `docs`.
 - **Milestone** the release the wave ships: `1.1.1`, `2.0.0-rc.1` and so on. The
   milestone burndown then shows release readiness without a separate tracker.
-- **Hierarchy** one epic issue per wave, with the ticket issues attached as sub-issues
-  via `sub_issue_write`. The epic's sub-issue summary is the wave's progress bar, so
-  the pinned ledger becomes unnecessary; GitHub keeps the state.
+- **Hierarchy** one epic issue per wave or release, labelled `epic`, with every ticket
+  attached as a sub-issue right after creation: `gh issue create` has no parent flag,
+  so it is `gh issue edit N --parent P`. The epic's sub-issue summary is the wave's
+  progress bar, so the pinned ledger becomes unnecessary; GitHub keeps the state.
+  `check_writeup.py --issue N` refuses a ticket with no parent; only an issue labelled
+  `epic` stands alone.
 
 Dependencies inside a wave (T-104 after T-100 to T-103, T-404 after T-400, T-306 last)
 are expressed by *withholding the issue* until its dependency closes, not by writing
@@ -254,10 +266,12 @@ logic:
    once stops being a rule.
 2. `get_check_runs`. CI must be green. A red PR is not reviewed.
 3. Confirm the PR body carries every element of the contract inside its budgets
-   (`check_writeup.py --pr N` does the mechanical part). A missing "Not done" section
+   (`check_writeup.py --pr N` does the mechanical part, the checklist against the issue
+   included). A missing "Not done" section
    is a returned PR; a reviewer who cannot ask questions depends on it. So is pasted
    output in place of the verification summary.
-4. `get_diff`, and read it against the acceptance criteria one at a time.
+4. `get_diff`, and read it against the acceptance checklist one box at a time, opening
+   the evidence each box names.
 5. Run the verification block locally on the branch rather than trusting the summary.
    The summary says the agent ran it; your run proves it passes.
 6. `pull_request_review_write` with `create` to open a pending review,
@@ -286,8 +300,9 @@ each merge, and always before closing a wave, review `main` itself against this 
 
 Anything found here becomes a **follow-up issue**, never a silent fix and never an
 unrecorded complaint: `issue_write` with label `follow-up`, a body naming the PR that
-introduced it and the acceptance criterion it undermines, attached to the wave epic if
-it blocks the release or to a later wave if it does not. Follow-ups that block a
+introduced it and the acceptance criterion it undermines, attached as a sub-issue of
+the issue it came from, or of the epic of the milestone it is deferred to once that
+issue is closed (`gh issue edit N --parent P`). Follow-ups that block a
 release are closed before its milestone closes; the rest ride to 2.0.0 or are
 deliberately deferred with that decision written down.
 
@@ -340,6 +355,14 @@ they are meant to stay as written.
 
 **Standards.**
 
+- Restraint first, in the order `CLAUDE.md` gives, stopping at the first rung that
+  holds. Does it need to exist? If not, leave it out. Does the codebase already have
+  it? Reuse it, never rewrite it. Does the standard library do it? Use that. Does the
+  platform do it natively? Use that. Does an installed dependency do it? Use that. Is
+  it one line? Write one line. Only then write the least that works, and name in
+  `## Decisions` the rung at which any new module, dependency, public symbol or
+  abstraction stopped. The runtime dependency set is deliberately small; growing it is
+  a decision with a stated rung, never a convenience.
 - Clean code: no function beyond roughly 50 lines, no `Any` on a public signature,
   frozen slotted value types, tagged unions over stringly-typed discriminators, dead
   code deleted rather than commented out.

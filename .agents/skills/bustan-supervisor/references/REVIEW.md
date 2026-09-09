@@ -10,8 +10,9 @@ scripts/check_writeup.py --repo OWNER/REPO --pr N
 ```
 
 A title over budget, a body over budget, pasted output, a banned phrase, a footer, a
-session link, template checkboxes or a `Closes #N` inside backticks fails here, and the
-pull request goes back with the script's report as the review comment. Nothing else is
+session link, a checkbox outside `## Acceptance`, a checklist missing a criterion of the
+ticket, or a `Closes #N` inside backticks fails here, and the pull request goes back
+with the script's report as the review comment. Nothing else is
 read first: a body that fails this is a body the next reader cannot use either. The rules
 are in [WRITING.md](WRITING.md).
 
@@ -66,29 +67,41 @@ checks reject it.
 ## 3. The pull request contract
 
 Every element, in order: `Closes #N` and `Refs T-NNN` with the finding ids; a prose
-summary a reviewer can read without opening the diff; a verification summary of one line
-per command with the command's final status line, `run_repros.py` reported as the
-findings that moved from `REPRODUCED` to `FIXED`; each decision where the ticket left more
-than one defensible option, with its reason; and what in scope was not done, with its
-reason, or the one line saying nothing was. The full form is in
+summary a reviewer can read without opening the diff; the acceptance checklist, one
+ticked box per criterion with the test, file or command that proves it, an unticked box
+repeated under Not done; a verification summary of one line per command with the
+command's final status line, `run_repros.py` reported as the findings that moved from
+`REPRODUCED` to `FIXED`; each decision where the ticket left more than one defensible
+option, with its reason, and the ladder rung for anything new; and what in scope was not
+done, with its reason, or the one line saying nothing was. The full form is in
 [WRITING.md](WRITING.md).
 
 The last one is not a formality. A silent omission and an oversight look identical to a
 reviewer who cannot ask a question. A pull request missing it goes back unread. So does
 one that carries pasted output in place of the summary.
 
-## 4. The diff against the acceptance criteria
+## 4. The checklist against the diff
 
-One criterion at a time, in the ticket's order. Read for whether the criterion is met,
-not for whether the code is what you would have written.
+`## Acceptance` carries the ticket's criteria as boxes, one per criterion in the
+ticket's order, each naming the evidence. Take them one box at a time: open the test,
+file or command the box names, then read the diff for whether the criterion is met,
+not for whether the code is what you would have written. A box whose evidence does not
+show what it claims is a finding on that line. An unticked box is a criterion the agent
+says is not met; the check has already confirmed it appears under `## Not done`, and
+the question left is whether the reason holds.
 
-Two things always worth checking, because they are how a passing ticket still damages
+Three things always worth checking, because they are how a passing ticket still damages
 the branch:
 
 - **A public symbol whose documented behaviour changed** without the change being
   declared.
 - **A comment or docstring that no longer matches the code beside it.** Those become
   the next contributor's mental model.
+- **A new module, helper, dependency or abstraction that names no rung in
+  `## Decisions`, or names one that does not hold**: a helper the codebase already
+  had, a dependency for what the standard library does, an abstraction with one
+  caller. The ladder is in the repository's `CLAUDE.md`; the rung is the agent's
+  claim and the diff is the evidence.
 
 ## 5. Your own run
 
