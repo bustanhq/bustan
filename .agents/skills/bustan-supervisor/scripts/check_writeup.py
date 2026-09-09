@@ -14,6 +14,8 @@ or from a local file (--file, which needs --kind). The budgets are the defaults
 WRITING.md documents and move with the --max-* flags.
 """
 
+from __future__ import annotations
+
 import argparse
 import re
 import sys
