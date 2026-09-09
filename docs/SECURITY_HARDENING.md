@@ -236,9 +236,17 @@ nothing, so a route that must be bounded needs both.
 
 ## CORS
 
-Off unless you enable it. `enable_cors()` with no arguments allows **every** origin,
-which is a reasonable default for a public read-only API and a bad one for anything that
-reads a cookie.
+Off unless you enable it, and `enable_cors()` with no arguments is **refused** rather
+than read as every origin:
+
+```
+ValueError: enable_cors needs the origins it should permit. Pass
+CorsOptions(origins=[...]), or omit the call to leave cross-origin requests refused.
+```
+
+`CorsOptions` names no origins until you name them, so a policy that permits every page
+on the internet is one you wrote rather than one you inherited. Every other field has a
+default, listed in the [API reference](API_REFERENCE.md#corsoptions).
 
 ```python
 from bustan import CorsOptions
@@ -252,7 +260,9 @@ app.enable_cors(
 )
 ```
 
-`credentials=True` with `origins="*"` is the combination to avoid. Name the origins.
+A public read-only API that really does serve every origin writes `origins=["*"]` and is
+served. `credentials=True` with `origins="*"` is the combination to avoid. Name the
+origins.
 
 ## What Never Reaches A Log
 

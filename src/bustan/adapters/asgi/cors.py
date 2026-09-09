@@ -55,16 +55,18 @@ class AsgiCorsMiddleware:
         "_simple_headers",
     )
 
-    def __init__(self, app: AsgiApp, options: CorsOptions | None = None) -> None:
-        resolved = options or CorsOptions()
-        origins = allowed_origins(resolved)
+    def __init__(self, app: AsgiApp, options: CorsOptions) -> None:
+        # The policy is required rather than defaulted: a middleware built without one
+        # would either permit every origin or permit none, and both are a cross-origin
+        # decision taken by whoever left the argument out.
+        origins = allowed_origins(options)
         self._app = app
-        self._options = resolved
+        self._options = options
         self._named_origins = frozenset(origins)
         self._allow_all_origins = "*" in origins
-        self._allow_all_headers = "*" in resolved.allowed_headers
-        self._methods = ALL_METHODS if "*" in resolved.methods else tuple(resolved.methods)
-        self._declared_request_headers = sorted(SAFELISTED_HEADERS | set(resolved.allowed_headers))
+        self._allow_all_headers = "*" in options.allowed_headers
+        self._methods = ALL_METHODS if "*" in options.methods else tuple(options.methods)
+        self._declared_request_headers = sorted(SAFELISTED_HEADERS | set(options.allowed_headers))
         self._permitted_request_headers = {name.lower() for name in self._declared_request_headers}
         self._simple_headers = self._build_simple_headers()
         self._preflight_headers = self._build_preflight_headers()
