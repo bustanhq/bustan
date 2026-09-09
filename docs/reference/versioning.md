@@ -10,7 +10,7 @@ Compatibility commitments apply to:
 - `bustan.errors`
 - `bustan.testing`
 
-Everything else is internal and may change between alpha releases without a deprecation period.
+Everything else is internal and may change between releases without a deprecation period. [reference/stability.md](../reference/stability.md) is the authority for which modules those are, and the promise is stated against that policy rather than against a release phase so that shipping a release cannot make it stale.
 
 ## What Counts As A Public Change
 
@@ -30,9 +30,9 @@ The generated [reference/api.md](../reference/api.md) is part of that public doc
 - Public-surface additions, removals, and behavior changes should be called out explicitly.
 - Internal refactors may be summarized at a higher level when they do not change the supported public modules.
 
-## Breaking Changes Before `2.0`
+## Breaking Changes
 
-- Public API breaks may still happen before `2.0`, but they should be deliberate and documented.
+- Public API breaks may happen, but they should be deliberate and documented.
 - Compatibility breaks in the supported public surface should use clear release-note language and, when appropriate, `BREAKING CHANGE:` commit metadata.
 - Internal modules do not carry the same notice requirement because they are not part of the compatibility target.
 
