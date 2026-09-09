@@ -154,6 +154,42 @@ async def test_a_redirect_falls_back_to_the_path_when_a_scope_carries_no_raw_pat
 
 
 @pytest.mark.anyio
+async def test_a_redirect_names_no_media_type_for_the_body_it_does_not_send(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """A response with no content should not tell a caller what content it has."""
+
+    application = _application(_plan("/users/{user_id}"))
+
+    status, headers, body = await _call(application, build_scope(path="/users/7/"), build_receive())
+
+    assert status == 307
+    assert "content-type" not in headers
+    assert body == b""
+
+
+@pytest.mark.anyio
+async def test_two_trailing_slashes_are_refused_rather_than_redirected(
+    build_scope: ScopeFactory, build_receive: ReceiveFactory
+) -> None:
+    """``/users/7//`` is a path of its own, not the slashed spelling of a route.
+
+    One slash is flipped, so the spelling tried is ``/users/7/``, which no route answers
+    either; the caller is told nothing is there rather than sent somewhere it is not.
+    """
+
+    application = _application(_plan("/users/{user_id}"))
+
+    status, headers, body = await _call(
+        application, build_scope(path="/users/7//"), build_receive()
+    )
+
+    assert status == 404
+    assert headers["content-type"] == "application/problem+json"
+    assert json.loads(body)["instance"] == "/users/7//"
+
+
+@pytest.mark.anyio
 async def test_a_head_request_carries_the_headers_of_its_get_and_none_of_the_body(
     build_scope: ScopeFactory, build_receive: ReceiveFactory
 ) -> None:

@@ -334,3 +334,111 @@ def test_an_application_handed_in_is_given_the_error_model_too() -> None:
 
     with cast(Any, adapter.create_test_client()) as client:
         assert client.get("/absent").headers["content-type"] == "application/problem+json"
+
+
+def _client_serving(path: str, methods: tuple[str, ...] = ("GET",)) -> Any:
+    """A client for an application serving one route, at the path and methods given."""
+
+    adapter = StarletteAdapter()
+    adapter.register_routes(
+        [AdapterRoute(path=path, methods=methods, handler=_handler, name="route")]
+    )
+    return cast(Any, adapter.create_test_client())
+
+
+def test_one_trailing_slash_is_redirected_to_the_relative_path_a_route_serves() -> None:
+    """An absolute location can only be built from the caller's own Host header.
+
+    That header names the wrong host behind any proxy that terminates TLS, and it is
+    client-controlled input reflected into a redirect wherever it happens to be right.
+    """
+
+    with _client_serving("/shop/orders") as client:
+        response = client.get("/shop/orders/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/shop/orders"
+    assert "content-type" not in response.headers
+    assert response.content == b""
+
+
+def test_two_trailing_slashes_are_refused_rather_than_rewritten() -> None:
+    """``/shop/orders//`` is a path of its own, not the slashed spelling of a route.
+
+    A transport that stripped every trailing slash would answer a request the caller
+    never sent, and would report a resource at a path nothing is registered at.
+    """
+
+    with _client_serving("/shop/orders") as client:
+        response = client.get("/shop/orders//", follow_redirects=False)
+
+    assert response.status_code == 404
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["instance"] == "/shop/orders//"
+
+
+def test_a_redirect_keeps_the_query_string_the_caller_sent() -> None:
+    with _client_serving("/shop/orders") as client:
+        response = client.get("/shop/orders/?page=2", follow_redirects=False)
+
+    assert response.headers["location"] == "/shop/orders?page=2"
+
+
+def test_a_redirect_is_built_from_the_target_the_caller_wrote() -> None:
+    """A location built from the decoded path would carry a space loose in a header."""
+
+    with _client_serving("/users/{user_id}") as client:
+        response = client.get("/users/John%20Doe/", follow_redirects=False)
+
+    assert response.headers["location"] == "/users/John%20Doe"
+
+
+def test_a_route_registered_with_a_trailing_slash_answers_the_spelling_without_one() -> None:
+    """The flip works both ways round, because either spelling can be the registered one."""
+
+    with _client_serving("/shop/orders/") as client:
+        response = client.get("/shop/orders", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/shop/orders/"
+
+
+def test_a_path_only_a_slash_from_a_route_that_refuses_the_method_is_still_redirected() -> None:
+    """The caller is sent where the framework's 405 names the methods it could send."""
+
+    with _client_serving("/shop/orders", ("GET",)) as client:
+        response = client.post("/shop/orders/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/shop/orders"
+
+
+def test_the_root_path_is_refused_rather_than_redirected_to_an_empty_location() -> None:
+    """Flipping the slash off ``/`` leaves nothing to send a caller to."""
+
+    with _client_serving("/shop/orders") as client:
+        response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 404
+    assert response.json()["instance"] == "/"
+
+
+def test_an_application_handed_in_has_its_own_slash_redirect_overruled() -> None:
+    """The shape of a redirect is the framework's promise, not the transport's.
+
+    Starlette decides its own redirect in the router, before the endpoint whose refusal
+    the error-model handlers answer, so the only place to refuse it is the router itself.
+    """
+
+    application = Starlette()
+    adapter = StarletteAdapter(application)
+    adapter.register_routes(
+        [AdapterRoute(path="/orders", methods=("GET",), handler=_handler, name="orders")]
+    )
+
+    assert application.router.redirect_slashes is False
+
+    with cast(Any, adapter.create_test_client()) as client:
+        response = client.get("/orders/", follow_redirects=False)
+
+    assert response.headers["location"] == "/orders"
