@@ -82,6 +82,18 @@ rather than assuming any single library.
   Return the underlying server object this adapter drives.
 - `add_middleware(self, middleware_class: type, **options: object) -> None`
   Wrap the whole server in one of the transport's own middleware classes.
+- `enable_cors(self, options: CorsOptions) -> None`
+  Enforce one cross-origin policy on every request this transport carries.
+
+A preflight request is answered by the transport and never reaches a route, so
+this is the transport's work rather than the framework's, and each adapter
+implements it against whatever its own middleware looks like.
+
+The implementation here refuses, by name, and it is what an adapter that says
+nothing inherits. Silence has to mean refusal: an operator who calls this and is
+answered by nothing at all believes a policy is being enforced, and serves every
+origin while believing it. An adapter whose transport can enforce a policy
+overrides this and does.
 - `listen(self, port: int, host: str = '127.0.0.1', reload: bool = False, **options: object) -> None`
   Serve requests, under the name the application wrapper calls.
 
@@ -174,7 +186,17 @@ via an AbstractHttpAdapter.
 - `diff_routes(self, previous_snapshot: Sequence[Mapping[str, object]]) -> tuple[dict[str, object], ...]`
   Compare a previous route snapshot against the current application routes.
 - `enable_cors(self, options: CorsOptions | None = None) -> None`
-  Register Starlette's CORS middleware on the application.
+  Enforce one cross-origin policy on every request this application serves.
+
+The transport enforces it, because a preflight request is answered before any
+route is reached, so this hands the policy to the adapter and the adapter applies
+it. Both shipped adapters do; one whose transport cannot raises
+``NotImplementedError`` naming itself rather than accepting the call and serving
+every origin.
+
+Called with no options, the policy allows every origin, which suits a public
+read-only API and nothing that reads a cookie. Build a ``CorsOptions`` and name
+the origins for anything else.
 - `enable_swagger(self, path: str, document: dict[str, object], *, swagger_ui_path: str | None = None) -> None`
   Register OpenAPI JSON and Swagger UI routes.
 - `listen(self, port: int, host: str = '127.0.0.1', reload: bool = False, *, drain_timeout: float | None = None, **kwargs: Any) -> None`
@@ -2354,7 +2376,7 @@ Typed access to resolved configuration values.
 class CorsOptions
 ```
 
-Defined in `bustan.security.cors`.
+Defined in `bustan.contracts.cors`.
 
 Configuration for application-level CORS support.
 

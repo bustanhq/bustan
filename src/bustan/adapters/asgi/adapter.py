@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from ...contracts import AbstractHttpAdapter, AdapterCapabilities, HttpRequest
 from .application import AsgiApplication
+from .cors import AsgiCorsMiddleware
 from .requests import DEFAULT_MAX_BODY_BYTES, AsgiHttpRequest, from_asgi_request
 from .responses import AsgiResponseValue, to_asgi_response
 from .server import AsgiServer
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ...contracts import AdapterRoute
+    from ...contracts.cors import CorsOptions
     from .application import Lifespan
 
 
@@ -89,6 +91,16 @@ class AsgiAdapter(AbstractHttpAdapter):
         """Wrap the application in one ASGI middleware class."""
 
         self._app.add_middleware(middleware_class, **options)
+
+    def enable_cors(self, options: CorsOptions) -> None:
+        """Enforce *options* through this adapter's own CORS middleware.
+
+        The policy is enforced by code that belongs to this package and depends on
+        nothing beyond ASGI, so an application installed without a web framework gets
+        the same cross-origin behaviour as one installed with it.
+        """
+
+        self.add_middleware(AsgiCorsMiddleware, options=options)
 
     async def start(
         self, port: int, host: str = "127.0.0.1", reload: bool = False, **options: object

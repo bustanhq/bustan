@@ -6,10 +6,12 @@ import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
 from starlette.applications import Starlette
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
 from ...contracts import AbstractHttpAdapter, AdapterCapabilities, HttpRequest
+from ...contracts.cors import allowed_origins
 from .requests import from_starlette_request
 from .responses import to_starlette_response
 from .routes import build_starlette_routes
@@ -19,6 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ...contracts import AdapterRoute
+    from ...contracts.cors import CorsOptions
     from .server import GracefulServer, ShutdownSequence
 
 _TEST_CLIENT_REQUIREMENT = (
@@ -104,6 +107,19 @@ class StarletteAdapter(AbstractHttpAdapter):
         """Wrap the Starlette application in one of Starlette's middleware classes."""
 
         self._app.add_middleware(cast(Any, middleware_class), **options)
+
+    def enable_cors(self, options: CorsOptions) -> None:
+        """Enforce *options* through Starlette's own CORS middleware."""
+
+        self.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins(options),
+            allow_methods=options.methods,
+            allow_headers=options.allowed_headers,
+            expose_headers=options.exposed_headers,
+            allow_credentials=options.credentials,
+            max_age=options.max_age,
+        )
 
     @property
     def draining(self) -> bool:
