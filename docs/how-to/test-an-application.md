@@ -150,5 +150,5 @@ application on a loop of its own, so no async plugin is needed and none is assum
 compiling a testing module directly, which returns a coroutine; `asyncio.run()` covers it.
 
 A worked suite built this way is
-[`examples/tutorial_app`](../../examples/tutorial_app/), whose tests are named for the promises they
+[`examples/link_shortener`](../../examples/link_shortener/), whose tests are named for the promises they
 check.

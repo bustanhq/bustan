@@ -26,22 +26,22 @@ A guide that answers two of those questions is two documents.
 
 ## Tutorials
 
-Learning-oriented. One path, start to finish, no choices to make. Six steps, in order: each one adds
-a layer to the same application, and the finished code is
-[`examples/tutorial_app`](../examples/tutorial_app/), which runs in CI.
+Learning-oriented. One path, start to finish, no choices to make. Six steps that build one application, a
+link shortener, from a scaffold to something you could deploy. The finished code is
+[`examples/link_shortener`](../examples/link_shortener/), and it runs on every commit.
 
 1. [Your first app](tutorials/first-app.md) - scaffold a runnable application, understand the
    generated files, run it, and add a first test.
-2. [A resource with three routes](tutorials/a-resource-with-three-routes.md) - list, read and create,
-   answering 201, 404 and a 400 problem document as each case deserves.
-3. [Configuration end to end](tutorials/configuration-end-to-end.md) - settings out of the source,
-   validated at startup, overridden from the environment.
-4. [A datastore and a readiness probe](tutorials/a-datastore-and-a-readiness-probe.md) - a connection
-   opened and disposed through lifecycle hooks, with readiness telling the truth about it.
-5. [Before the handler runs](tutorials/before-the-handler-runs.md) - middleware on every request,
-   then a working authenticator and role checks.
-6. [OpenAPI and Swagger UI](tutorials/openapi-and-swagger-ui.md) - publish what the application
-   already serves.
+2. [Shorten your first link](tutorials/a-resource-with-three-routes.md) - build a working link
+   shortener: create a code, follow it, and answer properly when it is wrong.
+3. [Settings that live outside the code](tutorials/configuration-end-to-end.md) - move the magic
+   numbers out, validate them at startup, override them from the environment.
+4. [Links that survive a restart](tutorials/a-datastore-and-a-readiness-probe.md) - a database opened
+   and closed at named points, and a readiness probe that tells the truth.
+5. [Deciding who may create a link](tutorials/before-the-handler-runs.md) - middleware on every
+   request, then a working authenticator that leaves short links public.
+6. [Letting the API describe itself](tutorials/openapi-and-swagger-ui.md) - an OpenAPI document and a
+   browsable page, generated from the routes you already wrote.
 
 ## How-to guides
 
@@ -119,8 +119,8 @@ Each example is a standalone project you can run.
 - [testing_overrides](../examples/testing_overrides/README.md) - `create_test_app()` and
   `override_provider()`.
 - [dynamic_module_usage](../examples/dynamic_module_usage/README.md) - a configurable dynamic module.
-- [tutorial_app](../examples/tutorial_app/README.md) - the application the tutorial series builds,
-  at its end state.
+- [link_shortener](../examples/link_shortener/README.md) - the link shortener the tutorial series
+  builds, at its end state.
 
 ## Project
 

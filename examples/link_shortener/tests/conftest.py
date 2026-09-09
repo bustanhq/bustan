@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
-from tutorial_app import build_application
+from link_shortener import build_application
 
 from bustan.testing import AsgiTestClient
 

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from bustan import Module
 
-from .task_store import TaskStore
+from .link_store import LinkStore
 
 
-@Module(providers=[TaskStore], exports=[TaskStore])
+@Module(providers=[LinkStore], exports=[LinkStore])
 class StoreModule:
     """Owns the connection and lends it out.
 

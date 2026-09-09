@@ -18,7 +18,7 @@ Run it:
 
 ```bash
 uv sync --group dev
-uv run python -m tutorial_app.app
+uv run python -m link_shortener.app
 uv run pytest
 ```
 

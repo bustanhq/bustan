@@ -5,11 +5,11 @@ from __future__ import annotations
 from bustan import ConfigModule, HealthModule, MiddlewareConsumer, Module
 
 from .identity_module import IdentityModule
+from .links.links_module import LinksModule
 from .request_id_middleware import RequestIdMiddleware
 from .settings import Settings
-from .store_indicator import HealthWiring, TaskStoreIndicator
+from .store_indicator import HealthWiring, LinkStoreIndicator
 from .store_module import StoreModule
-from .tasks.tasks_module import TasksModule
 
 
 @Module(
@@ -21,10 +21,10 @@ from .tasks.tasks_module import TasksModule
         HealthModule.for_root(),
         StoreModule,
         IdentityModule,
-        TasksModule,
+        LinksModule,
     ],
     providers=[
-        TaskStoreIndicator,
+        LinkStoreIndicator,
         HealthWiring,
     ],
 )

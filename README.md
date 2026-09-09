@@ -71,8 +71,8 @@ tests/my_app/        test_app_controller.py  test_app_module.py  test_app_servic
 
 For the walkthrough, the generated file contents and a first test, see
 [Your first app](docs/tutorials/first-app.md) - the first of
-[six tutorials](docs/README.md#tutorials) that take the same application from here to a validated,
-authenticated, self-describing API.
+[six tutorials](docs/README.md#tutorials) that build a working link shortener from this
+scaffold.
 
 ## Documentation
 

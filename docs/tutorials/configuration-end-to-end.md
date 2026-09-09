@@ -1,18 +1,116 @@
-# Configuration End To End
+# Settings That Live Outside The Code
 
-**Where you are.** You finished [A Resource With Three Routes](a-resource-with-three-routes.md), and
-`POST /tasks/` answers `201` while `GET /tasks/999` answers `404`.
+Your shortener works, and it has a `6` in it:
 
-By the end of this, every setting will live outside the source, be validated once while the
-application is built, and be readable from any provider. You will also cause a startup refusal on
-purpose and read it, because the first one you meet should not be a real one.
+```python
+code = "".join(secrets.choice(ALPHABET) for _ in range(6))
+```
 
-## State What The Application Needs
+Six characters from a 36-character alphabet is about two billion codes, which is plenty. Until you
+run the same code on a staging box where you would rather have short ugly codes, or a customer asks
+for vanity links, and now you are editing source to change a number.
 
-A schema turns a missing or malformed setting into a refusal at startup, where one person reads it,
-rather than an `AttributeError` on the first request that needed it.
+That number belongs outside the code. So does the page size, and so will the database path in the
+next tutorial, and so will an API token in the one after. This tutorial moves all of it out, and
+makes the application refuse to start when a setting is missing or wrong.
 
-Create `src/my_app/settings.py`:
+## The Obvious Way, And Why It Is Not Enough
+
+You could reach for the environment directly:
+
+```python
+self._code_length = int(os.environ.get("CODE_LENGTH", 6))
+```
+
+That works and it has three problems you will meet in order. Nothing tells you which variables the
+application reads, so nobody can deploy it without reading the source. Nothing checks them, so
+`CODE_LENGTH=banana` is a crash on the first request rather than a refusal at startup. And every
+class that needs a setting grows its own parsing.
+
+The framework has a module for this.
+
+## Loading Settings
+
+Import the configuration module in `src/my_app/app_module.py`:
+
+```python
+from bustan import ConfigModule, Module
+
+from .links.links_module import LinksModule
+
+
+@Module(imports=[ConfigModule.for_root(), LinksModule])
+class AppModule:
+    pass
+```
+
+`for_root()` reads the process environment and makes a `ConfigService` available to inject. Now ask
+for one in `LinksService`:
+
+```python
+from bustan import ConfigService, Injectable
+
+
+@Injectable()
+class LinksService:
+    def __init__(self, config: ConfigService) -> None:
+        self._code_length = int(config.get("CODE_LENGTH", 6))
+        self._links: dict[str, str] = {}
+```
+
+`get` takes a default, so this still works with nothing set. Try it:
+
+```bash
+CODE_LENGTH=3 uv run dev
+curl -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+  -d '{"url": "https://example.com"}'
+```
+
+```json
+{"code":"q4z"}
+```
+
+Three characters. You changed behaviour without touching a file.
+
+## Keeping Settings Somewhere You Can Read Them
+
+Typing variables in front of every command gets old, and it does not survive a reboot. Put them in a
+file instead. Create `.env` next to `pyproject.toml`:
+
+```bash
+CODE_LENGTH=6
+PAGE_SIZE=20
+```
+
+Point the config module at it:
+
+```python
+ConfigModule.for_root(env_file=".env")
+```
+
+Add `.env` to your `.gitignore` now, before you put anything secret in it. In production you will not
+ship this file at all; the same names arrive as real environment variables, and an environment
+variable beats the file when both are set. That is the whole deployment story for configuration, and
+you will prove it at the end of this page.
+
+## One Thing Worth Knowing About `for_root`
+
+`ConfigModule.for_root()` is global. Every module can inject `ConfigService` without importing
+anything, which is why `LinksService` worked a moment ago even though `LinksModule` imports nothing
+new.
+
+That is deliberate, and it is the exception rather than the pattern. The last tutorial's `exports`
+list existed to stop modules reaching into each other, and here is a module that reaches everywhere.
+It earns it because configuration genuinely is needed everywhere. Almost nothing else is. If you find
+yourself making a module global to fix an import error, the import error was telling you something,
+and [Layering](../explanation/layering.md) is about what.
+
+## Refusing To Start On A Bad Setting
+
+Right now `CODE_LENGTH=banana` gets you a `ValueError` from `int()` on the first request that needs a
+code. Nobody is watching at that moment. Better to fail while starting, when somebody is.
+
+Describe the settings as a model. Create `src/my_app/settings.py`:
 
 ```python
 from __future__ import annotations
@@ -23,106 +121,47 @@ from pydantic import BaseModel, Field
 class Settings(BaseModel):
     model_config = {"extra": "ignore"}
 
-    API_TOKEN: str = Field(min_length=8)
+    CODE_LENGTH: int = Field(default=6, ge=3, le=32)
     PAGE_SIZE: int = Field(default=20, ge=1, le=100)
 ```
 
-`extra: ignore` matters. The environment holds hundreds of variables that are nothing to do with
-this application, and without it every one of them is an error.
+`extra: ignore` is not optional. Your environment has `PATH`, `HOME` and a hundred others, and
+without that line every one of them is an unexpected field.
 
-## Supply The Values
-
-Create `.env` beside `pyproject.toml`:
-
-```bash
-API_TOKEN=tutorial-secret-token
-PAGE_SIZE=20
-```
-
-Add it to `.gitignore`. A `.env` is for local development; production supplies the same names as
-real environment variables, and an environment variable wins over the file.
-
-## Load It Once
-
-In `src/my_app/app_module.py`:
+Hand the model to the config module:
 
 ```python
-from bustan import ConfigModule, Module
-
-from .app_controller import AppController
-from .app_service import AppService
-from .settings import Settings
-from .tasks.tasks_module import TasksModule
-
-
-@Module(
-    imports=[
-        ConfigModule.for_root(env_file=".env", validation_schema=Settings),
-        TasksModule,
-    ],
-    controllers=[AppController],
-    providers=[AppService],
-)
-class AppModule:
-    pass
+ConfigModule.for_root(env_file=".env", validation_schema=Settings)
 ```
 
-`ConfigModule.for_root` is global by default, so every module can inject `ConfigService` without
-importing it. That is deliberate and it is the exception, not the pattern. Configuration is
-genuinely needed everywhere; almost nothing else is, and reaching for `is_global` to solve an import
-problem dissolves the boundaries the last tutorial taught. [Layering](../explanation/layering.md)
-explains why direction matters.
-
-## Read It Where It Is Used
-
-Change `TasksService` in `src/my_app/tasks/tasks_service.py`:
-
-```python
-from bustan import ConfigService, Injectable
-
-
-@Injectable()
-class TasksService:
-    def __init__(self, config: ConfigService) -> None:
-        self._page_size = int(config.get("PAGE_SIZE", 20))
-        self._tasks: list[Task] = []
-        self._next_id = 1
-
-    def list_tasks(self) -> list[Task]:
-        return list(self._tasks)[: self._page_size]
-```
-
-`get` takes a default and `get_or_throw` refuses when a value is absent. Use `get_or_throw` for
-anything the application genuinely cannot run without, so the failure names the setting instead of
-surfacing as a `None` three layers away.
-
-## Cause The Refusal On Purpose
-
-Shorten the token in `.env` so it breaks the schema:
+Now break it on purpose. In `.env`:
 
 ```bash
-API_TOKEN=short
+CODE_LENGTH=banana
 ```
 
 ```bash
 uv run dev
 ```
 
-The application does not start:
-
 ```text
 pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
-API_TOKEN
-  String should have at least 8 characters
+CODE_LENGTH
+  Input should be a valid integer, unable to parse string as an integer
 ```
 
-That is the whole point of a schema. The application refuses to run with a setting it cannot use,
-and it says which one and why, before a single request arrives. Put the real value back.
+No server starts. The message names the setting and what was wrong with it, and it arrives before a
+single request. Try `CODE_LENGTH=1` too, which is a valid integer and still refused, because the
+model says three is the minimum.
 
-Meeting this message for the first time as a deliberate exercise costs a minute. Meeting it for the
-first time at three in the morning costs rather more.
+Causing this once, deliberately, is worth a minute. The alternative is meeting it for the first time
+during a deployment, when it looks like a mystery rather than a message.
 
-## Check What The Application Actually Resolved
+Put a real value back.
+
+## Seeing What The Application Actually Resolved
+
+There is a command for the question "is it even reading my `.env`":
 
 ```bash
 uv run bustan config my_app.app_module:AppModule
@@ -130,29 +169,37 @@ uv run bustan config my_app.app_module:AppModule
 
 ```text
 config (2)
-key         value
-----------  ----------
-API_TOKEN   [redacted]
-PAGE_SIZE   20
+key           value
+------------  -------
+CODE_LENGTH   6
+PAGE_SIZE     20
 ```
 
-`API_TOKEN` reads as a credential, so it is withheld rather than printed. That is the command
-working, not failing. It prints the values as the application sees them, after the file and the
-environment have been merged. It is the fastest way to answer "is it reading my `.env` at all", and it is worth running
-before you write code that depends on a value. Two limits on what it prints are in
-[the CLI reference](../reference/cli.md#bustan-config).
+It compiles the application and prints what the configuration module resolved, after the file and the
+environment have been merged. Run it before writing code that depends on a value, not after.
 
-## Prove The Environment Wins
+One thing that surprises people: a key whose name reads like a credential is printed as `[redacted]`
+rather than its value. You will see that in the next tutorial when you add a token. It is the command
+working, not failing.
+
+## Proving The Environment Wins
 
 ```bash
-PAGE_SIZE=1 uv run bustan config my_app.app_module:AppModule
+CODE_LENGTH=10 uv run bustan config my_app.app_module:AppModule
 ```
 
-`PAGE_SIZE` prints as `1`, not the `20` in the file. That is the mechanism a deployment uses: the same
-image, a different environment, no rebuild. Nothing in
-[Deploy An Application](../how-to/deploy.md) works any other way.
+```text
+CODE_LENGTH   10
+```
 
-## Next
+Ten, not the six in the file. That single behaviour is what lets one built artifact run in three
+environments: the image is identical, the environment differs, nothing is rebuilt. Everything in
+[Deploy An Application](../how-to/deploy.md) assumes it.
 
-Tasks still live in a list that empties on restart. Next:
-[A Datastore And A Readiness Probe](a-datastore-and-a-readiness-probe.md).
+## Where This Leaves You
+
+Settings are outside the code, validated once, and visible from a command line. The service reads
+them without knowing where they came from.
+
+The links themselves are still in a dictionary that empties when you restart, which is the next
+thing to fix: [Links That Survive A Restart](a-datastore-and-a-readiness-probe.md).

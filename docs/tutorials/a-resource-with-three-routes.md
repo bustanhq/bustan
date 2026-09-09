@@ -1,206 +1,214 @@
-# A Resource With Three Routes
+# Shorten Your First Link
 
-**Where you are.** You finished [Your First App](first-app.md), and `curl http://127.0.0.1:3000/`
-answers `{"message":"Hello from My App"}`.
+You finished [Your First App](first-app.md), so you have a project that answers one route with a
+greeting. In this tutorial you turn it into something you would actually use: a link shortener.
 
-By the end of this you will have a `tasks` resource that lists, reads and creates, answering `200`,
-`404` and `201` as each case deserves, and refusing a malformed body with a problem document that
-names the field.
-
-The finished code for the whole series lives in
-[`examples/tutorial_app`](../../examples/tutorial_app/). It runs in CI, so where it and this page
-disagree, it is right. Its package is `tutorial_app` and yours is `my_app`; that is the only
-difference.
-
-## Add The Dependency Validation Needs
-
-Automatic validation is built on Pydantic, which the `starlette` extra does not bring:
+Here is what it will do by the end. You send it a long URL:
 
 ```bash
-uv add pydantic
+curl -X POST http://127.0.0.1:3000/links/ \
+  -H 'content-type: application/json' \
+  -d '{"url": "https://docs.python.org/3/library/sqlite3.html"}'
 ```
 
-## Describe What A Task Is
+It hands you back a short code:
 
-Two shapes, and the distinction matters. `CreateTaskPayload` is what a caller sends, so it is a
-Pydantic model and gets validated. `Task` is what you store and return, so it is a plain frozen
-dataclass with no validation to do.
+```json
+{"code":"k3m9x2","url":"https://docs.python.org/3/library/sqlite3.html","visits":0}
+```
 
-Create `src/my_app/tasks/models.py`:
+And visiting that code sends you to the real page:
+
+```bash
+curl -i http://127.0.0.1:3000/k3m9x2
+```
+
+```text
+HTTP/1.1 302 Found
+location: https://docs.python.org/3/library/sqlite3.html
+```
+
+We will build it in small pieces, running it after each one. If you would rather read the finished
+code, it is in [`examples/link_shortener`](../../examples/link_shortener/), and it runs in CI, so
+where it and this page disagree it is the one to trust. Its package is `link_shortener` and yours is
+`my_app`.
+
+## Storing One Link
+
+Start with the smallest thing that could work: somewhere to put links, and a way to make a code.
+
+Create `src/my_app/links_service.py`:
 
 ```python
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from pydantic import BaseModel, Field
-
-
-class CreateTaskPayload(BaseModel):
-    title: str = Field(min_length=1, max_length=120)
-    done: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class Task:
-    id: int
-    title: str
-    done: bool
-```
-
-## Hold The Tasks
-
-For now they live in a list. [A Datastore And A Readiness Probe](a-datastore-and-a-readiness-probe.md)
-replaces this with a real store, and nothing above it changes, which is the point of keeping storage
-behind its own class.
-
-Create `src/my_app/tasks/tasks_service.py`:
-
-```python
-from __future__ import annotations
+import secrets
+import string
 
 from bustan import Injectable
 
-from .models import CreateTaskPayload, Task
+ALPHABET = string.ascii_lowercase + string.digits
 
 
 @Injectable()
-class TasksService:
+class LinksService:
     def __init__(self) -> None:
-        self._tasks: list[Task] = []
-        self._next_id = 1
+        self._links: dict[str, str] = {}
 
-    def list_tasks(self) -> list[Task]:
-        return list(self._tasks)
+    def create_link(self, url: str) -> str:
+        code = "".join(secrets.choice(ALPHABET) for _ in range(6))
+        self._links[code] = url
+        return code
 
-    def read_task(self, task_id: int) -> Task | None:
-        return next((task for task in self._tasks if task.id == task_id), None)
-
-    def create_task(self, payload: CreateTaskPayload) -> Task:
-        task = Task(id=self._next_id, title=payload.title, done=payload.done)
-        self._tasks.append(task)
-        self._next_id += 1
-        return task
+    def read_link(self, code: str) -> str | None:
+        return self._links.get(code)
 ```
 
-`read_task` returns `None` for a task that is not there. Deciding what that means over HTTP is the
-controller's job, not this one's.
+A dictionary, for now. Tutorial four swaps it for a real database and this class is the only one
+that changes, which is most of the reason it exists.
 
-## Serve The Three Routes
+`@Injectable()` is what tells the framework this class can be handed to anything that asks for it.
+You will not write `LinksService()` anywhere; you ask for one and it arrives.
 
-Create `src/my_app/tasks/tasks_controller.py`:
+## Handing Out Codes
+
+Now a route to call it. Create `src/my_app/links_controller.py`:
 
 ```python
 from __future__ import annotations
 
-from dataclasses import asdict
+from bustan import Controller, Post
 
-from bustan import Controller, Get, HttpResponse, Post
-from bustan.errors import NotFoundException
-
-from .models import CreateTaskPayload
-from .tasks_service import TasksService
+from .links_service import LinksService
 
 
-@Controller("/tasks")
-class TasksController:
-    def __init__(self, tasks: TasksService) -> None:
-        self._tasks = tasks
-
-    @Get("/")
-    def list_tasks(self) -> list[dict[str, object]]:
-        return [asdict(task) for task in self._tasks.list_tasks()]
-
-    @Get("/{task_id}")
-    def read_task(self, task_id: int) -> dict[str, object]:
-        task = self._tasks.read_task(task_id)
-        if task is None:
-            raise NotFoundException(f"no task with id {task_id}")
-        return asdict(task)
+@Controller("/links")
+class LinksController:
+    def __init__(self, links: LinksService) -> None:
+        self._links = links
 
     @Post("/")
-    def create_task(self, payload: CreateTaskPayload) -> HttpResponse:
-        task = self._tasks.create_task(payload)
-        return HttpResponse.json(
-            asdict(task), status_code=201, headers={"location": f"/tasks/{task.id}"}
-        )
+    def create_link(self, payload: dict) -> dict[str, str]:
+        code = self._links.create_link(payload["url"])
+        return {"code": code}
 ```
 
-Three things there are worth stopping on.
+That constructor is the injection. You declared `links: LinksService`, and because `LinksService` is
+`@Injectable()` the framework builds one and passes it in. You never wire it up by hand.
 
-**`task_id: int` is bound from the path and converted.** The route declares `{task_id}` and the
-parameter is annotated `int`, so a request to `/tasks/abc` is refused before your code runs. The full
-set of binding rules is in [the routing reference](../reference/routing.md).
-
-**Raising is how you answer 404.** Returning `None` would answer `204`, which tells a caller there is
-nothing to send rather than that there is no such task. That distinction is easy to get wrong and
-easy to miss, because both look fine until somebody writes a client.
-
-**Returning a response object is how you answer 201.** Returning the dataclass would answer `200`.
-A created resource deserves `201` and a `Location` header pointing at it.
-
-## Make It A Module
-
-A feature is a module. Create `src/my_app/tasks/tasks_module.py`:
-
-```python
-from __future__ import annotations
-
-from bustan import Module
-
-from .tasks_controller import TasksController
-from .tasks_service import TasksService
-
-
-@Module(controllers=[TasksController], providers=[TasksService], exports=[TasksService])
-class TasksModule:
-    pass
-```
-
-`exports` is the module's public surface. Another module that imports `TasksModule` can inject
-`TasksService`; nothing else inside it is reachable. That is what makes a module a boundary rather
-than a folder.
-
-Add an empty `src/my_app/tasks/__init__.py`, then import the module in `src/my_app/app_module.py`:
+Register the controller and the service in `src/my_app/app_module.py`:
 
 ```python
 from bustan import Module
 
-from .app_controller import AppController
-from .app_service import AppService
-from .tasks.tasks_module import TasksModule
+from .links_controller import LinksController
+from .links_service import LinksService
 
 
-@Module(imports=[TasksModule], controllers=[AppController], providers=[AppService])
+@Module(controllers=[LinksController], providers=[LinksService])
 class AppModule:
     pass
 ```
 
-## Drive It
+Run it:
 
 ```bash
 uv run dev
 ```
 
-Create one:
+```bash
+curl -X POST http://127.0.0.1:3000/links/ \
+  -H 'content-type: application/json' \
+  -d '{"url": "https://example.com"}'
+```
+
+```json
+{"code":"7fq2ba"}
+```
+
+You have a shortener that shortens. It does not yet do the useful half.
+
+## Making The Code Go Somewhere
+
+A short link nobody can follow is just a string. Add a second controller, at the root this time, so
+the code sits directly after the domain.
+
+Create `src/my_app/redirect_controller.py`:
+
+```python
+from __future__ import annotations
+
+from bustan import Controller, Get, HttpResponse
+
+from .links_service import LinksService
+
+
+@Controller("/")
+class RedirectController:
+    def __init__(self, links: LinksService) -> None:
+        self._links = links
+
+    @Get("/{code}")
+    def follow(self, code: str) -> HttpResponse:
+        url = self._links.read_link(code)
+        return HttpResponse(status_code=302, headers={"location": url})
+```
+
+Two things to notice. `{code}` in the path and `code: str` on the method line up by name, and that
+is how the value gets in. And this controller asks for the same `LinksService` the other one does,
+and gets the same instance, which is why a code created by one is visible to the other.
+
+Add it to the module's `controllers` list, restart, and try it:
 
 ```bash
-curl -i -X POST http://127.0.0.1:3000/tasks/ \
-  -H 'content-type: application/json' \
-  -d '{"title": "Read the tutorial"}'
+curl -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+  -d '{"url": "https://bustan.dev"}'
+```
+
+```json
+{"code":"m1p8kd"}
+```
+
+```bash
+curl -i http://127.0.0.1:3000/m1p8kd
 ```
 
 ```text
-HTTP/1.1 201 Created
-location: /tasks/1
-
-{"id":1,"title":"Read the tutorial","done":false}
+HTTP/1.1 302 Found
+location: https://bustan.dev
 ```
 
-Read one that is not there:
+Paste that short URL into a browser and it takes you there. That is the whole product, in about
+forty lines.
+
+## What Happens When The Code Is Wrong
+
+Try a code that was never created:
 
 ```bash
-curl -i http://127.0.0.1:3000/tasks/999
+curl -i http://127.0.0.1:3000/nope
+```
+
+You get a `500`. Look at the terminal running the server and you will see why: `read_link` returned
+`None`, and `HttpResponse` was handed `location: None`.
+
+The fix is to say what actually happened. A code nobody created is not a server error; it is a
+missing thing, and HTTP has a status for that.
+
+```python
+from bustan.errors import NotFoundException
+
+
+    @Get("/{code}")
+    def follow(self, code: str) -> HttpResponse:
+        url = self._links.read_link(code)
+        if url is None:
+            raise NotFoundException(f"no link with code {code}")
+        return HttpResponse(status_code=302, headers={"location": url})
+```
+
+```bash
+curl -i http://127.0.0.1:3000/nope
 ```
 
 ```text
@@ -208,14 +216,66 @@ HTTP/1.1 404 Not Found
 content-type: application/problem+json
 
 {"type":"https://bustan.dev/problems/not-found","title":"Not Found","status":404,
- "detail":"no task with id 999","instance":"/tasks/999","code":"not-found"}
+ "detail":"no link with code nope","instance":"/nope","code":"not-found"}
 ```
 
-Send a title that is empty:
+You raised an exception and got a structured error document. That is the framework's error contract:
+every refusal it makes comes back in this shape, so a client can handle all of them with one piece
+of code instead of guessing per endpoint. `bustan.errors` has one of these for each status you would
+reasonably answer with, and [the error reference](../reference/errors.md) lists them.
+
+One tempting alternative is worth naming so you do not reach for it. If `follow` returned `None`
+instead of raising, you would get a `204 No Content` — which tells the caller "there is nothing to
+send", not "there is no such link". Both look fine in a browser and only one of them is true.
+
+## What Happens When The URL Is Rubbish
+
+Now the other end:
 
 ```bash
-curl -i -X POST http://127.0.0.1:3000/tasks/ \
-  -H 'content-type: application/json' -d '{"title": ""}'
+curl -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+  -d '{"url": "not a url at all"}'
+```
+
+It cheerfully creates a link. Whoever clicks it finds out.
+
+The handler takes `payload: dict`, which accepts anything shaped like JSON. Describe what you
+actually want instead, and the framework checks it before your code runs.
+
+```bash
+uv add pydantic
+```
+
+Pydantic is not part of the `starlette` extra, so you install it yourself. Create
+`src/my_app/models.py`:
+
+```python
+from __future__ import annotations
+
+from pydantic import BaseModel, HttpUrl
+
+
+class CreateLinkPayload(BaseModel):
+    url: HttpUrl
+```
+
+Then annotate the handler with it:
+
+```python
+from .models import CreateLinkPayload
+
+
+    @Post("/")
+    def create_link(self, payload: CreateLinkPayload) -> dict[str, str]:
+        code = self._links.create_link(str(payload.url))
+        return {"code": code}
+```
+
+That is the whole change. A parameter annotated with a Pydantic model is validated on the way in:
+
+```bash
+curl -i -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+  -d '{"url": "not a url at all"}'
 ```
 
 ```text
@@ -223,56 +283,130 @@ HTTP/1.1 400 Bad Request
 content-type: application/problem+json
 ```
 
-The body carries an `errors` array, and each entry names the `field` that failed and the `source` it
-came from. That shape is the same for every refusal the framework makes, which is what lets a client
-handle all of them once. The catalogue of what each error means is
-[the error reference](../reference/errors.md).
+The body carries an `errors` array, and each entry names the field and where it came from. Same
+shape as the `404`. Your handler never ran.
 
-## Test The Three Promises
+## Answering 201 Instead Of 200
 
-Add to `tests/my_app/test_tasks.py`:
+One detail left. Creating something should answer `201 Created` and say where the new thing lives,
+and right now you answer `200`.
+
+Returning a plain dictionary means "here is the body, use the default status". To control the
+status, return a response instead:
+
+```python
+from bustan import HttpResponse
+
+
+    @Post("/")
+    def create_link(self, payload: CreateLinkPayload) -> HttpResponse:
+        code = self._links.create_link(str(payload.url))
+        return HttpResponse.json(
+            {"code": code}, status_code=201, headers={"location": f"/links/{code}"}
+        )
+```
+
+```bash
+curl -i -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+  -d '{"url": "https://example.com"}'
+```
+
+```text
+HTTP/1.1 201 Created
+location: /links/6bd0zq
+```
+
+## Tidying Up Into A Module
+
+You now have two controllers and a service all declared in the root module. That works, and it stops
+working the moment the application grows. Group them.
+
+Move the three files into `src/my_app/links/` with an empty `__init__.py`, fix the imports, and add
+`src/my_app/links/links_module.py`:
+
+```python
+from __future__ import annotations
+
+from bustan import Module
+
+from .links_controller import LinksController
+from .links_service import LinksService
+from .redirect_controller import RedirectController
+
+
+@Module(
+    controllers=[LinksController, RedirectController],
+    providers=[LinksService],
+    exports=[LinksService],
+)
+class LinksModule:
+    pass
+```
+
+Then the root module just imports it:
+
+```python
+@Module(imports=[LinksModule])
+class AppModule:
+    pass
+```
+
+`exports` is the part worth understanding. A module's providers are private to it by default. Listing
+`LinksService` in `exports` says that anything importing `LinksModule` may inject it; everything else
+inside stays unreachable. That is what makes a module a boundary rather than a folder, and you will
+feel it in tutorial four when a module that forgets an import refuses to start.
+
+Restart and check both routes still work. Nothing about the behaviour changed; you moved code.
+
+## Writing The Tests
+
+Three things this tutorial promised, three tests. Create `tests/my_app/test_links.py`:
 
 ```python
 from bustan.testing import AsgiTestClient
 from my_app import build_application
 
 
-def test_create_returns_201() -> None:
+def test_shortening_a_url_returns_201() -> None:
     with AsgiTestClient(build_application()) as client:
-        response = client.post("/tasks/", json={"title": "Write the tutorial"})
+        response = client.post("/links/", json={"url": "https://example.com/a"})
 
     assert response.status_code == 201
-    assert response.headers["location"] == f"/tasks/{response.json()['id']}"
 
 
-def test_missing_task_returns_404() -> None:
+def test_following_a_code_redirects_to_the_target() -> None:
     with AsgiTestClient(build_application()) as client:
-        response = client.get("/tasks/999")
+        code = client.post("/links/", json={"url": "https://example.com/b"}).json()["code"]
+        response = client.get(f"/{code}", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://example.com/b"
+
+
+def test_an_unknown_code_returns_404() -> None:
+    with AsgiTestClient(build_application()) as client:
+        response = client.get("/nothing-here", follow_redirects=False)
 
     assert response.status_code == 404
-    assert response.json()["code"] == "not-found"
-
-
-def test_invalid_payload_returns_problem_details() -> None:
-    with AsgiTestClient(build_application()) as client:
-        response = client.post("/tasks/", json={"title": ""})
-
-    assert response.status_code == 400
-    assert response.json()["errors"][0]["source"] == "body"
 ```
+
+`AsgiTestClient` ships with the framework, so there is no HTTP client to install and no server to
+start. `follow_redirects=False` matters in the second test: without it the client would chase the
+redirect to example.com and you would be asserting on their response, not yours.
 
 ```bash
 uv run pytest
 ```
 
-Three tests, three sentences. Each one is a promise this page made, which is the only kind worth
-writing first.
+Three tests, and each one is a sentence from the top of this page.
 
-Notice there is no fixture yet. Building the application inline three times is repetitive but not
-yet wrong; [A Datastore And A Readiness Probe](a-datastore-and-a-readiness-probe.md) introduces a
-`conftest.py` at the point shared setup becomes real.
+## Where This Leaves You
 
-## Next
+A working shortener with correct statuses, validated input and a real error contract. Two things are
+still wrong with it, and you can probably feel both.
 
-The service holds a hard-coded page of tasks and nothing is configurable. Next:
-[Configuration End To End](configuration-end-to-end.md).
+Restart the server and every link you made is gone, because they live in a dictionary. And the code
+length, which decides how many links you can have before collisions, is a `6` buried in a method.
+
+The next tutorial deals with the second one, and the one after that with the first:
+[Settings That Live Outside The Code](configuration-end-to-end.md).

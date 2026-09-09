@@ -8,7 +8,7 @@ from bustan import ConfigService, Injectable
 
 
 @Injectable()
-class TaskStore:
+class LinkStore:
     """Owns the database handle for the life of the application.
 
     Opened in ``on_application_bootstrap`` rather than in ``__init__`` because a
@@ -26,8 +26,8 @@ class TaskStore:
         # while the event loop that opened this connection runs in another.
         self._connection = sqlite3.connect(self._path, check_same_thread=False)
         self._connection.execute(
-            "CREATE TABLE IF NOT EXISTS tasks ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, done INTEGER NOT NULL)"
+            "CREATE TABLE IF NOT EXISTS links ("
+            "code TEXT PRIMARY KEY, url TEXT NOT NULL, visits INTEGER NOT NULL DEFAULT 0)"
         )
         self._connection.commit()
 
@@ -40,7 +40,7 @@ class TaskStore:
     def connection(self) -> sqlite3.Connection:
         """The open handle, or a refusal naming why there is none."""
         if self._connection is None:
-            raise RuntimeError("the task store is not open; the application has not started")
+            raise RuntimeError("the link store is not open; the application has not started")
         return self._connection
 
     def is_answering(self) -> bool:

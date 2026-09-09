@@ -1,28 +1,23 @@
-# A Datastore And A Readiness Probe
+# Links That Survive A Restart
 
-**Where you are.** You finished [Configuration End To End](configuration-end-to-end.md), and
-`bustan config` prints the values your application resolved.
+Make a link, restart the server, and it is gone. Your links live in a dictionary on an object that
+dies with the process.
 
-By the end of this, tasks will survive a restart, the connection will be opened once and disposed
-once, and `/health/ready` will tell the truth about whether the application can serve.
+This tutorial puts them in a database. Along the way you will meet the two hooks that let a provider
+own something with a lifetime, and you will teach the application to admit when it cannot serve.
 
-## The Store, And Where Its Lifetime Belongs
+## Where A Connection Belongs
 
-A connection is not built in a constructor. A constructor cannot await, and a failure in one is
-harder to attribute than a failure in a named startup step. The framework calls hooks on your
-providers for exactly this.
+The obvious place to open a database is the constructor. It is the wrong place, for two reasons you
+will hit sooner than you expect.
 
-Add `DATABASE_PATH` to `settings.py` and to `.env`:
+A constructor cannot `await`, and real database drivers are asynchronous. And a constructor runs
+whenever the framework happens to build the object, which is not a moment you control or can name in
+a log. "Failed while constructing LinksRepository" is a worse thing to read at 3am than "failed
+during startup".
 
-```python
-    DATABASE_PATH: str = Field(min_length=1)
-```
-
-```bash
-DATABASE_PATH=./tasks.db
-```
-
-Create `src/my_app/task_store.py`:
+Providers can implement lifecycle hooks instead. The framework calls them at named points, in order,
+and awaits them if they return a coroutine. Create `src/my_app/link_store.py`:
 
 ```python
 from __future__ import annotations
@@ -33,7 +28,7 @@ from bustan import ConfigService, Injectable
 
 
 @Injectable()
-class TaskStore:
+class LinkStore:
     def __init__(self, config: ConfigService) -> None:
         self._path = str(config.get_or_throw("DATABASE_PATH"))
         self._connection: sqlite3.Connection | None = None
@@ -41,8 +36,8 @@ class TaskStore:
     async def on_application_bootstrap(self) -> None:
         self._connection = sqlite3.connect(self._path, check_same_thread=False)
         self._connection.execute(
-            "CREATE TABLE IF NOT EXISTS tasks ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, done INTEGER NOT NULL)"
+            "CREATE TABLE IF NOT EXISTS links ("
+            "code TEXT PRIMARY KEY, url TEXT NOT NULL, visits INTEGER NOT NULL DEFAULT 0)"
         )
         self._connection.commit()
 
@@ -54,9 +49,186 @@ class TaskStore:
     @property
     def connection(self) -> sqlite3.Connection:
         if self._connection is None:
-            raise RuntimeError("the task store is not open; the application has not started")
+            raise RuntimeError("the link store is not open; the application has not started")
         return self._connection
+```
 
+The constructor still runs, and all it does is read a setting. The work happens in
+`on_application_bootstrap`, which runs once while the application starts, and is undone in
+`on_module_destroy`, which runs once while it stops. Neither is a place you call yourself.
+
+`get_or_throw` rather than `get` this time. A missing code length has a sensible default; a missing
+database path does not, and you would rather be told which setting is absent than watch it connect
+to the string "None".
+
+Add `DATABASE_PATH` to `Settings` and to `.env`:
+
+```python
+    DATABASE_PATH: str = Field(min_length=1)
+```
+
+```bash
+DATABASE_PATH=./links.db
+```
+
+### Two Details That Will Bite You
+
+`check_same_thread=False` is required rather than tidy. Your handlers are synchronous `def` methods,
+so the framework runs them in a worker thread while the event loop that opened this connection runs
+in another. Without that flag sqlite3 refuses to be used across the two, and the error does not
+mention threads in a way that helps.
+
+The two hooks are `async def` and nothing in them awaits. That is fine and it is on purpose. The
+framework runs your application on an event loop and awaits any hook that hands back a coroutine, so
+declaring them async costs nothing today and means swapping sqlite3 for `asyncpg` later changes the
+body of the method and not its signature. The full list of hooks and the order they run in is in
+[the lifecycle reference](../reference/lifecycle.md).
+
+## A Module Of Its Own, And A Refusal If You Skip It
+
+`LinkStore` is used by the links feature and, shortly, by the health check. Two consumers means it
+gets its own module. Create `src/my_app/store_module.py`:
+
+```python
+from bustan import Module
+
+from .link_store import LinkStore
+
+
+@Module(providers=[LinkStore], exports=[LinkStore])
+class StoreModule:
+    pass
+```
+
+Before you import it anywhere, do this deliberately: declare `LinkStore` in the **root** module's
+`providers` list instead, and start the application.
+
+```text
+LinksRepository.__init__ parameter 'store' needs LinkStore, which LinksModule cannot see.
+Declare it in that module, import a module that exports it, or give the parameter a default
+```
+
+It will not start. This is the `exports` list from tutorial two doing its job: a provider declared in
+the root module is not visible inside a feature module, because modules are boundaries rather than
+folders. The message names the class, the parameter, the module that cannot see it, and the three
+ways out.
+
+Notice when this happened. Not on a request, not under load — while the application was being built,
+before it bound a port. Bustan resolves the whole graph at startup precisely so that wiring mistakes
+are a refusal you read once rather than a `500` somebody else finds.
+
+Take the fix the message offers: `imports=[StoreModule]` on `LinksModule`.
+
+## Reading And Writing Through It
+
+Split the storage out of `LinksService` into a repository. Create
+`src/my_app/links/links_repository.py`:
+
+```python
+from __future__ import annotations
+
+import sqlite3
+
+from bustan import Injectable
+
+from ..link_store import LinkStore
+from .models import Link
+
+
+@Injectable()
+class LinksRepository:
+    def __init__(self, store: LinkStore) -> None:
+        self._store = store
+
+    def read_link(self, code: str) -> Link | None:
+        row = self._store.connection.execute(
+            "SELECT code, url, visits FROM links WHERE code = ?", (code,)
+        ).fetchone()
+        return None if row is None else Link(code=row[0], url=row[1], visits=row[2])
+
+    def create_link(self, code: str, url: str) -> Link | None:
+        connection = self._store.connection
+        try:
+            connection.execute(
+                "INSERT INTO links (code, url, visits) VALUES (?, ?, 0)", (code, url)
+            )
+        except sqlite3.IntegrityError:
+            return None
+        connection.commit()
+        return Link(code=code, url=url, visits=0)
+
+    def count_visit(self, code: str) -> None:
+        connection = self._store.connection
+        connection.execute("UPDATE links SET visits = visits + 1 WHERE code = ?", (code,))
+        connection.commit()
+```
+
+`create_link` returning `None` on a duplicate is the database telling you the code is taken.
+`PRIMARY KEY` makes that a constraint the database enforces rather than a check you race against.
+
+Add a `Link` dataclass to `models.py`:
+
+```python
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class Link:
+    code: str
+    url: str
+    visits: int
+```
+
+Then `LinksService` delegates instead of holding a dictionary, and gains retry-on-collision:
+
+```python
+    def create_link(self, url: str) -> Link | None:
+        for _ in range(5):
+            code = "".join(secrets.choice(ALPHABET) for _ in range(self._code_length))
+            link = self._repository.create_link(code, url)
+            if link is not None:
+                return link
+        return None
+
+    def follow_link(self, code: str) -> Link | None:
+        link = self._repository.read_link(code)
+        if link is not None:
+            self._repository.count_visit(code)
+        return link
+```
+
+Neither controller changes. That is what the service boundary bought you two tutorials ago.
+
+Declare the repository in `LinksModule`'s providers, but do **not** export it. Nothing outside the
+links feature should be reaching a database through it.
+
+## Try It
+
+```bash
+uv run dev
+curl -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+  -d '{"url": "https://bustan.dev"}'
+```
+
+Stop the server with Ctrl-C. Start it again. Follow the code you were given.
+
+It still works. There is a `links.db` file next to your `pyproject.toml` now, and you can open it
+with `sqlite3 links.db "select * from links"` if you want to see the rows.
+
+sqlite3 is here because it needs no service and no install, not because it is what you would deploy.
+The shape is the point: a handle opened once, disposed once, and asked whether it still works. Swap
+in a connection pool and the hooks, the readiness check below and everything above this class are
+unchanged.
+
+## Telling The Truth About Whether You Can Serve
+
+Here is a failure mode worth caring about. Your application is running, the port is open, and the
+database has gone away. Every request returns a `500`, and any load balancer in front of you keeps
+sending traffic, because as far as it can tell the process is fine.
+
+That is what readiness is for. Add a way to ask the store whether it still works:
+
+```python
     def is_answering(self) -> bool:
         if self._connection is None:
             return False
@@ -67,162 +239,32 @@ class TaskStore:
         return True
 ```
 
-`sqlite3` because it needs no installation and no service, and because the shape is what matters: a
-handle opened once, disposed once, and asked whether it still works. A real deployment swaps it for
-a pool such as `asyncpg`; the hooks, the readiness check and everything above this class are
-unchanged.
-
-`check_same_thread=False` is required rather than convenient. A synchronous handler runs in a worker
-thread while the event loop that opened the connection runs in another, and sqlite3 refuses that by
-default.
-
-### A Word On `async def`
-
-Those two hooks are `async def` and nothing in them awaits. That is fine, and it is the first place
-the question comes up, so: the framework runs your application on an event loop, and awaits any hook
-that returns a coroutine. Declaring them `async` costs nothing and means you can await a real pool
-later without changing the signature. The full ordering of hooks is in
-[the lifecycle reference](../reference/lifecycle.md).
-
-## Give The Store Its Own Module
-
-The last two tutorials put a provider in the module that used it. This one is used by two, so it
-gets a module of its own.
-
-Create `src/my_app/store_module.py`:
-
-```python
-from bustan import Module
-
-from .task_store import TaskStore
-
-
-@Module(providers=[TaskStore], exports=[TaskStore])
-class StoreModule:
-    pass
-```
-
-If you skip this and declare `TaskStore` in the root module instead, the application refuses to
-start:
-
-```text
-TasksRepository.__init__ parameter 'store' needs TaskStore, which TasksModule cannot see.
-Declare it in that module, import a module that exports it, or give the parameter a default
-```
-
-That is worth causing once. A provider in the root module is not visible to a feature module, and
-the refusal says so and names the three ways out. Modules are boundaries, and the framework enforces
-it while the application is built rather than on the request that would have failed.
-
-## Read And Write Through It
-
-Create `src/my_app/tasks/tasks_repository.py`:
-
-```python
-from __future__ import annotations
-
-from bustan import Injectable
-
-from ..task_store import TaskStore
-from .models import Task
-
-
-@Injectable()
-class TasksRepository:
-    def __init__(self, store: TaskStore) -> None:
-        self._store = store
-
-    def list_tasks(self, limit: int) -> list[Task]:
-        rows = self._store.connection.execute(
-            "SELECT id, title, done FROM tasks ORDER BY id LIMIT ?", (limit,)
-        ).fetchall()
-        return [Task(id=row[0], title=row[1], done=bool(row[2])) for row in rows]
-
-    def read_task(self, task_id: int) -> Task | None:
-        row = self._store.connection.execute(
-            "SELECT id, title, done FROM tasks WHERE id = ?", (task_id,)
-        ).fetchone()
-        return None if row is None else Task(id=row[0], title=row[1], done=bool(row[2]))
-
-    def create_task(self, title: str, done: bool) -> Task:
-        connection = self._store.connection
-        cursor = connection.execute(
-            "INSERT INTO tasks (title, done) VALUES (?, ?)", (title, int(done))
-        )
-        connection.commit()
-        return Task(id=int(cursor.lastrowid or 0), title=title, done=done)
-```
-
-Then `TasksService` delegates instead of holding a list:
-
-```python
-@Injectable()
-class TasksService:
-    def __init__(self, repository: TasksRepository, config: ConfigService) -> None:
-        self._repository = repository
-        self._page_size = int(config.get("PAGE_SIZE", 20))
-
-    def list_tasks(self) -> list[Task]:
-        return self._repository.list_tasks(self._page_size)
-
-    def read_task(self, task_id: int) -> Task | None:
-        return self._repository.read_task(task_id)
-
-    def create_task(self, payload: CreateTaskPayload) -> Task:
-        return self._repository.create_task(payload.title, payload.done)
-```
-
-The controller does not change at all. That is what the service boundary bought.
-
-Update `TasksModule` to import the store and declare the repository:
-
-```python
-@Module(
-    imports=[StoreModule],
-    controllers=[TasksController],
-    providers=[TasksService, TasksRepository],
-    exports=[TasksService],
-)
-class TasksModule:
-    pass
-```
-
-`TasksRepository` is not exported. It is this module's business, and nothing outside should reach a
-database through it.
-
-## Make Readiness Tell The Truth
-
-An application that is running but cannot reach its store should not be sent traffic. That is what
-readiness is for, and it is a different question from liveness, which asks only whether the process
-is worth keeping alive. [The two probes](../how-to/observe-an-application.md#the-two-probes-answer-different-questions)
-explains why conflating them causes restart loops.
-
-Create `src/my_app/store_indicator.py`:
+Then report it. Create `src/my_app/store_indicator.py`:
 
 ```python
 from __future__ import annotations
 
 from bustan import HealthIndicatorResult, HealthService, Injectable
 
-from .task_store import TaskStore
+from .link_store import LinkStore
 
 
 @Injectable()
-class TaskStoreIndicator:
-    name = "task-store"
+class LinkStoreIndicator:
+    name = "link-store"
 
-    def __init__(self, store: TaskStore) -> None:
+    def __init__(self, store: LinkStore) -> None:
         self._store = store
 
     async def check(self) -> HealthIndicatorResult:
         if self._store.is_answering():
             return HealthIndicatorResult.up()
-        return HealthIndicatorResult.down("the task store is not answering")
+        return HealthIndicatorResult.down("the link store is not answering")
 
 
 @Injectable()
 class HealthWiring:
-    def __init__(self, health: HealthService, indicator: TaskStoreIndicator) -> None:
+    def __init__(self, health: HealthService, indicator: LinkStoreIndicator) -> None:
         self._health = health
         self._indicator = indicator
 
@@ -230,44 +272,29 @@ class HealthWiring:
         self._health.register_readiness(self._indicator)
 ```
 
-The `detail` crosses a trust boundary: anything that can reach the probe reads it. Say what is wrong
-in your own words, and never put a path, a driver message or a credential in there.
+`on_module_init` runs earlier than `on_application_bootstrap`, before anything can report the
+application as started. Registering there means the indicator is already being consulted the first
+time readiness could possibly be true.
 
-Import the health module and declare both providers in `app_module.py`:
+That `detail` string goes to anyone who can reach the probe, which in most deployments is anyone
+inside the network. Say what is wrong in your own words. Never put the path, the driver's exception
+or a connection string in there.
+
+Import the health module and declare both providers in the root module:
 
 ```python
-from bustan import ConfigModule, HealthModule, Module
-
-from .store_indicator import HealthWiring, TaskStoreIndicator
-from .store_module import StoreModule
-
-
 @Module(
     imports=[
         ConfigModule.for_root(env_file=".env", validation_schema=Settings),
         HealthModule.for_root(),
         StoreModule,
-        TasksModule,
+        LinksModule,
     ],
-    controllers=[AppController],
-    providers=[AppService, TaskStoreIndicator, HealthWiring],
+    providers=[LinkStoreIndicator, HealthWiring],
 )
 class AppModule:
     pass
 ```
-
-Registering from `on_module_init` matters. That stage runs before anything can report the
-application started, so the indicator is already being consulted the first time readiness could be
-true.
-
-## Drive It
-
-```bash
-uv run dev
-curl -X POST http://127.0.0.1:3000/tasks/ -H 'content-type: application/json' -d '{"title":"Persist me"}'
-```
-
-Stop it, start it again, and read the list. The task is still there.
 
 ```bash
 curl http://127.0.0.1:3000/health/ready
@@ -275,15 +302,19 @@ curl http://127.0.0.1:3000/health/ready
 
 ```json
 {"status":"up","checks":{"lifecycle":{"status":"up","detail":null},
- "task-store":{"status":"up","detail":null}}}
+ "link-store":{"status":"up","detail":null}}}
 ```
+
+There is a second probe at `/health/live`, and the difference matters. Liveness asks whether the
+process is worth keeping alive; readiness asks whether it should be sent traffic. Wire a database
+check to liveness and a database blip restarts your application, which does not help and usually
+makes it worse. [The two probes](../how-to/observe-an-application.md#the-two-probes-answer-different-questions)
+goes into it.
 
 ## A Fixture, Now That There Is Something To Share
 
-Three tests each building an application inline was repetition. Four tests that also need a store
-open is shared setup, so it earns a `conftest.py`.
-
-Create `tests/conftest.py`:
+Your tests each build an application inline. With a store to open that repetition is no longer just
+noise, so give it a home. Create `tests/conftest.py`:
 
 ```python
 from __future__ import annotations
@@ -301,19 +332,26 @@ def client() -> Iterator[AsgiTestClient]:
         yield running_client
 ```
 
-Every test now takes `client` and starts from an application that has run its bootstrap hooks and
-will run its teardown ones:
+Yielding inside the `with` block is the part that matters: each test gets an application that has run
+its bootstrap hooks, and the teardown hooks run when the test finishes, however it finishes.
+
+Every test now takes `client` and drops four lines:
 
 ```python
 def test_readiness_reports_the_store(client: AsgiTestClient) -> None:
-    checks = client.get("/health/ready").json()["checks"]
-    assert checks["task-store"]["status"] == "up"
+    assert client.get("/health/ready").json()["checks"]["link-store"]["status"] == "up"
 ```
 
-Note what is not here: no async test function and no async plugin. `AsgiTestClient` is synchronous
-and drives the application on a loop of its own, so almost nothing in a suite needs to be async.
-More patterns are in [Test An Application](../how-to/test-an-application.md).
+Point `DATABASE_PATH` at `:memory:` while testing so runs do not accumulate a file.
 
-## Next
+Notice there is no `async def` test and no async plugin. `AsgiTestClient` is synchronous and drives
+the application on its own loop, so a suite almost never needs to be asynchronous. More patterns are
+in [Test An Application](../how-to/test-an-application.md).
 
-Anyone can create a task. Next: [Before The Handler Runs](before-the-handler-runs.md).
+## Where This Leaves You
+
+Links survive restarts, the connection is opened and closed at named points, and the application
+tells the truth about whether it can serve.
+
+Anyone on the internet can still create links on your shortener, which is the next problem:
+[Deciding Who May Create A Link](before-the-handler-runs.md).
