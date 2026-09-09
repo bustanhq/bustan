@@ -268,7 +268,10 @@ string, a credential or a dependency's exception message in one.
 - CORS names your origins, or is off.
 - Health routes are not reachable from the internet, or carry nothing sensitive.
 - Nothing you log embeds a credential inside a value.
-- Every `@Idempotent` and `@Audit` route has the behaviour written by hand.
+- Every `@Cache` route returns a body its whole audience may see, and no `@Cache` or
+  `@Idempotent` route depends on a store shared between your workers.
+- The destination your `@Audit` records reach is one you would show an auditor, and your
+  log level is at or below the log level those records are written at.
 - Your error responses have been read by someone asking what they tell an attacker.
 
 ## Where To Go Next
