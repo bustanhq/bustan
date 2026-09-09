@@ -193,4 +193,4 @@ The graph, the container and the compiled routes are built once and are not rebu
 - Every teardown stage runs to completion even when a hook fails, so one failing component cannot leak another component's resources.
 - One failed teardown hook is raised on its own. More than one is raised together as an `ExceptionGroup`, which is also a `LifecycleError`; each member names the hook that failed and keeps the original exception as its `__cause__`.
 
-If you need request-time cleanup or response shaping instead of process lifecycle behavior, use the request pipeline hooks described in [REQUEST_PIPELINE.md](REQUEST_PIPELINE.md) instead.
+If you need request-time cleanup or response shaping instead of process lifecycle behavior, use the request pipeline hooks described in [reference/request-pipeline.md](../reference/request-pipeline.md) instead.

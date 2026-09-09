@@ -276,7 +276,7 @@ def test_scaffolded_project_passes_lint(tmp_path: Path) -> None:
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _TEMPLATES_ROOT = _REPOSITORY_ROOT / "src" / "bustan" / "cli" / "templates"
-_STABILITY_GUIDE = _REPOSITORY_ROOT / "docs" / "STABILITY.md"
+_STABILITY_GUIDE = _REPOSITORY_ROOT / "docs" / "reference" / "stability.md"
 
 
 def _documented_modules(section_heading: str) -> frozenset[str]:

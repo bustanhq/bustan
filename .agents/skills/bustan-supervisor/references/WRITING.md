@@ -303,8 +303,8 @@ After, the first lines of the review:
 > recommendation, keep the command and delete only the files, was put to the maintainer
 > as the preferred option; the maintainer chose the delete arm.
 >
-> Owns amended on the issue: `docs/CLI.md`, `docs/DEPLOYMENT.md`, `SECURITY.md`. Required:
-> remove the release-gate usage line and bullet from `docs/CLI.md`, its row from the
+> Owns amended on the issue: `docs/reference/cli.md`, `docs/how-to/deploy.md`, `SECURITY.md`. Required:
+> remove the release-gate usage line and bullet from `docs/reference/cli.md`, its row from the
 > deployment guide's release-gating table and the release-gate cases from the CLI tests;
 > replace the alpha claim in `SECURITY.md` with the reconciled version statement. Leave
 > `governance ownership`, `diff` and `conformance` untouched.

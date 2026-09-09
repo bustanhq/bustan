@@ -13,7 +13,7 @@ from pathlib import Path
 
 import bustan.errors as bustan_errors
 
-TROUBLESHOOTING_PATH = Path(__file__).resolve().parents[2] / "docs" / "TROUBLESHOOTING.md"
+TROUBLESHOOTING_PATH = Path(__file__).resolve().parents[2] / "docs" / "reference" / "errors.md"
 
 # A class may be left out of the guide only by naming it here with the reason a reader
 # can never meet it, so that an omission is a decision on the record rather than a gap.
@@ -41,7 +41,7 @@ def test_every_exported_error_has_an_entry() -> None:
     )
 
     assert not missing, (
-        f"docs/TROUBLESHOOTING.md has no '## `<name>`' entry for {', '.join(missing)}. "
+        f"docs/reference/errors.md has no '## `<name>`' entry for {', '.join(missing)}. "
         "Add one keyed by the class name a reader reads out of the traceback, or list the "
         "class in UNDOCUMENTED_ERRORS with the reason it cannot be reached."
     )
@@ -52,7 +52,7 @@ def test_every_entry_names_an_exported_error() -> None:
     stale = sorted(name for name in documented if name not in bustan_errors.__all__)
 
     assert not stale, (
-        f"docs/TROUBLESHOOTING.md keeps an entry for {', '.join(stale)}, which "
+        f"docs/reference/errors.md keeps an entry for {', '.join(stale)}, which "
         "bustan.errors no longer exports. Remove the entry or restore the export."
     )
 

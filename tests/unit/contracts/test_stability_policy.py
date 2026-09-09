@@ -21,7 +21,7 @@ import bustan
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 PACKAGE_ROOT = REPOSITORY_ROOT / "src" / "bustan"
-STABILITY_GUIDE = REPOSITORY_ROOT / "docs" / "STABILITY.md"
+STABILITY_GUIDE = REPOSITORY_ROOT / "docs" / "reference" / "stability.md"
 GENERATOR_PATH = REPOSITORY_ROOT / "scripts" / "generate_api_reference.py"
 
 SUPPORTED_MODULES = ("bustan", "bustan.errors", "bustan.testing")

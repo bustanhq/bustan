@@ -243,7 +243,7 @@ boundary, and the parsed-patterns line it always prints did not contain the file
 
 ```
 ownership patterns (issue #82): ... tests/integration/core/test_request_boundary.py,
-docs/API_REFERENCE.md, uv run python scripts/generate_api_reference.py
+docs/reference/api.md, uv run python scripts/generate_api_reference.py
 ```
 
 Had the agent gone on to edit the granted file, the gate would have reported it as outside the

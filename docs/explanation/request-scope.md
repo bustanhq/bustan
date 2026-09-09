@@ -22,7 +22,7 @@ print(RequestIdentity.__init__.__annotations__["request"].__name__)
 HttpRequest
 ```
 
-`HttpRequest` is the framework's own request type and is the one to reach for: it is the same object under every adapter, so a provider written against it is not tied to the transport the application happens to serve on. A provider may take the serving transport's own request object instead - `starlette.requests.Request` under the Starlette adapter, `AsgiHttpRequest` under the raw ASGI one - and `request.native_request` reaches that object from the neutral one. Both count as request state for the rules below. The difference is what each spelling commits you to: naming a transport's request type is a statement that this application serves on that transport, and the framework holds you to it wherever the annotation is written - on a handler parameter and on a provider constructor alike - refusing any parameter that names a request type the serving adapter does not produce. [PLATFORM_INTEGRATION.md](PLATFORM_INTEGRATION.md#a-native-annotation-names-the-adapter-that-serves-it) explains how that is decided.
+`HttpRequest` is the framework's own request type and is the one to reach for: it is the same object under every adapter, so a provider written against it is not tied to the transport the application happens to serve on. A provider may take the serving transport's own request object instead - `starlette.requests.Request` under the Starlette adapter, `AsgiHttpRequest` under the raw ASGI one - and `request.native_request` reaches that object from the neutral one. Both count as request state for the rules below. The difference is what each spelling commits you to: naming a transport's request type is a statement that this application serves on that transport, and the framework holds you to it wherever the annotation is written - on a handler parameter and on a provider constructor alike - refusing any parameter that names a request type the serving adapter does not produce. [reference/adapters.md](../reference/adapters.md#a-native-annotation-names-the-adapter-that-serves-it) explains how that is decided.
 
 ## What Request Scope Gives You
 
@@ -44,7 +44,7 @@ Guards run first, before the controller and before any request-scoped provider e
 - A request a guard rejects constructs nothing. The 403 costs the constructors nothing, so an unauthenticated caller cannot make the application do a request's worth of construction work.
 - A durable provider's context key is derived after authentication too, so it may be keyed on the principal rather than only on unauthenticated client input.
 
-The full stage order for one request is in [REQUEST_PIPELINE.md](REQUEST_PIPELINE.md#execution-order).
+The full stage order for one request is in [reference/request-pipeline.md](../reference/request-pipeline.md#execution-order).
 
 ## Scope Rules
 
@@ -138,7 +138,7 @@ The lifetime a binding is registered under is not always the one written beside 
 
 All of this is decided once, from the declarations, before anything is built, rather than on the request that first happens to touch a bad edge. A graph that breaks the rules is refused at startup, and every broken edge is reported together under one `The application cannot be built. N problems were found:` header, so five mistakes are five messages rather than five deploys.
 
-The messages themselves are listed in [TROUBLESHOOTING.md](TROUBLESHOOTING.md#providerresolutionerror).
+The messages themselves are listed in [reference/errors.md](../reference/errors.md#providerresolutionerror).
 
 ## Durable Scope
 
@@ -168,7 +168,7 @@ public
 
 The hook is called with the request being served, after guards have run, so it may key on anything a guard established. It is called with `None` in one place only: at startup, where the application warms the partition belonging to itself. A provider whose key can only be derived from a request has no such partition and is built as requests arrive instead. A request a guard rejects derives no key and leaves no partition behind, so an unauthenticated caller cannot populate the partition table.
 
-Durable instances take part in every lifecycle stage, including partitions created while a request was being served. [LIFECYCLE.md](LIFECYCLE.md#durable-providers) covers startup, teardown and ordering.
+Durable instances take part in every lifecycle stage, including partitions created while a request was being served. [reference/lifecycle.md](../reference/lifecycle.md#durable-providers) covers startup, teardown and ordering.
 
 For the scope rules, `durable` is simply narrower than `singleton` and wider than `request`: a durable provider may hold singletons but not request-scoped providers, and a singleton may not hold a durable provider.
 
@@ -258,13 +258,13 @@ For example:
 - a request-scoped controller reads the same provider again in the handler
 - a route middleware reads it once more after `call_next`, to flush what the request recorded
 
-That pattern is demonstrated in [../examples/request_scope_pipeline_app/README.md](../examples/request_scope_pipeline_app/README.md).
+That pattern is demonstrated in [../examples/request_scope_pipeline_app/README.md](../../examples/request_scope_pipeline_app/README.md).
 
 A module registers several components under one global pipeline token either by binding a list in a single entry or by writing a separate entry for each component; both spellings run their components in the order they were declared, and mixing them under one token yields one flat list in that same order, with a list entry contributing its components in place. Every component of either spelling is resolved once per request, so any of them may be request-scoped.
 
 ## Reaching The Request Scope From Code
 
-Constructor injection is the normal way in, and it is enough for a request-scoped controller, guard, pipe, interceptor or middleware. Where a class must look a token up rather than declare it, inject `ModuleRef` and call its `get()`: that resolves against the request in flight and hands back the same instance everything else in the request holds. `ApplicationContext.get()` does not - it resolves as though no request were being served, and refuses request scope by design. [REQUEST_PIPELINE.md](REQUEST_PIPELINE.md#resolving-providers-inside-a-handler) has the details and the one thing `ModuleRef.get()` cannot do.
+Constructor injection is the normal way in, and it is enough for a request-scoped controller, guard, pipe, interceptor or middleware. Where a class must look a token up rather than declare it, inject `ModuleRef` and call its `get()`: that resolves against the request in flight and hands back the same instance everything else in the request holds. `ApplicationContext.get()` does not - it resolves as though no request were being served, and refuses request scope by design. [reference/request-pipeline.md](../how-to/choose-a-pipeline-hook.md#resolving-providers-inside-a-handler) has the details and the one thing `ModuleRef.get()` cannot do.
 
 ## Common Failure Mode
 

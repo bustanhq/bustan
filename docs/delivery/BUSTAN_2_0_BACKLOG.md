@@ -323,8 +323,8 @@ Every delivery agent reads this before starting. It is deliberately short.
 single package at `src/bustan`, suite under `tests/`, one standalone `uv` project per
 directory under `examples/`, docs in `docs/`. Public surface is only `bustan`,
 `bustan.errors` and `bustan.testing`; everything else is internal per
-`docs/STABILITY.md` and may be restructured freely. `tests/unit/test_public_api.py`
-asserts `bustan.__all__` as a tuple in exact order, and `docs/API_REFERENCE.md` is
+`docs/reference/stability.md` and may be restructured freely. `tests/unit/test_public_api.py`
+asserts `bustan.__all__` as a tuple in exact order, and `docs/reference/api.md` is
 generated and compared byte-for-byte in CI, so any export change is a three-file edit:
 the module, that test, and a regenerated reference.
 
@@ -554,7 +554,7 @@ EX-04.
 `src/bustan/core/ioc/registry.py`, `src/bustan/core/ioc/scopes.py`,
 `src/bustan/platform/http/controller_factory.py`, `src/bustan/addons/context.py`,
 `src/bustan/pipeline/guards.py`, `src/bustan/pipeline/filters.py`, `SECURITY.md`,
-`CHANGELOG.md`, `docs/REQUEST_SCOPED_PROVIDERS.md`, `docs/TROUBLESHOOTING.md`.
+`CHANGELOG.md`, `docs/explanation/request-scope.md`, `docs/reference/errors.md`.
 
 **Context.** These are the leaks an unauthenticated HTTP client can reach against
 1.1.0 today. Users need protection now, on the 1.1 line, without waiting for the 2.0
@@ -1318,8 +1318,8 @@ the instance for `INQUIRER`. Validate inject entries.
 ## T-503 Public surface and stability policy
 
 **Wave** 5. **Closes** QA-05, QA-06, QA-09. **Owns** `src/bustan/__init__.py`,
-`src/bustan/kernel/ioc/registry.py` typing, `docs/STABILITY.md`,
-`tests/unit/test_public_api.py`, `docs/API_REFERENCE.md` regeneration, CI repro gate.
+`src/bustan/kernel/ioc/registry.py` typing, `docs/reference/stability.md`,
+`tests/unit/test_public_api.py`, `docs/reference/api.md` regeneration, CI repro gate.
 
 **Context.** Six extension points an enterprise must customise live only in namespaces
 the project's own stability document declares internal and changeable without
@@ -1334,7 +1334,7 @@ cache internals are public mutable dicts reachable through the documented
 
 **Scope.** Promote the six extension points, add overloads so `get(InjectionToken[T])`
 returns `T` and `get(type[T])` returns `T`, expose read-only views of registry and
-caches, and rewrite `docs/STABILITY.md` so the export set and the policy agree.
+caches, and rewrite `docs/reference/stability.md` so the export set and the policy agree.
 Regenerate the API reference and update the exact-order export tuple. Flip the repro
 harness CI job to blocking: every one of the 91 findings must report `FIXED`.
 
@@ -1361,8 +1361,8 @@ once T-405 supplies redaction. `--version`. A `--format table|json` option. Catc
 
 ## T-600 Rewrite the behavioural documentation
 
-**Owns** `docs/REQUEST_SCOPED_PROVIDERS.md`, `docs/LIFECYCLE.md`,
-`docs/REQUEST_PIPELINE.md`, `docs/PLATFORM_INTEGRATION.md`, `docs/TROUBLESHOOTING.md`,
+**Owns** `docs/explanation/request-scope.md`, `docs/reference/lifecycle.md`,
+`docs/reference/request-pipeline.md`, `docs/reference/adapters.md`, `docs/reference/errors.md`,
 `README.md`.
 
 **Context.** The audit found three places where the documentation already contradicts
@@ -1385,18 +1385,18 @@ pins.
 
 ## T-602 Migration guide and new documentation
 
-**Owns** new `docs/MIGRATION_1x_to_2x.md`, `docs/ARCHITECTURE.md`,
-`docs/OBSERVABILITY.md`, `docs/SECURITY_HARDENING.md`, `docs/DEPLOYMENT.md`,
+**Owns** new `docs/how-to/migrate-from-1x.md`, `docs/explanation/layering.md`,
+`docs/how-to/observe-an-application.md`, `docs/how-to/harden-security.md`, `docs/how-to/deploy.md`,
 `docs/README.md` index.
 
 **Context.** The clean-break decision means a 1.x application will not start on 2.0
 until it is corrected. The guide plus `bustan doctor` from T-504 is what makes that
-acceptable. `ARCHITECTURE.md` documents the layering rule and why it is enforced by
+acceptable. `explanation/layering.md` documents the layering rule and why it is enforced by
 CI, so the next contributor understands the constraint before working against it.
 
 ## T-603 Repository consistency
 
-**Owns** `CHANGELOG.md`, `CONTRIBUTING.md`, `docs/VERSIONING.md`, `release/config.json`,
+**Owns** `CHANGELOG.md`, `CONTRIBUTING.md`, `docs/reference/versioning.md`, `release/config.json`,
 `release/manifest.json`.
 
 **Context.** The "1.0.0 and 1.0.1 were accidental, 2.0.0 is the real one" statement

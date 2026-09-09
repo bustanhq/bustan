@@ -42,7 +42,7 @@ Contributions should keep the repository green on the supported version and avoi
 
 Project governance, review authority, release ownership, and pause policy live in [GOVERNANCE.md](GOVERNANCE.md).
 
-Public-versus-internal compatibility rules live in [docs/VERSIONING.md](docs/VERSIONING.md).
+Public-versus-internal compatibility rules live in [docs/reference/versioning.md](docs/reference/versioning.md).
 
 This project does not require a CLA or DCO sign-off today. That choice may be revisited if the maintainer group or support obligations change.
 
@@ -52,7 +52,7 @@ This project does not require a CLA or DCO sign-off today. That choice may be re
 - Keep changes focused. Avoid reformatting unrelated files.
 - Preserve the supported public API boundary unless the change is explicitly about that contract.
 - Treat `bustan`, `bustan.errors`, and `bustan.testing` as the compatibility surface. Internal modules are not yet stable.
-- If a symbol is meant to become public, export it from one of those stable modules, update its docstring, and regenerate `docs/API_REFERENCE.md`.
+- If a symbol is meant to become public, export it from one of those stable modules, update its docstring, and regenerate `docs/reference/api.md`.
 - Add or update tests for behavior changes.
 - Update docs when user-visible behavior, policy, or examples change.
 - Keep examples aligned with the scaffolded multi-file app layout produced by `bustan init`.

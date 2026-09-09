@@ -21,12 +21,12 @@ The following should be treated as public-surface changes when they affect one o
 - changing documented behavior visible through the stable modules
 - changing structured error payloads exposed through the public runtime
 
-The generated [API_REFERENCE.md](API_REFERENCE.md) is part of that public documentation trail because it is rendered from the docstrings attached to stable exports.
+The generated [reference/api.md](../reference/api.md) is part of that public documentation trail because it is rendered from the docstrings attached to stable exports.
 
 ## Release Notes And Changelog
 
 - Release notes are composed from the closed issues of the milestone being released, grouped by
-  their classification labels, and live in [CHANGELOG.md](../CHANGELOG.md) before the tag exists.
+  their classification labels, and live in [CHANGELOG.md](../../CHANGELOG.md) before the tag exists.
 - Public-surface additions, removals, and behavior changes should be called out explicitly.
 - Internal refactors may be summarized at a higher level when they do not change the supported public modules.
 

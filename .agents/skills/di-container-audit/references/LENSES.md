@@ -101,8 +101,8 @@ bustan.testing.overrides, LifecycleManager, lifecycle.runner.
 
 ## Lens 8: documentation drift and NestJS parity (low to medium tier)
 
-- Extract every DI claim in README.md, docs/REQUEST_SCOPED_PROVIDERS.md,
-  docs/LIFECYCLE.md, docs/TROUBLESHOOTING.md and docs/API_REFERENCE.md and
+- Extract every DI claim in README.md, docs/explanation/request-scope.md,
+  docs/reference/lifecycle.md, docs/reference/errors.md and docs/reference/api.md and
   execute it.
 - Parity: forwardRef, module re-export, Optional defaults, multiple APP_* tokens,
   request-scoped global pipeline providers, request-scoped disposal, ModuleRef

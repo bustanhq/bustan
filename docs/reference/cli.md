@@ -74,12 +74,12 @@ name rather than passed over silently, and does not on its own fail the run.
 
 Every one of the four renamed packages is internal, so where the symbol you want is
 exported from `bustan`, `bustan.errors` or `bustan.testing`, import it from there rather
-than from the new internal path. [STABILITY.md](STABILITY.md) says which those are.
+than from the new internal path. [reference/stability.md](../reference/stability.md) says which those are.
 
 The scan reports only what it can prove from the source. A change that leaves no trace
 in the text of a program - a status code that moved, a shutdown that now drains, a body
 field that is now checked against its declared type - is in
-[CHANGELOG.md](../CHANGELOG.md) and cannot be found here.
+[CHANGELOG.md](../../CHANGELOG.md) and cannot be found here.
 
 ### Output
 

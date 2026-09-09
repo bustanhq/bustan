@@ -17,7 +17,7 @@ and the repair is silent.
 
 1. Run `uv lock --check`.
 2. Run `uv lock --check --project <project>` for each project directory under
-   [examples](../examples) and for [benchmarks](../benchmarks), or run the loop in step 2 of
+   [examples](../../examples) and for [benchmarks](../../benchmarks), or run the loop in step 2 of
    [Prepare The Release Commit](#prepare-the-release-commit) with `--check` added.
 3. Run `uv run python scripts/generate_api_reference.py --check`.
 4. Run `uv run python scripts/check_markdown_links.py`.
@@ -39,7 +39,7 @@ issues carry the classification labels the notes are grouped by.
    CI was green on each pull request: the suite, the audit repro harness with no verdict
    moved, the examples, the API reference check and the link check.
 3. Read the `Dependency audit (advisory)` job's run summary in
-   [ci.yml](../.github/workflows/ci.yml) on the commit being tagged, rather than repeating
+   [ci.yml](../../.github/workflows/ci.yml) on the commit being tagged, rather than repeating
    the audit by hand. The job audits the resolved dependency set of the root project and of
    all six examples from their committed lockfiles, and it does not block, so a green checks
    list is not the answer: the summary is. A finding names the advisory, the package, the
@@ -53,7 +53,7 @@ issues carry the classification labels the notes are grouped by.
 1. Compose the changelog entry from the milestone's closed issues, grouped by their
    classification labels. Every issue in the milestone appears, or the entry says why it
    does not.
-2. Set the version in [pyproject.toml](../pyproject.toml) and then re-lock. The version is
+2. Set the version in [pyproject.toml](../../pyproject.toml) and then re-lock. The version is
    written in `pyproject.toml` and repeated in every lockfile in the repository: `uv.lock`,
    `examples/*/uv.lock`, and `benchmarks/uv.lock`. The rule behind that list, and not the
    list itself, is what to carry: **every standalone `uv` project that depends on `bustan`
@@ -81,8 +81,8 @@ issues carry the classification labels the notes are grouped by.
    exactly what the commit must contain; a lockfile left out of it is a file left stale.
 
 3. Know which lockfile can fail a publish, because they are not equal. The root
-   [uv.lock](../uv.lock) is the only one
-   [publish.yml](../.github/workflows/publish.yml) reads: `uv lock --check` is its first gate
+   [uv.lock](../../uv.lock) is the only one
+   [publish.yml](../../.github/workflows/publish.yml) reads: `uv lock --check` is its first gate
    after checkout, ahead of the tag-versus-version comparison and ahead of the build. A stale
    root lockfile therefore fails a tag that has already been pushed, which is the most
    expensive place to find it - the run publishes nothing and leaves no GitHub release, but
@@ -90,11 +90,11 @@ issues carry the classification labels the notes are grouped by.
    number. The example and benchmark lockfiles are outside that workflow and cannot fail it.
 
    Every lockfile is still worth updating, and none of them reaches `main` stale by accident.
-   [ci.yml](../.github/workflows/ci.yml) checks the root in its `Quality` job, the examples in
+   [ci.yml](../../.github/workflows/ci.yml) checks the root in its `Quality` job, the examples in
    its `Example Execution` job, and `benchmarks/uv.lock` in its `Benchmarks and regression
    gate` job, and all three steps block, so a release pull request that bumps the version
    without re-locking is red at review rather than after the tag. The
-   `pre-commit` hook in [lefthook.yml](../lefthook.yml) runs `uv lock --check` on the root
+   `pre-commit` hook in [lefthook.yml](../../lefthook.yml) runs `uv lock --check` on the root
    before that, so the same mistake usually fails at `git commit`. Beyond those gates,
    `scripts/run_examples.py` rewrites the example lockfiles when it runs, so a stale one also
    hands the next person an unexplained dirty tree.
@@ -109,7 +109,7 @@ are worth checking before pushing a tag, because a mismatch is not visible until
 step of the run.
 
 1. Confirm PyPI's trusted publisher for the project matches
-   [publish.yml](../.github/workflows/publish.yml). PyPI does not hold a token; it matches
+   [publish.yml](../../.github/workflows/publish.yml). PyPI does not hold a token; it matches
    the claims the workflow presents when it asks for one. The publisher must name the
    repository, the workflow **file name**, and the **environment** the publishing job
    declares:
@@ -139,8 +139,8 @@ step of the run.
 
 ## Publish
 
-1. Tag the merged commit as `v<version>`, matching [pyproject.toml](../pyproject.toml)
-   exactly. [publish.yml](../.github/workflows/publish.yml) refuses a tag that names a
+1. Tag the merged commit as `v<version>`, matching [pyproject.toml](../../pyproject.toml)
+   exactly. [publish.yml](../../.github/workflows/publish.yml) refuses a tag that names a
    different version than the commit packages.
 2. Push the tag. The workflow re-runs the gates against that exact commit, builds, checks
    the distributions, publishes to PyPI, and then publishes the GitHub release with the
@@ -151,8 +151,8 @@ step of the run.
 ## Post Publish
 
 1. Watch the `Verify the published package` job in the tag's
-   [publish.yml](../.github/workflows/publish.yml) run. It calls
-   [published-package-verification.yml](../.github/workflows/published-package-verification.yml)
+   [publish.yml](../../.github/workflows/publish.yml) run. It calls
+   [published-package-verification.yml](../../.github/workflows/published-package-verification.yml)
    with the version that was uploaded, so verification is part of publishing rather than
    something that has to be remembered. That workflow can still be run on its own with a
    version number, which is how a version published before this chain existed is checked.
