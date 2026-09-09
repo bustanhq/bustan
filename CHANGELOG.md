@@ -3,6 +3,28 @@
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`.
 
+## [Unreleased]
+
+**`@Cache`, `@Idempotent` and `@Audit` do what they say.** All three recorded a policy on
+the route's compiled plan and changed nothing about the request, so an application that
+wrote `@Audit(event="user.delete")`, saw it accepted and shipped it had no audit trail.
+Each now attaches the interceptor that carries it out, and that interceptor reads the same
+compiled plan the policy guard and the throttler read. `@Cache` answers a repeated `GET`
+or `HEAD` with the previous answer until its ttl passes, kept apart by route, path, query
+string and the caller the request was authorised for. `@Idempotent` answers a retry
+presenting a key already seen with what the first attempt returned, for twenty-four hours.
+`@Audit` writes one record through the framework's logger once the handler has run,
+whether it returned or raised, carrying the event name and the caller and nothing the
+caller sent. The three docstrings said plainly that none of this happened; they now say
+what happens instead.
+
+**This is a change to documented behaviour.** A route carrying any of the three ran its
+handler on every request in every release before this one and no longer does. Both stores
+are in the process, bounded per decorated route, and shared with no other worker and no
+later run, so a deployment relying on either across its workers still needs a store of its
+own. `@Cache` refuses a ttl below one second where it is written, and is refused on a
+route returning a response object or a stream, because such a body can only be read once.
+
 ## [2.0.0-rc.6](https://github.com/bustanhq/bustan/compare/v2.0.0rc5...v2.0.0rc6) (2026-09-09)
 
 The candidate that closes an adversarial pre-release audit and the layering debt the previous five

@@ -208,9 +208,14 @@ Off unless you enable it, and `enable_cors()` with no arguments is **refused** r
 than read as every origin:
 
 ```
-ValueError: enable_cors needs the origins it should permit. Pass
-CorsOptions(origins=[...]), or omit the call to leave cross-origin requests refused.
+bustan.kernel.errors.CorsConfigurationError: enable_cors needs the origins it should
+permit. Pass CorsOptions(origins=[...]), or omit the call to leave cross-origin
+requests refused.
 ```
+
+The class is exported as `bustan.errors.CorsConfigurationError`, so an application that
+wraps its own wiring catches it by name, or catches `bustan.errors.BustanError` for every
+framework refusal at once.
 
 `CorsOptions` names no origins until you name them, so a policy that permits every page
 on the internet is one you wrote rather than one you inherited. Every other field has a
@@ -268,7 +273,10 @@ string, a credential or a dependency's exception message in one.
 - CORS names your origins, or is off.
 - Health routes are not reachable from the internet, or carry nothing sensitive.
 - Nothing you log embeds a credential inside a value.
-- Every `@Idempotent` and `@Audit` route has the behaviour written by hand.
+- Every `@Cache` route returns a body its whole audience may see, and no `@Cache` or
+  `@Idempotent` route depends on a store shared between your workers.
+- The destination your `@Audit` records reach is one you would show an auditor, and your
+  log level is at or below the log level those records are written at.
 - Your error responses have been read by someone asking what they tell an attacker.
 
 ## Where To Go Next

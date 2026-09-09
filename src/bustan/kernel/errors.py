@@ -46,6 +46,17 @@ class RouteDefinitionError(BustanError):
     """Raised when route metadata is malformed or duplicated."""
 
 
+class CorsConfigurationError(BustanError):
+    """Raised when an application's cross-origin policy is refused as it was written.
+
+    It reaches the caller from ``enable_cors``, while the application is being wired and
+    before any request is served, so the policy is refused where it can still be changed
+    rather than at the first request a browser sends. It reports the application's own
+    configuration. A transport that cannot enforce any policy at all is a different
+    failure and refuses separately, from the adapter port, with ``NotImplementedError``.
+    """
+
+
 class ParameterBindingError(BustanError):
     """Raised when request parameters cannot be bound."""
 
@@ -323,6 +334,7 @@ __all__ = (
     "BadGatewayException",
     "ConflictException",
     "ContentTooLargeException",
+    "CorsConfigurationError",
     "ExportViolationError",
     "ForbiddenException",
     "GatewayTimeoutException",

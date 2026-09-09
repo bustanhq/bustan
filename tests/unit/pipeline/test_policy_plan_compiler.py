@@ -221,13 +221,13 @@ def test_empty_routes_still_expose_an_explicit_empty_policy_plan() -> None:
     assert contract.policy_plan.deprecation is None
 
 
-def test_a_route_declaring_the_policies_nothing_acts_on_still_compiles_and_carries_them() -> None:
-    """Declared on the handler rather than the controller, the three still reach the plan.
+def test_the_three_policies_with_a_behaviour_compile_beside_what_carries_them_out() -> None:
+    """A route declaring the three compiles to both halves: the plan and the interceptors.
 
-    Their docstrings say the request path does nothing with them, which is a statement
-    about this version and not a change to it. This is the guard that keeps it one: a
-    route declaring all three compiles, and the compiled plan carries each policy object
-    with the arguments the route gave it.
+    The plan is what the interceptors read at request time, which is why it still has to
+    carry each policy object with the arguments the route gave it. The interceptors are
+    what makes the declaration reach the request at all, so a route that compiled to the
+    plan alone would be back to recording a policy nothing acts on.
     """
 
     @Controller("/users")
@@ -254,3 +254,30 @@ def test_a_route_declaring_the_policies_nothing_acts_on_still_compiles_and_carri
     assert contract.policy_plan.idempotency.key_header == "X-Request-Id"
     assert contract.policy_plan.audit is not None
     assert contract.policy_plan.audit.event == "user.delete"
+    assert [type(interceptor).__name__ for interceptor in contract.pipeline_plan.interceptors] == [
+        "_AuditTrail",
+        "_RecordedAttempts",
+        "_CachedAnswers",
+    ]
+
+
+def test_a_route_declaring_none_of_the_three_is_given_no_interceptor_for_them() -> None:
+    """Only a route that asked for one of the three pays for what carries it out."""
+
+    @Controller("/health")
+    class HealthController:
+        @Owner("platform")
+        @Get("/")
+        def read_health(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[HealthController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+
+    [contract] = compile_route_contracts(graph, container)
+
+    assert contract.pipeline_plan.interceptors == ()
