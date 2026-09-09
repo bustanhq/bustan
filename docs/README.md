@@ -26,10 +26,22 @@ A guide that answers two of those questions is two documents.
 
 ## Tutorials
 
-Learning-oriented. One path, start to finish, no choices to make.
+Learning-oriented. One path, start to finish, no choices to make. Six steps, in order: each one adds
+a layer to the same application, and the finished code is
+[`examples/tutorial_app`](../examples/tutorial_app/), which runs in CI.
 
-- [Your first app](tutorials/first-app.md) - scaffold a runnable application, understand the
-  generated files, run it, and add a first test.
+1. [Your first app](tutorials/first-app.md) - scaffold a runnable application, understand the
+   generated files, run it, and add a first test.
+2. [A resource with three routes](tutorials/a-resource-with-three-routes.md) - list, read and create,
+   answering 201, 404 and a 400 problem document as each case deserves.
+3. [Configuration end to end](tutorials/configuration-end-to-end.md) - settings out of the source,
+   validated at startup, overridden from the environment.
+4. [A datastore and a readiness probe](tutorials/a-datastore-and-a-readiness-probe.md) - a connection
+   opened and disposed through lifecycle hooks, with readiness telling the truth about it.
+5. [Before the handler runs](tutorials/before-the-handler-runs.md) - middleware on every request,
+   then a working authenticator and role checks.
+6. [OpenAPI and Swagger UI](tutorials/openapi-and-swagger-ui.md) - publish what the application
+   already serves.
 
 ## How-to guides
 
@@ -49,6 +61,8 @@ Task-oriented. You know what you want; these say how.
   object behind the adapter, and running with no HTTP at all.
 - [Test an application](how-to/test-an-application.md) - starting an application with providers
   replaced, and building a throwaway module for one test.
+- [Containerise an application](how-to/containerise-an-application.md) - a two-stage image built with
+  uv, and probes wired to an orchestrator.
 - [Run the benchmarks](how-to/run-benchmarks.md) - what is measured, comparing a change on your own
   machine, and reading a failure.
 - [Cut a release](how-to/cut-a-release.md) - validation, publishing prerequisites and post-publish
