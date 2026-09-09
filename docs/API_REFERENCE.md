@@ -194,9 +194,11 @@ it. Both shipped adapters do; one whose transport cannot raises
 ``NotImplementedError`` naming itself rather than accepting the call and serving
 every origin.
 
-Called with no options, the policy allows every origin, which suits a public
-read-only API and nothing that reads a cookie. Build a ``CorsOptions`` and name
-the origins for anything else.
+A policy that names no origins is refused here rather than widened to every
+origin, because the origins a browser may hand a response to are the whole point
+of the call and nothing else can choose them. Leaving the call out is how an
+application serves no cross-origin request at all; ``CorsOptions(origins=["*"])``
+is how a public read-only API says it serves them all.
 - `enable_swagger(self, path: str, document: dict[str, object], *, swagger_ui_path: str | None = None) -> None`
   Register OpenAPI JSON and Swagger UI routes.
 - `listen(self, port: int, host: str = '127.0.0.1', reload: bool = False, *, drain_timeout: float | None = None, **kwargs: Any) -> None`
@@ -2378,7 +2380,29 @@ class CorsOptions
 
 Defined in `bustan.contracts.cors`.
 
-Configuration for application-level CORS support.
+Which origins may read this application's responses, and on what terms.
+
+A policy names the origins it permits. Built with no arguments it names none, and
+the wildcard that permits every origin has to be written out as ``origins=["*"]``
+rather than arrived at by leaving a field alone, because an origin set nobody chose
+is one nobody reviewed.
+
+Every field's default:
+
+- ``origins``: no origins. One origin as a bare string, or a list of them. ``"*"``
+  is every origin on the internet, which a browser refuses to combine with
+  credentials.
+- ``methods``: ``GET``, ``HEAD``, ``PUT``, ``PATCH``, ``POST``, ``DELETE``. A list
+  holding ``"*"`` is every method the protocol defines.
+- ``allowed_headers``: ``["*"]``, so a preflight is answered with whatever headers
+  it asked to send. Naming headers instead allows those and the ones a browser may
+  send without asking, and refuses the rest.
+- ``exposed_headers``: none, so a browser reads only the few response headers the
+  protocol exposes without being told to.
+- ``credentials``: ``False``, so a browser attaches no cookie and no
+  ``Authorization`` header to a cross-origin request.
+- ``max_age``: ``600`` seconds, how long a browser may reuse one preflight answer
+  before asking again.
 
 #### `SkipThrottle`
 

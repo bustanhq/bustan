@@ -3,9 +3,9 @@
 CORS is enforced by the transport, so the interesting assertions are the ones made
 against more than one of them: every case below runs through both shipped adapters and
 compares them, because an application that changes transport must not change what a
-browser sees. The refusal an adapter without the capability answers with is asserted
-here too, since silently accepting the call is the failure this surface is guarding
-against.
+browser sees. The two refusals are asserted here too, since silently accepting either
+call is the failure this surface is guarding against: an adapter without the capability
+refuses, and so does a policy that names no origins.
 """
 
 from __future__ import annotations
@@ -169,7 +169,7 @@ ADAPTERS: dict[str, Callable[[AdapterRuntime], AbstractHttpAdapter]] = {
 
 
 def _application(
-    adapter: Callable[[AdapterRuntime], AbstractHttpAdapter], options: CorsOptions | None
+    adapter: Callable[[AdapterRuntime], AbstractHttpAdapter], options: CorsOptions
 ) -> Application:
     application = create_app(CorsModule, adapter=adapter)
     application.enable_cors(options)
@@ -178,7 +178,7 @@ def _application(
 
 def _answer(
     adapter: Callable[[AdapterRuntime], AbstractHttpAdapter],
-    options: CorsOptions | None = None,
+    options: CorsOptions,
     *,
     method: str = "GET",
     headers: Mapping[str, str],
@@ -227,12 +227,64 @@ def test_an_origin_the_policy_did_not_name_is_not_allowed_to_read_the_response(
     assert headers["access-control-allow-origin"] is None
 
 
-def test_the_default_policy_allows_every_origin(
+def test_the_bare_call_refuses_instead_of_allowing_every_origin(
     adapter: Callable[[AdapterRuntime], AbstractHttpAdapter],
 ) -> None:
-    """``enable_cors()`` with no arguments is documented as allowing every origin."""
+    """A wildcard nobody asked for is the one an application inherits without reviewing it.
 
-    status, _body, headers = _answer(adapter, None, headers={"origin": OTHER_ORIGIN})
+    The refusal is asserted through what the two adapters answer rather than through the
+    options object, because the header a browser reads is the whole claim.
+    """
+
+    application = create_app(CorsModule, adapter=adapter)
+
+    with pytest.raises(ValueError):
+        application.enable_cors()
+
+    with AsgiTestClient(cast(Any, application)) as client:
+        served = client.get("/", headers={"origin": OTHER_ORIGIN})
+        preflight = client.options(
+            "/",
+            headers={
+                "origin": OTHER_ORIGIN,
+                "access-control-request-method": "GET",
+            },
+        )
+
+    assert served.headers.get("access-control-allow-origin") is None
+    assert preflight.headers.get("access-control-allow-origin") is None
+
+
+@pytest.mark.parametrize(
+    "options",
+    [None, CorsOptions(), CorsOptions(origins=[])],
+    ids=["no argument", "default options", "an empty origin list"],
+)
+def test_a_policy_naming_no_origins_is_refused_and_says_what_is_missing(
+    options: CorsOptions | None,
+) -> None:
+    """The author meets the refusal at the call site, where the origins can be named."""
+
+    application = create_app(CorsModule, adapter=_asgi)
+
+    with pytest.raises(ValueError) as refusal:
+        application.enable_cors(options)
+
+    assert str(refusal.value) == (
+        "enable_cors needs the origins it should permit. Pass "
+        "CorsOptions(origins=[...]), or omit the call to leave cross-origin "
+        "requests refused."
+    )
+
+
+def test_a_wildcard_the_caller_wrote_out_still_allows_every_origin(
+    adapter: Callable[[AdapterRuntime], AbstractHttpAdapter],
+) -> None:
+    """A public read-only API asks for every origin by name and gets it."""
+
+    status, _body, headers = _answer(
+        adapter, CorsOptions(origins=["*"]), headers={"origin": OTHER_ORIGIN}
+    )
 
     assert status == 200
     assert headers["access-control-allow-origin"] == "*"
@@ -254,7 +306,7 @@ def test_a_credentialed_policy_names_the_origin_rather_than_starring_it(
     """A browser refuses ``*`` on a request that carries credentials."""
 
     _status, _body, headers = _answer(
-        adapter, CorsOptions(credentials=True), headers={"origin": ORIGIN}
+        adapter, CorsOptions(origins=["*"], credentials=True), headers={"origin": ORIGIN}
     )
 
     assert headers["access-control-allow-origin"] == ORIGIN
@@ -395,12 +447,12 @@ def test_a_preflight_asking_to_reach_a_private_network_is_refused(
 # Every case above, as (options, method, request headers), run through both adapters and
 # compared. Each assertion above holds one adapter to the protocol; this holds the two of
 # them to each other, which is the claim that makes the transport replaceable.
-PARITY_CASES: tuple[tuple[str, CorsOptions | None, str, dict[str, str]], ...] = (
+PARITY_CASES: tuple[tuple[str, CorsOptions, str, dict[str, str]], ...] = (
     ("named origin", CorsOptions(origins=[ORIGIN]), "GET", {"origin": ORIGIN}),
     ("unnamed origin", CorsOptions(origins=[ORIGIN]), "GET", {"origin": OTHER_ORIGIN}),
-    ("default policy", None, "GET", {"origin": ORIGIN}),
+    ("wildcard origin", CorsOptions(origins=["*"]), "GET", {"origin": ORIGIN}),
     ("no origin", CorsOptions(origins=[ORIGIN]), "GET", {}),
-    ("credentialed", CorsOptions(credentials=True), "GET", {"origin": ORIGIN}),
+    ("credentialed", CorsOptions(origins=["*"], credentials=True), "GET", {"origin": ORIGIN}),
     (
         "exposed headers",
         CorsOptions(origins=[ORIGIN], exposed_headers=["x-total-count", "x-page"]),
@@ -415,13 +467,13 @@ PARITY_CASES: tuple[tuple[str, CorsOptions | None, str, dict[str, str]], ...] = 
     ),
     (
         "preflight wildcard origin",
-        None,
+        CorsOptions(origins=["*"]),
         "OPTIONS",
         {"origin": ORIGIN, "access-control-request-method": "GET"},
     ),
     (
         "preflight credentialed",
-        CorsOptions(credentials=True),
+        CorsOptions(origins=["*"], credentials=True),
         "OPTIONS",
         {"origin": ORIGIN, "access-control-request-method": "GET"},
     ),
@@ -476,7 +528,7 @@ PARITY_CASES: tuple[tuple[str, CorsOptions | None, str, dict[str, str]], ...] = 
     ids=[case[0] for case in PARITY_CASES],
 )
 def test_both_adapters_answer_a_cross_origin_request_identically(
-    options: CorsOptions | None, method: str, headers: dict[str, str]
+    options: CorsOptions, method: str, headers: dict[str, str]
 ) -> None:
     answers = {
         name: _answer(factory, options, method=method, headers=headers)
@@ -552,10 +604,12 @@ def test_the_exported_options_type_is_the_one_both_layers_name() -> None:
     assert CorsOptions is SecurityCorsOptions
 
 
-def test_the_options_type_still_means_what_it_meant() -> None:
+def test_every_option_default_is_the_one_the_docstring_states() -> None:
+    """The docstring is the generated API reference, so it is checked against the type."""
+
     options = CorsOptions()
 
-    assert options.origins == "*"
+    assert options.origins == []
     assert options.methods == ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"]
     assert options.allowed_headers == ["*"]
     assert options.exposed_headers == []

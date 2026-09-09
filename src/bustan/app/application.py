@@ -239,13 +239,23 @@ class Application(ApplicationContext):
         ``NotImplementedError`` naming itself rather than accepting the call and serving
         every origin.
 
-        Called with no options, the policy allows every origin, which suits a public
-        read-only API and nothing that reads a cookie. Build a ``CorsOptions`` and name
-        the origins for anything else.
+        A policy that names no origins is refused here rather than widened to every
+        origin, because the origins a browser may hand a response to are the whole point
+        of the call and nothing else can choose them. Leaving the call out is how an
+        application serves no cross-origin request at all; ``CorsOptions(origins=["*"])``
+        is how a public read-only API says it serves them all.
         """
+        from ..contracts.cors import allowed_origins
         from ..security.cors import CorsOptions
 
-        self._adapter.enable_cors(options or CorsOptions())
+        policy = options or CorsOptions()
+        if not allowed_origins(policy):
+            raise ValueError(
+                "enable_cors needs the origins it should permit. Pass "
+                "CorsOptions(origins=[...]), or omit the call to leave cross-origin "
+                "requests refused."
+            )
+        self._adapter.enable_cors(policy)
 
     def enable_swagger(
         self,
