@@ -246,11 +246,12 @@ class Application(ApplicationContext):
         is how a public read-only API says it serves them all.
         """
         from ..contracts.cors import allowed_origins
+        from ..kernel.errors import CorsConfigurationError
         from ..security.cors import CorsOptions
 
         policy = options or CorsOptions()
         if not allowed_origins(policy):
-            raise ValueError(
+            raise CorsConfigurationError(
                 "enable_cors needs the origins it should permit. Pass "
                 "CorsOptions(origins=[...]), or omit the call to leave cross-origin "
                 "requests refused."

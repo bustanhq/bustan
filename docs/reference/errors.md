@@ -499,6 +499,16 @@ It is also raised at request time, and rendered as a masked `500`, for the misco
 
 Fix: wire the registry. Before this error existed all three conditions reached the caller as a `403`, so an authenticated route that refused every caller looked exactly like a caller sending a wrong password.
 
+## `CorsConfigurationError`
+
+Cause: `enable_cors` was asked for a cross-origin policy it cannot enforce. It is raised from the call itself while the application is being wired, so the author meets it where the policy is written rather than at the first request a browser sends.
+
+Condition and fix:
+
+- `enable_cors needs the origins it should permit. Pass CorsOptions(origins=[...]), or omit the call to leave cross-origin requests refused.` - the policy names no origins, which is what `enable_cors()`, `CorsOptions()` and `CorsOptions(origins=[])` all say. Name the origins a browser may hand a response to: nothing else can choose them, and widening the policy to every origin is a decision the framework will not take on an author's behalf.
+
+A public read-only API that really does serve every origin writes `origins=["*"]` and is served. Leaving the call out is how an application refuses every cross-origin request, so nothing here fires in an application that never enables CORS. [Harden A Bustan Application](../how-to/harden-security.md#cors) shows the rest of the policy fields beside the reasons to set them.
+
 ## `LifecycleError`
 
 Cause: a lifecycle hook raised during startup or shutdown. The message names the hook, as `Lifecycle hook M.on_module_init failed: ...` for a module hook and `Provider lifecycle hook T.on_module_destroy failed: ...` for a provider one, and keeps the original exception as its `__cause__`.

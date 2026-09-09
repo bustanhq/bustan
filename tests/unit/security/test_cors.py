@@ -24,6 +24,7 @@ from bustan.adapters.asgi import AsgiAdapter, AsgiCorsMiddleware
 from bustan.adapters.starlette import StarletteAdapter
 from bustan.contracts import AbstractHttpAdapter, AdapterCapabilities, AdapterRoute, HttpRequest
 from bustan.contracts.cors import CorsOptions as ContractCorsOptions
+from bustan.errors import BustanError, CorsConfigurationError
 from bustan.runtime.adapter import AdapterRuntime
 from bustan.security.cors import CorsOptions as SecurityCorsOptions
 from bustan.testing import AsgiTestClient
@@ -238,7 +239,7 @@ def test_the_bare_call_refuses_instead_of_allowing_every_origin(
 
     application = create_app(CorsModule, adapter=adapter)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(CorsConfigurationError):
         application.enable_cors()
 
     with AsgiTestClient(cast(Any, application)) as client:
@@ -263,13 +264,18 @@ def test_the_bare_call_refuses_instead_of_allowing_every_origin(
 def test_a_policy_naming_no_origins_is_refused_and_says_what_is_missing(
     options: CorsOptions | None,
 ) -> None:
-    """The author meets the refusal at the call site, where the origins can be named."""
+    """The author meets the refusal at the call site, where the origins can be named.
+
+    The type is the framework's own, so an application that wraps its own wiring catches
+    this refusal with the same ``except BustanError`` that catches every other one.
+    """
 
     application = create_app(CorsModule, adapter=_asgi)
 
-    with pytest.raises(ValueError) as refusal:
+    with pytest.raises(CorsConfigurationError) as refusal:
         application.enable_cors(options)
 
+    assert isinstance(refusal.value, BustanError)
     assert str(refusal.value) == (
         "enable_cors needs the origins it should permit. Pass "
         "CorsOptions(origins=[...]), or omit the call to leave cross-origin "
