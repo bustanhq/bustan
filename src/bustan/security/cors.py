@@ -1,19 +1,14 @@
-"""CORS configuration types."""
+"""CORS configuration types.
+
+The policy value type itself is declared in :mod:`bustan.contracts.cors`, because a
+transport adapter is what enforces the policy and an adapter may read the contracts and
+nothing above them. It is named here as well, unchanged, because this is where the
+package's security surface is assembled and where ``bustan.CorsOptions`` is exported
+from.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from ..contracts.cors import CorsOptions
 
-
-@dataclass(frozen=True, slots=True)
-class CorsOptions:
-    """Configuration for application-level CORS support."""
-
-    origins: str | list[str] = "*"
-    methods: list[str] = field(
-        default_factory=lambda: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"]
-    )
-    allowed_headers: list[str] = field(default_factory=lambda: ["*"])
-    exposed_headers: list[str] = field(default_factory=list)
-    credentials: bool = False
-    max_age: int = 600
+__all__ = ("CorsOptions",)

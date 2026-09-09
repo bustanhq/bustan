@@ -231,24 +231,21 @@ class Application(ApplicationContext):
         return diff_route_snapshots(previous_snapshot, self.snapshot_routes())
 
     def enable_cors(self, options: CorsOptions | None = None) -> None:
-        """Register Starlette's CORS middleware on the application."""
-        from starlette.middleware.cors import CORSMiddleware
+        """Enforce one cross-origin policy on every request this application serves.
 
+        The transport enforces it, because a preflight request is answered before any
+        route is reached, so this hands the policy to the adapter and the adapter applies
+        it. Both shipped adapters do; one whose transport cannot raises
+        ``NotImplementedError`` naming itself rather than accepting the call and serving
+        every origin.
+
+        Called with no options, the policy allows every origin, which suits a public
+        read-only API and nothing that reads a cookie. Build a ``CorsOptions`` and name
+        the origins for anything else.
+        """
         from ..security.cors import CorsOptions
 
-        resolved = options or CorsOptions()
-        allow_origins = (
-            [resolved.origins] if isinstance(resolved.origins, str) else resolved.origins
-        )
-        self._adapter.add_middleware(
-            CORSMiddleware,
-            allow_origins=allow_origins,
-            allow_methods=resolved.methods,
-            allow_headers=resolved.allowed_headers,
-            expose_headers=resolved.exposed_headers,
-            allow_credentials=resolved.credentials,
-            max_age=resolved.max_age,
-        )
+        self._adapter.enable_cors(options or CorsOptions())
 
     def enable_swagger(
         self,

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from .adapter import AsgiAdapter
 from .application import AsgiApplication, Lifespan
+from .cors import AsgiCorsMiddleware
 from .forms import FormData, UploadFile, parse_form_body
 from .lifespan import LifespanFailed, LifespanRunner
 from .requests import (
@@ -37,6 +38,7 @@ __all__ = (
     "AsgiAdapter",
     "AsgiApp",
     "AsgiApplication",
+    "AsgiCorsMiddleware",
     "AsgiFileResponse",
     "AsgiHttpRequest",
     "AsgiResponse",

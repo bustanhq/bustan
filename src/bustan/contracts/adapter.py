@@ -3,10 +3,11 @@
 The framework compiles routes, resolves providers and executes handlers; a transport
 adapter does none of that. It translates one request into :class:`HttpRequest` and one
 result back into whatever its transport writes, registers the routes it was handed,
-and starts and stops a server. Everything named here is either a neutral value type or
-a method whose arguments and return values are neutral, so an adapter can be written
-against this module without importing anything else from ``bustan`` and without the
-framework knowing which transport it got.
+enforces whatever policy has to sit in front of them, and starts and stops a server.
+Everything named here is either a neutral value type or a method whose arguments and
+return values are neutral, so an adapter can be written against this module without
+importing anything else from ``bustan`` and without the framework knowing which
+transport it got.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
+from .cors import CorsOptions
 from .requests import HttpRequest
 from .responses import HttpFileResponse, HttpResponse, HttpStreamResponse
 
@@ -141,6 +143,26 @@ class AbstractHttpAdapter(ABC):
     @abstractmethod
     def add_middleware(self, middleware_class: type, **options: object) -> None:
         """Wrap the whole server in one of the transport's own middleware classes."""
+
+    def enable_cors(self, options: CorsOptions) -> None:
+        """Enforce one cross-origin policy on every request this transport carries.
+
+        A preflight request is answered by the transport and never reaches a route, so
+        this is the transport's work rather than the framework's, and each adapter
+        implements it against whatever its own middleware looks like.
+
+        The implementation here refuses, by name, and it is what an adapter that says
+        nothing inherits. Silence has to mean refusal: an operator who calls this and is
+        answered by nothing at all believes a policy is being enforced, and serves every
+        origin while believing it. An adapter whose transport can enforce a policy
+        overrides this and does.
+        """
+
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement the CORS capability, so this "
+            "adapter cannot enforce a cross-origin policy. Serve the application through "
+            "an adapter that implements it, or enforce the policy in front of the process."
+        )
 
     async def listen(
         self, port: int, host: str = "127.0.0.1", reload: bool = False, **options: object
