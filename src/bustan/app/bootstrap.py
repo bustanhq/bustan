@@ -21,6 +21,7 @@ from ..runtime.execution import (
     compile_execution_plans,
     set_observability_hooks,
     set_request_limits,
+    set_response_serializer,
 )
 from .application import Application, ApplicationContext
 from .lifespan import build_lifespan
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
     from ..observability import ObservabilityHooks
     from ..openapi import SwaggerOptions
     from ..runtime.params import RequestLimits
+    from ..runtime.responses import ResponseSerializer
     from ..runtime.versioning import VersioningOptions
     from ..testing.overrides import PipelineOverrideRegistry
 
@@ -44,6 +46,7 @@ def create_app(
     swagger: SwaggerOptions | None = None,
     observability: ObservabilityHooks | None = None,
     request_limits: RequestLimits | None = None,
+    response_serializer: ResponseSerializer | None = None,
 ) -> Application:
     """Create a fully assembled Bustan application from the root module.
 
@@ -69,6 +72,17 @@ def create_app(
     belong to this application rather than to the process, so a second application in
     the same process can serve under different ones. Left out, requests are served
     under bounds that are finite already; there is no way to end up with none.
+
+    ``response_serializer`` decides what a handler's return value becomes on the wire.
+    Implement ``ResponseSerializer`` - one ``serialize(value)`` method returning an
+    ``HttpResponse`` - and every route that returns a value rather than a response of
+    its own is written through it, so an application can render its own types without
+    each handler building a response by hand. Delegate to ``DefaultResponseSerializer``
+    for the values you do not handle. It applies to the values the framework serializes,
+    not to a handler that streams, returns a file or returns a response already built.
+    The serializer belongs to this application rather than to the process, so a second
+    application in the same process can render differently. Left out, values are
+    serialized as they are today.
     """
     return _create_app(
         root_module,
@@ -79,6 +93,7 @@ def create_app(
         swagger=swagger,
         observability=observability,
         request_limits=request_limits,
+        response_serializer=response_serializer,
         no_lifespan=False,
     )
 
@@ -93,6 +108,7 @@ def _create_app(
     swagger: SwaggerOptions | None = None,
     observability: ObservabilityHooks | None = None,
     request_limits: RequestLimits | None = None,
+    response_serializer: ResponseSerializer | None = None,
     no_lifespan: bool = False,
 ) -> Application:
     """Internal application factory used for alternate lifecycle wiring."""
@@ -150,6 +166,11 @@ def _create_app(
     # than the process it happens to share - serves its requests through.
     if observability is not None:
         set_observability_hooks(application, observability)
+    # The serializer is seated beside the hooks and the limits, for the same reason: the
+    # request path reads what one application - rather than the process it happens to
+    # share - writes its responses through.
+    if response_serializer is not None:
+        set_response_serializer(application, response_serializer)
     _attach_runtime_artifacts(
         application,
         module_graph,

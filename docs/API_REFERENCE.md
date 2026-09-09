@@ -537,7 +537,7 @@ Current value: `Cookies`
 #### `create_app`
 
 ```python
-def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | AdapterFactory | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None, observability: ObservabilityHooks | None = None, request_limits: RequestLimits | None = None) -> Application
+def create_app(root_module: type[object] | DynamicModule, *, debug: bool = False, adapter: AbstractHttpAdapter | AdapterFactory | None = None, pipeline_override_registry: PipelineOverrideRegistry | None = None, versioning: VersioningOptions | None = None, swagger: SwaggerOptions | None = None, observability: ObservabilityHooks | None = None, request_limits: RequestLimits | None = None, response_serializer: ResponseSerializer | None = None) -> Application
 ```
 
 Defined in `bustan.app.bootstrap`.
@@ -566,6 +566,17 @@ them is refused with the status the limit implies rather than served. The limits
 belong to this application rather than to the process, so a second application in
 the same process can serve under different ones. Left out, requests are served
 under bounds that are finite already; there is no way to end up with none.
+
+``response_serializer`` decides what a handler's return value becomes on the wire.
+Implement ``ResponseSerializer`` - one ``serialize(value)`` method returning an
+``HttpResponse`` - and every route that returns a value rather than a response of
+its own is written through it, so an application can render its own types without
+each handler building a response by hand. Delegate to ``DefaultResponseSerializer``
+for the values you do not handle. It applies to the values the framework serializes,
+not to a handler that streams, returns a file or returns a response already built.
+The serializer belongs to this application rather than to the process, so a second
+application in the same process can render differently. Left out, values are
+serialized as they are today.
 
 #### `create_app_context`
 
@@ -630,6 +641,20 @@ def Controller(prefix: str = '', *, scope: ProviderScope | str = ProviderScope.S
 Defined in `bustan.common.decorators.controller`.
 
 Attach controller metadata to a class.
+
+#### `DefaultResponseSerializer`
+
+```python
+class DefaultResponseSerializer
+```
+
+Defined in `bustan.runtime.responses`.
+
+Serialize common Python values into adapter-neutral HTTP responses.
+
+##### Methods
+
+- `serialize(self, value: object) -> HttpResponse | NativeHttpResponse`
 
 #### `Delete`
 
