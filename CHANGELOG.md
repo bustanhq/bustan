@@ -176,7 +176,7 @@ upload apart from a slow index.
 
 Every entry below is a closed issue from one of the six milestones, grouped by the classification
 label it carries rather than by the milestone it closed on. What is not listed: the epics that group
-the waves, one report closed as a duplicate of another in the same milestone, and
+the waves, two reports each closed as a duplicate of another in the same milestone, and
 [#197](https://github.com/bustanhq/bustan/issues/197), the tracker the layering work was split out
 of, whose five children are listed. An issue carrying two classification labels appears once, under
 the more severe of them; [#32](https://github.com/bustanhq/bustan/issues/32) carries none and is
