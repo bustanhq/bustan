@@ -81,6 +81,7 @@ def test_the_contracts_package_declares_the_names_it_defines() -> None:
         "AbstractHttpAdapter",
         "AdapterCapabilities",
         "AdapterRoute",
+        "ApplicationRuntime",
         "Headers",
         "HttpClientInfo",
         "HttpFileResponse",

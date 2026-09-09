@@ -10,11 +10,12 @@ from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from inspect import iscoroutinefunction
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from anyio import CapacityLimiter, move_on_after, to_thread
 
-from ..contracts import HttpRequest, HttpResponse, RouteHandler
+from ..common.types import PipelineOverrides
+from ..contracts import ApplicationRuntime, HttpRequest, HttpResponse, RouteHandler
 from ..kernel.errors import BustanError, GuardRejectedError
 from ..kernel.ioc.container import Container
 from ..kernel.ioc.scopes import BoundedInstanceStore
@@ -29,6 +30,7 @@ from ..pipeline.context import ExecutionContext
 from ..pipeline.filters import ExceptionFilter, ProblemDetails, handle_exception
 from ..pipeline.guards import run_guards
 from ..pipeline.interceptors import call_with_interceptors
+from ..pipeline.metadata import PipelineMetadata
 from ..pipeline.middleware import Middleware, ResolvedRouteMiddleware
 from ..pipeline.pipes import Pipe, run_pipes
 from .compiler import (
@@ -50,9 +52,6 @@ from .params import (
     separate_bound_parameters,
 )
 from .responses import CoercedResponse, ResponseHandler, ResponseSerializer
-
-if TYPE_CHECKING:
-    from ..testing.overrides import PipelineOverrideRegistry
 
 RuntimeResponse = CoercedResponse
 RouteExceptionHandler = Callable[[HttpRequest, Exception], Awaitable[RuntimeResponse]]
@@ -230,7 +229,7 @@ def create_route_handler(
     container: Container,
     execution_plan: ExecutionPlan,
     middleware_chain: tuple[ResolvedRouteMiddleware, ...] = (),
-    pipeline_override_registry: PipelineOverrideRegistry | None = None,
+    pipeline_override_registry: PipelineOverrides[PipelineMetadata] | None = None,
 ) -> RouteHandler:
     """Build the framework's entry point for one compiled route.
 
@@ -894,15 +893,19 @@ def _application_runtime(application_runtime: object) -> object:
     to be the same object whichever way the resolution was entered. An adapter that
     passes its own server instance is unwrapped to the runtime attached to it, so a
     provider is never handed the web server on one path and the application on another.
+
+    An application is recognised by the shape :class:`ApplicationRuntime` declares
+    rather than by its class, because the class is assembled a layer above this one.
+    Anything that is neither an application nor a server carrying one is handed back
+    untouched, so a transport the framework does not recognise is passed through as
+    itself rather than being reported as an application it is not.
     """
 
-    from ..app.application import ApplicationContext
-
-    if isinstance(application_runtime, ApplicationContext):
+    if isinstance(application_runtime, ApplicationRuntime):
         return application_runtime
     state = getattr(application_runtime, "state", None)
     attached = getattr(state, "bustan_application", None)
-    if isinstance(attached, ApplicationContext):
+    if isinstance(attached, ApplicationRuntime):
         return attached
     return application_runtime
 

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TypeVar, cast
 
 from ..common.decorators.injectable import get_provider_metadata
-from ..common.types import ProviderScope
+from ..common.types import PipelineOverrides, ProviderScope
 from ..contracts import HttpRequest
 from ..kernel.errors import InvalidControllerError, InvalidPipelineError
 from ..kernel.ioc.container import Container
@@ -21,9 +21,6 @@ from ..pipeline.metadata import PipelineMetadata
 from ..pipeline.pipes import Pipe
 from .compiler import GlobalPipelineProvider
 from .metadata import get_controller_metadata
-
-if TYPE_CHECKING:
-    from ..testing.overrides import PipelineOverrideRegistry
 
 ComponentT = TypeVar("ComponentT")
 
@@ -87,7 +84,7 @@ class ControllerFactory:
         self,
         container: Container,
         *,
-        pipeline_override_registry: PipelineOverrideRegistry | None = None,
+        pipeline_override_registry: PipelineOverrides[PipelineMetadata] | None = None,
     ) -> None:
         self.container = container
         self.pipeline_override_registry = pipeline_override_registry
