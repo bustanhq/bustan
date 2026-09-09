@@ -860,7 +860,7 @@ def set_response_serializer(application_runtime: object, serializer: ResponseSer
 
 
 def response_handler_of(application_runtime: object) -> ResponseHandler:
-    """Return the writer *application_runtime* turns handler return values into responses with."""
+    """Return the writer that turns *application_runtime*'s return values into responses."""
 
     handler = getattr(_application_runtime(application_runtime), RESPONSE_HANDLER_ATTR, None)
     return handler if isinstance(handler, ResponseHandler) else _RESPONSE_HANDLER
