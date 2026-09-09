@@ -47,13 +47,13 @@ class RouteDefinitionError(BustanError):
 
 
 class CorsConfigurationError(BustanError):
-    """Raised when a cross-origin policy cannot be enforced as it was asked for.
+    """Raised when an application's cross-origin policy is refused as it was written.
 
     It reaches the caller from ``enable_cors``, while the application is being wired and
-    before any request is served, so a policy is refused where it was written rather
-    than at the first request a browser sends. The type says only that the application
-    cannot serve the policy it declared; the message says what is wrong with it and
-    where the fix goes.
+    before any request is served, so the policy is refused where it can still be changed
+    rather than at the first request a browser sends. It reports the application's own
+    configuration. A transport that cannot enforce any policy at all is a different
+    failure and refuses separately, from the adapter port, with ``NotImplementedError``.
     """
 
 

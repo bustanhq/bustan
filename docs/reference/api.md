@@ -94,6 +94,13 @@ nothing inherits. Silence has to mean refusal: an operator who calls this and is
 answered by nothing at all believes a policy is being enforced, and serves every
 origin while believing it. An adapter whose transport can enforce a policy
 overrides this and does.
+
+The refusal is a standard-library ``NotImplementedError`` and stays one. This is
+the lowest layer of the package and may not import the framework's own error
+types, which is what lets an adapter be written against this module alone; and an
+abstract method a subclass did not implement is exactly what that exception means
+in Python. A policy the application refuses before it reaches any transport is a
+different failure, and carries a framework type instead.
 - `listen(self, port: int, host: str = '127.0.0.1', reload: bool = False, **options: object) -> None`
   Serve requests, under the name the application wrapper calls.
 
@@ -2931,13 +2938,13 @@ class CorsConfigurationError(BustanError)
 
 Defined in `bustan.kernel.errors`.
 
-Raised when a cross-origin policy cannot be enforced as it was asked for.
+Raised when an application's cross-origin policy is refused as it was written.
 
 It reaches the caller from ``enable_cors``, while the application is being wired and
-before any request is served, so a policy is refused where it was written rather
-than at the first request a browser sends. The type says only that the application
-cannot serve the policy it declared; the message says what is wrong with it and
-where the fix goes.
+before any request is served, so the policy is refused where it can still be changed
+rather than at the first request a browser sends. It reports the application's own
+configuration. A transport that cannot enforce any policy at all is a different
+failure and refuses separately, from the adapter port, with ``NotImplementedError``.
 
 #### `ExportViolationError`
 

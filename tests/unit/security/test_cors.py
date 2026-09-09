@@ -545,13 +545,20 @@ def test_both_adapters_answer_a_cross_origin_request_identically(
 
 
 def test_an_adapter_without_the_capability_refuses_and_names_itself() -> None:
-    """Silence would be worse than a refusal: it reads as a policy that is being enforced."""
+    """Silence would be worse than a refusal: it reads as a policy that is being enforced.
+
+    The type stays a standard-library one. The port that raises it is the lowest layer of
+    the package and may not import the framework's errors, and an abstract method a
+    subclass did not implement is what ``NotImplementedError`` means, so this is asserted
+    rather than left to be promoted later by someone reading it as an oversight.
+    """
 
     application = create_app(CorsModule, adapter=UncorsedAdapter())
 
     with pytest.raises(NotImplementedError) as refusal:
         application.enable_cors(CorsOptions(origins=[ORIGIN]))
 
+    assert not isinstance(refusal.value, BustanError)
     assert "UncorsedAdapter" in str(refusal.value)
     assert "CORS" in str(refusal.value)
 

@@ -208,9 +208,14 @@ Off unless you enable it, and `enable_cors()` with no arguments is **refused** r
 than read as every origin:
 
 ```
-ValueError: enable_cors needs the origins it should permit. Pass
-CorsOptions(origins=[...]), or omit the call to leave cross-origin requests refused.
+bustan.kernel.errors.CorsConfigurationError: enable_cors needs the origins it should
+permit. Pass CorsOptions(origins=[...]), or omit the call to leave cross-origin
+requests refused.
 ```
+
+The class is exported as `bustan.errors.CorsConfigurationError`, so an application that
+wraps its own wiring catches it by name, or catches `bustan.errors.BustanError` for every
+framework refusal at once.
 
 `CorsOptions` names no origins until you name them, so a policy that permits every page
 on the internet is one you wrote rather than one you inherited. Every other field has a
