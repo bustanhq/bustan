@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Protocol, overload, runtime_checkable
 
 if TYPE_CHECKING:
@@ -121,11 +122,8 @@ class ApplicationContext:
         handler, a guard or an interceptor, inject `ModuleRef` and call its `get()`:
         that resolves against the request currently being served.
         """
-        application_token = self._container.scope_manager.push_application(self)
-        try:
+        with entered_application_scope(self):
             return self._container.resolve(token, module=self._container.module_graph.root_key)
-        finally:
-            self._container.scope_manager.pop_application(application_token)
 
     @overload
     def resolve[T](self, token: InjectionToken[T]) -> T: ...
@@ -149,11 +147,8 @@ class ApplicationContext:
         """
 
         if self._lifecycle_manager is not None:
-            application_token = self._container.scope_manager.push_application(self)
-            try:
+            with entered_application_scope(self):
                 await self._lifecycle_manager.startup()
-            finally:
-                self._container.scope_manager.pop_application(application_token)
         return self
 
     async def close(self) -> None:
@@ -174,11 +169,8 @@ class ApplicationContext:
         """
 
         if self._lifecycle_manager is not None:
-            application_token = self._container.scope_manager.push_application(self)
-            try:
+            with entered_application_scope(self):
                 await self._lifecycle_manager.shutdown(signal=signal)
-            finally:
-                self._container.scope_manager.pop_application(application_token)
 
 
 class Application(ApplicationContext):
@@ -336,3 +328,46 @@ class Application(ApplicationContext):
         """
 
         await self._adapter(scope, receive, send)
+
+
+@contextmanager
+def entered_application_scope(application: ApplicationContext | None) -> Iterator[None]:
+    """Name *application* the running application for the duration of the block.
+
+    ``APPLICATION`` answers only while an application is running, so everything the
+    framework runs on one's behalf - an imperative resolution, a startup, a teardown -
+    says so through this rather than each entry point deciding for itself, and a
+    provider built under any of them is answered the same way. A block entered with no
+    application names none and runs as it would have, which is what work driven against
+    a container that belongs to no application gets.
+
+    The binding is released in the same task that made it, so hold this around one
+    stage rather than across a suspension a server may resume on another task.
+    """
+
+    if application is None:
+        yield
+        return
+
+    scope_manager = application.container.scope_manager
+    token = scope_manager.push_application(application)
+    try:
+        yield
+    finally:
+        scope_manager.pop_application(token)
+
+
+def owning_application(lifecycle_manager: LifecycleManager) -> ApplicationContext | None:
+    """Return the application whose module graph *lifecycle_manager* starts and stops.
+
+    An application names itself on its container while it is assembled, and that name
+    is what ``APPLICATION`` answers with however a resolution was entered, so it is the
+    one answer that cannot disagree with itself. Reading it back out of the container
+    here, rather than taking it as an argument, is what lets something built from a
+    manager alone - a server lifespan, which is handed the transport's own object and
+    never the application - still name the application it is starting. A manager
+    driving a container that belongs to no application answers ``None``.
+    """
+
+    owner = lifecycle_manager._container.kernel._owning_application
+    return owner if isinstance(owner, ApplicationContext) else None
