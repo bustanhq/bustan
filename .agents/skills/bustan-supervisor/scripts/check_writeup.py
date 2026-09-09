@@ -183,8 +183,12 @@ def segment(body: str, excluded: tuple[str, ...]) -> Segments:
     return Segments(prose, headings, fenced, verification, owns_has_details)
 
 
-def _verdict(check: str, passed: bool, detail: str, level: str = "FAIL") -> Finding:
-    return Finding("ok" if passed else level, check, detail)
+def _verdict(
+    check: str, passed: bool, detail: str, level: str = "FAIL", ok_detail: str | None = None
+) -> Finding:
+    if passed:
+        return Finding("ok", check, detail if ok_detail is None else ok_detail)
+    return Finding(level, check, detail)
 
 
 def check_title(title: str, limit: int) -> list[Finding]:
@@ -200,8 +204,18 @@ def check_title(title: str, limit: int) -> list[Finding]:
         _verdict(
             "title.series-prefix", series is None, series.group(0).strip() if series else "none"
         ),
-        _verdict("title.programme", "programme" not in title.lower(), "says 'programme'"),
-        _verdict("title.trailing-period", not title.rstrip().endswith("."), "ends with a period"),
+        _verdict(
+            "title.programme",
+            "programme" not in title.lower(),
+            "says 'programme'",
+            ok_detail="no programme talk",
+        ),
+        _verdict(
+            "title.trailing-period",
+            not title.rstrip().endswith("."),
+            "ends with a period",
+            ok_detail="no trailing period",
+        ),
     ]
 
 
@@ -356,7 +370,14 @@ def check_body(
     if kind == "pr":
         findings.append(_closes(body, closes))
         has_verification = any(text.lower() == "verification" for _, text, _ in parts.headings)
-        findings.append(_verdict("pr.verification", has_verification, "no ## Verification section"))
+        findings.append(
+            _verdict(
+                "pr.verification",
+                has_verification,
+                "no ## Verification section",
+                ok_detail="a Verification section is present",
+            )
+        )
         if has_verification:
             findings.append(
                 _verdict(
@@ -366,7 +387,14 @@ def check_body(
                 )
             )
         has_not_done = any(text.lower() == "not done" for _, text, _ in parts.headings)
-        findings.append(_verdict("pr.not-done", has_not_done, "no ## Not done section"))
+        findings.append(
+            _verdict(
+                "pr.not-done",
+                has_not_done,
+                "no ## Not done section",
+                ok_detail="a Not done section is present",
+            )
+        )
         if draft:
             first = next((line for line in body.splitlines() if line.strip()), "")
             findings.append(
@@ -375,6 +403,7 @@ def check_body(
                     first.startswith(DRAFT_FIRST_LINES),
                     "a draft that does not open with BLOCKED: or DECISION REQUIRED:",
                     level="WARN",
+                    ok_detail="the draft opens with its protocol line",
                 )
             )
     return findings
