@@ -119,7 +119,9 @@ def test_validate_module_compiled_rejects_duplicates_and_invalid_providers() -> 
         metadata=ModuleMetadata(
             imports=(),
             controllers=(),
-            providers=({"provide": "broken"},),
+            # An entry that declares nothing at all: the field records what the author
+            # wrote, so refusing it by name here is the only thing that names the module.
+            providers=("broken",),
             exports=(),
         ),
     )

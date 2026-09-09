@@ -58,8 +58,9 @@ def test_module_and_global_decorators_validate_targets_and_metadata() -> None:
 def test_module_refuses_unordered_collections_and_bare_mappings() -> None:
     # Declaration order decides construction order and lifecycle hook order, so a set
     # hands the application an order that can differ between interpreter runs. A bare
-    # mapping is worse: it iterates as its keys, so a lone provider definition was read
-    # as the strings 'provide' and 'use_value'.
+    # mapping is worse: it iterates as its keys, so one written where a sequence belongs
+    # would be silently read as half of what it says. A view over it says that out loud
+    # and is kept.
     class Alpha:
         pass
 
@@ -76,7 +77,7 @@ def test_module_refuses_unordered_collections_and_bare_mappings() -> None:
         Module(exports=cast(Any, {Alpha, Beta}))
 
     with pytest.raises(InvalidModuleError, match="inside a sequence"):
-        Module(providers=cast(Any, {"provide": "token", "use_value": 1}))
+        Module(providers=cast(Any, {Alpha: 1, Beta: 2}))
 
     # A view over a mapping keeps the mapping's insertion order, so it stays usable.
     ordered = Module(providers=cast(Any, {Alpha: 1, Beta: 2}.keys()))(type("Ordered", (), {}))

@@ -175,15 +175,20 @@ def test_a_mapping_is_refused_naming_the_value_type_that_replaces_it() -> None:
     for use_key, replacement in _DICT_REPLACEMENTS:
         written_as_a_dict: dict[str, object] = dict(provide="t")
         written_as_a_dict[use_key] = _USE_ENTRIES[use_key]
+        # The dict the refusal quotes back is the one it was handed, its two values
+        # standing in as X and Y, so the expectation is derived rather than transcribed.
+        quoted = ", ".join(
+            f'"{key}": {placeholder}'
+            for key, placeholder in zip(written_as_a_dict, "XY", strict=True)
+        )
 
         with pytest.raises(InvalidProviderError) as refusal:
             normalize_provider(written_as_a_dict, AppModule)
 
-        message = str(refusal.value)
-        assert "AppModule" in message
-        assert "a dict is no longer a provider" in message
-        assert f'{{"provide": X, "{use_key}": Y}}' in message
-        assert f"{replacement}(provide=X, {use_key}=Y)" in message
+        assert str(refusal.value) == (
+            f"Invalid provider in AppModule: a dict is no longer a provider. "
+            f"Replace {{{quoted}}} with {replacement}(provide=X, {use_key}=Y)"
+        )
 
 
 def test_a_mapping_naming_no_target_is_still_refused_as_the_shape_it_is() -> None:
