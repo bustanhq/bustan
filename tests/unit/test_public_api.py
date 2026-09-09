@@ -131,6 +131,9 @@ from bustan.pipeline.middleware import Middleware as InternalMiddleware
 from bustan.pipeline.middleware import MiddlewareConsumer as InternalMiddlewareConsumer
 from bustan.runtime.adapter import AdapterRuntime as InternalAdapterRuntime
 from bustan.runtime.params import RequestLimits as InternalRequestLimits
+from bustan.runtime.responses import (
+    DefaultResponseSerializer as InternalDefaultResponseSerializer,
+)
 from bustan.runtime.responses import ResponseSerializer as InternalResponseSerializer
 from bustan.runtime.versioning import VERSION_NEUTRAL as InternalVersionNeutral
 from bustan.runtime.versioning import VersioningOptions as InternalVersioningOptions
@@ -191,6 +194,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
         "Cache",
         "ContextId",
         "Controller",
+        "DefaultResponseSerializer",
         "Delete",
         "DeprecatedRoute",
         "DiscoveryModule",
@@ -345,6 +349,7 @@ def test_root_package_exposes_the_supported_public_api() -> None:
     assert bustan.Public is InternalPublic
     assert bustan.RateLimit is InternalRateLimit
     assert bustan.ResponseSerializer is InternalResponseSerializer
+    assert bustan.DefaultResponseSerializer is InternalDefaultResponseSerializer
     assert bustan.Roles is InternalRoles
     assert bustan.BadRequestException is BadRequestException
     assert bustan.BeforeApplicationShutdown is InternalBeforeApplicationShutdown

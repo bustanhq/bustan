@@ -61,7 +61,7 @@ deprecation window.
 | Authentication strategy | `Authenticator`, `Principal`, `AUTHENTICATOR_REGISTRY` | a provider bound under `AUTHENTICATOR_REGISTRY`, mapping each strategy name to an authenticator |
 | Client-visible error payload | `ProblemDetailsExceptionFilter`, `ProblemDetails` | a subclass registered with `UseFilters`, or a provider bound under `APP_FILTER` |
 | Route policy | `Auth`, `Public`, `Roles`, `Permissions`, `RateLimit`, `Cache`, `Idempotent`, `Audit`, `Owner`, `DeprecatedRoute` | written on a controller class or on a handler |
-| Response serialization | `ResponseSerializer` | nothing yet installs one; see the note below |
+| Response serialization | `ResponseSerializer`, `DefaultResponseSerializer` | `create_app(response_serializer=...)` |
 | Observability | `ObservabilityHooks`, `MetricsSink`, `RequestTracer` | `create_app(observability=...)` |
 | Request limits | `RequestLimits` | `create_app(request_limits=...)` |
 
@@ -78,12 +78,12 @@ matter of taste:
   provider binding, a filter registration, a decorator - so a second mechanism beside
   those would be a second way to say the same thing.
 
-`ResponseSerializer` is exported as a contract you may implement and type against, and
-it is the one entry in the table with no way to install one. The framework builds its
-own serializer on the request path and takes no replacement, so an implementation of
-this protocol has nowhere to go until the keyword that would seat it exists. It is
-listed here rather than left out because the contract itself is supported: a serializer
-written against it stays valid when the keyword arrives.
+Response serialization takes the first shape even though `ResponseSerializer` is a
+contract you implement, because the framework already has a serializer and an
+application is replacing it rather than adding one. There is nowhere to point a
+registration at, so the replacement is a value passed at the place the application is
+built. `DefaultResponseSerializer` is exported beside the protocol because it is what an
+implementation delegates to for the values it does not handle itself.
 
 ## How To Read The API Reference
 

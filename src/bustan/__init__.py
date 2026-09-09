@@ -160,7 +160,7 @@ from .pipeline.filters import ProblemDetails, ProblemDetailsExceptionFilter
 from .pipeline.middleware import Middleware, MiddlewareConsumer
 from .runtime.adapter import AdapterRuntime
 from .runtime.params import RequestLimits
-from .runtime.responses import ResponseSerializer
+from .runtime.responses import DefaultResponseSerializer, ResponseSerializer
 from .runtime.versioning import VERSION_NEUTRAL, VersioningOptions, VersioningType
 from .security import CorsOptions, SkipThrottle, ThrottlerGuard, ThrottlerModule, ThrottlerStorage
 
@@ -216,6 +216,7 @@ __all__ = (
     "Cache",
     "ContextId",
     "Controller",
+    "DefaultResponseSerializer",
     "Delete",
     "DeprecatedRoute",
     "DiscoveryModule",

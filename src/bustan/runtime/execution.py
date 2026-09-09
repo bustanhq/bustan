@@ -49,7 +49,7 @@ from .params import (
     bind_handler_parameters,
     separate_bound_parameters,
 )
-from .responses import CoercedResponse, ResponseHandler
+from .responses import CoercedResponse, ResponseHandler, ResponseSerializer
 
 if TYPE_CHECKING:
     from ..testing.overrides import PipelineOverrideRegistry
@@ -72,6 +72,12 @@ REQUEST_LIMITS_ATTR = "bustan_request_limits"
 # Reserved on the application object for the observability hooks it serves requests
 # through, under the same convention as the limits above.
 OBSERVABILITY_HOOKS_ATTR = "bustan_observability_hooks"
+# Reserved on the application object for the writer that turns its handlers' return
+# values into responses, under the same convention as the two above. It holds the
+# writer rather than the serializer inside it because the writer is what the request
+# path asks for, and building it once when the serializer is declared keeps the promise
+# the shared writer below makes: no request builds one to use once.
+RESPONSE_HANDLER_ATTR = "bustan_response_handler"
 
 
 class RequestTimeoutError(BustanError):
@@ -121,9 +127,12 @@ class RequestLimitExceptionFilter(ExceptionFilter):
 
 
 _REQUEST_LIMIT_FILTER = RequestLimitExceptionFilter()
-# The writer that turns a handler's return value into a response. It reads the plan it
-# is handed and keeps nothing of its own between calls, so one writer serves every
-# request rather than each request building one to use once.
+# The writer that turns a handler's return value into a response for an application
+# that declared no serializer of its own. It reads the plan it is handed and keeps
+# nothing of its own between calls, so one writer serves every such request rather than
+# each request building one to use once. An application that declares a serializer gets
+# its own writer, built once and seated on it; this one is never rebuilt, so what one
+# application declares can never become what the next one serves under.
 _RESPONSE_HANDLER = ResponseHandler()
 
 
@@ -352,6 +361,7 @@ async def execute_http_route(
     response_token = container.scope_manager.push_response(response_context)
     observability = observability_hooks_of(application_runtime)
     limits = request_limits_of(application_runtime)
+    response_handler = response_handler_of(application_runtime)
     context: ExecutionContext | None = None
     filters: tuple[ExceptionFilter, ...] | None = None
     observation = None
@@ -447,7 +457,7 @@ async def execute_http_route(
                 remainder.interceptors,
                 final_handler,
             )
-            response = _RESPONSE_HANDLER.write(
+            response = response_handler.write(
                 result=result, response_plan=execution_plan.response_plan
             )
             response = _merge_response_context(
@@ -478,6 +488,7 @@ async def execute_http_route(
             execution_plan=execution_plan,
             response_context=response_context,
             request=request,
+            response_handler=response_handler,
         )
         if observation is not None:
             observability.finish_request(
@@ -521,6 +532,7 @@ async def execute_http_exception(
     response_context = HttpResponse()
     response_token = container.scope_manager.push_response(response_context)
     observability = observability_hooks_of(application_runtime)
+    response_handler = response_handler_of(application_runtime)
     observation = None
     context: ExecutionContext | None = None
     filters: tuple[ExceptionFilter, ...] | None = None
@@ -545,7 +557,7 @@ async def execute_http_exception(
         filters = resolved_pipeline.filters
         observation = observability.start_request(context)
         filtered_result = await handle_exception(context, error, _with_limit_filter(filters))
-        response = _RESPONSE_HANDLER.write(
+        response = response_handler.write(
             result=filtered_result,
             response_plan=_EXCEPTION_RESPONSE_PLAN,
         )
@@ -570,6 +582,7 @@ async def execute_http_exception(
             execution_plan=execution_plan,
             response_context=response_context,
             request=request,
+            response_handler=response_handler,
         )
         if observation is not None:
             observability.finish_request(
@@ -593,6 +606,7 @@ async def _render_failure(
     execution_plan: ExecutionPlan,
     response_context: HttpResponse,
     request: HttpRequest,
+    response_handler: ResponseHandler,
 ) -> RuntimeResponse:
     """Turn an exception the route could not handle itself into a client response.
 
@@ -603,13 +617,18 @@ async def _render_failure(
     chain still ends in the framework's problem-details mapping rather than a fixed
     status. Only a failure that leaves no context at all is answered with an opaque
     500, logged where an operator can read it and saying nothing about the internals.
+
+    ``response_handler`` is the writer the application being served declared. It is
+    passed in rather than looked up because the caller resolved it for this request
+    already, and an error path is the last place that should serialize through a
+    different writer than the success path beside it.
     """
 
     if context is not None:
         if filters is None:
             filters = await _global_filters(factory, execution_plan, request)
         filtered_result = await handle_exception(context, exc, _with_limit_filter(filters))
-        response = _RESPONSE_HANDLER.write(
+        response = response_handler.write(
             result=filtered_result,
             response_plan=_EXCEPTION_RESPONSE_PLAN,
         )
@@ -819,6 +838,34 @@ def observability_hooks_of(application_runtime: object) -> ObservabilityHooks:
     return ObservabilityHooks.resolve(hooks if isinstance(hooks, ObservabilityHooks) else None)
 
 
+def set_response_serializer(application_runtime: object, serializer: ResponseSerializer) -> None:
+    """Declare the serializer *application_runtime* writes its responses through.
+
+    The serializer belongs to an application rather than to the process, so two
+    applications in one process can render the same handler return value two different
+    ways, and neither has to agree with the other about which one that is. An
+    application that declares none writes through the framework's default serializer,
+    so there is no way to end up with nothing to serialize with.
+
+    The writer that reads the compiled response plan is built here, once, and seated on
+    the application; the serializer only decides what a plan that asks for serialization
+    produces, and the raw, stream and file strategies are unaffected either way.
+    """
+
+    setattr(
+        _application_runtime(application_runtime),
+        RESPONSE_HANDLER_ATTR,
+        ResponseHandler(serializer),
+    )
+
+
+def response_handler_of(application_runtime: object) -> ResponseHandler:
+    """Return the writer *application_runtime* turns handler return values into responses with."""
+
+    handler = getattr(_application_runtime(application_runtime), RESPONSE_HANDLER_ATTR, None)
+    return handler if isinstance(handler, ResponseHandler) else _RESPONSE_HANDLER
+
+
 def _sync_handler_limiter(limits: RequestLimits) -> CapacityLimiter:
     """Return the limiter that bounds how many synchronous handlers run at once.
 
@@ -929,6 +976,7 @@ def _merge_response_context(
 __all__ = [
     "OBSERVABILITY_HOOKS_ATTR",
     "REQUEST_LIMITS_ATTR",
+    "RESPONSE_HANDLER_ATTR",
     "ExecutionPlan",
     "HttpExecutionResult",
     "RequestLimitExceptionFilter",
@@ -942,7 +990,9 @@ __all__ = [
     "execute_http_route",
     "observability_hooks_of",
     "request_limits_of",
+    "response_handler_of",
     "run_middleware_chain",
     "set_observability_hooks",
     "set_request_limits",
+    "set_response_serializer",
 ]
