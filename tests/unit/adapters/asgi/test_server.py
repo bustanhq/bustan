@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
 import pytest
 
 from bustan.adapters.asgi.application import AsgiApplication
-from bustan.adapters.asgi.requests import DEFAULT_MAX_BODY_BYTES
+from bustan.adapters.asgi.requests import DEFAULT_MAX_BODY_BYTES, AsgiHttpRequest
 from bustan.adapters.asgi.server import AsgiServer
 from bustan.adapters.asgi.types import AsgiApp, Receive, Scope, Send
 from bustan.contracts import AdapterRoute, HttpRequest, HttpResponse, HttpStreamResponse
@@ -32,6 +33,25 @@ async def _odd(_request: HttpRequest) -> HttpResponse:
     return HttpResponse(status_code=599, body=b"odd")
 
 
+async def _scope_fields(request: HttpRequest) -> HttpResponse:
+    """Report what the server made of the request target, which only a socket can show.
+
+    The conformance suite drives each adapter through its own test client, so nothing it
+    runs reaches the parser a request line goes through. These are the fields that parser
+    writes, read back out of the scope the handler was called with.
+    """
+
+    scope = cast(AsgiHttpRequest, request).scope
+    return HttpResponse.json(
+        {
+            "path": scope["path"],
+            "raw_path": cast(bytes, scope["raw_path"]).decode("ascii"),
+            "query_string": cast(bytes, scope["query_string"]).decode("ascii"),
+            "name": request.path_params.get("name"),
+        }
+    )
+
+
 def _application() -> AsgiApplication:
     application = AsgiApplication()
     application.register(
@@ -39,6 +59,7 @@ def _application() -> AsgiApplication:
             AdapterRoute(path="/echo", methods=("GET", "POST"), handler=_echo),
             AdapterRoute(path="/stream", methods=("GET",), handler=_stream),
             AdapterRoute(path="/odd", methods=("GET",), handler=_odd),
+            AdapterRoute(path="/names/{name}", methods=("GET",), handler=_scope_fields),
         ]
     )
     return application
@@ -132,6 +153,71 @@ async def test_a_streamed_response_is_delimited_by_closing_the_connection() -> N
 
     assert answer.endswith(b"hello stream")
     assert b"connection: close" in answer
+
+
+@pytest.mark.anyio
+async def test_an_encoded_target_reaches_the_router_decoded_and_the_scope_undecoded() -> None:
+    running = await _start()
+
+    answer = await _speak(
+        running.port, b"GET /names/John%20Doe?page=2 HTTP/1.1\r\nhost: localhost\r\n\r\n"
+    )
+    await _stop(running)
+
+    assert answer.startswith(b"HTTP/1.1 200 OK\r\n")
+    assert b'"path":"/names/John Doe"' in answer
+    assert b'"raw_path":"/names/John%20Doe"' in answer
+    assert b'"query_string":"page=2"' in answer
+    assert b'"name":"John Doe"' in answer
+
+
+@pytest.mark.anyio
+async def test_an_encoded_literal_segment_reaches_the_route_it_spells() -> None:
+    running = await _start()
+
+    answer = await _speak(running.port, b"GET /ec%68o HTTP/1.1\r\nhost: localhost\r\n\r\n")
+    await _stop(running)
+
+    assert answer.startswith(b"HTTP/1.1 200 OK\r\n")
+    assert b'"path":"/echo"' in answer
+
+
+@pytest.mark.anyio
+async def test_an_encoded_separator_cannot_move_a_request_to_another_route() -> None:
+    """It is a character the caller wrote inside one segment, so it stays in it."""
+
+    running = await _start()
+
+    answer = await _speak(running.port, b"GET /names/a%2Fb HTTP/1.1\r\nhost: localhost\r\n\r\n")
+    await _stop(running)
+
+    assert answer.startswith(b"HTTP/1.1 200 OK\r\n")
+    assert b'"path":"/names/a%2Fb"' in answer
+    assert b'"raw_path":"/names/a%2Fb"' in answer
+    assert b'"name":"a%2Fb"' in answer
+
+
+@pytest.mark.anyio
+async def test_a_non_ascii_byte_in_the_request_line_is_answered_rather_than_read() -> None:
+    running = await _start()
+
+    answer = await _speak(
+        running.port, "GET /names/caf\u00e9 HTTP/1.1\r\nhost: localhost\r\n\r\n".encode("latin-1")
+    )
+    await _stop(running)
+
+    assert answer.startswith(b"HTTP/1.1 400 Bad Request\r\n")
+
+
+@pytest.mark.anyio
+async def test_a_segment_whose_escapes_are_not_utf_8_is_answered_rather_than_guessed_at() -> None:
+    running = await _start()
+
+    answer = await _speak(running.port, b"GET /names/%FF HTTP/1.1\r\nhost: localhost\r\n\r\n")
+    await _stop(running)
+
+    assert answer.startswith(b"HTTP/1.1 400 Bad Request\r\n")
+    assert answer.endswith(b"Undecodable percent-encoding in the request target")
 
 
 @pytest.mark.anyio

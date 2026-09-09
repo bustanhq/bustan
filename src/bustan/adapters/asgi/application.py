@@ -13,7 +13,14 @@ from typing import TYPE_CHECKING, cast
 from ...contracts import RequestState
 from .requests import DEFAULT_MAX_BODY_BYTES, AsgiHttpRequest
 from .responses import AsgiResponseValue, plain_text, to_asgi_response
-from .routing import AsgiRouter, Matched, MethodMismatch, Redirect, build_asgi_routes
+from .routing import (
+    AsgiRouter,
+    Matched,
+    MethodMismatch,
+    Redirect,
+    alternate_path,
+    build_asgi_routes,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -124,9 +131,7 @@ class AsgiApplication:
         if isinstance(resolution, MethodMismatch):
             return to_asgi_response(method_not_allowed_response(request.path, resolution.allowed))
         if isinstance(resolution, Redirect):
-            query = cast(bytes, request.scope.get("query_string", b"")).decode("latin-1")
-            location = f"{resolution.path}?{query}" if query else resolution.path
-            return plain_text("", status_code=307, location=location)
+            return plain_text("", status_code=307, location=_redirect_location(request))
         return to_asgi_response(not_found_response(request.path))
 
     async def _run_lifespan(self, receive: Receive, send: Send) -> None:
@@ -174,6 +179,25 @@ class AsgiApplication:
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(routes={len(self.routes)})"
+
+
+def _redirect_location(request: AsgiHttpRequest) -> str:
+    """Return where a request whose path is spelled the other way round is sent.
+
+    Built from the target the caller wrote rather than the path the router matched. The
+    two say the same thing, but only the first can be sent back: a path is decoded, so a
+    caller who addressed ``/users/John%20Doe/`` would be redirected to a location with a
+    space loose in it, and the request that came back would be a different one or none.
+
+    A scope carrying no raw path is one built by something other than this transport, and
+    is redirected to the path it did carry, which is where it was redirected before.
+    """
+
+    raw_path = cast("bytes | None", request.scope.get("raw_path"))
+    target = request.path if raw_path is None else raw_path.decode("latin-1")
+    location = alternate_path(target)
+    query = cast(bytes, request.scope.get("query_string", b"")).decode("latin-1")
+    return f"{location}?{query}" if query else location
 
 
 def _without_body(send: Send) -> Send:

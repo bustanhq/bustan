@@ -19,6 +19,10 @@ from typing import TYPE_CHECKING, cast
 from .lifespan import LifespanRunner
 from .requests import DEFAULT_MAX_BODY_BYTES
 
+# The error every refusal on this path raises is defined beside the target parser, which
+# raises it too, and is re-exported here because this is the module that answers it.
+from .targets import HttpParseError, parse_request_target
+
 if TYPE_CHECKING:
     from .types import AsgiApp, Message, Scope
 
@@ -31,15 +35,6 @@ MAX_HEADER_BLOCK_BYTES = 64 * 1024
 # One request is answered per connection and the whole of it has already been read, so
 # whatever this collects is discarded; only the end of the stream is being waited for.
 _TRAILING_READ_BYTES = 4096
-
-
-class HttpParseError(Exception):
-    """Raised when a request cannot be read, carrying the status that answers it."""
-
-    def __init__(self, status: int, reason: str) -> None:
-        super().__init__(reason)
-        self.status = status
-        self.reason = reason
 
 
 class AsgiServer:
@@ -121,16 +116,16 @@ async def _read_request(
     if any(name == b"transfer-encoding" for name, _value in headers):
         raise HttpParseError(HTTPStatus.NOT_IMPLEMENTED, "Transfer-Encoding is not supported")
     body = await _read_body(reader, _content_length(headers), max_body_bytes)
-    path, _, query = target.partition(b"?")
+    parsed = parse_request_target(target)
     return {
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "2.3"},
-        "http_version": version.decode("latin-1").removeprefix("HTTP/"),
-        "method": method.decode("latin-1"),
+        "http_version": version.decode("ascii").removeprefix("HTTP/"),
+        "method": method.decode("ascii"),
         "scheme": "http",
-        "path": path.decode("latin-1"),
-        "raw_path": path,
-        "query_string": query,
+        "path": parsed.path,
+        "raw_path": parsed.raw_path,
+        "query_string": parsed.query_string,
         "root_path": "",
         "headers": headers,
         "client": writer.get_extra_info("peername"),
@@ -139,8 +134,17 @@ async def _read_request(
 
 
 def _parse_request_line(line: bytes) -> tuple[bytes, bytes, bytes]:
+    """Split one request line into its method, target and version.
+
+    A request line is ASCII, so a byte outside it is refused here rather than decoded
+    into whichever character the byte happens to stand for in some other encoding: a
+    method or a version read that way is a request nobody sent. The target is held to
+    the same rule again where it is parsed, because the parser is also called by a client
+    that never saw a request line.
+    """
+
     parts = line.split()
-    if len(parts) != 3 or not parts[2].startswith(b"HTTP/"):
+    if len(parts) != 3 or not parts[2].startswith(b"HTTP/") or not line.isascii():
         raise HttpParseError(HTTPStatus.BAD_REQUEST, "Malformed request line")
     return parts[0], parts[1], parts[2]
 
