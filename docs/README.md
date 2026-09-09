@@ -103,8 +103,8 @@ Understanding-oriented. Background and reasoning, read away from the keyboard.
   where the framework's responsibility stops.
 - [Why the benchmark gate uses a ratio](explanation/why-the-benchmark-ratio.md) - why a ratio rather
   than a wall-clock number, and why the threshold is twenty percent.
-- [Comparisons](explanation/comparisons.md) - how Bustan sits beside Starlette, FastAPI and
-  NestJS-style architecture.
+- [Comparisons](explanation/comparisons.md) - how Bustan sits beside Starlette, FastAPI,
+  Litestar and NestJS-style architecture.
 
 ## Examples
 
