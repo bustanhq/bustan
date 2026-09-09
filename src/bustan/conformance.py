@@ -44,10 +44,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated, Any, Protocol, cast
 
-from ..adapters.asgi import AsgiAdapter
-from ..app.bootstrap import create_app
-from ..common.decorators.controller import Controller
-from ..common.decorators.parameter import (
+from .adapters.asgi import AsgiAdapter
+from .app.bootstrap import create_app
+from .common.decorators.controller import Controller
+from .common.decorators.parameter import (
     Body,
     Cookies,
     Header,
@@ -59,17 +59,17 @@ from ..common.decorators.parameter import (
     UploadedFiles,
     create_param_decorator,
 )
-from ..common.decorators.route import Get, Post
-from ..contracts import HttpRequest, HttpResponse, NativeHttpRequest
-from ..kernel.module.decorators import Module
-from ..pipeline.context import ExecutionContext
-from ..pipeline.decorators import UseFilters
-from ..pipeline.filters import ExceptionFilter
-from ..pipeline.middleware import Middleware, MiddlewareConsumer
-from .adapter import AbstractHttpAdapter, AdapterCapabilities, AdapterRuntime
-from .execution import set_request_limits
-from .params import DEFAULT_MAX_UPLOAD_BYTES, RequestLimits
-from .versioning import VersioningOptions, VersioningType
+from .common.decorators.route import Get, Post
+from .contracts import HttpRequest, HttpResponse, NativeHttpRequest
+from .kernel.module.decorators import Module
+from .pipeline.context import ExecutionContext
+from .pipeline.decorators import UseFilters
+from .pipeline.filters import ExceptionFilter
+from .pipeline.middleware import Middleware, MiddlewareConsumer
+from .runtime.adapter import AbstractHttpAdapter, AdapterCapabilities, AdapterRuntime
+from .runtime.execution import set_request_limits
+from .runtime.params import DEFAULT_MAX_UPLOAD_BYTES, RequestLimits
+from .runtime.versioning import VersioningOptions, VersioningType
 
 # The header every case compares, whatever else it names: a response's media type is
 # part of the framework's contract rather than one transport's default.
@@ -1527,7 +1527,7 @@ def load_adapter(name: str) -> AbstractHttpAdapter:
 
     if name == "starlette":
         try:
-            from ..adapters.starlette import StarletteAdapter
+            from .adapters.starlette import StarletteAdapter
         except ModuleNotFoundError as error:
             # Only the absent extra becomes advice. Anything else missing underneath the
             # adapter is a real import failure, and an install instruction would send the

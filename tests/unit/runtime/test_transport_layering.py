@@ -24,8 +24,8 @@ TEMPLATE_ROOT = PACKAGE_ROOT / "cli" / "templates"
 KNOWN_TRANSPORT_IMPORTERS = frozenset(
     {
         "app/application.py",
+        "conformance.py",
         "runtime/compiler.py",
-        "runtime/conformance.py",
         "testing/builder.py",
     }
 )

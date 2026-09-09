@@ -7,16 +7,16 @@ from dataclasses import dataclass, replace
 from typing import Any, cast
 
 from bustan import Controller, Get, Module, Post, create_app
+from bustan import conformance as conformance_module
 from bustan.adapters.starlette import StarletteAdapter
-from bustan.runtime import conformance as conformance_module
-from bustan.runtime.adapter import AbstractHttpAdapter, AdapterCapabilities
-from bustan.runtime.conformance import (
+from bustan.conformance import (
     ADAPTER_NAMES,
     UNCOMPARED_BODY_MEMBER,
     ConformanceCase,
     ResponseObservation,
     describe_difference,
 )
+from bustan.runtime.adapter import AbstractHttpAdapter, AdapterCapabilities
 from bustan.testing import AsgiTestClient
 
 _STREAMED_BODY_CASE = "request_limit_refuses_a_streamed_body_over_the_limit"

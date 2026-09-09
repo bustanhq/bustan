@@ -116,7 +116,7 @@ def _build_diff_report(target: str, snapshot_path: str) -> dict[str, object]:
 
 
 def _build_conformance_report(adapter_name: str) -> dict[str, object]:
-    from ...runtime.conformance import evaluate_adapter_conformance, load_adapter
+    from ...conformance import evaluate_adapter_conformance, load_adapter
 
     return evaluate_adapter_conformance(load_adapter(adapter_name)).to_dict()
 
