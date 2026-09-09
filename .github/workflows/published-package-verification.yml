@@ -56,26 +56,209 @@ jobs:
           fi
           echo "BUSTAN_VERSION=$version" >> "$GITHUB_ENV"
 
-      # Retried because this now runs seconds after the upload, and a version can take a
-      # moment to become installable. Only a resolution failure is retried; anything the
-      # install itself gets wrong fails on the last attempt as it would have on the first.
+      # PyPI does not serve a version to installers the moment the upload returns 200. The
+      # upload commits to the index first and the installer-facing caches catch up behind
+      # it, so a release can be complete and correct and still be unresolvable for a while.
+      # This step therefore asks two questions and keeps their answers apart, because they
+      # want opposite responses from a reader: an index that has not caught up is a wait,
+      # and an upload that never happened is a failed release.
+      #
+      # The window is fifteen minutes, backing off from five seconds to a three-minute
+      # ceiling, and two things pick that number. A release that was on PyPI within a
+      # couple of minutes has been failed by a window of about seventy-five seconds, so
+      # the tail is longer than a minute and a window worth trusting has to clear it by an
+      # order of magnitude rather than by a margin. And the simple index is served with a
+      # ten-minute max-age, so a window shorter than that can sit inside a single cached
+      # answer and learn nothing at all by asking again. The cost is job minutes on a path
+      # that runs once per release and blocks nothing; the cost of the alternative is a red
+      # check on an action nobody can take back, which teaches the next person to stop
+      # reading this job at the moment reading it matters most.
+      #
+      # Presence in the simple index is what separates the two failures, so it is read with
+      # caching defeated: a cached index answers with the state before the upload, which
+      # reads exactly like a release that never went out. pip is told not to cache either,
+      # because otherwise the first attempt's answer is stored for the index's whole
+      # max-age and every retry inside it is decided before it is made.
+      #
+      # Only the installation is retried. Everything after the loop runs once, so a longer
+      # wait cannot turn a broken package into a passing one.
       - name: Verify pip install and console entry point
         run: |
+          set -euo pipefail
           python -m venv .published-smoke
           . .published-smoke/bin/activate
           python -m pip install --upgrade pip
-          for attempt in 1 2 3 4 5; do
-            if python -m pip install "bustan==${BUSTAN_VERSION}"; then
-              break
-            fi
-            if [ "$attempt" = 5 ]; then
-              echo "bustan==${BUSTAN_VERSION} was not installable after $attempt attempts" >&2
-              exit 1
-            fi
-            echo "bustan==${BUSTAN_VERSION} not installable yet; retrying in 15s"
-            sleep 15
-          done
-          python -c "import bustan; print(bustan.__version__)"
+          python -u - "$BUSTAN_VERSION" <<'PY'
+          """Wait for the published version to become installable, then install it."""
+
+          import json
+          import subprocess
+          import sys
+          import time
+          import urllib.request
+
+          PROJECT = "bustan"
+          VERSION = sys.argv[1]
+          SIMPLE_INDEX_URL = f"https://pypi.org/simple/{PROJECT}/"
+          WINDOW_SECONDS = 900
+          INDEX_GRACE_SECONDS = 120
+          FIRST_DELAY_SECONDS = 5
+          MAXIMUM_DELAY_SECONDS = 180
+
+
+          def comparable(version_text):
+              """Return a version without the separators a project may spell either way.
+
+              Used only to choose a failure message. What counts as the right version is
+              decided by pip resolving the pinned requirement, never by this.
+              """
+              return version_text.lower().replace("-", "").replace("_", "").replace(".", "")
+
+
+          def names_a_file_for_this_version(text):
+              """Whether the text names a distribution file belonging to this exact version.
+
+              The trailing delimiter is the whole point: without it, 2.0.0 matches the
+              filenames of 2.0.0rc5 and an upload that never happened is called published.
+              """
+              return f"{PROJECT}-{VERSION}-" in text or f"{PROJECT}-{VERSION}.tar.gz" in text
+
+
+          def read_index():
+              """Return the index's version list and whether it holds the wanted version.
+
+              Read past every cache in the way: the unique query defeats the content
+              delivery network and the headers defeat anything nearer, because a stale
+              answer here is indistinguishable from an upload that never happened and
+              would send a reader to re-cut a release that is already published.
+              """
+              request = urllib.request.Request(
+                  f"{SIMPLE_INDEX_URL}?cache-bust={time.time_ns()}",
+                  headers={
+                      "Accept": "application/vnd.pypi.simple.v1+json",
+                      "Cache-Control": "no-cache, no-store, max-age=0",
+                      "Pragma": "no-cache",
+                      # Named rather than left as the language default, because an index
+                      # is entitled to treat an anonymous client differently and this
+                      # one asks a handful of times per release.
+                      "User-Agent": f"{PROJECT}-published-package-verification",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  body = response.read().decode("utf-8", "replace")
+              try:
+                  document = json.loads(body)
+              except json.JSONDecodeError:
+                  # Content negotiation gave us the HTML index instead. It lists the same
+                  # filenames, and a filename is all the presence check needs.
+                  return [], names_a_file_for_this_version(body)
+              listed = sorted(str(entry) for entry in document.get("versions", ()))
+              if any(comparable(entry) == comparable(VERSION) for entry in listed):
+                  return listed, True
+              filenames = " ".join(
+                  str(entry.get("filename", "")) for entry in document.get("files", ())
+              )
+              return listed, names_a_file_for_this_version(filenames)
+
+
+          def install():
+              """Install the pinned version, with pip asking PyPI rather than its cache."""
+              command = [sys.executable, "-m", "pip", "install", "--no-cache-dir"]
+              installed = subprocess.run([*command, f"{PROJECT}=={VERSION}"], check=False)
+              return installed.returncode == 0
+
+
+          def fail(message):
+              print(message, file=sys.stderr)
+              raise SystemExit(1)
+
+
+          def upload_never_arrived(elapsed, listed):
+              known = ", ".join(listed) if listed else "no versions at all"
+              return (
+                  f"{PROJECT} {VERSION} is not in the PyPI simple index {elapsed}s after this "
+                  f"job started, on an index read with caching defeated every time. The upload "
+                  f"did not reach PyPI, so this is a failed release rather than propagation "
+                  f"lag, and re-running this job will not change it. The index lists {known}."
+              )
+
+
+          def upload_arrived_but_install_failed(elapsed, attempts):
+              return (
+                  f"{PROJECT} {VERSION} is in the PyPI simple index, so the upload did reach "
+                  f"PyPI and re-cutting this release would not help, but pip could not install "
+                  f"it in {elapsed}s over {attempts} attempts. Either PyPI has not finished "
+                  f"serving it to installers, or the installation itself is failing; the pip "
+                  f"output above says which."
+              )
+
+
+          def index_unreadable(elapsed, attempts, error):
+              return (
+                  f"pip could not install {PROJECT} {VERSION} in {elapsed}s over {attempts} "
+                  f"attempts, and the PyPI simple index could not be read to tell a missing "
+                  f"upload from a slow one ({error}). This job cannot say which happened; read "
+                  f"the index by hand before either trusting or re-cutting this release."
+              )
+
+
+          started = time.monotonic()
+          delay = FIRST_DELAY_SECONDS
+          attempts = 0
+          seen_in_index = False
+          listed = []
+          error = None
+
+          while True:
+              attempts += 1
+              if install():
+                  print(f"{PROJECT}=={VERSION} installed on attempt {attempts}.")
+                  break
+
+              elapsed = round(time.monotonic() - started)
+              try:
+                  listed, present = read_index()
+              except (OSError, ValueError) as read_error:
+                  error, present = read_error, False
+                  print(f"after {elapsed}s the simple index could not be read: {read_error}")
+              else:
+                  error = None
+                  held = "lists" if present else "does not list"
+                  print(f"after {elapsed}s the simple index {held} {PROJECT} {VERSION}")
+              seen_in_index = seen_in_index or present
+
+              if not seen_in_index and error is None and elapsed >= INDEX_GRACE_SECONDS:
+                  # An index that answers, with caching defeated, and still does not list the
+                  # version is evidence about the upload rather than about propagation: an
+                  # upload that committed appears there within seconds. Failing here keeps a
+                  # release that genuinely did not go out from taking the whole window to say
+                  # so, and it is the only path that reaches this wording.
+                  fail(upload_never_arrived(elapsed, listed))
+
+              if elapsed + delay >= WINDOW_SECONDS:
+                  if seen_in_index:
+                      fail(upload_arrived_but_install_failed(elapsed, attempts))
+                  # Not seen in the index this late means every probe since the grace period
+                  # failed to read it, because a probe that answered and did not list the
+                  # version exits above long before the window runs out.
+                  fail(index_unreadable(elapsed, attempts, error))
+
+              time.sleep(delay)
+              delay = min(delay * 2, MAXIMUM_DELAY_SECONDS)
+          PY
+          # Everything below runs once, on the version pip resolved. Widening the wait must
+          # not widen what counts as success, so these assert rather than print: a package
+          # that installs but cannot be imported, or a console entry point that disagrees
+          # with the package shipping it, still fails the job. The pinned requirement above
+          # is what ties both readings to the version that was published, so comparing them
+          # to each other here needs no second opinion about how a version is spelled.
+          installed="$(python -c 'import bustan; print(bustan.__version__)')"
+          reported="$(bustan --version)"
+          if [ "$reported" != "bustan $installed" ]; then
+            echo "bustan --version printed '$reported' where the package reports $installed" >&2
+            exit 1
+          fi
+          echo "import bustan reports $installed, and '$reported' agrees"
           bustan --help
 
       # Presence is not the claim a release makes about "bustan init". The claim is that
@@ -93,7 +276,12 @@ jobs:
           mkdir "$cli_smoke_root/smoke-app"
           cd "$cli_smoke_root/smoke-app"
           uv init --package .
-          uv add "bustan==${BUSTAN_VERSION}"
+          # Refreshed for this package only, for the same reason the step above tells pip
+          # not to cache: uv's cache of the index can be older than the release being
+          # verified, and a cached index that predates the upload fails a healthy release
+          # here just as readily as it does there. Only this project's entry is refreshed,
+          # so every other download in this step still comes from the cache.
+          uv add --refresh-package bustan "bustan==${BUSTAN_VERSION}"
           uv run bustan init | tee "$cli_smoke_root/init-output.txt"
           # The file assertions stay. They are cheap, and when the scaffolder writes
           # nothing at all they name the missing file, which a collection error reports
@@ -126,7 +314,7 @@ jobs:
               exit 1
               ;;
           esac
-          uv add "${runtime_requirement}==${BUSTAN_VERSION}"
+          uv add --refresh-package bustan "${runtime_requirement}==${BUSTAN_VERSION}"
           dev_requirements="$(sed -n 's/^  uv add --dev \(.*\)$/\1/p' "$cli_smoke_root/init-output.txt")"
           if [ -z "$dev_requirements" ]; then
             echo "bustan init printed no dev install line" >&2
