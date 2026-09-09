@@ -166,14 +166,15 @@ def constructed_instances(container: Container) -> tuple[ConstructedInstance, ..
     served, after every provider warmed at startup.
     """
 
-    scope_manager = container.scope_manager
     seen: set[int] = set()
     constructed: list[ConstructedInstance] = []
 
-    for singleton_key, instance in tuple(scope_manager.singletons.items()):
+    # Both windows are live, and a hook run against one instance may build another, so
+    # each is copied before it is walked rather than iterated as it changes underneath.
+    for singleton_key, instance in tuple(container.singleton_instance_view.items()):
         _record(constructed, seen, container, singleton_key, instance)
 
-    for durable_key, instance in tuple(scope_manager.durable_instances.items()):
+    for durable_key, instance in tuple(container.durable_instance_view.items()):
         module_key, token, _partition = cast(DurableKey, durable_key)
         _record(constructed, seen, container, (module_key, token), instance)
 

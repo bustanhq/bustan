@@ -55,6 +55,7 @@ from bustan.runtime.params import RequestBodyTooLargeError, RequestLimits
 from bustan.testing import AsgiTestClient
 
 if TYPE_CHECKING:
+    from bustan.kernel.ioc.scopes import DurableKey
     from tests.conftest import HttpRequestFactory
 
 
@@ -197,12 +198,13 @@ def test_a_request_a_guard_refuses_builds_no_request_scoped_or_durable_provider(
         pass
 
     application = create_app(AppModule)
-    scope_manager = application.container.scope_manager
     with AsgiTestClient(cast(Any, application)) as client:
         # Whatever starting the application built is not what this request is about.
         constructions.clear()
         response = client.get("/tenant/", headers={"x-tenant": "acme"})
-        partitions = [key[2] for key in scope_manager.durable_instances]
+        partitions = [
+            cast("DurableKey", key)[2] for key in application.container.durable_instance_view
+        ]
 
     assert response.status_code == 403
     # A counter, not a reading of the code: the refused caller ran neither constructor.
@@ -237,11 +239,12 @@ def test_a_durable_partition_a_refused_request_named_is_not_left_in_the_cache() 
         pass
 
     application = create_app(AppModule)
-    scope_manager = application.container.scope_manager
     with AsgiTestClient(cast(Any, application)) as client:
         constructions.clear()
         response = client.get("/tenant/", headers={"x-tenant": "victim-corp"})
-        partitions = [key[2] for key in scope_manager.durable_instances]
+        partitions = [
+            cast("DurableKey", key)[2] for key in application.container.durable_instance_view
+        ]
 
     assert response.status_code == 403
     # The partition was really created and really dropped again, rather than never
@@ -272,10 +275,11 @@ def test_a_request_that_is_served_keeps_the_durable_partitions_it_created() -> N
         pass
 
     application = create_app(AppModule)
-    scope_manager = application.container.scope_manager
     with AsgiTestClient(cast(Any, application)) as client:
         response = client.get("/tenant/", headers={"x-tenant": "acme"})
-        partitions = [key[2] for key in scope_manager.durable_instances]
+        partitions = [
+            cast("DurableKey", key)[2] for key in application.container.durable_instance_view
+        ]
 
     assert response.status_code == 200
     assert "acme" in partitions
@@ -370,7 +374,7 @@ async def test_a_refusal_leaves_the_durable_partition_a_concurrent_request_creat
             requests.start_soon(serve, "refused", RefusedController, b"refused-corp")
             requests.start_soon(serve, "admitted", AdmittedController, b"admitted-corp")
 
-    partitions = [key[2] for key in container.scope_manager.durable_instances]
+    partitions = [cast("DurableKey", key)[2] for key in container.durable_instance_view]
 
     assert isinstance(results["refused"].error, GuardRejectedError)
     assert results["admitted"].error is None

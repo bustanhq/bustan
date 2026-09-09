@@ -141,8 +141,10 @@ class LifecycleManager:
         """
 
         scope_manager = self._container.scope_manager
-        scope_manager.singletons.clear()
-        scope_manager.durable_instances.clear()
+        # Emptying two of the three caches from here reaches into what the scope manager
+        # holds, because it publishes one method for the controllers and none for these.
+        scope_manager._singletons.clear()
+        scope_manager._durable_instances.clear()
         scope_manager.clear_controller_singletons()
         # Nothing built from a provider survives here, so resolution is refused until
         # the next startup builds the application afresh, and the window for registering

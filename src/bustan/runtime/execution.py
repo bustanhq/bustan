@@ -808,9 +808,12 @@ def _attribute_durable_writes(container: Container) -> None:
     The store is left in place and its class rebound, rather than a reporting store
     being put in the container's stead: every resolution already holds this object,
     so an exchange would lose whatever a request in flight wrote to the old one.
+
+    Rebinding is a change to the store itself and not to what it holds, so it reaches
+    the store the scope manager keeps rather than a window onto its entries.
     """
 
-    store = container.scope_manager.durable_instances
+    store = container.scope_manager._durable_instances
     if type(store) is not _AttributedDurableStore:
         store.__class__ = _AttributedDurableStore
 
@@ -858,7 +861,9 @@ def _evict_durable_partitions(
     if not created:
         return
 
-    durable_instances = container.scope_manager.durable_instances
+    # Evicting reaches the store the scope manager keeps: which partitions this
+    # request created is known here and nowhere else, so there is nothing to ask for.
+    durable_instances = container.scope_manager._durable_instances
     for key in created:
         durable_instances.pop(key, None)
 
