@@ -25,15 +25,26 @@ check that fails for reasons nobody can act on is a check that gets switched off
 is compared is what an application written against this framework can observe and would
 have to rewrite if it changed adapters.
 
-A case may narrow that comparison further, by naming body members it does not compare
-*between* adapters. It narrows nothing about what either adapter answers on its own:
-every adapter is still held to its own document member for member, the status and the
-headers and every other member are still compared exactly, and only the comparison of
-one adapter against another steps over the named member. A case that does it says where
-the difference comes from and whether it is a property of the transports or a defect
-being tracked. The success line below names every such case and the members it steps
-over, because a green run that claims more than it compared is how a suite loses its
-meaning slowly; a run where no case narrows anything makes the claim unqualified.
+A case may narrow that comparison further, in one of two ways, and the success line below
+names every case that does and what it stepped over. A green run that claims more than it
+compared is how a suite loses its meaning slowly; a run where no case narrows anything
+makes the claim unqualified.
+
+The first way is **naming body members** the case does not compare between adapters. It
+narrows nothing about what either adapter answers on its own: every adapter is still held
+to its own document member for member, the status and the headers and every other member
+are still compared exactly, and only the comparison of one adapter against another steps
+over the named member.
+
+The second is **declaring a divergence**: naming an adapter that answers a document of its
+own, for a request the transports cannot answer the same way. Each adapter is still judged
+against the document it is held to, and a failure there is reported as a failure. What
+this script stops doing is comparing those two answers with each other, because the case
+has already said they differ and by how much; reporting it again would say only that the
+case is doing what it was written to do.
+
+A case that narrows the comparison either way says where the difference comes from and
+whether it is a property of the transports or a defect being tracked.
 """
 
 from __future__ import annotations
@@ -79,7 +90,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     case_count = len(next(iter(results.values())).checks)
-    print(_success_line(adapters, case_count, _narrowed_cases(_suite_cases())))
+    cases = _suite_cases()
+    print(
+        _success_line(
+            adapters, case_count, _narrowed_cases(cases), _declared_cases(cases, adapters)
+        )
+    )
     return 0
 
 
@@ -118,19 +134,43 @@ def _narrowed_cases(cases: Iterable[ConformanceCase]) -> tuple[ConformanceCase, 
     return tuple(case for case in cases if case.diverging_body_members)
 
 
+def _declared_cases(
+    cases: Iterable[ConformanceCase], adapters: Sequence[str]
+) -> tuple[ConformanceCase, ...]:
+    """Return, in the order the suite declares them, the cases that declare a divergence.
+
+    A case declares one by holding a named adapter to a document of its own. Only a case
+    naming an adapter this run compares is returned: a divergence declared for an adapter
+    nobody ran says nothing about the run, and reporting it would qualify a claim it was
+    never part of.
+    """
+
+    return tuple(case for case in cases if _declaring_adapters(case, adapters))
+
+
+def _declaring_adapters(case: ConformanceCase, adapters: Sequence[str]) -> tuple[str, ...]:
+    """Return the adapters in this run that *case* holds to a document of their own."""
+
+    return tuple(name for name, _observation in case.expected_by_adapter if name in adapters)
+
+
 def _success_line(
-    adapters: Sequence[str], case_count: int, narrowed: Sequence[ConformanceCase]
+    adapters: Sequence[str],
+    case_count: int,
+    narrowed: Sequence[ConformanceCase],
+    declared: Sequence[ConformanceCase] = (),
 ) -> str:
     """Report a clean run, qualified by whatever the comparison between adapters stepped over.
 
-    With nothing narrowed the claim is unqualified, because nothing was exempt. Where a
-    case named body members the comparison steps over, the same sentence says how many
-    cases did it and names each one and its members, so that the line a reader sees on a
-    green check is a description of what was actually compared.
+    With nothing narrowed and nothing declared the claim is unqualified, because nothing
+    was exempt. A case that named body members the comparison steps over is reported after
+    the claim, and a case that declared a divergence before it, so that the sentence names
+    every exemption around a claim that still says what was actually compared.
     """
 
     line = (
         f"{case_count} conformance cases over {', '.join(adapters)}: "
+        f"{_declared_clause(adapters, declared)}"
         "every case passed and every adapter answered identically"
     )
     if not narrowed:
@@ -140,6 +180,32 @@ def _success_line(
         f"{case.name} steps over {_as_english(case.diverging_body_members)}" for case in narrowed
     )
     return f"{line}, except that {subject} the comparison: {narrowings}."
+
+
+def _declared_clause(adapters: Sequence[str], declared: Sequence[ConformanceCase]) -> str:
+    """Name every case whose adapters were told to answer differently, and which they are.
+
+    The clause is written before the claim rather than after it, because it qualifies what
+    was compared rather than what was found: the cases it names were each judged against
+    the document they were held to and only the comparison of one adapter against another
+    was set aside.
+    """
+
+    if not declared:
+        return ""
+    subject = (
+        "1 case declares a divergence"
+        if len(declared) == 1
+        else f"{len(declared)} cases declare divergences"
+    )
+    declarations = _as_english(
+        [
+            f"{case.name} answered differently by "
+            f"{_as_english(_declaring_adapters(case, adapters))}"
+            for case in declared
+        ]
+    )
+    return f"{subject}, {declarations}; apart from {'it' if len(declared) == 1 else 'them'}, "
 
 
 def _as_english(names: Sequence[str]) -> str:
@@ -172,6 +238,11 @@ def _differences(
 
     Each adapter is compared against the first one named, so a case that three adapters
     answer three ways is reported twice rather than once and read as two differences.
+
+    A case that declares a divergence for either of the two being compared is left out of
+    that pair's comparison. It has already been judged: each adapter was held to the
+    document the case names for it, and a failure there is reported as a failure. What
+    would be reported here is the difference the case was written to declare.
     """
 
     baseline_name, *others = adapters
@@ -179,7 +250,10 @@ def _differences(
     differences: list[str] = []
     for name in others:
         observations = results[name].observations()
+        declared = {case.name for case in _declared_cases(_suite_cases(), (baseline_name, name))}
         for case in sorted(set(baseline) | set(observations)):
+            if case in declared:
+                continue
             if case not in baseline or case not in observations:
                 differences.append(f"{case}: run by one of {baseline_name}, {name} and not both")
                 continue

@@ -23,14 +23,23 @@ encoding a streaming response is written with. A matrix that compared those woul
 report a difference on the day a server library changed its defaults, and a matrix
 that reports differences nobody can act on is a matrix that gets switched off.
 
-One case narrows that comparison and it is the only one. A case may name body members it
-does not compare *between* adapters, and it must then say which adapter answers what, so
-that every adapter is still held to its own document member for member and only the
-comparison of one adapter against another steps over the named member. That is for a
-difference that is understood and written down rather than one nobody has looked at, and
-a case declaring one says whether it is a property of the transports or a defect being
-tracked. A body member nobody could name a reason for belongs in neither list: it belongs
-in a failing case.
+Two things may narrow that comparison, and both are for a difference that is understood
+and written down rather than one nobody has looked at. A case using either says where the
+difference comes from and whether it is a property of the transports or a defect being
+tracked. A difference nobody could name a reason for belongs in neither: it belongs in a
+failing case.
+
+A case may name **body members** it does not compare *between* adapters. Every adapter is
+still held to its own document member for member, and only the comparison of one adapter
+against another steps over the named member.
+
+A case may name **an adapter that answers a document of its own**, for a request the two
+transports cannot answer the same way. The named adapter is held to that document in full
+and every other adapter to the shared one, so each is still certified exactly; what stops
+is the comparison of the two against each other, which a case declaring a divergence has
+already settled. One case does this today: an encoded separator is a separator to a
+transport that decodes the whole target before routing and a character to one that decodes
+it segment by segment, so the two land a request on different routes by construction.
 """
 
 from __future__ import annotations
@@ -950,6 +959,94 @@ REFUSAL_CASES: tuple[ConformanceCase, ...] = (
 )
 
 
+def _build_request_target_module(_fixtures: Path) -> type[object]:
+    """An application reachable only by a transport that decodes the request target.
+
+    Two routes, because there are two ways a target that is read as it arrived goes
+    wrong. A literal path stops matching itself the moment one of its own characters is
+    written as an escape, and a captured segment carries the escape on into the handler,
+    where every later reader sees text the caller never sent.
+    """
+
+    @Controller("/targets")
+    class RequestTargetController:
+        @Get("/literal")
+        def literal(self) -> dict[str, object]:
+            return {"route": "literal"}
+
+        @Get("/names/{name}")
+        def named(self, name: Annotated[str, Param]) -> dict[str, object]:
+            return {"name": name}
+
+    @Module(controllers=[RequestTargetController])
+    class RequestTargetModule:
+        pass
+
+    return RequestTargetModule
+
+
+# How a transport reads the target a request was addressed to. Every other case in this
+# suite asks for a path that is already the path it means; these are the ones where what
+# the caller wrote and what the router must match are not the same string, which is the
+# whole of what percent-encoding is for.
+#
+# Nothing here asks for a dot segment written literally. Neither transport normalises
+# one, and a client library on the way rewrites it, so a literal case would report the
+# client's work as the server's. The encoded spelling reaches both servers intact and is
+# the one worth pinning: it is a name, not a navigation, and both must read it that way.
+REQUEST_TARGET_CASES: tuple[ConformanceCase, ...] = (
+    ConformanceCase(
+        name="request_target_decodes_an_encoded_literal_segment",
+        dimension="request target: literal segment",
+        request=ConformanceRequest(path="/targets/li%74eral"),
+        expected=_expect_json({"route": "literal"}),
+    ),
+    ConformanceCase(
+        name="request_target_decodes_an_encoded_space",
+        dimension="request target: encoded space",
+        request=ConformanceRequest(path="/targets/names/John%20Doe"),
+        expected=_expect_json({"name": "John Doe"}),
+    ),
+    ConformanceCase(
+        name="request_target_decodes_an_encoded_non_ascii_segment",
+        dimension="request target: encoded non-ascii",
+        request=ConformanceRequest(path="/targets/names/caf%C3%A9"),
+        expected=_expect_json({"name": "caf\u00e9"}),
+    ),
+    ConformanceCase(
+        name="request_target_leaves_a_malformed_percent_sequence_alone",
+        # A percent that begins no escape decodes to nothing, so it stays the character
+        # it is. Refusing it instead would turn every caller who sent a bare percent into
+        # a caller who is told the request was unreadable.
+        dimension="request target: malformed percent sequence",
+        request=ConformanceRequest(path="/targets/names/bad%zz"),
+        expected=_expect_json({"name": "bad%zz"}),
+    ),
+    ConformanceCase(
+        name="request_target_decodes_an_encoded_dot_segment_without_navigating",
+        dimension="request target: encoded dot segment",
+        request=ConformanceRequest(path="/targets/names/%2E%2E"),
+        expected=_expect_json({"name": ".."}),
+    ),
+    ConformanceCase(
+        name="request_target_keeps_an_encoded_slash_inside_its_segment",
+        dimension="request target: encoded slash",
+        # The one declared divergence in the suite, and a property of the two transports
+        # rather than a defect either of them is carrying. A transport that decodes the
+        # whole target before it routes turns an encoded separator into a separator, so
+        # the request arrives at a path of two segments and the one-segment route no
+        # longer answers it. A transport that decodes segment by segment cannot: the
+        # escape was written inside one segment and stays inside it, so no caller can
+        # move a request to another route by encoding a separator into it. Both are
+        # defensible and they cannot be reconciled, so each adapter is held to its own
+        # answer and the two are not compared against each other.
+        request=ConformanceRequest(path="/targets/names/a%2Fb"),
+        expected=_expect_not_found("/targets/names/a/b"),
+        expected_by_adapter=(("asgi", _expect_json({"name": "a%2Fb"})),),
+    ),
+)
+
+
 # What the request-limit scenario's application accepts as a body, and a body two bytes
 # past it. The limit is the largest body the framework's own limits accept anywhere under
 # their defaults, so a body over it is past every bound those defaults set. That is what
@@ -1314,6 +1411,7 @@ SCENARIOS: tuple[ConformanceScenario, ...] = (
         REFUSAL_CASES,
         VersioningOptions(type=VersioningType.HEADER),
     ),
+    ConformanceScenario("request targets", _build_request_target_module, REQUEST_TARGET_CASES),
     ConformanceScenario(
         "request limits",
         _build_request_limit_module,
