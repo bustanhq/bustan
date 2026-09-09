@@ -105,6 +105,8 @@ Each example is a standalone project you can run.
 - [testing_overrides](../examples/testing_overrides/README.md) - `create_test_app()` and
   `override_provider()`.
 - [dynamic_module_usage](../examples/dynamic_module_usage/README.md) - a configurable dynamic module.
+- [tutorial_app](../examples/tutorial_app/README.md) - the application the tutorial series builds,
+  at its end state.
 
 ## Project
 

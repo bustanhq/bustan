@@ -74,6 +74,7 @@ EXAMPLES: tuple[Example, ...] = (
     Example("examples/request_scope_pipeline_app", "request_scope_pipeline_app.app"),
     Example("examples/testing_overrides", "testing_overrides.app"),
     Example("examples/dynamic_module_usage", "dynamic_module_usage.app"),
+    Example("examples/tutorial_app", "tutorial_app.app"),
 )
 
 
