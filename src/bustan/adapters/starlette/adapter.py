@@ -9,6 +9,7 @@ from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.routing import Match
 
 from ...contracts import AbstractHttpAdapter, AdapterCapabilities, HttpRequest
 from ...contracts.cors import allowed_origins
@@ -79,12 +80,19 @@ class StarletteAdapter(AbstractHttpAdapter):
         for one run when its own caller names a different window.
 
         Whichever application is used, the router's own refusals are answered through the
-        framework's error model. An application handed in already carrying handlers for
-        those two statuses has them replaced, because the error model is the framework's
-        promise to the caller rather than the transport's.
+        framework's error model and its own slash redirect is turned off. An application
+        handed in already carrying handlers for those two statuses, or a router left to
+        redirect for itself, is overruled, because the error model and the shape of a
+        redirect are the framework's promise to the caller rather than the transport's.
         """
 
         self._app = starlette_app or Starlette(debug=debug, lifespan=lifespan)
+        # Starlette decides the slash redirect in the router, ahead of the endpoint whose
+        # refusal the handlers below answer, so the table cannot reach it and it is turned
+        # off instead. What the router would have sent is an absolute location built from
+        # the caller's own Host header, for a path with every trailing slash stripped
+        # rather than one; with this off, both are decided in `_refuse_unmatched_route`.
+        self._app.router.redirect_slashes = False
         for status_code, refuse in _ROUTER_REFUSALS:
             self._app.add_exception_handler(status_code, refuse)
         self._server: GracefulServer | None = None
@@ -255,8 +263,16 @@ class StarletteAdapter(AbstractHttpAdapter):
 
 
 async def _refuse_unmatched_route(request: Request, _exc: Exception) -> Response:
-    """Answer a path this router found no route for with the framework's own document."""
+    """Answer a path this router found no route for.
 
+    A path is tried once more with its trailing slash written the other way round, and a
+    caller who spelled it the way no route was registered is sent to the way one was. Only
+    then is it a path nothing here answers, and answered with the framework's document.
+    """
+
+    redirect = _slash_redirect(request)
+    if redirect is not None:
+        return redirect
     return to_starlette_response(not_found_response(_requested_path(request)))
 
 
@@ -266,6 +282,70 @@ async def _refuse_wrong_method(request: Request, exc: Exception) -> Response:
     return to_starlette_response(
         method_not_allowed_response(_requested_path(request), _allowed_methods(exc))
     )
+
+
+def _slash_redirect(request: Request) -> Response | None:
+    """Return the redirect for a path only a trailing slash separates from a route.
+
+    ``None`` where no route answers the other spelling, which leaves the caller with the
+    not-found document. The redirect names no media type, because it carries no body and
+    a response with no content should not say what content it has.
+    """
+
+    alternate = _alternate_path(_requested_path(request))
+    if not alternate or not _any_route_answers(request, alternate):
+        return None
+    return Response(status_code=307, headers={"location": _redirect_location(request)})
+
+
+def _alternate_path(path: str) -> str:
+    """Return *path* spelled the other way round: its trailing slash added or removed.
+
+    One slash, not every slash: ``/shop/orders//`` is a path of its own rather than the
+    slashed spelling of a route, and a transport that rewrote it would answer a request
+    the caller did not send. It is also the spelling the redirect sends the caller to, so
+    the retry and the location are one expression; a location built by a second one would
+    eventually send a caller to a path the router had not agreed to answer.
+
+    Written here rather than imported from the raw ASGI transport. The two transports are
+    independent by design, and a rule this short costs less stated twice than the
+    dependency of one adapter on the other would.
+    """
+
+    return path.removesuffix("/") if path.endswith("/") else f"{path}/"
+
+
+def _any_route_answers(request: Request, path: str) -> bool:
+    """Whether any route on this application answers *path*, by whatever method.
+
+    A route that answers the path but not the method still counts, because a caller sent
+    to it reads the framework's 405 there rather than a 404 here, which is the more
+    accurate of the two answers.
+    """
+
+    scope = {**request.scope, "path": path}
+    return any(route.matches(scope)[0] is not Match.NONE for route in request.app.routes)
+
+
+def _redirect_location(request: Request) -> str:
+    """Return where a request whose path is spelled the other way round is sent.
+
+    Relative. An absolute location can only be built from the caller's own ``Host``
+    header, which names the wrong host behind any proxy that terminates TLS, and which is
+    client-controlled input reflected into a redirect even where it names the right one.
+
+    Built from the target the caller wrote rather than the path Starlette decoded from it.
+    The two say the same thing, but only the first can be sent back: a path is decoded, so
+    a caller who addressed ``/users/John%20Doe/`` would be redirected to a location with a
+    space loose in it, and the request that came back would be a different one or none. A
+    scope carrying no raw path is redirected to the path it did carry.
+    """
+
+    raw_path = cast("bytes | None", request.scope.get("raw_path"))
+    target = _requested_path(request) if raw_path is None else raw_path.decode("latin-1")
+    location = _alternate_path(target)
+    query = cast(bytes, request.scope.get("query_string", b"")).decode("latin-1")
+    return f"{location}?{query}" if query else location
 
 
 def _requested_path(request: Request) -> str:

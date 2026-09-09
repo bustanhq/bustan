@@ -959,6 +959,56 @@ REFUSAL_CASES: tuple[ConformanceCase, ...] = (
 )
 
 
+def _build_slash_module(_fixtures: Path) -> type[object]:
+    """An application with one nested route, so a trailing slash is the only difference.
+
+    Nested rather than at the root, because the second case below asks for a double slash
+    and a bare ``//`` is not the same request: a client collapses it before an application
+    is called, and a case on it would report what the client did with the target rather
+    than what the server answered.
+    """
+
+    @Controller("/shop/orders")
+    class ShopOrdersController:
+        @Get("/")
+        def index(self) -> dict[str, object]:
+            return {"orders": []}
+
+    @Module(controllers=[ShopOrdersController])
+    class SlashModule:
+        pass
+
+    return SlashModule
+
+
+# How a router answers a path that is a route's path with a trailing slash on it. Both
+# cases name ``location``, because the whole of what a redirect tells a caller is in that
+# header: two transports agreeing on 307 and disagreeing on where it points send the same
+# caller to different places, and a status compared on its own would report neither that
+# nor a location built from the caller's own Host header.
+#
+# The second case is the boundary the first one needs. A redirect is worth having only for
+# the path a route was registered at written the other way round, so a spelling that is a
+# path of its own is refused rather than rewritten into one the caller never asked for.
+SLASH_CASES: tuple[ConformanceCase, ...] = (
+    ConformanceCase(
+        name="router_redirects_one_trailing_slash_to_a_relative_location",
+        dimension="trailing slash: one",
+        request=ConformanceRequest(path="/shop/orders/"),
+        # No content type, which is what the empty media type reads as here: a redirect
+        # carries no body, and a caller told the body it has not got is text has been told
+        # something about content that is not there.
+        expected=_expect_text("", status_code=307, headers={"location": "/shop/orders"}),
+    ),
+    ConformanceCase(
+        name="router_refuses_two_trailing_slashes_rather_than_redirecting_them",
+        dimension="trailing slash: two",
+        request=ConformanceRequest(path="/shop/orders//"),
+        expected=_expect_not_found("/shop/orders//"),
+    ),
+)
+
+
 def _build_request_target_module(_fixtures: Path) -> type[object]:
     """An application reachable only by a transport that decodes the request target.
 
@@ -1411,6 +1461,7 @@ SCENARIOS: tuple[ConformanceScenario, ...] = (
         REFUSAL_CASES,
         VersioningOptions(type=VersioningType.HEADER),
     ),
+    ConformanceScenario("trailing slashes", _build_slash_module, SLASH_CASES),
     ConformanceScenario("request targets", _build_request_target_module, REQUEST_TARGET_CASES),
     ConformanceScenario(
         "request limits",

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, cast
 
 from ...contracts import RequestState
 from .requests import DEFAULT_MAX_BODY_BYTES, AsgiHttpRequest
-from .responses import AsgiResponseValue, plain_text, to_asgi_response
+from .responses import AsgiResponse, AsgiResponseValue, to_asgi_response
 from .routing import (
     AsgiRouter,
     Matched,
@@ -131,7 +131,10 @@ class AsgiApplication:
         if isinstance(resolution, MethodMismatch):
             return to_asgi_response(method_not_allowed_response(request.path, resolution.allowed))
         if isinstance(resolution, Redirect):
-            return plain_text("", status_code=307, location=_redirect_location(request))
+            # No media type, because there is no body to name one for: a redirect says
+            # where to go in a header and sends nothing after it, and a caller told the
+            # empty body is text has been told something about content that is not there.
+            return AsgiResponse(status_code=307, headers={"location": _redirect_location(request)})
         return to_asgi_response(not_found_response(request.path))
 
     async def _run_lifespan(self, receive: Receive, send: Send) -> None:
