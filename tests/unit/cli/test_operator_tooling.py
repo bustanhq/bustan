@@ -1,4 +1,5 @@
-"""Unit tests for the diagnostic half of the CLI: doctor, graph, config and --version.
+"""Unit tests for the diagnostic half of the CLI: doctor, graph, config, --version, and
+the refusals the command surface states when an invocation names no work.
 
 Every test that needs an application writes one into ``tmp_path`` and imports it by a
 name no other test uses, because an imported module stays in ``sys.modules`` for the
@@ -186,6 +187,18 @@ def test_version_reports_the_packaged_version(capsys) -> None:
     assert printed == f"bustan {importlib.metadata.version('bustan')}"
 
 
+def test_version_cannot_stand_in_for_the_command_beside_it(tmp_path: Path, capsys) -> None:
+    _write_module(tmp_path, "version_and_command_project", _LEGACY_SOURCE)
+
+    with pytest.raises(SystemExit) as refusal:
+        cli_main_module.main(["--version", "doctor", str(tmp_path)])
+
+    captured = capsys.readouterr()
+    assert refusal.value.code == 2
+    assert importlib.metadata.version("bustan") not in captured.out
+    assert "--version prints the installed version and takes no command" in captured.err
+
+
 def test_doctor_reports_every_changed_construct_with_a_fix(tmp_path: Path, capsys) -> None:
     _write_module(tmp_path, "legacy_project", _LEGACY_SOURCE)
 
@@ -239,6 +252,7 @@ def test_doctor_renders_findings_as_json(tmp_path: Path, capsys) -> None:
 
 
 def test_doctor_reports_a_file_it_cannot_parse(tmp_path: Path, capsys) -> None:
+    _write_module(tmp_path, "parseable_project", _MODERN_SOURCE)
     (tmp_path / "unparseable.py").write_text("def broken(:\n", encoding="utf-8")
 
     assert cli_main_module.main(["doctor", str(tmp_path)]) == 0
@@ -246,6 +260,25 @@ def test_doctor_reports_a_file_it_cannot_parse(tmp_path: Path, capsys) -> None:
     report = capsys.readouterr().out
     assert "unparseable.py  could not be parsed" in report
     assert "1 file not parsed" in report
+
+
+def test_doctor_fails_when_not_one_file_could_be_parsed(tmp_path: Path, capsys) -> None:
+    (tmp_path / "unparseable.py").write_text("def broken(:\n", encoding="utf-8")
+
+    assert cli_main_module.main(["doctor", str(tmp_path)]) == 1
+
+    report = capsys.readouterr().out
+    assert "nothing to change" not in report
+    assert "not one could be parsed, so nothing was checked" in report
+
+
+def test_a_tree_holding_no_python_files_had_nothing_to_parse(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text("no python here\n", encoding="utf-8")
+
+    result = scan_path(tmp_path)
+
+    assert result.scanned == 0
+    assert result.parsed_nothing is False
 
 
 def test_doctor_does_not_descend_into_a_virtual_environment(tmp_path: Path) -> None:
@@ -308,6 +341,16 @@ def test_graph_names_a_built_module_without_the_values_it_was_built_with(
     report = capsys.readouterr().out
     assert "_ConfigModuleBase (dynamic)" in report
     assert "meridian" not in report
+
+
+def test_a_malformed_target_asks_for_the_form_without_naming_a_snapshot(capsys) -> None:
+    # Every command taking a root module target loads it through the same helper, and
+    # only one of them deals in snapshots, so none of their refusals may name one.
+    assert cli_main_module.main(["graph", "not-a-target"]) == 1
+
+    message = capsys.readouterr().err
+    assert "snapshot" not in message.lower()
+    assert "package.module:RootModule" in message
 
 
 def test_config_withholds_a_configured_secret(tmp_path: Path, capsys, monkeypatch) -> None:
@@ -387,6 +430,41 @@ class _NotAMapping:
 
     def get(self, token: object) -> object:
         return "a string is not a mapping of values"
+
+
+def test_config_help_calls_withholding_a_name_match_rather_than_a_guarantee(capsys) -> None:
+    with pytest.raises(SystemExit) as listing:
+        cli_main_module.main(["--help"])
+
+    assert listing.value.code == 0
+    assert "credentials withheld" not in " ".join(capsys.readouterr().out.split())
+
+    with pytest.raises(SystemExit) as command_help:
+        cli_main_module.main(["config", "--help"])
+
+    assert command_help.value.code == 0
+    # Argparse wraps a description to the terminal, so the sentence is read back with
+    # its own line breaks folded away.
+    printed = " ".join(capsys.readouterr().out.split())
+    assert "credentials withheld" not in printed
+    assert "a match on the text of a key's name, not a guarantee" in printed
+
+
+@pytest.mark.parametrize(
+    ("command", "subcommands"),
+    [
+        ("routes", ("snapshot", "diff")),
+        ("governance", ("ownership", "diff", "conformance")),
+    ],
+)
+def test_a_command_group_names_the_subcommands_it_offers(
+    command: str, subcommands: tuple[str, ...], capsys
+) -> None:
+    assert cli_main_module.main([command]) == 1
+
+    refusal = capsys.readouterr().err
+    for subcommand in subcommands:
+        assert subcommand in refusal
 
 
 def test_redaction_widens_the_shared_defaults_to_prefixed_keys() -> None:

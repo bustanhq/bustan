@@ -99,6 +99,18 @@ class ScanResult:
     findings: tuple[MigrationFinding, ...]
     skipped: tuple[SkippedFile, ...]
 
+    @property
+    def parsed_nothing(self) -> bool:
+        """Whether the scan read not one of the files it was handed.
+
+        A scan that parsed nothing checked nothing, so its silence about findings says
+        nothing about the tree and a caller must not read it as a clean result. A tree
+        holding no Python files is not this case: there was nothing to parse, rather
+        than nothing that could be.
+        """
+
+        return self.scanned > 0 and len(self.skipped) == self.scanned
+
 
 def scan_path(root: Path) -> ScanResult:
     """Scan a file or a directory tree for constructs 2.0 changed."""

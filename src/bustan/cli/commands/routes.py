@@ -48,7 +48,7 @@ def run_routes_command(arguments: argparse.Namespace) -> int:
     if command == "diff":
         return run_diff_command(arguments)
 
-    print("A routes subcommand is required.", file=sys.stderr)
+    print("A routes subcommand is required: snapshot or diff.", file=sys.stderr)
     return 1
 
 
@@ -81,9 +81,12 @@ def run_diff_command(arguments: argparse.Namespace) -> int:
 
 
 def _load_root_module(target: str) -> type[object]:
+    # Every command that takes a root module target loads it through this, so the
+    # refusal names the argument they all share and never the command it happens to
+    # live in.
     module_name, separator, attribute_name = target.partition(":")
     if separator != ":" or not module_name or not attribute_name:
-        raise ValueError("Route snapshot target must use the form package.module:RootModule")
+        raise ValueError("A root module target must use the form package.module:RootModule")
 
     module = importlib.import_module(module_name)
     root_module = getattr(module, attribute_name)
