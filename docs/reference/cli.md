@@ -145,8 +145,13 @@ Two limits are worth knowing before you paste the output anywhere:
 
 ## `bustan init`
 
-Scaffolds into an existing uv project, so it requires Python 3.13 or newer and a `pyproject.toml`
-written by `uv init --package`.
+```
+usage: bustan init [-h] [--force]
+```
+
+Writes a Bustan application into the `uv` project in the current directory. It reads the
+package name out of `pyproject.toml`, so run it from the project root, and it needs Python
+3.13 or newer.
 
 ```bash
 uv init --package my-service
@@ -154,10 +159,79 @@ cd my-service
 bustan init
 ```
 
-Scaffolds an application into the current `uv` project: a module, a controller, a service,
-their tests, a README, and the `start` and `dev` scripts. It reads the package name out of
-`pyproject.toml`, so run it from the project root. The command prints the install steps to
-follow it, and the scaffolded README repeats them.
+Two projects are refused before anything is written, each naming what to do about it. A
+directory holding no `pyproject.toml` is not a project yet, and the refusal names the
+command that makes one. A manifest declaring no `[build-system]` table is a project `uv`
+builds no package from, so neither script this writes would be exposed by it. That is what
+the flag in the step above is for: `uv init --package` declares a build system and `uv init`
+on its own does not.
+
+### What it writes
+
+Seven files: the entry point, the root module, a controller and a service under
+`src/<package>`, and a test for each of the last three under `tests/<package>`. Two more,
+`README.md` and `src/<package>/__init__.py`, are written only into a project that does not
+have them, and `uv init --package` writes both, so on the path above they are kept instead.
+The README a scaffolded project reads is therefore the one `uv` wrote, and the one this
+command carries reaches only a project that had none.
+
+**A file already there is kept rather than overwritten**, so running this again destroys no
+work: a second run reports the whole scaffold as kept and changes nothing. `--force`
+replaces a file that would have been kept.
+
+### What it edits in the manifest
+
+Three entries, each added only where the manifest does not already declare it, and each
+reported by name in the output:
+
+- **The transport.** `bustan[starlette]` under `[project]` dependencies, because the entry
+  point serves on the adapter this package ships and installing `bustan` installs no web
+  server. A manifest already naming `bustan` without an extra has the extra added to that
+  entry and keeps whatever bound it carries; one that already asks for an extra is left
+  exactly as it stands.
+- **The scripts.** `start` and `dev` under `[project.scripts]`, both naming the entry point
+  module rather than the package, so a package whose `__init__.py` came from somewhere else
+  keeps whatever `main` it already meant.
+- **The tools.** `pytest`, `ruff` and `ty` in the `dev` dependency group.
+
+The manifest is decided from its parsed tables and parsed again before it is written, so an
+edit that would not land exactly as intended is refused rather than written. A manifest this
+command cannot edit without changing what the rest of the file means is left alone, and the
+refusal names the entries to add by hand.
+
+### What it prints
+
+Every path written, every path kept, every manifest edit, and what to run next:
+
+```
+Initialised Bustan app for package 'my_service'.
+Wrote:
+  src/my_service/app_main.py
+  src/my_service/app_module.py
+  src/my_service/app_controller.py
+  src/my_service/app_service.py
+  tests/my_service/test_app_controller.py
+  tests/my_service/test_app_service.py
+  tests/my_service/test_app_module.py
+Kept:
+  README.md
+  src/my_service/__init__.py
+Pass --force to replace a file that was kept.
+Manifest: declared bustan[starlette]>=2.0.0 under [project] dependencies.
+Manifest: added the 'start' and 'dev' script entries under [project.scripts].
+Manifest: added pytest, ruff, ty to the 'dev' dependency group.
+Next steps:
+  uv sync
+  uv run start
+  uv run dev
+```
+
+The bound on the transport requirement is the version of the `bustan` that ran, so a run
+prints whatever is installed rather than the figure above.
+
+One `uv sync` is the whole install. The manifest now declares what a scaffolded project
+needs in order to serve, test, lint and type-check, so there is no dependency to add by
+hand afterwards, and the three lines under `Next steps` are the only commands to run.
 
 ## `bustan routes`
 
@@ -185,7 +259,33 @@ Three reports, each printed as JSON:
 - `diff <target> --snapshot FILE` - the route diff against a snapshot, with a count of
   what was added, removed and changed.
 - `conformance <adapter>` - the conformance result for one adapter, and the capabilities
-  it declares.
+  it declares. `starlette` and `asgi` are the two names it answers for, and any other name
+  is refused as unsupported.
+
+### `conformance starlette` needs `httpx`
+
+The suite drives an adapter through the test client its own users would drive, and
+Starlette's is driven by `httpx`, which the `starlette` extra does not install: a
+deployment would carry it to run one diagnostic and never call it again. The report is
+therefore a development-time check, and `httpx` is asked for as a development dependency:
+
+```bash
+uv add --dev httpx
+```
+
+Without it the command writes nothing to standard output and exits `1`, naming the same
+install line:
+
+```
+A Starlette test client requires the optional 'httpx' dependency, which the starlette extra does not install.
+
+Install it with:
+
+    uv add --dev httpx
+```
+
+`conformance asgi` needs nothing beyond the package, because the raw ASGI adapter drives a
+client of its own.
 
 ## The `--format` Option
 
