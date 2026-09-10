@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`.
 
-## [2.0.0](https://github.com/bustanhq/bustan/compare/v1.1.0...v2.0.0) (2026-09-09)
+## [2.0.0](https://github.com/bustanhq/bustan/compare/v1.1.0...v2.0.0) (2026-09-10)
 
 The 2.0.0 release. Six milestones stand behind it, and this entry carries
 all of them: the candidates `2.0.0-rc.2` through `2.0.0-rc.7` were published from `main` as the work
