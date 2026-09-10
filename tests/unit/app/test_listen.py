@@ -34,13 +34,28 @@ async def test_application_listen_custom_args() -> None:
         patch("uvicorn.Config") as mock_config_cls,
         patch("uvicorn.Server.serve", new_callable=AsyncMock) as mock_serve,
     ):
-        await app.listen(8080, host="0.0.0.0", reload=True, log_level="debug")
+        await app.listen(8080, host="0.0.0.0", log_level="debug")
 
         mock_config_cls.assert_called_once()
         args, kwargs = mock_config_cls.call_args
         assert kwargs["host"] == "0.0.0.0"
         assert kwargs["port"] == 8080
-        assert kwargs["reload"] is True
         assert kwargs["log_level"] == "debug"
 
         mock_serve.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_asking_for_a_reloader_is_refused_rather_than_quietly_discarded() -> None:
+    """The wrapper forwards the flag and the adapter underneath refuses it.
+
+    Reloading means owning the process, which belongs to a development server rather
+    than to an adapter. The flag used to reach uvicorn's configuration beside a live
+    application object, where it changed nothing, so an application asked to reload
+    served without reloading and said so nowhere.
+    """
+
+    app = create_app(RootModule)
+
+    with pytest.raises(NotImplementedError, match="no reloader"):
+        await app.listen(8080, reload=True)
