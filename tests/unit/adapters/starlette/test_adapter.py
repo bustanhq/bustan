@@ -275,14 +275,23 @@ def _failing_import(error: BaseException):
 
 
 def test_a_missing_test_client_dependency_is_reported_as_such(monkeypatch) -> None:
+    """The refusal names the command that installs it.
+
+    httpx is a development dependency rather than part of the extra that installs this
+    adapter, so a reader who installed the extra and was refused here has nothing to
+    infer from: the install command is the whole of what they need.
+    """
+
     monkeypatch.setattr(
         builtins,
         "__import__",
         _failing_import(ModuleNotFoundError("No module named 'httpx'", name="httpx")),
     )
 
-    with pytest.raises(ImportError, match="optional 'httpx' dependency"):
+    with pytest.raises(ImportError, match="optional 'httpx' dependency") as refusal:
         StarletteAdapter().create_test_client()
+
+    assert "uv add --dev httpx" in str(refusal.value)
 
 
 def test_a_test_client_import_failure_of_another_kind_is_left_alone(monkeypatch) -> None:

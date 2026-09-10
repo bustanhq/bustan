@@ -28,9 +28,14 @@ if TYPE_CHECKING:
     from ...contracts.cors import CorsOptions
     from .server import GracefulServer, ShutdownSequence
 
+# httpx drives Starlette's test client and nothing this transport serves with, so it is
+# named as a development dependency rather than carried by the extra that installs the
+# adapter: a deployment would install it to run one diagnostic and never call it again.
 _TEST_CLIENT_REQUIREMENT = (
-    "A Starlette test client requires the optional 'httpx' dependency. "
-    "Install httpx to drive the application in process."
+    "A Starlette test client requires the optional 'httpx' dependency, which the "
+    "starlette extra does not install.\n\n"
+    "Install it with:\n\n"
+    "    uv add --dev httpx"
 )
 
 # How long the requests already in flight are given to finish once a shutdown has
