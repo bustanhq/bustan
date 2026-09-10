@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from string import Template
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ import pytest
 import bustan.cli.main as cli_main_module
 from bustan.cli.commands import governance as governance_commands
 from bustan.cli.commands import routes as routes_commands
+from bustan.cli.commands.init import register_init_command, run_init_command
 from bustan.cli.services import scaffold as scaffold_service
 from bustan.kernel.module.dynamic import ModuleInstanceKey
 
@@ -40,6 +42,21 @@ def _write_pyproject(directory: Path, name: str) -> None:
     (directory / "pyproject.toml").write_text(_PYPROJECT_TOML.format(name=name), encoding="utf-8")
 
 
+def _init(directory: Path, *arguments: str) -> int:
+    """Run the init command in *directory* through a parser that declares its flags."""
+
+    parser = argparse.ArgumentParser(prog="bustan")
+    register_init_command(parser.add_subparsers(dest="command"))
+    parsed = parser.parse_args(["init", *arguments])
+
+    old_cwd = os.getcwd()
+    os.chdir(directory)
+    try:
+        return run_init_command(parsed)
+    finally:
+        os.chdir(old_cwd)
+
+
 def test_init_creates_expected_files(tmp_path: Path, capsys) -> None:
     _write_pyproject(tmp_path, "hello-bustan")
     old_cwd = os.getcwd()
@@ -53,6 +70,7 @@ def test_init_creates_expected_files(tmp_path: Path, capsys) -> None:
     assert (tmp_path / "README.md").exists()
     pkg = tmp_path / "src" / "hello_bustan"
     assert (pkg / "__init__.py").exists()
+    assert (pkg / "app_main.py").exists()
     assert (pkg / "app_module.py").exists()
     assert (pkg / "app_controller.py").exists()
     assert (pkg / "app_service.py").exists()
@@ -62,7 +80,11 @@ def test_init_creates_expected_files(tmp_path: Path, capsys) -> None:
     assert (tests / "test_app_module.py").exists()
     stdout = capsys.readouterr().out
     assert "hello_bustan" in stdout
-    assert "uv add --dev ty ruff pytest" in stdout
+    # Every path written is named, because this is the only command that writes files
+    # and the reader has to be able to see what landed where without listing the tree.
+    assert "src/hello_bustan/app_main.py" in stdout
+    assert "tests/hello_bustan/test_app_module.py" in stdout
+    assert "uv sync" in stdout
     assert "uv run start" in stdout
     assert "uv run dev" in stdout
 
@@ -71,6 +93,12 @@ def _uv_commands(text: str) -> list[str]:
     """Return every uv command line in text, indentation and fencing removed."""
 
     return [line.strip() for line in text.splitlines() if line.strip().startswith("uv ")]
+
+
+def _install_commands(commands: list[str]) -> list[str]:
+    """Return the commands that install dependencies, in the order they were given."""
+
+    return [command for command in commands if command.startswith(("uv sync", "uv add"))]
 
 
 def test_scaffolded_readme_gives_the_same_commands_init_prints(tmp_path: Path, capsys) -> None:
@@ -87,21 +115,19 @@ def test_scaffolded_readme_gives_the_same_commands_init_prints(tmp_path: Path, c
 
     # The terminal output scrolls away and the README is the copy the user keeps, so the
     # two have to name one install command, not two. The install lines are compared as a
-    # whole rather than searched for: a README that adds a second, different "uv add" or
-    # drops the transport extra scaffolds a project whose own generated tests cannot
-    # import, and only an exact comparison catches that.
-    assert [command for command in written if command.startswith("uv add ")] == [
-        command for command in printed if command.startswith("uv add ")
-    ]
+    # whole rather than searched for: a README that adds an install step the command did
+    # not name, or drops the one it did, describes a project nobody receives, and only an
+    # exact comparison catches that.
+    assert _install_commands(written) == _install_commands(printed) == ["uv sync"]
     # Everything else the command offers as a next step is documented too.
     assert set(printed) <= set(written)
 
 
 # Installed alongside a scaffolded project's tests to hide the HTTP client packages
-# that starlette's own test client needs. A scaffolded project is told to add bustan,
-# ty, ruff and pytest and nothing else, so a generated test that only passes because
-# one of these happens to be present in the developing environment is not passing for
-# a user, and this plugin makes that difference visible here.
+# that starlette's own test client needs. A scaffolded manifest declares bustan with the
+# transport extra, plus ty, ruff and pytest, and nothing else, so a generated test that
+# only passes because one of these happens to be present in the developing environment
+# is not passing for a user, and this plugin makes that difference visible here.
 _NO_HTTP_CLIENT_PLUGIN = """\
 import sys
 from importlib.abc import MetaPathFinder
@@ -370,10 +396,24 @@ def test_init_adds_scripts_to_pyproject(tmp_path: Path) -> None:
     finally:
         os.chdir(old_cwd)
 
-    content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
-    assert "[project.scripts]" in content
-    assert 'start = "my_app:main"' in content
-    assert 'dev = "my_app:dev"' in content
+    manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
+    # Both scripts name the module the scaffold owns rather than the package, so that a
+    # package whose __init__.py came from somewhere else keeps the main it already meant.
+    assert manifest["project"]["scripts"]["start"] == "my_app.app_main:main"
+    assert manifest["project"]["scripts"]["dev"] == "my_app.app_main:dev"
+
+
+def test_init_declares_the_transport_so_one_sync_can_serve(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "my-app")
+
+    assert _init(tmp_path) == 0
+
+    manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
+    # Serving needs a transport. The manifest declares the extra rather than the command
+    # printing a second install step, so the `uv sync` it does print is enough to serve.
+    declared = manifest["project"]["dependencies"]
+    assert [entry for entry in declared if entry.startswith("bustan[starlette]>=")] == declared
+    assert manifest["dependency-groups"]["dev"] == ["pytest", "ruff", "ty"]
 
 
 def test_package_name_from_pyproject_returns_none_for_blank_project_name(tmp_path: Path) -> None:
@@ -387,9 +427,13 @@ def test_package_name_from_pyproject_returns_none_for_blank_project_name(tmp_pat
         os.chdir(old_cwd)
 
 
+_BUILD_SYSTEM = '[build-system]\nrequires = ["uv_build"]\nbuild-backend = "uv_build"\n'
+
+
 def test_init_project_preserves_existing_readme_and_scripts_section(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "demo-app"\n\n[project.scripts]\ncustom = "demo_app:main"\n',
+        '[project]\nname = "demo-app"\ndependencies = []\n\n'
+        '[project.scripts]\ncustom = "demo_app:main"\n\n' + _BUILD_SYSTEM,
         encoding="utf-8",
     )
     readme_path = tmp_path / "README.md"
@@ -405,37 +449,44 @@ def test_init_project_preserves_existing_readme_and_scripts_section(tmp_path: Pa
     assert readme_path.read_text(encoding="utf-8") == "keep me\n"
     pyproject_content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
     assert pyproject_content.count("[project.scripts]") == 1
-    assert 'custom = "demo_app:main"' in pyproject_content
-    # uv init --package pre-creates [project.scripts]; start/dev must be
-    # merged into it rather than skipped (the published-package smoke flow).
-    assert 'start = "demo_app:main"' in pyproject_content
-    assert 'dev = "demo_app:dev"' in pyproject_content
+    scripts = tomllib.loads(pyproject_content)["project"]["scripts"]
+    # uv init --package pre-creates [project.scripts]; start and dev must be merged into
+    # it rather than skipped, and the entry the project already declared must survive.
+    assert scripts == {
+        "custom": "demo_app:main",
+        "start": "demo_app.app_main:main",
+        "dev": "demo_app.app_main:dev",
+    }
 
 
 def test_init_project_does_not_duplicate_existing_start_and_dev_scripts(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "demo-app"\n\n[project.scripts]\n'
-        'start = "demo_app:main"\ndev = "demo_app:dev"\n',
+        '[project]\nname = "demo-app"\ndependencies = ["bustan[starlette]"]\n\n'
+        '[project.scripts]\nstart = "demo_app:serve"\ndev = "demo_app:watch"\n\n'
+        "[dependency-groups]\ndev = []\n\n" + _BUILD_SYSTEM,
         encoding="utf-8",
     )
+    before = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
 
     old_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
-        scaffold_service.init_project(package_name="demo_app")
+        report = scaffold_service.init_project(package_name="demo_app")
     finally:
         os.chdir(old_cwd)
 
-    pyproject_content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
-    assert pyproject_content.count('start = "demo_app:main"') == 1
-    assert pyproject_content.count('dev = "demo_app:dev"') == 1
+    # A manifest that already declares everything is not rewritten at all. The entries
+    # it declared are the project's own, so a script pointing somewhere else stays
+    # pointing there rather than being redirected at what this would have written.
+    assert report.manifest_edits == ()
+    assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == before
 
 
-def test_scaffold_helpers_cover_missing_pyproject_and_name_sanitization(tmp_path: Path) -> None:
+def test_scaffold_helpers_sanitize_project_names(tmp_path: Path) -> None:
     old_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
-        scaffold_service._add_scripts_to_pyproject("demo_app")
+        assert scaffold_service.package_name_from_pyproject() is None
     finally:
         os.chdir(old_cwd)
 
@@ -456,19 +507,339 @@ def test_init_fails_without_pyproject(tmp_path: Path, capsys) -> None:
     assert "pyproject.toml" in capsys.readouterr().err
 
 
-def test_init_init_py_contains_bootstrap_and_scripts(tmp_path: Path) -> None:
+def _tree_state(directory: Path) -> dict[str, str]:
+    """Return every file under *directory* by relative path, with its contents."""
+
+    return {
+        path.relative_to(directory).as_posix(): path.read_text(encoding="utf-8")
+        for path in sorted(directory.rglob("*"))
+        if path.is_file()
+    }
+
+
+def test_second_init_changes_no_existing_file_and_names_each_one(tmp_path: Path, capsys) -> None:
     _write_pyproject(tmp_path, "demo-app")
+    assert _init(tmp_path) == 0
+    handler = tmp_path / "src" / "demo_app" / "app_service.py"
+    handler.write_text("# a week of work\n", encoding="utf-8")
+    before = _tree_state(tmp_path)
+    capsys.readouterr()
+
+    assert _init(tmp_path) == 0
+
+    # The loss this prevents is unrecoverable outside version control, so the guard is
+    # the whole tree rather than the one file: nothing the first run wrote, and nothing
+    # written over it since, may differ afterwards.
+    assert _tree_state(tmp_path) == before
+    stdout = capsys.readouterr().out
+    for path in before:
+        if path.startswith(("src/", "tests/")) or path == "README.md":
+            assert path in stdout
+
+
+def test_init_force_replaces_a_file_that_exists(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "demo-app")
+    assert _init(tmp_path) == 0
+    handler = tmp_path / "src" / "demo_app" / "app_service.py"
+    scaffolded = handler.read_text(encoding="utf-8")
+    handler.write_text("# replaced by hand\n", encoding="utf-8")
+
+    assert _init(tmp_path, "--force") == 0
+
+    assert handler.read_text(encoding="utf-8") == scaffolded
+
+
+def test_init_gives_a_dev_script_to_a_project_carrying_a_dev_dependency_group(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo-app"\ndependencies = []\n\n'
+        '[dependency-groups]\ndev = ["pytest"]\n\n' + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+
+    assert _init(tmp_path) == 0
+
+    manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
+    # `uv add --dev` writes a `dev` key under [dependency-groups]. It declares a
+    # dependency group, not a script, so the lookup is scoped to [project.scripts] and
+    # a project carrying one still gets the script the printed next steps name.
+    assert manifest["project"]["scripts"]["dev"] == "demo_app.app_main:dev"
+    assert manifest["dependency-groups"]["dev"] == ["pytest"]
+
+
+def test_init_leaves_a_manifest_valid_when_a_value_reads_like_a_table_header(
+    tmp_path: Path,
+) -> None:
+    description = "declares [project.scripts] and [dependency-groups] in prose"
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "demo-app"\ndescription = "{description}"\n'
+        "dependencies = []\n\n" + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+
+    assert _init(tmp_path) == 0
+
+    # Editing the manifest as text is what corrupted it: a value that reads like a
+    # section header is not one, and only the parsed tables can tell the difference.
+    manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
+    assert manifest["project"]["description"] == description
+    assert manifest["project"]["scripts"]["start"] == "demo_app.app_main:main"
+
+
+def test_init_refuses_a_project_with_no_build_system(tmp_path: Path, capsys) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo-app"\ndependencies = []\n', encoding="utf-8"
+    )
+
+    assert _init(tmp_path) == 1
+
+    stderr = capsys.readouterr().err
+    assert "[build-system]" in stderr
+    assert "uv init --package" in stderr
+    # Nothing is written, because uv exposes no script from a project it cannot build
+    # and a scaffold whose entry points cannot be reached is worse than none.
+    assert not (tmp_path / "src").exists()
+
+
+def test_init_reports_a_malformed_manifest_without_a_traceback(tmp_path: Path, capsys) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project\nname = "demo-app"\n', encoding="utf-8")
+
+    assert _init(tmp_path) == 1
+
+    captured = capsys.readouterr()
+    assert "pyproject.toml" in captured.err
+    assert "valid TOML" in captured.err
+    assert "Traceback" not in captured.err + captured.out
+
+
+def test_init_adds_the_transport_to_a_multi_line_dependency_array(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo-app"\ndependencies = [\n  "httpx>=0.28",\n]\n\n' + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+
+    assert _init(tmp_path) == 0
+
+    content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    manifest = tomllib.loads(content)
+    assert manifest["project"]["dependencies"][1:] == ["httpx>=0.28"]
+    # The entry joins the array the way the entries already in it are written, so the
+    # manifest a project keeps does not come back reflowed by a command it ran once.
+    assert '  "bustan[starlette]>=' in content
+
+
+def test_init_declares_dependencies_where_the_manifest_names_none(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo-app"\nversion = "0.1.0"\n\n' + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+
+    assert _init(tmp_path) == 0
+
+    lines = (tmp_path / "pyproject.toml").read_text(encoding="utf-8").splitlines()
+    manifest = tomllib.loads("\n".join(lines))
+    assert len(manifest["project"]["dependencies"]) == 1
+    # The key joins the table it belongs to rather than displacing the first key in it.
+    assert lines.index('version = "0.1.0"') < lines.index(
+        next(line for line in lines if line.startswith("dependencies = "))
+    )
+
+
+def test_init_keeps_the_line_endings_the_manifest_was_written_with(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "pyproject.toml"
+    manifest_path.write_bytes(
+        ('[project]\nname = "demo-app"\ndependencies = []\n\n' + _BUILD_SYSTEM)
+        .replace("\n", "\r\n")
+        .encode("utf-8")
+    )
+
+    assert _init(tmp_path) == 0
+
+    raw = manifest_path.read_bytes()
+    # A manifest written on one platform and edited here must not come back with every
+    # line changed, which is what a whole-file rewrite of its line endings would be.
+    assert raw.count(b"\n") == raw.count(b"\r\n")
+    assert tomllib.loads(raw.decode("utf-8"))["project"]["scripts"]["start"]
+
+
+def test_init_refuses_a_manifest_whose_string_holds_a_bare_table_header(
+    tmp_path: Path, capsys
+) -> None:
+    manifest = (
+        '[project]\nname = "demo-app"\ndescription = """\n[project.scripts]\n"""\n'
+        "dependencies = []\n\n" + _BUILD_SYSTEM
+    )
+    (tmp_path / "pyproject.toml").write_text(manifest, encoding="utf-8")
+
+    assert _init(tmp_path) == 1
+
+    # The only text in the file that reads exactly like a header is inside a string, so
+    # there is no insertion point that leaves the rest of the file meaning what it did.
+    # Refusing beats guessing: the manifest is untouched and the entries are named.
+    assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == manifest
+    assert not (tmp_path / "src").exists()
+    stderr = capsys.readouterr().err
+    assert 'start = "demo_app.app_main:main"' in stderr
+    assert "[project.scripts]" in stderr
+
+
+def test_init_refuses_a_manifest_whose_scripts_are_an_inline_table(tmp_path: Path, capsys) -> None:
+    manifest = (
+        '[project]\nname = "demo-app"\ndependencies = ["bustan[starlette]"]\n'
+        'scripts = { custom = "demo_app:x" }\n\n'
+        "[dependency-groups]\ndev = []\n\n" + _BUILD_SYSTEM
+    )
+    (tmp_path / "pyproject.toml").write_text(manifest, encoding="utf-8")
+
+    assert _init(tmp_path) == 1
+
+    # Appending a [project.scripts] header would define the table a second time and the
+    # manifest would stop parsing, so the run is refused rather than the file broken.
+    assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == manifest
+    assert not (tmp_path / "src").exists()
+    assert "by hand" in capsys.readouterr().err
+
+
+def test_init_adds_only_what_the_manifest_is_missing(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo-app"\ndependencies = ["bustan[starlette]==2.0.0"]\n\n'
+        '[project.scripts]\nstart = "demo_app.app_main:main"\n'
+        'dev = "demo_app.app_main:dev"\n\n' + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+
     old_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
-        cli_main_module.main(["init"])
+        report = scaffold_service.init_project(package_name="demo_app")
     finally:
         os.chdir(old_cwd)
 
-    content = (tmp_path / "src" / "demo_app" / "__init__.py").read_text(encoding="utf-8")
+    assert report.manifest_edits == ("added pytest, ruff, ty to the 'dev' dependency group",)
+    # The pin the project chose is the project's, so it survives untouched.
+    manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
+    assert manifest["project"]["dependencies"] == ["bustan[starlette]==2.0.0"]
+
+
+def test_init_declares_dependencies_in_a_project_table_that_ends_the_file(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        _BUILD_SYSTEM + '\n[project]\nname = "demo-app"\nversion = "0.1.0"\n',
+        encoding="utf-8",
+    )
+
+    assert _init(tmp_path) == 0
+
+    lines = (tmp_path / "pyproject.toml").read_text(encoding="utf-8").splitlines()
+    assert len(tomllib.loads("\n".join(lines))["project"]["dependencies"]) == 1
+    assert lines.index('version = "0.1.0"') < lines.index(
+        next(line for line in lines if line.startswith("dependencies = "))
+    )
+
+
+def test_init_refuses_a_manifest_whose_dependencies_are_not_an_array(
+    tmp_path: Path, capsys
+) -> None:
+    manifest = '[project]\nname = "demo-app"\ndependencies = { httpx = "*" }\n\n' + _BUILD_SYSTEM
+    (tmp_path / "pyproject.toml").write_text(manifest, encoding="utf-8")
+
+    assert _init(tmp_path) == 1
+
+    # Declaring the dependency would define the key a second time and the manifest would
+    # stop parsing. The result is parsed before it is written, which is what catches it.
+    assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == manifest
+    assert not (tmp_path / "src").exists()
+    assert "by hand" in capsys.readouterr().err
+
+
+def test_scaffold_refuses_an_insertion_point_it_cannot_locate() -> None:
+    add = scaffold_service._with_transport_requirement
+    requirement = "bustan[starlette]>=2.0.0"
+
+    # A [project] table declared as root dotted keys has no header line to insert under,
+    # and a dependencies line holding no array open has nowhere in it to insert. Neither
+    # is guessed at: an insertion point that cannot be located refuses the edit.
+    assert add('project.name = "demo-app"\n', requirement, {"dependencies": []}) is None
+    assert add('[project]\nname = "demo-app"\n', requirement, {"dependencies": []}) is None
+    assert add("[project]\ndependencies = truncated\n", requirement, {"dependencies": []}) is None
+
+
+def test_scaffold_key_lookup_stops_at_the_next_table() -> None:
+    lines = ["[project]\n", 'name = "demo-app"\n', "[tool.other]\n", "dependencies = []\n"]
+
+    # A key of the same name in another table is a different setting entirely, and
+    # editing it in place of the one asked for would change something nobody named.
+    assert scaffold_service._key_index(lines, 0, "dependencies") is None
+    assert scaffold_service._key_index(lines, 0, "name") == 1
+    assert scaffold_service._key_index(lines[:2], 0, "dependencies") is None
+
+
+def test_scaffold_compares_requirement_names_the_way_an_installer_does() -> None:
+    names = scaffold_service._names_distribution
+    assert names("Bustan[starlette]>=2", "bustan")
+    assert names("bus_tan", "bus-tan")
+    assert not names("bustanx", "bustan")
+    # A manifest may hold anything; a non-string or an unparseable entry names nothing.
+    assert not names(None, "bustan")
+    assert not names("!!!", "bustan")
+
+
+def test_init_help_says_what_is_written_and_that_existing_files_are_kept(capsys) -> None:
+    parser = argparse.ArgumentParser(prog="bustan")
+    register_init_command(parser.add_subparsers(dest="command"))
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["init", "--help"])
+
+    help_text = capsys.readouterr().out
+    assert "src/<package>" in help_text
+    assert "tests/<package>" in help_text
+    assert "kept" in help_text
+    assert "--force" in help_text
+
+
+def test_init_app_main_contains_bootstrap_and_scripts(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "demo-app")
+
+    assert _init(tmp_path) == 0
+
+    content = (tmp_path / "src" / "demo_app" / "app_main.py").read_text(encoding="utf-8")
     assert "def bootstrap" in content
     assert "def main" in content
     assert "def dev" in content
+
+
+def test_scaffolded_dev_script_hands_the_server_an_import_string(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "demo-app")
+
+    assert _init(tmp_path) == 0
+
+    source = (tmp_path / "src" / "demo_app" / "app_main.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and ast.unparse(node.func) == "uvicorn.run"
+    )
+    keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+
+    # Reloading means owning the process, so it is the server's to do and not the
+    # adapter's. It can only do it from a name it can import again in a fresh worker,
+    # which an application already built is not.
+    assert ast.literal_eval(call.args[0]) == "demo_app.app_main:create_asgi_app"
+    assert ast.literal_eval(keywords["factory"]) is True
+    assert ast.literal_eval(keywords["reload"]) is True
+
+    # `listen` must not be asked to reload. The adapters refuse it, and the one that
+    # once accepted it discarded it, which is the defect this replaces.
+    listen = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and ast.unparse(node.func).endswith("listen")
+    )
+    assert "reload" not in {keyword.arg for keyword in listen.keywords}
 
 
 def test_main_prints_help_when_no_command_is_supplied(capsys) -> None:

@@ -4,17 +4,11 @@ A [Bustan](https://github.com/bustanhq/bustan) application.
 
 ## Getting started
 
-Install dependencies:
+`bustan init` declared everything this project needs in `pyproject.toml`, so one
+command installs it:
 
 ```sh
 uv sync
-```
-
-Add Bustan and dev tools if not already present:
-
-```sh
-uv add 'bustan[starlette]'
-uv add --dev ty ruff pytest
 ```
 
 ## Running the app
@@ -33,12 +27,15 @@ uv run dev
 
 The server listens on **http://localhost:3000** by default.
 
+Under `uv run dev` the server watches `src/` and restarts on every change, so editing a
+handler changes the next response without stopping anything.
+
 ## Project structure
 
 ```
 src/
   $package_name/
-    __init__.py          # app entry point (bootstrap, main, dev)
+    app_main.py          # app entry point (bootstrap, main, dev)
     app_module.py        # root module
     app_controller.py    # root controller
     app_service.py       # root service
