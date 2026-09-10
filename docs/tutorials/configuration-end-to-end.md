@@ -58,11 +58,21 @@ class LinksService:
         self._links: dict[str, str] = {}
 ```
 
+Then spend it where the `6` used to be:
+
+```python
+    def create_link(self, url: str) -> str:
+        code = "".join(secrets.choice(ALPHABET) for _ in range(self._code_length))
+```
+
 `get` takes a default, so this still works with nothing set. Try it:
 
 ```bash
 CODE_LENGTH=3 uv run dev
-curl -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+```
+
+```bash
+curl -X POST http://127.0.0.1:3000/links -H 'content-type: application/json' \
   -d '{"url": "https://example.com"}'
 ```
 
@@ -148,6 +158,7 @@ uv run dev
 pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
 CODE_LENGTH
   Input should be a valid integer, unable to parse string as an integer
+  [type=int_parsing, input_value='banana', input_type=str]
 ```
 
 No server starts. The message names the setting and what was wrong with it, and it arrives before a
@@ -167,16 +178,23 @@ There is a command for the question "is it even reading my `.env`":
 uv run bustan config my_app.app_module:AppModule
 ```
 
+It compiles the application and prints what the configuration module resolved, after the file and the
+environment have been merged. `for_root` reads the whole process environment, so that is a row for
+every variable your shell exports as well as the two you set, and the two you set are easier found
+with a filter:
+
+```bash
+uv run bustan config my_app.app_module:AppModule | grep -E 'CODE_LENGTH|PAGE_SIZE'
+```
+
 ```text
-config (2)
-key           value
-------------  -------
 CODE_LENGTH   6
 PAGE_SIZE     20
 ```
 
-It compiles the application and prints what the configuration module resolved, after the file and the
-environment have been merged. Run it before writing code that depends on a value, not after.
+The key column is padded to the longest name in the whole table, so where the value column starts
+depends on your environment rather than on this page. Run this before writing code that depends on
+a value, not after.
 
 One thing that surprises people: a key whose name reads like a credential is printed as `[redacted]`
 rather than its value. You will see that in the next tutorial when you add a token. It is the command
@@ -185,7 +203,7 @@ working, not failing.
 ## Proving The Environment Wins
 
 ```bash
-CODE_LENGTH=10 uv run bustan config my_app.app_module:AppModule
+CODE_LENGTH=10 uv run bustan config my_app.app_module:AppModule | grep CODE_LENGTH
 ```
 
 ```text
