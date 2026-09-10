@@ -39,7 +39,8 @@ everything after it on the way out, which is why middleware can touch the respon
 request. Honouring an incoming `x-request-id` matters if anything sits in front of you, so a trace
 started at your load balancer continues here rather than restarting.
 
-Register it from the root module by implementing `configure`:
+Register it from the root module. `configure` is a method on `AppModule` itself: the `@Module`
+decorator above it and everything in its lists stay exactly as they are.
 
 ```python
 from bustan import MiddlewareConsumer
@@ -57,14 +58,20 @@ liveness check correlates nothing.
 
 ```bash
 uv run dev
-curl -si http://127.0.0.1:3000/links/ | grep -i x-request-id
+```
+
+```bash
+curl -si http://127.0.0.1:3000/nope | grep -i x-request-id
 ```
 
 ```text
 x-request-id: 4e8f1a90-2c31-4b7e-9a55-1f0c7b3d2a64
 ```
 
-Ask again and the id changes. Send your own and it comes back unchanged.
+That is the `404` from tutorial two, stamped like anything else. Middleware runs before routing, so
+it neither knows nor cares which handler answered or whether one did, and a refusal is exactly the
+response somebody will want to quote at you. Ask again and the id changes. Send your own and it
+comes back unchanged.
 
 ## Something That Depends On Which Route Was Chosen
 
@@ -206,9 +213,9 @@ between "open on purpose" and "somebody forgot".
 Start the application now, before adding any import to `LinksModule`.
 
 ```text
-LinksController.list_links authenticates its callers, and no provider for
-AUTHENTICATOR_REGISTRY is visible to LinksModule. Declare one in that module, or
-import a module that exports it
+bustan.kernel.errors.AuthenticatorRegistryError: LinksController.create_link authenticates its
+callers, and no provider for AUTHENTICATOR_REGISTRY is visible to LinksModule. Declare one in
+that module, or import a module that exports it
 ```
 
 It refuses to start, and this is the framework at its most useful. A route that asks for
@@ -221,7 +228,7 @@ It is the same shape as the store refusal in the last tutorial, and the same fix
 ## Try Both Sides
 
 ```bash
-curl -si -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+curl -si -X POST http://127.0.0.1:3000/links -H 'content-type: application/json' \
   -d '{"url":"https://example.com"}' | head -1
 ```
 
@@ -230,7 +237,7 @@ HTTP/1.1 401 Unauthorized
 ```
 
 ```bash
-curl -si -X POST http://127.0.0.1:3000/links/ \
+curl -si -X POST http://127.0.0.1:3000/links \
   -H 'authorization: Bearer a-long-local-development-token' \
   -H 'content-type: application/json' -d '{"url":"https://example.com"}' | head -1
 ```
@@ -263,24 +270,27 @@ def token() -> dict[str, str]:
     return {"authorization": "Bearer a-long-local-development-token"}
 ```
 
-Then give the existing tests that header, and add these:
+Then give every existing test that posts a link that header, and add these:
 
 ```python
 def test_creating_a_link_needs_a_token(client: AsgiTestClient) -> None:
-    assert client.post("/links/", json={"url": "https://example.com"}).status_code == 401
+    assert client.post("/links", json={"url": "https://example.com"}).status_code == 401
 
 
-def test_following_a_link_needs_no_token(client, token) -> None:
-    client.post("/links/", headers=token, json={"url": "https://example.com", "code": "open"})
-    assert client.get("/open", follow_redirects=False).status_code == 302
+def test_following_a_link_needs_no_token(client: AsgiTestClient, token: dict[str, str]) -> None:
+    created = client.post("/links", headers=token, json={"url": "https://example.com/f"})
+    assert client.get(f"/{created.json()['code']}", follow_redirects=False).status_code == 302
 
 
-def test_every_response_carries_a_request_id(client, token) -> None:
-    assert client.get("/links/", headers=token).headers["x-request-id"]
+def test_every_response_carries_a_request_id(client: AsgiTestClient) -> None:
+    assert client.get("/nothing-here", follow_redirects=False).headers["x-request-id"]
 ```
 
 The first of those is the one people skip. A guard that is never seen refusing anything in a test is
 a guard nobody has checked, and a guard that stops working fails silently and permissively.
+
+The second follows the code it was handed rather than choosing one, because `CreateLinkPayload`
+declares a `url` and nothing else: a `code` in that body is a field the model does not have.
 
 ## Where This Leaves You
 

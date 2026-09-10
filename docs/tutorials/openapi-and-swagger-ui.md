@@ -10,15 +10,18 @@ turns that on, then adds the handful of things a signature cannot express.
 
 ## Turning It On
 
-In `src/my_app/__init__.py`, describe the API and hand it to `create_app`:
+`src/my_app/app_main.py` holds the one function that builds the application, and everything that
+serves it goes through there: `uv run dev`, `uv run start`, and the `client` fixture your tests
+take. Describe the API inside that function and hand the description to `create_app`:
 
 ```python
-from bustan import DocumentBuilder, SwaggerOptions, create_app
+from bustan import Application, DocumentBuilder, SwaggerOptions, create_app
 
 from .app_module import AppModule
 
 
-def build_application() -> Application:
+def create_asgi_app() -> Application:
+    """Return the application, which is itself the ASGI callable a server runs."""
     document = (
         DocumentBuilder()
         .set_title("Link Shortener")
@@ -69,12 +72,16 @@ If you would rather keep `/api` free, the other option is to give short codes a 
 
 ```bash
 uv run dev
-curl -s http://127.0.0.1:3000/docs/api | python -m json.tool | head -25
 ```
 
-Every route is there: the two probes, `/links`, `/links/{code}`, `/{code}`. Path parameters are
-typed, and the `POST` body carries the schema Pydantic generated from `CreateLinkPayload`, including
-that `url` must be a URL.
+```bash
+curl -s http://127.0.0.1:3000/docs/api | uv run python -m json.tool | head -25
+```
+
+Every route this application serves is in there and nothing else is: `/health/live`,
+`/health/ready`, `/links` and `/{code}`. Path parameters are typed, and the `POST` body carries the
+schema Pydantic generated from `CreateLinkPayload`, including the `"format": "uri"` that says `url`
+must be a URL.
 
 None of that was written by hand. It came from the code, which means it cannot drift from the code.
 
@@ -83,9 +90,9 @@ through and send requests from.
 
 ## Saying What The Code Cannot
 
-What the framework cannot infer is intent. It knows `read_link` returns a dictionary; it does not
-know the route answers `404` when a code is unknown, because that lives inside an `if`. Four
-decorators fill the gap.
+What the framework cannot infer is intent. It knows `follow` hands back a response; it does not know
+that response is a `302` when the code is known and a `404` when it is not, because both live inside
+an `if`. Four decorators fill the gap.
 
 In `links_controller.py`:
 
@@ -102,20 +109,35 @@ class LinksController:
     @Post("/")
     @ApiOperation(summary="Shorten a URL")
     @ApiResponse(status=201, description="The link was created")
-    @ApiResponse(status=409, description="That code is already taken")
+    @ApiResponse(status=409, description="No free code was found")
     def create_link(self, payload: CreateLinkPayload) -> HttpResponse:
         ...
+```
+
+And in `redirect_controller.py`, the two outcomes of following a code:
+
+```python
+from bustan import ApiOperation, ApiResponse, ApiTags
+
+
+@Controller("/")
+@Public()
+@ApiTags("redirect")
+class RedirectController:
 
     @Get("/{code}")
-    @ApiOperation(summary="Read one link and its visit count")
+    @ApiOperation(summary="Follow a short code to its target")
+    @ApiResponse(status=302, description="The target the code points at")
     @ApiResponse(status=404, description="No link with that code")
-    def read_link(self, code: str) -> dict[str, object]:
+    def follow(self, code: str) -> HttpResponse:
         ...
 ```
 
 `@ApiTags` groups routes under a heading, so the browsable page is not one long list. `@ApiOperation`
 gives the human sentence a method name cannot. `@ApiResponse` documents an outcome the framework has
-no way to see. `@ApiBearerAuth` marks the routes as needing the scheme you declared.
+no way to see. `@ApiBearerAuth` marks the routes as needing the scheme you declared, which is why
+the links controller has it and the redirect does not: a route anyone may call should not be
+documented as wanting a token.
 
 Document the outcomes a caller has to handle and then stop. A response entry for every status you can
 imagine produces a document nobody reads.
@@ -134,12 +156,12 @@ def test_the_openapi_document_is_served(client: AsgiTestClient) -> None:
 Worth more than it looks. It fails the day somebody deletes a route and the document quietly stops
 describing it, which is not a failure anyone notices by reading.
 
-Note `/links` without the trailing slash your route declares. The document normalises paths, and
-finding that out from a failing assertion is annoying enough to be worth a sentence here.
+`/links` is the path in the document because `/links` is the path the route was compiled to, the
+same one you have been curling since tutorial two.
 
 ## What You Have Built
 
-Six tutorials ago you had a route that said hello. You now have a link shortener that validates what
+Five tutorials ago you had a route that said hello. You now have a link shortener that validates what
 it is given, answers the right status when things go wrong, keeps its links in a database it opens
 and closes cleanly, admits when it cannot serve, refuses callers it does not recognise while leaving
 short links open to everyone, and describes itself.

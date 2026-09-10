@@ -6,7 +6,7 @@ greeting. In this tutorial you turn it into something you would actually use: a 
 Here is what it will do by the end. You send it a long URL:
 
 ```bash
-curl -X POST http://127.0.0.1:3000/links/ \
+curl -X POST http://127.0.0.1:3000/links \
   -H 'content-type: application/json' \
   -d '{"url": "https://docs.python.org/3/library/sqlite3.html"}'
 ```
@@ -110,6 +110,15 @@ class AppModule:
     pass
 ```
 
+That module no longer names `AppController` or `AppService`, so the greeting route is gone and the
+three tests the scaffold wrote for it now fail. Delete what it left behind:
+
+```bash
+rm src/my_app/app_controller.py src/my_app/app_service.py
+rm tests/my_app/test_app_controller.py tests/my_app/test_app_module.py \
+  tests/my_app/test_app_service.py
+```
+
 Run it:
 
 ```bash
@@ -117,7 +126,7 @@ uv run dev
 ```
 
 ```bash
-curl -X POST http://127.0.0.1:3000/links/ \
+curl -X POST http://127.0.0.1:3000/links \
   -H 'content-type: application/json' \
   -d '{"url": "https://example.com"}'
 ```
@@ -125,6 +134,10 @@ curl -X POST http://127.0.0.1:3000/links/ \
 ```json
 {"code":"7fq2ba"}
 ```
+
+The path is `/links` and not `/links/`. `@Post("/")` inside a controller mounted at `/links` is
+that prefix and nothing more, so `/links` is the route that gets registered. Ask for `/links/` and
+you get a `307` pointing at `/links`, which is a redirect `curl` follows only if you pass `-L`.
 
 You have a shortener that shortens. It does not yet do the useful half.
 
@@ -161,7 +174,7 @@ and gets the same instance, which is why a code created by one is visible to the
 Add it to the module's `controllers` list, restart, and try it:
 
 ```bash
-curl -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+curl -X POST http://127.0.0.1:3000/links -H 'content-type: application/json' \
   -d '{"url": "https://bustan.dev"}'
 ```
 
@@ -233,7 +246,7 @@ send", not "there is no such link". Both look fine in a browser and only one of 
 Now the other end:
 
 ```bash
-curl -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+curl -X POST http://127.0.0.1:3000/links -H 'content-type: application/json' \
   -d '{"url": "not a url at all"}'
 ```
 
@@ -242,12 +255,8 @@ It cheerfully creates a link. Whoever clicks it finds out.
 The handler takes `payload: dict`, which accepts anything shaped like JSON. Describe what you
 actually want instead, and the framework checks it before your code runs.
 
-```bash
-uv add pydantic
-```
-
-Pydantic is not part of the `starlette` extra, so you install it yourself. Create
-`src/my_app/models.py`:
+Pydantic is a requirement of the framework rather than an extra, so it is already installed and
+there is nothing to add. Create `src/my_app/models.py`:
 
 ```python
 from __future__ import annotations
@@ -274,7 +283,7 @@ from .models import CreateLinkPayload
 That is the whole change. A parameter annotated with a Pydantic model is validated on the way in:
 
 ```bash
-curl -i -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+curl -i -X POST http://127.0.0.1:3000/links -H 'content-type: application/json' \
   -d '{"url": "not a url at all"}'
 ```
 
@@ -307,7 +316,7 @@ from bustan import HttpResponse
 ```
 
 ```bash
-curl -i -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
+curl -i -X POST http://127.0.0.1:3000/links -H 'content-type: application/json' \
   -d '{"url": "https://example.com"}'
 ```
 
@@ -364,19 +373,19 @@ Three things this tutorial promised, three tests. Create `tests/my_app/test_link
 
 ```python
 from bustan.testing import AsgiTestClient
-from my_app import build_application
+from my_app.app_main import create_asgi_app
 
 
 def test_shortening_a_url_returns_201() -> None:
-    with AsgiTestClient(build_application()) as client:
-        response = client.post("/links/", json={"url": "https://example.com/a"})
+    with AsgiTestClient(create_asgi_app()) as client:
+        response = client.post("/links", json={"url": "https://example.com/a"})
 
     assert response.status_code == 201
 
 
 def test_following_a_code_redirects_to_the_target() -> None:
-    with AsgiTestClient(build_application()) as client:
-        code = client.post("/links/", json={"url": "https://example.com/b"}).json()["code"]
+    with AsgiTestClient(create_asgi_app()) as client:
+        code = client.post("/links", json={"url": "https://example.com/b"}).json()["code"]
         response = client.get(f"/{code}", follow_redirects=False)
 
     assert response.status_code == 302
@@ -384,15 +393,18 @@ def test_following_a_code_redirects_to_the_target() -> None:
 
 
 def test_an_unknown_code_returns_404() -> None:
-    with AsgiTestClient(build_application()) as client:
+    with AsgiTestClient(create_asgi_app()) as client:
         response = client.get("/nothing-here", follow_redirects=False)
 
     assert response.status_code == 404
 ```
 
-`AsgiTestClient` ships with the framework, so there is no HTTP client to install and no server to
-start. `follow_redirects=False` matters in the second test: without it the client would chase the
-redirect to example.com and you would be asserting on their response, not yours.
+`create_asgi_app` is the builder the scaffold put in `src/my_app/app_main.py`, and it is what
+`uv run dev` serves, so these tests exercise the application you have been curling rather than a
+second one assembled for the suite. `AsgiTestClient` ships with the framework, so there is no HTTP
+client to install and no server to start. `follow_redirects=False` matters in the second test:
+without it the client would chase the redirect to example.com and you would be asserting on their
+response, not yours.
 
 ```bash
 uv run pytest

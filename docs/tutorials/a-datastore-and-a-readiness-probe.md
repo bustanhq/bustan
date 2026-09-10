@@ -84,7 +84,7 @@ declaring them async costs nothing today and means swapping sqlite3 for `asyncpg
 body of the method and not its signature. The full list of hooks and the order they run in is in
 [the lifecycle reference](../reference/lifecycle.md).
 
-## A Module Of Its Own, And A Refusal If You Skip It
+## A Module Of Its Own
 
 `LinkStore` is used by the links feature and, shortly, by the health check. Two consumers means it
 gets its own module. Create `src/my_app/store_module.py`:
@@ -100,24 +100,9 @@ class StoreModule:
     pass
 ```
 
-Before you import it anywhere, do this deliberately: declare `LinkStore` in the **root** module's
-`providers` list instead, and start the application.
-
-```text
-LinksRepository.__init__ parameter 'store' needs LinkStore, which LinksModule cannot see.
-Declare it in that module, import a module that exports it, or give the parameter a default
-```
-
-It will not start. This is the `exports` list from tutorial two doing its job: a provider declared in
-the root module is not visible inside a feature module, because modules are boundaries rather than
-folders. The message names the class, the parameter, the module that cannot see it, and the three
-ways out.
-
-Notice when this happened. Not on a request, not under load — while the application was being built,
-before it bound a port. Bustan resolves the whole graph at startup precisely so that wiring mistakes
-are a refusal you read once rather than a `500` somebody else finds.
-
-Take the fix the message offers: `imports=[StoreModule]` on `LinksModule`.
+Do not import it anywhere yet, and declare `LinkStore` in the **root** module's `providers` list as
+well, which is the wrong place. Nothing asks for a store yet so nothing objects, and the moment
+something does is worth meeting on purpose a few paragraphs from here.
 
 ## Reading And Writing Through It
 
@@ -166,7 +151,7 @@ class LinksRepository:
 `create_link` returning `None` on a duplicate is the database telling you the code is taken.
 `PRIMARY KEY` makes that a constraint the database enforces rather than a check you race against.
 
-Add a `Link` dataclass to `models.py`:
+Add a `Link` dataclass to `src/my_app/links/models.py`:
 
 ```python
 from dataclasses import dataclass
@@ -197,18 +182,89 @@ Then `LinksService` delegates instead of holding a dictionary, and gains retry-o
         return link
 ```
 
-Neither controller changes. That is what the service boundary bought you two tutorials ago.
+`read_link` moved to the repository and what the service hands back is now a `Link` rather than a
+URL string, so both controllers have to catch up. A `Link` is not JSON on its own, and a service
+method that no longer exists is an `AttributeError`; leaving either alone is two `500`s rather than
+a working shortener. In `links_controller.py`:
+
+```python
+from dataclasses import asdict
+
+from bustan.errors import ConflictException
+
+
+    @Post("/")
+    def create_link(self, payload: CreateLinkPayload) -> HttpResponse:
+        link = self._links.create_link(str(payload.url))
+        if link is None:
+            raise ConflictException("could not find a free code")
+        return HttpResponse.json(
+            asdict(link), status_code=201, headers={"location": f"/links/{link.code}"}
+        )
+```
+
+`asdict` on a frozen dataclass is the whole serialisation step, and the body a caller gets is now
+the link rather than just its code. Five collisions in a row is the one outcome the service cannot
+recover from, and a taken code is the caller's problem rather than the server's, so it is a `409`.
+
+And in `redirect_controller.py`, the renamed call and a `Link` to read the URL off:
+
+```python
+    @Get("/{code}")
+    def follow(self, code: str) -> HttpResponse:
+        link = self._links.follow_link(code)
+        if link is None:
+            raise NotFoundException(f"no link with code {code}")
+        return HttpResponse(status_code=302, headers={"location": link.url})
+```
+
+What the service boundary did buy you is that this is the whole of it: two handlers, no SQL, and
+nothing in either of them that knows a database is involved.
 
 Declare the repository in `LinksModule`'s providers, but do **not** export it. Nothing outside the
 links feature should be reaching a database through it.
+
+## The Refusal Worth Causing On Purpose
+
+`LinksRepository` asks for a `LinkStore` and you put that in the root module rather than importing
+`StoreModule`. Start the application.
+
+```text
+bustan.kernel.errors.ProviderResolutionError:
+my_app.links.links_repository.LinksRepository.__init__ parameter 'store' needs
+my_app.link_store.LinkStore, which LinksModule cannot see. Declare it in that module, import a
+module that exports it, or give the parameter a default
+```
+
+It will not start. This is the `exports` list from tutorial two doing its job: a provider declared in
+the root module is not visible inside a feature module, because modules are boundaries rather than
+folders. The message names the class, the parameter, the module that cannot see it, and the three
+ways out.
+
+Notice when this happened. Not on a request and not under load: while the application was being
+built, before it bound a port. Bustan resolves the whole graph at startup precisely so that a
+wiring mistake is a refusal you read once rather than a `500` somebody else finds.
+
+Take the fix the message offers: `imports=[StoreModule]` on `LinksModule`, and drop `LinkStore` from
+the root module's `providers` now that the module that owns it is imported where it is needed.
 
 ## Try It
 
 ```bash
 uv run dev
-curl -X POST http://127.0.0.1:3000/links/ -H 'content-type: application/json' \
-  -d '{"url": "https://bustan.dev"}'
 ```
+
+```bash
+curl -X POST http://127.0.0.1:3000/links -H 'content-type: application/json' \
+  -d '{"url": "https://bustan.dev/docs"}'
+```
+
+```json
+{"code":"d7eu0s","url":"https://bustan.dev/docs","visits":0}
+```
+
+That is the body this series promised on its first page, and the `url` and `visits` in it come
+straight out of the row the repository just wrote.
 
 Stop the server with Ctrl-C. Start it again. Follow the code you were given.
 
@@ -283,6 +339,14 @@ or a connection string in there.
 Import the health module and declare both providers in the root module:
 
 ```python
+from bustan import ConfigModule, HealthModule, Module
+
+from .links.links_module import LinksModule
+from .settings import Settings
+from .store_indicator import HealthWiring, LinkStoreIndicator
+from .store_module import StoreModule
+
+
 @Module(
     imports=[
         ConfigModule.for_root(env_file=".env", validation_schema=Settings),
@@ -295,6 +359,10 @@ Import the health module and declare both providers in the root module:
 class AppModule:
     pass
 ```
+
+The root module imports `StoreModule` as well as `LinksModule`, because `LinkStoreIndicator` is
+declared here and asks for a `LinkStore`. `LinksModule` importing it does nothing for this module:
+that is the same boundary that refused you a few paragraphs ago, working in the other direction.
 
 ```bash
 curl http://127.0.0.1:3000/health/ready
@@ -323,26 +391,33 @@ from collections.abc import Iterator
 
 import pytest
 from bustan.testing import AsgiTestClient
-from my_app import build_application
+from my_app.app_main import create_asgi_app
 
 
 @pytest.fixture
 def client() -> Iterator[AsgiTestClient]:
-    with AsgiTestClient(build_application()) as running_client:
+    with AsgiTestClient(create_asgi_app()) as running_client:
         yield running_client
 ```
 
 Yielding inside the `with` block is the part that matters: each test gets an application that has run
 its bootstrap hooks, and the teardown hooks run when the test finishes, however it finishes.
 
-Every test now takes `client` and drops four lines:
+Every test in `test_links.py` now takes `client` and drops four lines, and there is one more worth
+adding:
 
 ```python
 def test_readiness_reports_the_store(client: AsgiTestClient) -> None:
     assert client.get("/health/ready").json()["checks"]["link-store"]["status"] == "up"
 ```
 
-Point `DATABASE_PATH` at `:memory:` while testing so runs do not accumulate a file.
+Run the suite with the store in memory, so a test run does not accumulate a file or read links a
+previous one left behind. An environment variable beats the file, which is the precedence the last
+tutorial proved, so there is nothing to edit:
+
+```bash
+DATABASE_PATH=:memory: uv run pytest
+```
 
 Notice there is no `async def` test and no async plugin. `AsgiTestClient` is synchronous and drives
 the application on its own loop, so a suite almost never needs to be asynchronous. More patterns are
