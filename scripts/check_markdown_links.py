@@ -30,7 +30,13 @@ LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 # The ref is deliberately opaque. `actions/checkout@v7` fetches neither tags nor history,
 # so a CI checkout cannot resolve `v2.0.0` and a check that tried would pass locally and
 # fail there. Only the path and the anchor are validated.
-REPO_BLOB_URL_RE = re.compile(r"^https://github\.com/bustanhq/bustan/blob/[^/\s]+/(\S+)$")
+#
+# A trailing link title is tolerated and ignored, as normalize_target does for a relative
+# target: a URL the pattern does not match is skipped, and a skip is what this check exists
+# to avoid.
+REPO_BLOB_URL_RE = re.compile(
+    r"^https://github\.com/bustanhq/bustan/blob/[^/\s]+/(\S+?)(?:\s+\S.*)?$"
+)
 
 
 def main() -> int:

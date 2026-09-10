@@ -129,6 +129,25 @@ def test_check_markdown_links_skips_urls_naming_another_host(
     assert errors == []
 
 
+def test_check_markdown_links_checks_a_blob_url_carrying_a_title(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checker = _load_checker_module()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+
+    readme_path = tmp_path / "README.md"
+    readme_path.write_text(
+        "# README\n\n[Licence]"
+        '(https://github.com/bustanhq/bustan/blob/v2.0.0/LICENCE "The licence")\n',
+        encoding="utf-8",
+    )
+
+    errors = checker.check_markdown_links([readme_path])
+
+    assert len(errors) == 1
+    assert "missing target file" in errors[0]
+
+
 def test_iter_markdown_files_excludes_work_backlog_files(tmp_path: Path) -> None:
     checker = _load_checker_module()
 
