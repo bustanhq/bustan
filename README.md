@@ -8,7 +8,7 @@ A modular architecture engine for building scalable, testable ASGI applications 
 [![CI](https://github.com/bustanhq/bustan/actions/workflows/ci.yml/badge.svg)](https://github.com/bustanhq/bustan/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/bustan.svg)](https://pypi.org/project/bustan/)
 [![Python](https://img.shields.io/pypi/pyversions/bustan.svg)](https://pypi.org/project/bustan/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bustanhq/bustan/blob/v2.0.0/LICENSE)
 
 Bustan gives Python projects explicit composition boundaries, constructor injection, lifecycle
 hooks and a predictable request pipeline, while still exposing the underlying platform directly.
@@ -70,24 +70,26 @@ tests/my_app/        test_app_controller.py  test_app_module.py  test_app_servic
 ```
 
 For the walkthrough, the generated file contents and a first test, see
-[Your first app](docs/tutorials/first-app.md) - the first of
-[six tutorials](docs/README.md#tutorials) that build a working link shortener from this
-scaffold.
+[Your first app](https://github.com/bustanhq/bustan/blob/v2.0.0/docs/tutorials/first-app.md) - the
+first of [six tutorials](https://github.com/bustanhq/bustan/blob/v2.0.0/docs/README.md#tutorials)
+that build a working link shortener from this scaffold.
 
 ## Documentation
 
-[**Read the docs**](docs/README.md), organised by what you are doing:
+[**Read the docs**](https://github.com/bustanhq/bustan/blob/v2.0.0/docs/README.md), organised by
+what you are doing:
 
 | | |
 | --- | --- |
-| [Tutorials](docs/README.md#tutorials) | Learning. One path, start to finish. |
-| [How-to guides](docs/README.md#how-to-guides) | A task in hand: deploy, observe, harden, migrate, test. |
-| [Reference](docs/README.md#reference) | Looking something up: API, CLI, errors, routing, lifecycle. |
-| [Explanation](docs/README.md#explanation) | Understanding: request scope, layering, the security model. |
+| [Tutorials](https://github.com/bustanhq/bustan/blob/v2.0.0/docs/README.md#tutorials) | Learning. One path, start to finish. |
+| [How-to guides](https://github.com/bustanhq/bustan/blob/v2.0.0/docs/README.md#how-to-guides) | A task in hand: deploy, observe, harden, migrate, test. |
+| [Reference](https://github.com/bustanhq/bustan/blob/v2.0.0/docs/README.md#reference) | Looking something up: API, CLI, errors, routing, lifecycle. |
+| [Explanation](https://github.com/bustanhq/bustan/blob/v2.0.0/docs/README.md#explanation) | Understanding: request scope, layering, the security model. |
 
 **Upgrading from 1.x?** 2.0 is a clean break and a 1.x application will not start on it until it is
-corrected. Start at [Migrate from 1.x](docs/how-to/migrate-from-1x.md); `bustan doctor` finds most
-of it for you.
+corrected. Start at
+[Migrate from 1.x](https://github.com/bustanhq/bustan/blob/v2.0.0/docs/how-to/migrate-from-1x.md);
+`bustan doctor` finds most of it for you.
 
 ## What you get
 
@@ -125,12 +127,14 @@ from bustan.testing import create_test_app, create_testing_module
 
 Everything else - `bustan.kernel.*`, `bustan.app.*`, `bustan.runtime.*`, `bustan.adapters.*` - is an
 implementation detail and may be restructured without notice.
-[Stability](docs/reference/stability.md) is the authority on that boundary, and the export sets
-derive from it. The supported Python floor is `>=3.13`.
+[Stability](https://github.com/bustanhq/bustan/blob/v2.0.0/docs/reference/stability.md) is the
+authority on that boundary, and the export sets derive from it. The supported Python floor is
+`>=3.13`.
 
 ## Examples
 
-Each is a standalone project. [Browse them](examples/README.md), or run one:
+Each is a standalone project.
+[Browse them](https://github.com/bustanhq/bustan/blob/v2.0.0/examples/README.md), or run one:
 
 ```bash
 cd examples/blog_api
@@ -140,8 +144,11 @@ uv run python -m blog_api.app
 
 ## Contributing
 
-Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers development setup
-and the checks to run; [GOVERNANCE.md](GOVERNANCE.md) covers how decisions get made.
+Issues and pull requests are welcome.
+[CONTRIBUTING.md](https://github.com/bustanhq/bustan/blob/v2.0.0/CONTRIBUTING.md) covers development
+setup and the checks to run;
+[GOVERNANCE.md](https://github.com/bustanhq/bustan/blob/v2.0.0/GOVERNANCE.md) covers how decisions
+get made.
 
 ```bash
 uv sync --group dev
@@ -149,8 +156,10 @@ uv run lefthook install
 uv run pytest
 ```
 
-Report vulnerabilities privately, following [SECURITY.md](SECURITY.md), not through public issues.
-Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+Report vulnerabilities privately, following
+[SECURITY.md](https://github.com/bustanhq/bustan/blob/v2.0.0/SECURITY.md), not through public
+issues. Participation is governed by the
+[Code of Conduct](https://github.com/bustanhq/bustan/blob/v2.0.0/CODE_OF_CONDUCT.md).
 
 ## Project direction
 
@@ -160,4 +169,4 @@ injected services, lifecycle hooks and a predictable request pipeline, that is t
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/bustanhq/bustan/blob/v2.0.0/LICENSE)
