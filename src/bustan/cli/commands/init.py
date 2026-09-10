@@ -45,16 +45,12 @@ def register_init_command(
 def run_init_command(arguments: argparse.Namespace) -> int:
     """Detect the package name and scaffold app files into the current project."""
 
-    # --force is declared by register_init_command. It is read through getattr because
-    # the namespace this receives is built by whichever parser dispatched the command.
-    force = bool(getattr(arguments, "force", False))
-
     try:
         package_name = package_name_from_pyproject()
         if package_name is None:
             print(_NO_PROJECT_MESSAGE, file=sys.stderr)
             return 1
-        report = init_project(package_name=package_name, force=force)
+        report = init_project(package_name=package_name, force=arguments.force)
     except COMMAND_FAILURES as error:
         return report_failure(error)
 

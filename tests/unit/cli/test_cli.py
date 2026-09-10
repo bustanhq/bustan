@@ -20,7 +20,6 @@ import pytest
 import bustan.cli.main as cli_main_module
 from bustan.cli.commands import governance as governance_commands
 from bustan.cli.commands import routes as routes_commands
-from bustan.cli.commands.init import register_init_command, run_init_command
 from bustan.cli.services import scaffold as scaffold_service
 from bustan.kernel.module.dynamic import ModuleInstanceKey
 
@@ -43,16 +42,12 @@ def _write_pyproject(directory: Path, name: str) -> None:
 
 
 def _init(directory: Path, *arguments: str) -> int:
-    """Run the init command in *directory* through a parser that declares its flags."""
-
-    parser = argparse.ArgumentParser(prog="bustan")
-    register_init_command(parser.add_subparsers(dest="command"))
-    parsed = parser.parse_args(["init", *arguments])
+    """Run `bustan init` in *directory* through the tool's own parser."""
 
     old_cwd = os.getcwd()
     os.chdir(directory)
     try:
-        return run_init_command(parsed)
+        return cli_main_module.main(["init", *arguments])
     finally:
         os.chdir(old_cwd)
 
@@ -787,11 +782,10 @@ def test_scaffold_compares_requirement_names_the_way_an_installer_does() -> None
 
 
 def test_init_help_says_what_is_written_and_that_existing_files_are_kept(capsys) -> None:
-    parser = argparse.ArgumentParser(prog="bustan")
-    register_init_command(parser.add_subparsers(dest="command"))
-
+    # Through the tool's own parser, because a description declared anywhere the parser
+    # does not reach is a description no reader of `bustan init --help` ever sees.
     with pytest.raises(SystemExit):
-        parser.parse_args(["init", "--help"])
+        cli_main_module.main(["init", "--help"])
 
     help_text = capsys.readouterr().out
     assert "src/<package>" in help_text

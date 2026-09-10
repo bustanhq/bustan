@@ -87,11 +87,18 @@ sys.path.insert(0, "src")
 
 from bustan import create_app
 
+from smoke_app import app_main
 from smoke_app.app_module import AppModule
 
 application = create_app(AppModule)
 if not application.routes:
     raise SystemExit("the scaffolded application compiled no routes")
+
+# The manifest declares start and dev against app_main, so a name it does not define is
+# a project whose own printed next steps cannot run.
+for entry_point in ("main", "dev"):
+    if not callable(getattr(app_main, entry_point, None)):
+        raise SystemExit(f"the scaffolded entry point module defines no {entry_point}")
 
 print(f"scaffolded application built with routes: {sorted(application.routes)}")
 """
@@ -160,6 +167,7 @@ def _verify_scaffold(smoke_root: Path) -> None:
     required_paths = (
         smoke_root / "README.md",
         smoke_root / "src" / "smoke_app" / "__init__.py",
+        smoke_root / "src" / "smoke_app" / "app_main.py",
         smoke_root / "src" / "smoke_app" / "app_module.py",
         smoke_root / "src" / "smoke_app" / "app_controller.py",
         smoke_root / "src" / "smoke_app" / "app_service.py",
@@ -172,8 +180,15 @@ def _verify_scaffold(smoke_root: Path) -> None:
         missing = ", ".join(str(path.relative_to(smoke_root)) for path in missing_paths)
         raise FileNotFoundError(f"Scaffolded project is missing expected files: {missing}")
 
+    # The entry points live in app_main.py rather than in the package's __init__.py,
+    # because a project created by `uv init --package` already carries one holding a main
+    # that prints, and the scaffolder keeps a file that is already there.
     pyproject_text = (smoke_root / "pyproject.toml").read_text(encoding="utf-8")
-    expected_entries = ('start = "smoke_app:main"', 'dev = "smoke_app:dev"')
+    expected_entries = (
+        'start = "smoke_app.app_main:main"',
+        'dev = "smoke_app.app_main:dev"',
+        "bustan[starlette]",
+    )
     missing_entries = [entry for entry in expected_entries if entry not in pyproject_text]
     if missing_entries:
         raise RuntimeError(
