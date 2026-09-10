@@ -179,7 +179,21 @@ class StarletteAdapter(AbstractHttpAdapter):
         new requests are refused, the ones in flight are given the drain window, the
         application's shutdown hooks run with the signal's name, and only then is the
         listening socket released.
+
+        ``reload`` is refused rather than ignored: reloading means owning the process,
+        watching the source tree and restarting it, which belongs to a development server
+        rather than to an adapter, and claiming it while doing nothing would be worse.
+        Uvicorn reloads only from its own supervisor, which restarts the worker and so
+        reaches an application only by importing it by name; this serves the live
+        application object it was handed, which a restart has no way to rebuild.
         """
+
+        if reload:
+            raise NotImplementedError(
+                "The Starlette adapter has no reloader; uvicorn reloads only from its "
+                "own supervisor, so run uvicorn with the application named as an "
+                "import string"
+            )
 
         import uvicorn
 
@@ -194,7 +208,6 @@ class StarletteAdapter(AbstractHttpAdapter):
             DrainingApp(self._app, self._gate),
             host=host,
             port=port,
-            reload=reload,
             **cast(Any, settings),
         )
         server = GracefulServer(config, self._gate, self._drain_and_tear_down)

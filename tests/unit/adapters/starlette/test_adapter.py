@@ -12,6 +12,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Route
 
+from bustan.adapters.asgi import AsgiAdapter
 from bustan.adapters.starlette import StarletteAdapter, StarletteHttpRequest
 from bustan.adapters.starlette.routes import build_starlette_routes
 from bustan.contracts import AdapterRoute, HttpRequest, HttpResponse
@@ -212,6 +213,54 @@ async def test_listen_is_the_same_entry_point_under_the_application_wrappers_nam
     await StarletteAdapter().listen(8124)
 
     assert served == [8124]
+
+
+@pytest.mark.anyio
+async def test_asking_for_a_reloader_is_refused_rather_than_quietly_discarded(
+    monkeypatch,
+) -> None:
+    """Nothing is served under a flag this transport cannot honour.
+
+    Uvicorn reloads only from its own supervisor, which restarts the worker and so
+    reaches an application only by importing it by name. This adapter serves the live
+    application object it holds, so the flag forwarded to the server changed nothing and
+    a caller who asked to reload was served without reloading.
+    """
+
+    import uvicorn
+
+    served: list[uvicorn.Config] = []
+
+    async def fake_serve(self: uvicorn.Server, sockets: object = None) -> None:
+        served.append(self.config)
+
+    monkeypatch.setattr(uvicorn.Server, "serve", fake_serve)
+
+    with pytest.raises(NotImplementedError, match="no reloader") as refusal:
+        await StarletteAdapter().listen(8125, reload=True)
+
+    # The refusal names where reloading does belong, so the caller has somewhere to go.
+    assert "supervisor" in str(refusal.value)
+    assert "import string" in str(refusal.value)
+    assert served == []
+
+
+@pytest.mark.anyio
+async def test_both_adapters_refuse_a_reloader_for_the_same_reason() -> None:
+    """Reloading belongs to a development server on either transport, not to an adapter.
+
+    The refusal is the port's rather than one transport's opinion of its own server, so
+    what a caller asking for a reloader is told cannot depend on which adapter is
+    serving. Each adapter names its own destination and both give the same reason.
+    """
+
+    with pytest.raises(NotImplementedError) as starlette_refusal:
+        await StarletteAdapter().listen(0, reload=True)
+    with pytest.raises(NotImplementedError) as asgi_refusal:
+        await AsgiAdapter().listen(0, reload=True)
+
+    assert "has no reloader" in str(starlette_refusal.value)
+    assert "has no reloader" in str(asgi_refusal.value)
 
 
 def _failing_import(error: BaseException):
