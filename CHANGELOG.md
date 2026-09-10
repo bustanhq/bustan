@@ -3,10 +3,10 @@
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`.
 
-## [2.0.0-rc.7](https://github.com/bustanhq/bustan/compare/v1.1.0...v2.0.0rc7) (2026-09-09)
+## [2.0.0](https://github.com/bustanhq/bustan/compare/v1.1.0...v2.0.0) (2026-09-10)
 
-The 2.0.0 release, published as a candidate. Six milestones stand behind it, and this entry carries
-all of them: the candidates `2.0.0-rc.2` through `2.0.0-rc.6` were published from `main` as the work
+The 2.0.0 release. Six milestones stand behind it, and this entry carries
+all of them: the candidates `2.0.0-rc.2` through `2.0.0-rc.7` were published from `main` as the work
 landed, and their sections are merged here rather than kept beside this one.
 
 An application written against `1.x` does not start on 2.0. That is the decision the release was
@@ -19,7 +19,7 @@ prints the edit that answers each finding.
 > `1.1.1` was published on 2026-09-04 from a branch that was never merged to `main`, and no
 > changelog entry or version bump followed it. The four fixes it carried were ported into `main`
 > under [#62](https://github.com/bustanhq/bustan/issues/62), listed below, so this release supersedes it. `main`'s version files read
-> `1.1.0` until the first candidate; they now read `2.0.0rc7`.
+> `1.1.0` until the first candidate; they now read `2.0.0`.
 
 **The six milestones, in the order they emptied.**
 
