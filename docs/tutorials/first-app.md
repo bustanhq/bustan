@@ -1,6 +1,10 @@
 # First App
 
-This walkthrough uses the current CLI scaffold, which is the recommended starting point for new Bustan projects. The scaffold produces the same package shape the checked-in examples now follow: an application package with `__init__.py`, a root module, a controller, a service, and focused tests.
+This walkthrough uses the current CLI scaffold, which is the recommended starting point for new
+Bustan projects. It writes a root module, a controller and a service, a test for each of them, and
+an entry-point module holding the `start` and `dev` entry points, and it declares in
+`pyproject.toml` everything the project needs to run them, so one install command follows it and no
+other.
 
 **Before you start.** You need Python 3.13 or newer and [uv](https://docs.astral.sh/uv/), which
 is the only supported package manager. `uv init` writes the floor from the interpreter it finds, so
@@ -11,36 +15,75 @@ on an older Python this fails at `uv add` with a resolver message rather than at
 ```bash
 uv init --package my-app
 cd my-app
-uv add 'bustan[starlette]'
-uv add --dev pytest ruff ty
+uv add bustan
 uv run bustan init
+uv sync
 ```
 
-`bustan init` reads `project.name` from `pyproject.toml`, normalizes it into a package name, and writes a runnable application skeleton.
+`bustan init` reads `project.name` from `pyproject.toml`, normalizes it into a package name, and
+writes a runnable application under that name. It then names every path it wrote and every path it
+left alone:
+
+```text
+Initialised Bustan app for package 'my_app'.
+Wrote:
+  src/my_app/app_main.py
+  src/my_app/app_module.py
+  src/my_app/app_controller.py
+  src/my_app/app_service.py
+  tests/my_app/test_app_controller.py
+  tests/my_app/test_app_service.py
+  tests/my_app/test_app_module.py
+Kept:
+  README.md
+  src/my_app/__init__.py
+Pass --force to replace a file that was kept.
+```
+
+Three lines after that name what it changed in `pyproject.toml`, and the last three are the next
+steps: `uv sync`, `uv run start`, `uv run dev`.
+
+**Kept means kept.** `uv init` has already written `README.md` and `src/my_app/__init__.py`, and a
+file that is already there is reported rather than replaced. So the scaffold's own README never
+reaches you on this path, and the package keeps the `__init__.py` uv wrote. Run `bustan init` again
+and it reports the whole scaffold as kept and changes nothing, which is what makes it safe to
+re-run; `bustan init --force` replaces a kept file instead, that `README.md` and that `__init__.py`
+included.
+
+**The manifest declares what the project needs.** Serving HTTP needs a transport, so the plain
+`bustan` requirement `uv add` wrote becomes `bustan[starlette]`, the extra for the adapter this
+package ships. Testing, linting and type-checking need tools, so a `dev` dependency group gains
+pytest, ruff and ty. Running the app needs entry points, so `[project.scripts]` gains `start` and
+`dev`. None of that is a second install step: the one `uv sync` above installs all of it.
 
 Generated layout:
 
 ```text
 src/
   my_app/
-    __init__.py          # bootstrap(), main(), dev()
+    __init__.py          # kept, as uv init wrote it
+    app_main.py          # create_asgi_app(), bootstrap(), main(), dev()
     app_module.py        # root module
     app_controller.py    # root controller
     app_service.py       # root provider
 tests/
   my_app/
     test_app_controller.py
-    test_app_module.py
     test_app_service.py
+    test_app_module.py
 ```
 
-If `pyproject.toml` does not already define console scripts, the scaffold also adds:
+The two scripts land in `[project.scripts]` beside the entry `uv init --package` already wrote
+there, and only where that table does not declare them already:
 
 ```toml
 [project.scripts]
-start = "my_app:main"
-dev = "my_app:dev"
+start = "my_app.app_main:main"
+dev = "my_app.app_main:dev"
 ```
+
+Both name `app_main` rather than the package, so a package whose `__init__.py` came from somewhere
+else keeps whatever `main` it already meant.
 
 ## Understand The Generated Files
 
@@ -66,7 +109,7 @@ from .app_service import AppService
 
 @Controller("/")
 class AppController:
-    def __init__(self, app_service: AppService) -> None:
+    def __init__(self, app_service: AppService):
         self.app_service = app_service
 
     @Get("/")
@@ -91,19 +134,28 @@ class AppModule:
     pass
 ```
 
-`__init__.py` is the package entry point. It is where the `Application` wrapper is created and where the development scripts land:
+`app_main.py` is the entry-point module. It is where the `Application` wrapper is created and where
+both scripts land:
 
 ```python
 import asyncio
 
-from bustan import create_app
+import uvicorn
+from bustan import Application, create_app
 
 from .app_module import AppModule
 
+HOST = "127.0.0.1"
+PORT = 3000
 
-async def bootstrap(reload: bool = False) -> None:
-    app = create_app(AppModule)
-    await app.listen(port=3000, reload=reload)
+
+def create_asgi_app() -> Application:
+    """Return the application, which is itself the ASGI callable a server runs."""
+    return create_app(AppModule)
+
+
+async def bootstrap() -> None:
+    await create_asgi_app().listen(port=PORT, host=HOST)
 
 
 def main() -> None:
@@ -111,8 +163,25 @@ def main() -> None:
 
 
 def dev() -> None:
-    asyncio.run(bootstrap(reload=True))
+    # Reloading means owning the process: the server watches the source tree and, on
+    # every change, starts a worker that imports the application again. That is why it
+    # is handed the name of a factory rather than an application already built - a
+    # built one belongs to the process that built it, and could not be rebuilt here.
+    uvicorn.run(
+        "my_app.app_main:create_asgi_app",
+        factory=True,
+        host=HOST,
+        port=PORT,
+        reload=True,
+        reload_dirs=["src"],
+    )
 ```
+
+The two differ in who owns the process. `main` serves the application it just built, which is what
+`app.listen()` does. `dev` hands uvicorn an import string instead and lets uvicorn's own supervisor
+build the application after every restart. An adapter cannot reload for the same reason: it is
+handed a live application object that a restart has no way to rebuild, so asking the Starlette
+adapter for one is refused rather than quietly ignored.
 
 ## Run The App
 
@@ -122,13 +191,15 @@ Use the generated development entry point:
 uv run dev
 ```
 
+It watches `src/`, so editing a handler changes the next response without stopping anything.
+
 Or start without reload:
 
 ```bash
 uv run start
 ```
 
-Call the root route:
+Call the root route, from a second terminal:
 
 ```bash
 curl http://127.0.0.1:3000/
@@ -137,12 +208,15 @@ curl http://127.0.0.1:3000/
 Expected response:
 
 ```json
-{"message": "Hello from My App"}
+{"message":"Hello from My App"}
 ```
 
 ## Add A First Test
 
-The scaffold includes a controller test built around `bustan.testing.create_test_app()` and `bustan.testing.AsgiTestClient`. The client ships with Bustan, so the generated test runs against the packages the steps above installed and needs no HTTP client package of its own:
+The scaffold includes a controller test built around `bustan.testing.create_test_app()` and
+`bustan.testing.AsgiTestClient`. The client ships with Bustan and pytest is in the `dev` group the
+scaffold declared, so the generated test runs on what `uv sync` installed and needs no HTTP client
+package of its own:
 
 ```python
 from bustan.testing import AsgiTestClient, create_test_app
@@ -212,7 +286,10 @@ with compiled.create_client() as client:
 - `@Controller()` groups HTTP handlers under one prefix.
 - `@Module()` defines imports, providers, exports, and controllers as one composition unit.
 - `create_app()` returns the public `Application` wrapper, not a raw Starlette app.
-- `app.listen()` is the supported runtime entry point for local serving.
+- `app.listen()` is the supported runtime entry point for local serving, and is what `uv run start`
+  calls.
+- Reload belongs to a development server rather than to an adapter, which is why `uv run dev` runs
+  uvicorn against the factory's import string.
 - `bustan.testing` is the supported way to build test applications and apply overrides.
 
 ## Next

@@ -32,11 +32,13 @@ Requires **Python 3.13 or newer** and [uv](https://docs.astral.sh/uv/), which is
 package manager.
 
 ```bash
-uv add 'bustan[starlette]'
+uv add bustan
 ```
 
-Plain `bustan` installs no web server. That is the install for using the framework as a library:
-modules, providers and injection resolved through `create_app_context`, with no HTTP served.
+That installs no web server. It is the whole install for using the framework as a library: modules,
+providers and injection resolved through `create_app_context`, with no HTTP served. Serving HTTP
+needs a transport, and `bustan init` puts the extra for the shipped adapter onto the requirement it
+finds, so a scaffolded project never names one by hand.
 
 Bustan is built, locked, tested and released with uv throughout. Another installer may resolve the
 package, but nothing here is tested against one and no issue is accepted for one.
@@ -46,13 +48,16 @@ package, but nothing here is tested against one and no issue is accepted for one
 ```bash
 uv init --package my-app
 cd my-app
-uv add 'bustan[starlette]'
-uv add --dev pytest ruff ty
+uv add bustan
 uv run bustan init
+uv sync
 uv run dev
 ```
 
-That scaffolds a runnable application, its tests, and `start` and `dev` script entries. Call it:
+`bustan init` writes a runnable application and its tests, and declares in `pyproject.toml`
+everything the project needs to serve, test, lint and type-check: the transport extra on the
+`bustan` requirement, the `start` and `dev` scripts, and a `dev` group holding pytest, ruff and ty.
+That is why one `uv sync` follows it and no second install step does. Call the app:
 
 ```bash
 curl http://127.0.0.1:3000/
@@ -62,12 +67,18 @@ curl http://127.0.0.1:3000/
 {"message":"Hello from My App"}
 ```
 
-The generated package:
+What `init` writes:
 
 ```text
-src/my_app/          __init__.py  app_module.py  app_controller.py  app_service.py
+src/my_app/          app_main.py  app_module.py  app_controller.py  app_service.py
 tests/my_app/        test_app_controller.py  test_app_module.py  test_app_service.py
 ```
+
+`app_main.py` holds the entry points the two scripts run, and `uv run dev` is uvicorn watching
+`src/`, so an edited handler answers the next request. A file already in the project is kept and
+reported as kept rather than overwritten - here `README.md` and the `src/my_app/__init__.py` that
+`uv init` wrote - so a second `bustan init` destroys no work. Pass `--force` to replace a file that
+was kept.
 
 For the walkthrough, the generated file contents and a first test, see
 [Your first app](https://github.com/bustanhq/bustan/blob/v2.0.0/docs/tutorials/first-app.md) - the
