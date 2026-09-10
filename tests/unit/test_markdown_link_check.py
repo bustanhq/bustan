@@ -6,6 +6,8 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 def test_slugify_heading_generates_github_like_anchors() -> None:
     checker = _load_checker_module()
@@ -43,6 +45,88 @@ def test_check_markdown_links_reports_missing_file_or_anchor(tmp_path: Path) -> 
     assert len(errors) == 2
     assert any("missing target file" in error for error in errors)
     assert any("missing target anchor" in error for error in errors)
+
+
+def test_check_markdown_links_accepts_self_referential_blob_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checker = _load_checker_module()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    docs_directory = tmp_path / "docs"
+    docs_directory.mkdir()
+
+    readme_path = tmp_path / "README.md"
+    docs_index_path = docs_directory / "README.md"
+    readme_path.write_text(
+        "# README\n\nSee [Tutorials]"
+        "(https://github.com/bustanhq/bustan/blob/v2.0.0/docs/README.md#tutorials).\n",
+        encoding="utf-8",
+    )
+    docs_index_path.write_text("# Documentation\n\n## Tutorials\n", encoding="utf-8")
+
+    errors = checker.check_markdown_links([readme_path, docs_index_path])
+
+    assert errors == []
+
+
+def test_check_markdown_links_reports_missing_blob_url_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checker = _load_checker_module()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+
+    readme_path = tmp_path / "README.md"
+    readme_path.write_text(
+        "# README\n\n[Stability]"
+        "(https://github.com/bustanhq/bustan/blob/v2.0.0/docs/reference/stability.md)\n",
+        encoding="utf-8",
+    )
+
+    errors = checker.check_markdown_links([readme_path])
+
+    assert len(errors) == 1
+    assert "missing target file" in errors[0]
+
+
+def test_check_markdown_links_reports_missing_blob_url_anchor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checker = _load_checker_module()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    docs_directory = tmp_path / "docs"
+    docs_directory.mkdir()
+
+    readme_path = tmp_path / "README.md"
+    docs_index_path = docs_directory / "README.md"
+    readme_path.write_text(
+        "# README\n\n[How-to guides]"
+        "(https://github.com/bustanhq/bustan/blob/v2.0.0/docs/README.md#how-to-guide)\n",
+        encoding="utf-8",
+    )
+    docs_index_path.write_text("# Documentation\n\n## How-to guides\n", encoding="utf-8")
+
+    errors = checker.check_markdown_links([readme_path, docs_index_path])
+
+    assert len(errors) == 1
+    assert "missing target anchor" in errors[0]
+
+
+def test_check_markdown_links_skips_urls_naming_another_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checker = _load_checker_module()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+
+    readme_path = tmp_path / "README.md"
+    readme_path.write_text(
+        "# README\n\n[uv](https://docs.astral.sh/uv/)\n"
+        "[Elsewhere](https://github.com/other/repo/blob/v2.0.0/docs/absent.md#absent)\n",
+        encoding="utf-8",
+    )
+
+    errors = checker.check_markdown_links([readme_path])
+
+    assert errors == []
 
 
 def test_iter_markdown_files_excludes_work_backlog_files(tmp_path: Path) -> None:

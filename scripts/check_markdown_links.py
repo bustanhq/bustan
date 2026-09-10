@@ -22,6 +22,15 @@ EXCLUDED_DIRECTORIES = {
 FENCE_RE = re.compile(r"^(```|~~~)")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
+# A README shipped to a package index is read on that index's host, so its links to
+# repository documents are absolute. Those URLs address files in this repository, so they
+# are checked like relative targets: the path is resolved from the repository root and the
+# anchor validated against the target file's headings.
+#
+# The ref is deliberately opaque. `actions/checkout@v7` fetches neither tags nor history,
+# so a CI checkout cannot resolve `v2.0.0` and a check that tried would pass locally and
+# fail there. Only the path and the anchor are validated.
+REPO_BLOB_URL_RE = re.compile(r"^https://github\.com/bustanhq/bustan/blob/[^/\s]+/(\S+)$")
 
 
 def main() -> int:
@@ -85,7 +94,7 @@ def validate_markdown_target(
     """Validate one Markdown link target and return an error string if invalid."""
 
     normalized_target = normalize_target(target)
-    if not normalized_target or normalized_target.startswith(("http://", "https://", "mailto:")):
+    if not normalized_target:
         return None
 
     if normalized_target.startswith("#"):
@@ -94,8 +103,16 @@ def validate_markdown_target(
             return format_error(source_file, line_number, target, "missing in-file anchor")
         return None
 
+    base_directory = source_file.parent
+    blob_url_target = repo_blob_url_target(normalized_target)
+    if blob_url_target is not None:
+        base_directory = REPO_ROOT
+        normalized_target = blob_url_target
+    elif normalized_target.startswith(("http://", "https://", "mailto:")):
+        return None
+
     path_part, separator, fragment = normalized_target.partition("#")
-    resolved_path = (source_file.parent / unquote(path_part)).resolve()
+    resolved_path = (base_directory / unquote(path_part)).resolve()
     if not resolved_path.exists():
         return format_error(source_file, line_number, target, "missing target file")
 
@@ -107,6 +124,21 @@ def validate_markdown_target(
         return format_error(source_file, line_number, target, "missing target anchor")
 
     return None
+
+
+def repo_blob_url_target(target: str) -> str | None:
+    """Return the repository-root-relative target a self-referential blob URL addresses.
+
+    A URL naming another host, another repository, or this repository without a path
+    below the ref is not repo-local, and returns None so the caller skips it.
+    """
+
+    match = REPO_BLOB_URL_RE.match(target)
+    if match is None:
+        return None
+
+    repo_target = match.group(1)
+    return None if repo_target.startswith("#") else repo_target
 
 
 def collect_heading_anchors(markdown_file: Path) -> set[str]:
