@@ -28,7 +28,16 @@ def register_config_command(
 ) -> None:
     parser = subparsers.add_parser(
         "config",
-        help="Render the configuration an application resolved, with credentials withheld.",
+        help=(
+            "Render the configuration an application resolved, withholding the value of "
+            "every key whose name reads as a credential."
+        ),
+        description=(
+            "Render the configuration an application resolved. Withholding is a match on "
+            "the text of a key's name, not a guarantee about the value behind it: a "
+            "secret held under a name that does not read as one is printed in full, and "
+            "this report is often the output a reader pastes into a bug report."
+        ),
     )
     parser.add_argument(
         "target", help="Root module import path in the form package.module:RootModule"
