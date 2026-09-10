@@ -20,9 +20,11 @@ from ..services.reporting import (
     render_json,
 )
 
-# A finding is work the caller still has to do, so a scan that reports one fails. That
-# is what lets the command stand in a migration's pipeline as well as in a terminal.
-_FINDINGS_EXIT_CODE = 1
+# A scan fails when the caller still has work to do and when the scan proved nothing:
+# a finding is an edit somebody has to make, and a tree where not one file could be
+# parsed was never checked at all. Either way the command has to fail, which is what
+# lets it stand in a migration's pipeline as well as in a terminal.
+_FAILING_EXIT_CODE = 1
 
 
 def register_doctor_command(
@@ -54,7 +56,9 @@ def run_doctor_command(arguments: argparse.Namespace) -> int:
     else:
         print(_render_text(result))
 
-    return _FINDINGS_EXIT_CODE if result.findings else 0
+    if result.findings or result.parsed_nothing:
+        return _FAILING_EXIT_CODE
+    return 0
 
 
 def _json_sections(result: ScanResult) -> tuple[ReportSection, ...]:
@@ -108,6 +112,12 @@ def _render_text(result: ScanResult) -> str:
 
 def _summary_line(result: ScanResult) -> str:
     """State what the scan covered and what it found, in one line."""
+
+    if result.parsed_nothing:
+        return (
+            f"Scanned {_count(result.scanned, 'file')}: not one could be parsed, "
+            "so nothing was checked."
+        )
 
     if not result.findings:
         found = "nothing to change"

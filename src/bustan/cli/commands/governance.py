@@ -61,7 +61,10 @@ def run_governance_command(arguments: argparse.Namespace) -> int:
     if command == "conformance":
         return _run_json_command(_build_conformance_report, arguments.adapter)
 
-    print("A governance subcommand is required.", file=sys.stderr)
+    print(
+        "A governance subcommand is required: ownership, diff or conformance.",
+        file=sys.stderr,
+    )
     return 1
 
 

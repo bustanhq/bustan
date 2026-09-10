@@ -30,12 +30,18 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = _build_parser()
     arguments = parser.parse_args(argv)
+    command = getattr(arguments, "command", None)
 
     if getattr(arguments, "version", False):
+        # The flag is the whole of the invocation, so a command standing beside it is
+        # refused rather than dropped: printing the version and exiting zero for a
+        # command that never ran would let anything appending the flag turn a failing
+        # gate into a pass, and a gate that did not run must never read as one passed.
+        if command is not None:
+            parser.error("--version prints the installed version and takes no command")
         print(f"bustan {get_installed_version()}")
         return 0
 
-    command = getattr(arguments, "command", None)
     if command is None:
         parser.print_help()
         return 1
