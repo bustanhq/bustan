@@ -11,7 +11,7 @@ from .commands.config import register_config_command, run_config_command
 from .commands.doctor import register_doctor_command, run_doctor_command
 from .commands.governance import register_governance_commands, run_governance_command
 from .commands.graph import register_graph_command, run_graph_command
-from .commands.init import run_init_command
+from .commands.init import register_init_command, run_init_command
 from .commands.routes import register_routes_commands, run_routes_command
 from .services.failures import report_failure
 
@@ -75,10 +75,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    subparsers.add_parser(
-        "init",
-        help="Initialise a Bustan app in the current uv project.",
-    )
+    register_init_command(subparsers)
     register_governance_commands(subparsers)
     register_routes_commands(subparsers)
     register_doctor_command(subparsers)
