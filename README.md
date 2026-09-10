@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/bustan-wordmark-dark.svg">
-  <img src="docs/assets/bustan-wordmark.svg" alt="Bustan" width="260">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bustanhq/bustan/v2.0.0/docs/assets/bustan-wordmark-dark.svg">
+  <img src="https://raw.githubusercontent.com/bustanhq/bustan/v2.0.0/docs/assets/bustan-wordmark.svg" alt="Bustan" width="260">
 </picture>
 
 A modular architecture engine for building scalable, testable ASGI applications in Python.
