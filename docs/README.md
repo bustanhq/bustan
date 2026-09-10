@@ -59,6 +59,10 @@ Task-oriented. You know what you want; these say how.
   policy, CORS, and what never reaches a log.
 - [Configure the underlying platform](how-to/configure-the-platform.md) - reaching the real platform
   object behind the adapter, and running with no HTTP at all.
+- [Configure a module at runtime](how-to/configure-a-module-at-runtime.md) - a module whose
+  providers depend on a value only known at startup, and the four provider forms.
+- [Read a value the binders do not cover](how-to/read-a-value-the-binders-do-not-cover.md) - write
+  your own parameter marker when `Param`, `Query`, `Header` and `Body` do not reach it.
 - [Test an application](how-to/test-an-application.md) - starting an application with providers
   replaced, and building a throwaway module for one test.
 - [Containerise an application](how-to/containerise-an-application.md) - a two-stage image built with
