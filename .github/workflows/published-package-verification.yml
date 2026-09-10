@@ -264,14 +264,19 @@ jobs:
       # Presence is not the claim a release makes about "bustan init". The claim is that
       # a project it scaffolds works, and the only way to know that is to run the tests
       # the scaffolder just wrote, from the published artifact, with nothing installed
-      # beyond what the scaffolder tells a user to add.
+      # beyond what the scaffolder itself asked for.
       - name: Verify scaffolding from published artifact
         run: |
-          # The runner's default shell is bash -e, which leaves a failing command in a
-          # pipeline invisible because only the last exit status is read. The scaffolder
-          # output below is piped, so pipefail is what makes a failing "bustan init" fail
-          # the job; nounset catches a version that never resolved.
+          # The runner's default shell is bash -e: it stops on a failing command, but it
+          # expands an unset variable to nothing, so a version that never resolved would
+          # scaffold against whatever the index happens to serve. nounset is what fails
+          # that here, and pipefail is kept so that a pipeline added below cannot hide a
+          # failure behind the last command's exit status.
           set -euo pipefail
+          # The distribution under test is named once, here. Everything a scaffolded
+          # project needs is read back out of what the scaffolder declared, so no
+          # dependency of one is named in this workflow and none can drift from it.
+          distribution=bustan
           cli_smoke_root="$(mktemp -d)"
           mkdir "$cli_smoke_root/smoke-app"
           cd "$cli_smoke_root/smoke-app"
@@ -281,47 +286,84 @@ jobs:
           # verified, and a cached index that predates the upload fails a healthy release
           # here just as readily as it does there. Only this project's entry is refreshed,
           # so every other download in this step still comes from the cache.
-          uv add --refresh-package bustan "bustan==${BUSTAN_VERSION}"
-          uv run bustan init | tee "$cli_smoke_root/init-output.txt"
+          uv add --refresh-package "$distribution" "${distribution}==${BUSTAN_VERSION}"
+          uv run bustan init
           # The file assertions stay. They are cheap, and when the scaffolder writes
           # nothing at all they name the missing file, which a collection error reports
           # far less clearly.
           test -f "$cli_smoke_root/smoke-app/pyproject.toml"
           test -f "$cli_smoke_root/smoke-app/README.md"
           test -f "$cli_smoke_root/smoke-app/src/smoke_app/__init__.py"
+          test -f "$cli_smoke_root/smoke-app/src/smoke_app/app_main.py"
           test -f "$cli_smoke_root/smoke-app/src/smoke_app/app_module.py"
           test -f "$cli_smoke_root/smoke-app/src/smoke_app/app_controller.py"
           test -f "$cli_smoke_root/smoke-app/src/smoke_app/app_service.py"
           test -f "$cli_smoke_root/smoke-app/tests/smoke_app/test_app_controller.py"
           test -f "$cli_smoke_root/smoke-app/tests/smoke_app/test_app_service.py"
           test -f "$cli_smoke_root/smoke-app/tests/smoke_app/test_app_module.py"
-          grep -q 'start = "smoke_app:main"' "$cli_smoke_root/smoke-app/pyproject.toml"
-          grep -q 'dev = "smoke_app:dev"' "$cli_smoke_root/smoke-app/pyproject.toml"
-          # No dependency below is chosen here. Both install lines are read back out of
-          # what "bustan init" printed under "Next steps", which is what a user actually
-          # types, so this step installs what the scaffolder asked for and cannot drift
-          # from it. A printed line this step cannot parse fails the job rather than
-          # falling back to a list that may be years old.
+          # Both entries resolve through app_main rather than through the package itself,
+          # which is why the module above is required: a project created by
+          # "uv init --package" already carries an __init__.py holding a main that prints,
+          # and the scaffolder keeps a file that is already there.
+          grep -q 'start = "smoke_app.app_main:main"' "$cli_smoke_root/smoke-app/pyproject.toml"
+          grep -q 'dev = "smoke_app.app_main:dev"' "$cli_smoke_root/smoke-app/pyproject.toml"
+          # No dependency below is chosen here. The scaffolder declares what a scaffolded
+          # project needs in the manifest rather than printing a command to run, so the
+          # runtime requirement is read back out of the manifest it wrote and the tools
+          # the scaffolded tests need are the dev group it declared, which "uv sync"
+          # installs. A manifest this step cannot read a requirement out of fails the job
+          # rather than falling back to a list that may be years old.
           #
-          # The runtime line is read even though a version is already installed above,
-          # because it is where the scaffolder names the extras a scaffolded project
-          # needs, and the pinned install above carries none of them.
-          runtime_requirement="$(sed -n "s/^  uv add \('\{0,1\}bustan[^ ]*\)$/\1/p" "$cli_smoke_root/init-output.txt" | tr -d "\"'")"
-          case "$runtime_requirement" in
-            bustan | bustan\[*\]) ;;
-            *)
-              echo "bustan init printed no runtime install line this step understands" >&2
-              exit 1
-              ;;
-          esac
-          uv add --refresh-package bustan "${runtime_requirement}==${BUSTAN_VERSION}"
-          dev_requirements="$(sed -n 's/^  uv add --dev \(.*\)$/\1/p' "$cli_smoke_root/init-output.txt")"
-          if [ -z "$dev_requirements" ]; then
-            echo "bustan init printed no dev install line" >&2
-            exit 1
-          fi
-          # Unquoted on purpose: the printed line names several packages and each has to
-          # reach uv as its own argument.
-          # shellcheck disable=SC2086
-          uv add --dev $dev_requirements
+          # The requirement is read even though a version is already installed above,
+          # because the manifest is where the scaffolder names the extras a scaffolded
+          # project needs and the pinned install above carries none of them. Only the name
+          # and the extras are taken: the bound is whatever the project already carried,
+          # and this job verifies one version, so what the scaffold asked for is pinned to
+          # the version under test instead.
+          runtime_requirement="$(python - "$distribution" pyproject.toml <<'PY'
+          """Print what a manifest asks of one distribution: its name and its extras."""
+
+          import re
+          import sys
+          import tomllib
+
+          distribution, manifest_path = sys.argv[1], sys.argv[2]
+
+          # A declaration is read as an installer reads it: the name lowered and its
+          # separators folded, so a manifest spelling this distribution with a capital or
+          # with another separator still names it, and the extras taken as written with
+          # everything after them dropped.
+          SEPARATORS = re.compile(r"[-_.]+")
+          NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
+          DECLARATION = re.compile(rf"\s*({NAME})\s*(\[[^]]*\])?")
+
+
+          def folded(name):
+              return SEPARATORS.sub("-", name.strip().lower())
+
+
+          with open(manifest_path, "rb") as manifest_file:
+              project = tomllib.load(manifest_file).get("project")
+          declared = project.get("dependencies") if isinstance(project, dict) else None
+          declared = declared if isinstance(declared, list) else []
+
+          for entry in declared:
+              match = DECLARATION.match(str(entry))
+              if match is None or folded(match.group(1)) != folded(distribution):
+                  continue
+              print(match.group(1) + re.sub(r"\s+", "", match.group(2) or ""))
+              break
+          else:
+              raise SystemExit(
+                  f"the scaffolded {manifest_path} declares no {distribution} requirement "
+                  f"under [project] dependencies, so this step cannot install the version "
+                  f"under test with the extras a scaffolded project needs. It declares "
+                  f"{declared}."
+              )
+          PY
+          )"
+          uv add --refresh-package "$distribution" "${runtime_requirement}==${BUSTAN_VERSION}"
+          # The one command the scaffolder prints as the next thing to run, so the dev
+          # group reaches the environment without a tool in it being named here.
+          uv sync
           uv run pytest
