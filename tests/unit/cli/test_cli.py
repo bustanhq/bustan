@@ -411,6 +411,52 @@ def test_init_declares_the_transport_so_one_sync_can_serve(tmp_path: Path) -> No
     assert manifest["dependency-groups"]["dev"] == ["pytest", "ruff", "ty"]
 
 
+def test_init_adds_the_transport_extra_to_a_declared_bustan(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo-app"\ndependencies = ["bustan"]\n\n' + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+
+    assert _init(tmp_path) == 0
+
+    # `uv add bustan` writes exactly this, so it is the state most projects are in when
+    # init runs. It names no extra and so installs no web server, while the scaffolded
+    # entry point imports one, which left the project unable to start at all.
+    manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
+    assert manifest["project"]["dependencies"] == ["bustan[starlette]"]
+
+
+def test_init_keeps_the_bound_on_a_declared_bustan_it_adds_the_extra_to(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo-app"\ndependencies = [\n    "httpx",\n    "bustan>=2.0.0",\n]\n\n'
+        + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+
+    assert _init(tmp_path) == 0
+
+    # Only the extra is added. The bound is the project's own, and so is every other
+    # entry and the order they are written in.
+    manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
+    assert manifest["project"]["dependencies"] == ["httpx", "bustan[starlette]>=2.0.0"]
+
+
+def test_init_leaves_a_requirement_that_already_names_an_extra_alone(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo-app"\ndependencies = ["bustan[starlette]>=2.0.0"]\n\n'
+        + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+
+    assert _init(tmp_path) == 0
+
+    # A project that asked for an extra asked for it deliberately, bound included, so
+    # the entry stands as written even while the scripts beside it are added.
+    manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
+    assert manifest["project"]["dependencies"] == ["bustan[starlette]>=2.0.0"]
+    assert manifest["project"]["scripts"]["start"] == "demo_app.app_main:main"
+
+
 def test_package_name_from_pyproject_returns_none_for_blank_project_name(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "   "\n', encoding="utf-8")
 
@@ -734,6 +780,22 @@ def test_init_declares_dependencies_in_a_project_table_that_ends_the_file(
     )
 
 
+def test_init_refuses_to_rewrite_a_requirement_it_cannot_find_as_written(
+    tmp_path: Path, capsys
+) -> None:
+    # The value parses to bustan but is not written as that string anywhere in the file,
+    # so there is no entry to rewrite in place. Refusing beats guessing: the manifest is
+    # left alone and the entry it still needs is named.
+    manifest = '[project]\nname = "demo-app"\ndependencies = ["bus\\u0074an"]\n\n' + _BUILD_SYSTEM
+    (tmp_path / "pyproject.toml").write_text(manifest, encoding="utf-8")
+
+    assert _init(tmp_path) == 1
+
+    assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == manifest
+    assert not (tmp_path / "src").exists()
+    assert "bustan[starlette] in place of bustan" in capsys.readouterr().err
+
+
 def test_init_refuses_a_manifest_whose_dependencies_are_not_an_array(
     tmp_path: Path, capsys
 ) -> None:
@@ -759,6 +821,28 @@ def test_scaffold_refuses_an_insertion_point_it_cannot_locate() -> None:
     assert add('project.name = "demo-app"\n', requirement, {"dependencies": []}) is None
     assert add('[project]\nname = "demo-app"\n', requirement, {"dependencies": []}) is None
     assert add("[project]\ndependencies = truncated\n", requirement, {"dependencies": []}) is None
+
+    # Rewriting a declared requirement needs the same two landmarks, for the same reason.
+    edit = scaffold_service._TransportEdit(requirement="bustan[starlette]", replaces="bustan")
+    rewrite = scaffold_service._with_transport_extra
+    assert rewrite('project.name = "demo-app"\n', edit) is None
+    assert rewrite('[project]\nname = "demo-app"\n', edit) is None
+
+
+def test_scaffold_adds_the_extra_after_the_distribution_name() -> None:
+    with_extra = scaffold_service._requirement_with_extra
+    declares = scaffold_service._declares_an_extra
+
+    assert with_extra("bustan") == "bustan[starlette]"
+    assert with_extra("bustan>=2.0.0") == "bustan[starlette]>=2.0.0"
+    # A marker is part of the requirement, not part of the name, so it stays behind the
+    # extra rather than being treated as one.
+    assert with_extra('bustan ; python_version >= "3.13"').startswith("bustan[starlette] ;")
+    assert not declares('bustan ; extra == "x"')
+    assert declares("bustan[starlette]")
+    assert declares("bustan [starlette]")
+    # A string naming nothing is returned untouched rather than corrupted.
+    assert with_extra("") == ""
 
 
 def test_scaffold_key_lookup_stops_at_the_next_table() -> None:

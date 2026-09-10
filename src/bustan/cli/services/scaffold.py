@@ -209,16 +209,18 @@ def _manifest_with_scaffold_entries(
     """
 
     project = _table_of(manifest, "project")
-    requirement = _missing_transport_requirement(project)
+    transport = _transport_edit(project)
     scripts = _missing_scripts(project, package_name)
     add_tools = _table_of(manifest, "dependency-groups").get("dev") is None
-    if requirement is None and not scripts and not add_tools:
+    if transport is None and not scripts and not add_tools:
         return text, ()
 
-    expected = _expected_manifest(text, requirement, scripts, add_tools=add_tools)
+    expected = _expected_manifest(text, transport, scripts, add_tools=add_tools)
     edited: str | None = text
-    if requirement is not None:
-        edited = _with_transport_requirement(edited, requirement, project)
+    if transport is not None and transport.replaces is None:
+        edited = _with_transport_requirement(edited, transport.requirement, project)
+    elif transport is not None:
+        edited = _with_transport_extra(edited, transport)
     if scripts and edited is not None:
         entries = [f'{key} = "{value}"' for key, value in scripts.items()]
         edited = _with_table_entries(edited, "project.scripts", entries, project.get("scripts"))
@@ -228,9 +230,9 @@ def _manifest_with_scaffold_entries(
             edited, "dependency-groups", [entry], manifest.get("dependency-groups")
         )
     if edited is None or not _parses_to(edited, expected):
-        raise BustanError(_manual_edit_message(path, requirement, scripts, add_tools=add_tools))
+        raise BustanError(_manual_edit_message(path, transport, scripts, add_tools=add_tools))
 
-    return edited, _describe_edits(requirement, scripts, add_tools=add_tools)
+    return edited, _describe_edits(transport, scripts, add_tools=add_tools)
 
 
 def _parses_to(text: str, expected: Mapping[str, Any]) -> bool:
@@ -248,20 +250,62 @@ def _parses_to(text: str, expected: Mapping[str, Any]) -> bool:
         return False
 
 
-def _missing_transport_requirement(project: Mapping[str, Any]) -> str | None:
-    """Return the transport dependency to declare, or None where one is already declared.
+@dataclass(frozen=True, slots=True)
+class _TransportEdit:
+    """How the transport extra reaches [project] dependencies.
 
-    A manifest already naming this distribution keeps whatever it named, extra and
-    version bound included: a project that has chosen a pin has chosen it deliberately,
-    and replacing it would be a change nobody asked this command to make.
+    ``replaces`` names the declared requirement this rewrites, and is None where the
+    manifest declares none and ``requirement`` is added as a new entry instead.
+    """
+
+    requirement: str
+    replaces: str | None = None
+
+
+def _transport_edit(project: Mapping[str, Any]) -> _TransportEdit | None:
+    """Say how the transport extra reaches the manifest, or that it is already there.
+
+    A requirement that already asks for an extra is left exactly as it stands, version
+    bound included: a project that asked for one asked for it deliberately, and
+    replacing that would be a change nobody asked this command to make.
+
+    A requirement naming this distribution with no extra is not such a choice. It is
+    what `uv add bustan` writes, it installs no web server, and the scaffolded entry
+    point imports one, so the extra is added to it and whatever bound it carries is
+    kept. Nothing else about the entry changes.
     """
 
     declared = project.get("dependencies")
     listed = declared if isinstance(declared, list) else []
-    if any(_names_distribution(entry, _TRANSPORT_DISTRIBUTION) for entry in listed):
-        return None
+    for entry in listed:
+        if not _names_distribution(entry, _TRANSPORT_DISTRIBUTION):
+            continue
+        if _declares_an_extra(entry):
+            return None
+        return _TransportEdit(requirement=_requirement_with_extra(entry), replaces=entry)
+
     extra = f"{_TRANSPORT_DISTRIBUTION}[{_TRANSPORT_EXTRA}]"
-    return f"{extra}>={get_installed_version()}"
+    return _TransportEdit(requirement=f"{extra}>={get_installed_version()}")
+
+
+def _declares_an_extra(requirement: str) -> bool:
+    """Report whether a requirement string already asks for an extra.
+
+    Only a bracket following the distribution name counts, so a bracket anywhere else -
+    inside an environment marker, say - is not mistaken for one.
+    """
+
+    match = _REQUIREMENT_NAME.search(requirement)
+    return match is not None and requirement[match.end() :].lstrip().startswith("[")
+
+
+def _requirement_with_extra(requirement: str) -> str:
+    """Return *requirement* with the transport extra on its distribution name."""
+
+    match = _REQUIREMENT_NAME.search(requirement)
+    if match is None:
+        return requirement
+    return f"{requirement[: match.end()]}[{_TRANSPORT_EXTRA}]{requirement[match.end() :]}"
 
 
 def _missing_scripts(project: Mapping[str, Any], package_name: str) -> dict[str, str]:
@@ -284,7 +328,7 @@ def _missing_scripts(project: Mapping[str, Any], package_name: str) -> dict[str,
 
 def _expected_manifest(
     text: str,
-    requirement: str | None,
+    transport: _TransportEdit | None,
     scripts: Mapping[str, str],
     *,
     add_tools: bool,
@@ -293,9 +337,14 @@ def _expected_manifest(
 
     expected = tomllib.loads(text)
     project: dict[str, Any] = expected.setdefault("project", {})
-    if requirement is not None:
+    if transport is not None:
         declared = project.get("dependencies")
-        project["dependencies"] = [requirement, *(declared if isinstance(declared, list) else [])]
+        listed = list(declared) if isinstance(declared, list) else []
+        if transport.replaces is None:
+            listed.insert(0, transport.requirement)
+        else:
+            listed[listed.index(transport.replaces)] = transport.requirement
+        project["dependencies"] = listed
     if scripts:
         project["scripts"] = {**scripts, **_table_of(project, "scripts")}
     if add_tools:
@@ -340,6 +389,32 @@ def _with_transport_requirement(
         separator = "" if tail.startswith("]") else ", "
         lines[index] = f"{line[: opened + 1]}{entry}{separator}{remainder}"
     return "".join(lines)
+
+
+def _with_transport_extra(text: str, transport: _TransportEdit) -> str | None:
+    """Rewrite the declared requirement in place, or None where it cannot be found.
+
+    The entry is looked for as the quoted string it is written as, between the
+    dependencies key and the end of the [project] table, so an array spanning several
+    lines is handled and a requirement of the same text in another table is not.
+    """
+
+    lines = text.splitlines(keepends=True)
+    header = _header_index(lines, "project")
+    if header is None:
+        return None
+    index = _key_index(lines, header, "dependencies")
+    if index is None:
+        return None
+
+    for position in range(index, max(_table_end(lines, header), index + 1)):
+        for quote in ('"', "'"):
+            written = f"{quote}{transport.replaces}{quote}"
+            if written in lines[position]:
+                replacement = f"{quote}{transport.requirement}{quote}"
+                lines[position] = lines[position].replace(written, replacement, 1)
+                return "".join(lines)
+    return None
 
 
 def _with_table_entries(
@@ -406,13 +481,18 @@ def _key_index(lines: Sequence[str], header: int, key: str) -> int | None:
 
 
 def _describe_edits(
-    requirement: str | None, scripts: Mapping[str, str], *, add_tools: bool
+    transport: _TransportEdit | None, scripts: Mapping[str, str], *, add_tools: bool
 ) -> tuple[str, ...]:
     """Say in plain English what was added to the manifest."""
 
     described: list[str] = []
-    if requirement is not None:
-        described.append(f"declared {requirement} under [project] dependencies")
+    if transport is not None and transport.replaces is None:
+        described.append(f"declared {transport.requirement} under [project] dependencies")
+    elif transport is not None:
+        described.append(
+            f"changed the declared {transport.replaces} to {transport.requirement}, "
+            "so the transport it serves on is installed"
+        )
     if scripts:
         named = " and ".join(f"'{key}'" for key in scripts)
         described.append(f"added the {named} script entries under [project.scripts]")
@@ -422,13 +502,17 @@ def _describe_edits(
 
 
 def _manual_edit_message(
-    path: Path, requirement: str | None, scripts: Mapping[str, str], *, add_tools: bool
+    path: Path, transport: _TransportEdit | None, scripts: Mapping[str, str], *, add_tools: bool
 ) -> str:
     """Name the entries a manifest this command cannot edit safely still needs."""
 
     pending: list[str] = []
-    if requirement is not None:
-        pending.append(f"{requirement} under [project] dependencies")
+    if transport is not None and transport.replaces is None:
+        pending.append(f"{transport.requirement} under [project] dependencies")
+    elif transport is not None:
+        pending.append(
+            f"{transport.requirement} in place of {transport.replaces} under [project] dependencies"
+        )
     pending.extend(f'{key} = "{value}" under [project.scripts]' for key, value in scripts.items())
     if add_tools:
         pending.append(f"{', '.join(_DEVELOPMENT_TOOLS)} in the 'dev' dependency group")
