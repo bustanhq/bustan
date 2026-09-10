@@ -1,6 +1,6 @@
 # Examples
 
-Each example now mirrors the standalone mini-project layout under `.bustan/mini`:
+Each example is laid out the way `bustan init` scaffolds a project:
 
 - `README.md`
 - `pyproject.toml`

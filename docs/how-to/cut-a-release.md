@@ -165,7 +165,18 @@ step of the run.
 3. Verify `import bustan` succeeds.
 4. Verify `bustan --help` succeeds.
 5. Verify that `uv init --package my-app`, `uv add "bustan==<version>"`, and `uv run bustan init` scaffold the expected package layout from the published artifact.
-6. Confirm the scaffolded project contains `src/my_app/__init__.py`, `app_module.py`, `app_controller.py`, `app_service.py`, and the matching `tests/my_app/` files.
-7. Add exactly what the scaffolder printed under `Next steps` and nothing else - both the runtime line, which today names the Starlette extra as `uv add 'bustan[starlette]'`, and the dev line, today `uv add --dev ty ruff pytest` - then run `uv run pytest` in the scaffolded project. All of its generated tests must pass. Read the lines off the scaffolder's own output rather than from here: adding anything it did not name makes the run prove less than a new user's first run does, and leaving out something it did name makes the run fail for a reason no user would hit.
+6. Confirm the scaffolded project contains `src/my_app/__init__.py`, `app_main.py`,
+   `app_module.py`, `app_controller.py`, `app_service.py`, and the matching `tests/my_app/`
+   files. `app_main.py` is the module both scripts name, so a project without it carries two
+   script entries that resolve to nothing.
+7. Run exactly what the scaffolder printed under `Next steps` and nothing else. Today the
+   install is one line, `uv sync`, because the scaffolder declares the transport extra and
+   the `dev` tool group in the manifest rather than leaving them to be added; the two lines
+   printed after it, `uv run start` and `uv run dev`, run the application rather than
+   install anything. Then run `uv run pytest` in the scaffolded project, and every one of
+   its generated tests must pass. Read the lines off the scaffolder's own output rather than
+   from here: installing anything it did not name makes the run prove less than a new user's
+   first run does, and leaving out something it did name makes the run fail for a reason no
+   user would hit.
 8. Publish or verify the GitHub release notes.
 9. Announce the release if it is externally relevant.
