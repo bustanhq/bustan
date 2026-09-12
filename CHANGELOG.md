@@ -3,6 +3,50 @@
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`.
 
+## [2.0.1](https://github.com/bustanhq/bustan/compare/v2.0.0...v2.0.1) (2026-09-12)
+
+A patch: repairs and documentation, no breaking change and no new command. Upgrading from 2.0.0
+gets three things. A scaffolder that keeps the files it finds instead of replacing them. A first
+run that serves without a second install step. And a `uv run dev` that reloads.
+
+`bustan init` overwrote seven of the eight files it wrote. A second run replaced the root module,
+the controller, the service and all three generated tests with the templates, unconditionally, and
+printed success; only `README.md` was exempt. Anyone who ran the command twice on 2.0.0 lost
+whatever they had written into those files, and outside version control that loss is final. The
+command now keeps a file that is already there, names every path it wrote and every path it kept,
+and replaces only when asked with `--force`. It also declares `bustan[starlette]` and the `dev`
+dependency group in the manifest instead of leaving them to be added by hand, so the steps it
+prints are `uv sync`, `uv run start` and `uv run dev`: one install rather than two, and no run that
+ends in a project which cannot serve. The scaffolded `dev` script hands uvicorn an import string,
+so editing a handler while it runs changes the next response.
+
+**One behaviour change a 2.0.0 user will notice beyond the fixes.** The Starlette adapter refuses
+`reload` rather than discarding it. `listen(reload=True)` now raises `NotImplementedError` naming
+where reloading belongs, where 2.0.0 returned a server that silently never reloaded: uvicorn
+reloads only from its own supervisor, with the application named as an import string, so the flag
+reached nothing. The raw ASGI adapter already refused it for that reason, and the two adapters now
+answer alike. Code that passed `reload` to this adapter runs uvicorn itself with an import string,
+which is the shape the scaffolded `dev` script uses.
+
+Two smaller repairs change an exit code, which matters to anything keyed on one. `bustan --version`
+standing beside a command is refused rather than printing the version and exiting zero for a
+command that never ran, so a wrapper appending the flag can no longer turn a failing migration gate
+into a pass. And `bustan doctor` over a tree where every file failed to parse exits non-zero
+instead of reporting nothing to change: a scan that read nothing was never a scan that passed.
+
+### Bug Fixes
+
+* `bustan init` overwrites work and writes a project that cannot run ([#341](https://github.com/bustanhq/bustan/issues/341))
+* the Starlette adapter accepts `reload` and discards it ([#342](https://github.com/bustanhq/bustan/issues/342))
+* four repairs to the command surface the audit reproduced ([#343](https://github.com/bustanhq/bustan/issues/343))
+* post-publish verification cannot pass against the new scaffolder ([#354](https://github.com/bustanhq/bustan/issues/354))
+
+### Documentation
+
+* the quickstart and first tutorial describe the old scaffolder ([#349](https://github.com/bustanhq/bustan/issues/349))
+* the tutorial series does not run as printed ([#350](https://github.com/bustanhq/bustan/issues/350))
+* three reference pages describe behaviour wave one replaced ([#351](https://github.com/bustanhq/bustan/issues/351))
+
 ## [2.0.0](https://github.com/bustanhq/bustan/compare/v1.1.0...v2.0.0) (2026-09-10)
 
 The 2.0.0 release. Six milestones stand behind it, and this entry carries
