@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "calls_per_request": {
+    "bench_hundred_items_route": 150,
+    "bench_pipeline_route": 204,
+    "bench_request_scoped_chain": 405,
+    "bench_simple_route": 169,
+    "bench_sync_route": 170
+  }
+}

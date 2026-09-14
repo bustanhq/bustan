@@ -24,6 +24,10 @@ republishes the baseline instead of judging against it, using the median ratio a
 files it was given, and prints the run-to-run spread it saw. ``--baseline`` judges against
 some other file and ``--output`` writes to one, which is how a local before-and-after is
 compared without touching what CI gates on.
+
+Beside the verdict it prints every Bustan route that has a Litestar twin - the benchmark of
+the same name ending ``_litestar`` - as the multiple its median is of the twin's. No verdict
+reads that comparison.
 """
 
 from __future__ import annotations
@@ -41,6 +45,18 @@ BASELINE_PATH = Path(__file__).parent / "baseline.json"
 CALIBRATION = "bench_calibration"
 STATISTIC = "median"
 SCHEMA = 1
+
+# The benchmarks a baseline records, and so the only ones the gate judges. A benchmark joins
+# by being named here and then captured on the runner, which gives its threshold a measured
+# spread to be chosen against; until then the suite times it and nothing judges it. A
+# Litestar twin never joins, because a Litestar release would move it with no change here.
+GATED = (
+    "bench_container_resolution",
+    "bench_pipeline_route",
+    "bench_request_scoped_chain",
+    "bench_simple_route",
+)
+TWIN_SUFFIX = "_litestar"
 
 # Only the default for a newly written baseline; a gate run reads the threshold out of the
 # baseline it judges against, so the number a reader sees in the file is the number that
@@ -97,11 +113,18 @@ def combine(
     return {name: reducer([p[name] for p in passes if name in p]) for name in names}
 
 
-def write_baseline(paths: list[Path], threshold: float, output: Path) -> None:
-    """Publish the median ratio across the given result files as a baseline."""
+def _keep(measurements: dict[str, float], names: Iterable[str]) -> dict[str, float]:
+    wanted = set(names)
+    return {name: value for name, value in measurements.items() if name in wanted}
 
-    passes = [read_pass(path) for path in paths]
-    seconds = combine([read_medians(path) for path in paths], statistics.median)
+
+def write_baseline(paths: list[Path], threshold: float, output: Path) -> None:
+    """Publish the median ratio of every gated benchmark across the given result files."""
+
+    passes = [_keep(read_pass(path), GATED) for path in paths]
+    seconds = combine(
+        [_keep(read_medians(path), (*GATED, CALIBRATION)) for path in paths], statistics.median
+    )
     document = {
         "schema": SCHEMA,
         "statistic": STATISTIC,
@@ -164,6 +187,24 @@ def report(baseline: dict[str, float], observed: dict[str, float], threshold: fl
     return breached
 
 
+def report_twins(medians: dict[str, float]) -> None:
+    """Print each Bustan route beside its Litestar twin, for a reader; no verdict reads it.
+
+    The multiple is one median over the other, each the lowest that benchmark reached. Both
+    were measured on the machine the report is about, so the machine is on both sides of
+    the division and cancels without the calibration.
+    """
+
+    names = [name for name in sorted(medians) if name + TWIN_SUFFIX in medians]
+    if not names:
+        return
+    print("\nagainst Litestar, never judged: the lowest median each reached, in microseconds")
+    print(f"{'benchmark':32} {'bustan':>10} {'litestar':>10} {'multiple':>9}")
+    for name in names:
+        bustan, litestar = medians[name], medians[name + TWIN_SUFFIX]
+        print(f"{name:32} {bustan * 1e6:10.1f} {litestar * 1e6:10.1f} {bustan / litestar:8.2f}x")
+
+
 def check(paths: list[Path], baseline_path: Path) -> int:
     """Judge the given result files against a published baseline."""
 
@@ -176,6 +217,7 @@ def check(paths: list[Path], baseline_path: Path) -> int:
     print(f"threshold: a benchmark may not exceed its baseline ratio by more than {threshold:.0%}")
     print(f"observed: the lowest ratio each benchmark reached across {len(paths)} pass(es)\n")
     breached = report(baseline["ratios"], observed, threshold)
+    report_twins(combine([read_medians(path) for path in paths], min))
     if breached:
         print("\nregression gate failed: " + ", ".join(breached))
         return 1

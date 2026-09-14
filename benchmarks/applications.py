@@ -1,15 +1,16 @@
 """The application shapes the benchmarks measure, one module per shape.
 
 Each application is the smallest one that exercises the thing its benchmark is named
-for, and the simple and pipelined routes are deliberately identical apart from the
-pipeline components, so the difference between those two measurements is the pipeline
+for. The simple, synchronous and pipelined routes are deliberately identical apart from
+the one thing each adds - ``def`` in place of ``async def``, or the pipeline components -
+so the difference between the simple measurement and either of the others is that thing
 and nothing else.
 
-Every handler is a coroutine. A synchronous handler is dispatched to a worker thread, and
-a thread hand-off costs several times what the whole framework path costs and varies by
-more between two machines than any regression would; a benchmark written that way reports
-the thread pool under a route's name. What a synchronous handler costs is worth measuring
-one day, but it is a benchmark of its own, not a tax on these four.
+Every handler is a coroutine except the synchronous route's. A synchronous handler is
+dispatched to a worker thread, and the hand-off costs more than the rest of the request
+does, so a gated benchmark written that way would mostly report the thread pool under a
+route's name. The synchronous route measures that hand-off on purpose, beside the gate
+rather than in it.
 """
 
 from __future__ import annotations
@@ -34,13 +35,19 @@ from bustan import (
     UsePipes,
 )
 
-# Every route below answers with this payload built around one integer, so the cost of
-# producing and serializing a response is the same in each of them.
+# Every route below but the hundred-items one answers with this payload built around one
+# integer, so the cost of producing and serializing a response is the same in each of them.
 ITEM_PATH = "/items/7"
 
 
 def _describe(item_id: int) -> dict[str, object]:
     return {"item_id": item_id, "name": f"item-{item_id}", "in_stock": True}
+
+
+# The hundred-items route answers with a hundred of those payloads, built once, so what it
+# adds over the simple route is carrying a body that size rather than building one.
+HUNDRED_ITEMS_PATH = "/items"
+HUNDRED_ITEMS = [_describe(item_id) for item_id in range(100)]
 
 
 @Injectable()
@@ -49,6 +56,9 @@ class CatalogService:
 
     def read(self, item_id: int) -> dict[str, object]:
         return _describe(item_id)
+
+    def list_items(self) -> list[dict[str, object]]:
+        return HUNDRED_ITEMS
 
 
 # --- A route with nothing on it but injection and binding -------------------------
@@ -66,6 +76,42 @@ class SimpleController:
 
 @Module(controllers=[SimpleController], providers=[CatalogService])
 class SimpleModule:
+    pass
+
+
+# --- The same route, with a synchronous handler ------------------------------------
+
+
+@Controller("/items")
+class SyncController:
+    def __init__(self, catalog: CatalogService) -> None:
+        self.catalog = catalog
+
+    @Get("/{item_id}")
+    def read_item(self, item_id: Annotated[int, Param]) -> dict[str, object]:
+        return self.catalog.read(item_id)
+
+
+@Module(controllers=[SyncController], providers=[CatalogService])
+class SyncModule:
+    pass
+
+
+# --- A route answering a hundred items ---------------------------------------------
+
+
+@Controller("/items")
+class HundredItemsController:
+    def __init__(self, catalog: CatalogService) -> None:
+        self.catalog = catalog
+
+    @Get("/")
+    async def list_items(self) -> list[dict[str, object]]:
+        return self.catalog.list_items()
+
+
+@Module(controllers=[HundredItemsController], providers=[CatalogService])
+class HundredItemsModule:
     pass
 
 
