@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "calls_per_request": {
-    "bench_hundred_items_route": 108,
-    "bench_pipeline_route": 167,
-    "bench_request_scoped_chain": 366,
-    "bench_simple_route": 128,
-    "bench_sync_route": 129
+    "bench_hundred_items_route": 82,
+    "bench_pipeline_route": 163,
+    "bench_request_scoped_chain": 330,
+    "bench_simple_route": 92,
+    "bench_sync_route": 93
   }
 }
