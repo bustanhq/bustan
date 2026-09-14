@@ -138,7 +138,7 @@ app = create_app(
 
 The hooks belong to that application rather than to the process, so a second
 application in the same process can report somewhere else. Left out, requests are still
-measured and still correlated; there is simply nothing listening.
+correlated, but none is measured, because nothing is listening.
 
 ### `MetricsSink`
 
