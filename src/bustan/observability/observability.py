@@ -120,12 +120,21 @@ class ActiveObservation:
     ``started_at`` is a monotonic reading taken when the request was admitted, which
     is what makes the duration a measurement of the request rather than a difference
     between two wall clocks that can move under it.
+
+    ``labels`` belongs to the route rather than to the request: every observation one
+    hooks object starts for a route carries the same dictionary, so nothing writes to it.
     """
 
     labels: dict[str, str]
     started_at: float = field(default_factory=perf_counter)
     span: TraceSpan | None = None
     span_context: SpanContext | None = None
+
+
+# What hooks with no metrics sink and no tracer start for every request. Those hooks
+# finish an observation without reading it, so one serves every request, and it holds
+# no labels, no span context and no clock reading because nothing is there to use them.
+_UNOBSERVED_REQUEST = ActiveObservation(labels={}, started_at=0.0)
 
 
 class ObservabilityHooks:
@@ -151,6 +160,12 @@ class ObservabilityHooks:
         self._tracer = tracer
         self._sample_ratio = sample_ratio
         self._metrics_takes_duration = metrics is None or _takes_duration(metrics)
+        # A route's labels, built the first time these hooks observe it and filed under
+        # the identity of its contract, because hashing a contract hashes every plan it
+        # holds. Each entry keeps its contract alive, so no other object can take the id
+        # it is filed under while the entry exists. Contracts are compiled when an
+        # application is created, so the table grows with routes, never with requests.
+        self._route_labels: dict[int, tuple[object | None, dict[str, str]]] = {}
 
     @classmethod
     def current(cls) -> ObservabilityHooks:
@@ -167,7 +182,7 @@ class ObservabilityHooks:
         none serves under hooks that record nothing rather than under no hooks at all.
         """
 
-        return cls._override.get() or configured or cls()
+        return cls._override.get() or configured or _SILENT_HOOKS
 
     @classmethod
     def override_global(cls, hooks: ObservabilityHooks) -> None:
@@ -201,7 +216,9 @@ class ObservabilityHooks:
         request costs and the span is what one request is worth keeping.
         """
 
-        labels = build_route_labels(context.get_route_contract())
+        if self._metrics is None and self._tracer is None:
+            return _UNOBSERVED_REQUEST
+        labels = self._labels_for(context.get_route_contract())
         correlation = current_correlation() or _unbound_correlation()
         span_context = SpanContext(
             trace_id=correlation.trace_id,
@@ -238,9 +255,14 @@ class ObservabilityHooks:
         body, the handler and rendering the answer - and not merely the handler.
         """
 
+        # With no sink to record it and no span to end, a duration would go nowhere.
+        if self._metrics is None and observation.span is None:
+            return
         duration_seconds = max(perf_counter() - observation.started_at, 0.0)
-        labels = {**observation.labels, "status": str(status_code)}
         if self._metrics is not None:
+            # A new dictionary for every record: a sink may keep or change what it is
+            # given, and the route's own labels are shared by all of its requests.
+            labels = {**observation.labels, "status": str(status_code)}
             self._record(self._metrics, labels, duration_seconds)
         if observation.span is not None:
             self._finish_span(observation.span, status_code, duration_seconds, error)
@@ -289,6 +311,22 @@ class ObservabilityHooks:
         if correlation.parent_sampled is not None:
             return correlation.parent_sampled
         return trace_id_sampled(correlation.trace_id, self._sample_ratio)
+
+    def _labels_for(self, route_contract: object | None) -> dict[str, str]:
+        """Return *route_contract*'s labels, built the first time these hooks see it."""
+
+        key = id(route_contract)
+        entry = self._route_labels.get(key)
+        if entry is None:
+            entry = (route_contract, build_route_labels(route_contract))
+            self._route_labels[key] = entry
+        return entry[1]
+
+
+# The hooks an application that declared none is served under. Without a sink or a
+# tracer they keep nothing from one request to the next, so every such application
+# shares this one rather than building hooks for each request it serves.
+_SILENT_HOOKS = ObservabilityHooks()
 
 
 def _unbound_correlation() -> RequestCorrelation:
