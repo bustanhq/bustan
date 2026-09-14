@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from secrets import token_hex
 from typing import TYPE_CHECKING
 
+from ..contracts import Headers
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -122,11 +124,16 @@ def correlation_from_headers(headers: Mapping[str, str]) -> RequestCorrelation:
     """
 
     parent = parse_traceparent(_header(headers, TRACEPARENT_HEADER))
-    trace_id = new_trace_id() if parent is None else parent.trace_id
+    # Every id a request may be given comes from one read of the operating system's
+    # random source: sixteen bytes each for the correlation and trace ids and eight for
+    # the span id, each cut from bytes no other id uses. Each is as long and as random
+    # as new_correlation_id, new_trace_id or new_span_id would make it, and the source
+    # is read once however many of those ids the caller's headers already supplied.
+    drawn = token_hex(40)
     return RequestCorrelation(
-        correlation_id=_accepted_correlation_id(headers) or new_correlation_id(),
-        trace_id=trace_id,
-        span_id=new_span_id(),
+        correlation_id=_accepted_correlation_id(headers) or drawn[:32],
+        trace_id=drawn[32:64] if parent is None else parent.trace_id,
+        span_id=drawn[64:],
         parent_span_id=None if parent is None else parent.span_id,
         parent_sampled=None if parent is None else parent.sampled,
     )
@@ -212,6 +219,14 @@ def _accepted_correlation_id(headers: Mapping[str, str]) -> str | None:
 def _header(headers: Mapping[str, str], name: str) -> str | None:
     """Read *name* from *headers* whether or not the mapping folds case itself."""
 
+    if isinstance(headers, Headers):
+        # Headers folds case on lookup, so a name it does not contain was sent under no
+        # spelling at all and there is nothing to search for. Asking before reading
+        # spares the exception a missed lookup would raise, which is what makes this
+        # cheaper than headers.get for a request that sends none of these names.
+        if name not in headers:
+            return None
+        return headers[name]
     value = headers.get(name)
     if value is not None:
         return value
