@@ -6,11 +6,11 @@ import inspect
 import logging
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from dataclasses import asdict, dataclass, field
-from functools import partial
+from functools import cache, partial
 from inspect import iscoroutinefunction
-from typing import Any, cast
+from typing import Any, cast, get_protocol_members
 
 from anyio import CapacityLimiter, move_on_after, to_thread
 
@@ -25,7 +25,7 @@ from ..kernel.errors import (
     NotFoundException,
 )
 from ..kernel.ioc.container import Container
-from ..kernel.ioc.scopes import BoundedInstanceStore
+from ..kernel.ioc.scopes import BoundedInstanceStore, ScopeManager
 from ..kernel.module.dynamic import ModuleKey
 from ..observability.correlation import (
     bind_correlation,
@@ -209,6 +209,13 @@ _REQUEST_LIMIT_FILTER = RequestLimitExceptionFilter()
 # its own writer, built once and seated on it; this one is never rebuilt, so what one
 # application declares can never become what the next one serves under.
 _RESPONSE_HANDLER = ResponseHandler()
+# The limits every application that declared none serves its requests under. Limits are a
+# frozen value, so this one instance can stand for all of them, where building one for each
+# request would validate the same defaults again only to throw the copy away.
+_DEFAULT_REQUEST_LIMITS = RequestLimits()
+# The members an assembled application carries, taken from the protocol that declares them
+# so that recognising one here cannot drift from the declaration.
+_APPLICATION_MEMBERS = get_protocol_members(ApplicationRuntime)
 
 
 @dataclass(frozen=True, slots=True)
@@ -428,15 +435,18 @@ async def execute_http_route(
     # The request is bound for the whole execution, not merely for the duration of one
     # resolve call, so anything running inside the route - a handler, a guard, an
     # interceptor - can reach the request being served and the providers scoped to it.
-    request_token = container.scope_manager.push_request(request)
-    application_token = container.scope_manager.push_application(
-        _application_runtime(application_runtime)
+    application = _application_runtime(application_runtime)
+    request_token, application_token = _bind_route_scopes(
+        container.scope_manager, request, application
     )
     response_context = HttpResponse()
     response_token = container.scope_manager.push_response(response_context)
-    observability = observability_hooks_of(application_runtime)
-    limits = request_limits_of(application_runtime)
-    response_handler = response_handler_of(application_runtime)
+    # Everything the application declared is read from the one object found behind the
+    # transport, and read again for every request, so what it declares while it is serving
+    # is what its next request is served under.
+    observability = _observability_hooks_on(application)
+    limits = _request_limits_on(application)
+    response_handler = _response_handler_on(application)
     context: ExecutionContext | None = None
     filters: tuple[ExceptionFilter, ...] | None = None
     observation = None
@@ -600,14 +610,14 @@ async def execute_http_exception(
     to into a second failure that hides it.
     """
 
-    request_token = container.scope_manager.push_request(request)
-    application_token = container.scope_manager.push_application(
-        _application_runtime(application_runtime)
+    application = _application_runtime(application_runtime)
+    request_token, application_token = _bind_route_scopes(
+        container.scope_manager, request, application
     )
     response_context = HttpResponse()
     response_token = container.scope_manager.push_response(response_context)
-    observability = observability_hooks_of(application_runtime)
-    response_handler = response_handler_of(application_runtime)
+    observability = _observability_hooks_on(application)
+    response_handler = _response_handler_on(application)
     observation = None
     context: ExecutionContext | None = None
     filters: tuple[ExceptionFilter, ...] | None = None
@@ -895,8 +905,18 @@ def set_request_limits(application_runtime: object, limits: RequestLimits) -> No
 def request_limits_of(application_runtime: object) -> RequestLimits:
     """Return the limits *application_runtime* serves its requests under."""
 
-    limits = getattr(_application_runtime(application_runtime), REQUEST_LIMITS_ATTR, None)
-    return limits if isinstance(limits, RequestLimits) else RequestLimits()
+    return _request_limits_on(_application_runtime(application_runtime))
+
+
+def _request_limits_on(application: object) -> RequestLimits:
+    """Return the limits seated on *application*, which is already the Bustan application.
+
+    Nothing is kept from one request to the next, so limits declared while the application
+    is serving govern the next request it serves.
+    """
+
+    limits = getattr(application, REQUEST_LIMITS_ATTR, None)
+    return limits if isinstance(limits, RequestLimits) else _DEFAULT_REQUEST_LIMITS
 
 
 def set_observability_hooks(application_runtime: object, hooks: ObservabilityHooks) -> None:
@@ -914,7 +934,18 @@ def set_observability_hooks(application_runtime: object, hooks: ObservabilityHoo
 def observability_hooks_of(application_runtime: object) -> ObservabilityHooks:
     """Return the hooks *application_runtime* serves its requests through."""
 
-    hooks = getattr(_application_runtime(application_runtime), OBSERVABILITY_HOOKS_ATTR, None)
+    return _observability_hooks_on(_application_runtime(application_runtime))
+
+
+def _observability_hooks_on(application: object) -> ObservabilityHooks:
+    """Return the hooks a request to *application*, already the Bustan one, is served through.
+
+    They are resolved for every request rather than kept, because an override installed for
+    the calling context wins over the hooks seated on the application, and an override can
+    be installed while the application is serving.
+    """
+
+    hooks = getattr(application, OBSERVABILITY_HOOKS_ATTR, None)
     return ObservabilityHooks.resolve(hooks if isinstance(hooks, ObservabilityHooks) else None)
 
 
@@ -942,7 +973,13 @@ def set_response_serializer(application_runtime: object, serializer: ResponseSer
 def response_handler_of(application_runtime: object) -> ResponseHandler:
     """Return the writer that turns *application_runtime*'s return values into responses."""
 
-    handler = getattr(_application_runtime(application_runtime), RESPONSE_HANDLER_ATTR, None)
+    return _response_handler_on(_application_runtime(application_runtime))
+
+
+def _response_handler_on(application: object) -> ResponseHandler:
+    """Return the writer seated on *application*, which is already the Bustan application."""
+
+    handler = getattr(application, RESPONSE_HANDLER_ATTR, None)
     return handler if isinstance(handler, ResponseHandler) else _RESPONSE_HANDLER
 
 
@@ -982,13 +1019,74 @@ def _application_runtime(application_runtime: object) -> object:
     itself rather than being reported as an application it is not.
     """
 
-    if isinstance(application_runtime, ApplicationRuntime):
+    if _is_application(application_runtime):
         return application_runtime
     state = getattr(application_runtime, "state", None)
     attached = getattr(state, "bustan_application", None)
-    if isinstance(attached, ApplicationRuntime):
+    if _is_application(attached):
         return attached
     return application_runtime
+
+
+def _is_application(candidate: object) -> bool:
+    """Return whether *candidate* carries every member :class:`ApplicationRuntime` declares.
+
+    It gives the answer ``isinstance(candidate, ApplicationRuntime)`` gives for an object
+    that keeps its attributes on its class and in its own dictionary, which is where that
+    check looks for them, without making the check: the protocol inspects the object member
+    by member every time it is asked, and the request path asks on every request. What a
+    class declares holds for all of its instances, so it is read once per type, and an
+    object is looked at only for a member its class leaves out, and then only in its own
+    dictionary. Two objects of one type that carry different attributes of their own are
+    therefore each judged by what they carry.
+    """
+
+    missing = _members_left_to_instances(type(candidate))
+    if not missing:
+        return True
+    try:
+        own = object.__getattribute__(candidate, "__dict__")
+    except AttributeError:
+        return False
+    return isinstance(own, dict) and own.keys() >= missing
+
+
+@cache
+def _members_left_to_instances(kind: type) -> frozenset[str]:
+    """Return the members of an application that *kind* leaves its instances to carry.
+
+    A member declared on the class or on one of its bases is carried by every instance,
+    whatever the instance holds itself. The cache keeps one entry per type, and a type is
+    something the program defines rather than something a request can bring, so the cache
+    grows with the program and never with the traffic.
+    """
+
+    return frozenset(
+        member
+        for member in _APPLICATION_MEMBERS
+        if not any(member in vars(base) for base in kind.__mro__)
+    )
+
+
+def _bind_route_scopes(
+    scopes: ScopeManager, request: HttpRequest, application: object
+) -> tuple[Token[HttpRequest | None] | None, Token[object | None] | None]:
+    """Bind the request and the application a route serves, unless they are bound already.
+
+    The entry point that :func:`create_route_handler` returns binds both before the first
+    middleware runs, so a route reached through it finds them bound, and binding them again
+    would set each to the value it already holds only to reset it afterwards. A route run
+    by any other caller, or handed a request other than the one bound further out, is bound
+    here for as long as it runs. A token of ``None`` releases nothing when it is popped.
+    """
+
+    request_token = None if scopes.active_request.get() is request else scopes.push_request(request)
+    application_token = (
+        None
+        if scopes.active_application.get() is application
+        else scopes.push_application(application)
+    )
+    return request_token, application_token
 
 
 async def _apply_pipes(

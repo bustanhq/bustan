@@ -384,3 +384,39 @@ def test_a_scoped_override_wins_over_the_sinks_the_application_was_built_with() 
 
     assert [event[0] for event in override_events] == ["metrics"]
     assert configured_events == []
+
+
+def test_a_scoped_override_installed_while_an_application_serves_takes_effect() -> None:
+    """An override reaches the requests after it, even once the application has served some.
+
+    The application answers one request before the override exists and one after it is
+    removed, so hooks resolved once and then kept for the application would have sent all
+    three requests to the sinks it was built with.
+    """
+
+    configured_events: list[tuple[object, ...]] = []
+    override_events: list[tuple[object, ...]] = []
+
+    @Controller("/users")
+    class UsersController:
+        @Get("/")
+        def read_users(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Module(controllers=[UsersController])
+    class AppModule:
+        pass
+
+    application = create_app(
+        AppModule, observability=ObservabilityHooks(metrics=Metrics(configured_events))
+    )
+    with AsgiTestClient(cast(Any, application)) as client:
+        client.get("/users")
+        with ObservabilityHooks.scoped_override(
+            ObservabilityHooks(metrics=Metrics(override_events))
+        ):
+            client.get("/users")
+        client.get("/users")
+
+    assert [event[0] for event in configured_events] == ["metrics", "metrics"]
+    assert [event[0] for event in override_events] == ["metrics"]
