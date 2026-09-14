@@ -6,7 +6,18 @@ from contextlib import contextmanager
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, cast
 
-from bustan import ExecutionContext
+from bustan import (
+    BadRequestException,
+    Controller,
+    ExecutionContext,
+    Get,
+    HttpRequest,
+    Middleware,
+    MiddlewareConsumer,
+    Module,
+    create_app,
+)
+from bustan.observability import observability as observability_module
 from bustan.observability.correlation import (
     RequestCorrelation,
     bind_correlation,
@@ -18,9 +29,12 @@ from bustan.observability.observability import (
     SpanStatus,
     build_route_labels,
 )
+from bustan.testing import AsgiTestClient
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
+
+    import pytest
 
     from bustan.observability.observability import SpanContext
     from tests.conftest import RequestFactory
@@ -410,3 +424,227 @@ def test_a_sink_whose_signature_cannot_be_read_is_taken_at_the_current_contract(
     hooks.finish_request(observation, status_code=200)
 
     assert len(metrics.calls) == 1
+
+
+def test_an_application_with_no_sinks_builds_no_labels_span_context_or_clock_reading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing listens to such an application, so nothing a listener reads is built.
+
+    Both ways of having no sinks are served: declaring no hooks, and declaring hooks
+    built without a sink or a tracer. The refused route is answered on the path that
+    renders an exception for a route that never ran, which hands whatever
+    ``start_request`` returned to ``finish_request`` without looking at it.
+    """
+
+    made = _count_observation_work(monkeypatch)
+    applications = (
+        create_app(_served_module()),
+        create_app(_served_module(), observability=ObservabilityHooks()),
+    )
+
+    statuses: list[int] = []
+    for application in applications:
+        with AsgiTestClient(cast(Any, application)) as client:
+            statuses.extend(client.get(path).status_code for path in _SERVED_PATHS)
+
+    assert statuses == [200, 200, 400, 200, 200, 400]
+    assert made == []
+
+
+def test_a_route_is_labelled_once_however_many_requests_it_serves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A route's labels follow from its contract, so its first request builds them.
+
+    The span contexts are the control: each belongs to one request, so one is still
+    built for every request, which shows the count sees the work the hooks do.
+    """
+
+    made = _count_observation_work(monkeypatch)
+    metrics = RecordingMetrics()
+    tracer = RecordingTracer()
+    application = create_app(
+        _served_module(), observability=ObservabilityHooks(metrics=metrics, tracer=tracer)
+    )
+
+    with AsgiTestClient(cast(Any, application)) as client:
+        for path in ("/users", "/orders", "/users", "/refused", "/orders"):
+            client.get(path)
+
+    users = {
+        "controller": "UsersController",
+        "route": "GET /users",
+        "operation": "UsersController.read_users",
+        "version": "1",
+    }
+    orders = {
+        "controller": "OrdersController",
+        "route": "GET /orders",
+        "operation": "OrdersController.read_orders",
+        "version": "neutral",
+    }
+    refused = {
+        "controller": "RefusedController",
+        "route": "GET /refused",
+        "operation": "RefusedController.read_refused",
+        "version": "neutral",
+    }
+    assert [labels for labels, _ in metrics.records] == [
+        {**users, "status": "200"},
+        {**orders, "status": "200"},
+        {**users, "status": "200"},
+        {**refused, "status": "400"},
+        {**orders, "status": "200"},
+    ]
+    assert [
+        {key: value for key, value in attributes.items() if key != "correlation_id"}
+        for attributes in tracer.attributes
+    ] == [users, orders, users, refused, orders]
+    assert made.count("labels") == 3
+    assert made.count("span context") == 5
+
+
+def test_a_sink_or_tracer_that_rewrites_what_it_was_given_cannot_relabel_a_later_request(
+    build_request: RequestFactory,
+) -> None:
+    """Every request of a route shares its labels; what a listener is handed is its own."""
+
+    class RewritingMetrics(RecordingMetrics):
+        def record_request(self, *, labels: Mapping[str, str], duration_seconds: float) -> None:
+            super().record_request(labels=labels, duration_seconds=duration_seconds)
+            cast(dict[str, str], labels)["operation"] = "rewritten"
+
+    class RewritingTracer(RecordingTracer):
+        def start_span(
+            self,
+            name: str,
+            *,
+            kind: SpanKind,
+            attributes: Mapping[str, str],
+            context: SpanContext,
+        ) -> RecordingSpan:
+            span = super().start_span(name, kind=kind, attributes=attributes, context=context)
+            cast(dict[str, str], attributes)["operation"] = "rewritten"
+            return span
+
+    metrics = RewritingMetrics()
+    tracer = RewritingTracer()
+    hooks = ObservabilityHooks(metrics=metrics, tracer=tracer)
+    context = _execution_context(build_request)
+
+    for _ in range(2):
+        hooks.finish_request(hooks.start_request(context), status_code=200)
+
+    operation = "UsersController.read_users"
+    assert [labels["operation"] for labels, _ in metrics.records] == [operation, operation]
+    assert [attributes["operation"] for attributes in tracer.attributes] == [operation, operation]
+
+
+def test_every_application_that_declared_no_hooks_is_served_by_one_hooks_object() -> None:
+    configured = ObservabilityHooks()
+    override = ObservabilityHooks()
+    shared = ObservabilityHooks.resolve(None)
+
+    assert ObservabilityHooks.resolve(None) is shared
+    assert ObservabilityHooks.resolve(configured) is configured
+    with ObservabilityHooks.scoped_override(override):
+        assert ObservabilityHooks.resolve(None) is override
+        assert ObservabilityHooks.resolve(configured) is override
+    assert ObservabilityHooks.resolve(None) is shared
+
+
+def test_a_scoped_or_global_override_observes_the_requests_it_covers_and_no_others() -> None:
+    scoped_metrics = RecordingMetrics()
+    global_metrics = RecordingMetrics()
+    configured_metrics = RecordingMetrics()
+    unconfigured = create_app(_served_module())
+    configured = create_app(
+        _served_module(), observability=ObservabilityHooks(metrics=configured_metrics)
+    )
+
+    with (
+        AsgiTestClient(cast(Any, unconfigured)) as unconfigured_client,
+        AsgiTestClient(cast(Any, configured)) as configured_client,
+    ):
+        with ObservabilityHooks.scoped_override(ObservabilityHooks(metrics=scoped_metrics)):
+            unconfigured_client.get("/users")
+            configured_client.get("/users")
+        ObservabilityHooks.override_global(ObservabilityHooks(metrics=global_metrics))
+        try:
+            unconfigured_client.get("/orders")
+            configured_client.get("/orders")
+        finally:
+            ObservabilityHooks.reset_global()
+        unconfigured_client.get("/refused")
+        configured_client.get("/refused")
+
+    assert [labels["operation"] for labels, _ in scoped_metrics.records] == [
+        "UsersController.read_users",
+        "UsersController.read_users",
+    ]
+    assert [labels["operation"] for labels, _ in global_metrics.records] == [
+        "OrdersController.read_orders",
+        "OrdersController.read_orders",
+    ]
+    assert [labels["operation"] for labels, _ in configured_metrics.records] == [
+        "RefusedController.read_refused"
+    ]
+
+
+_SERVED_PATHS = ("/users", "/orders", "/refused")
+
+
+def _served_module() -> type[object]:
+    """Return a module serving two routes, and a third a middleware refuses before it runs."""
+
+    @Controller("/users", version="1")
+    class UsersController:
+        @Get("/")
+        async def read_users(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Controller("/orders")
+    class OrdersController:
+        @Get("/")
+        async def read_orders(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Controller("/refused")
+    class RefusedController:
+        @Get("/")
+        async def read_refused(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    class RefusingMiddleware(Middleware):
+        async def use(self, request: HttpRequest, call_next: Any) -> Any:
+            raise BadRequestException("the middleware refused the request")
+
+    @Module(controllers=[UsersController, OrdersController, RefusedController])
+    class AppModule:
+        def configure(self, consumer: MiddlewareConsumer) -> None:
+            consumer.apply(RefusingMiddleware).for_routes("/refused*")
+
+    return AppModule
+
+
+def _count_observation_work(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Name, in order, each label set, span context and clock reading the hooks make."""
+
+    made: list[str] = []
+
+    def counted(name: str, original: Callable[..., Any]) -> Callable[..., Any]:
+        def record(*args: Any, **kwargs: Any) -> Any:
+            made.append(name)
+            return original(*args, **kwargs)
+
+        return record
+
+    for name, attribute in (
+        ("labels", "build_route_labels"),
+        ("span context", "SpanContext"),
+        ("clock reading", "perf_counter"),
+    ):
+        original = getattr(observability_module, attribute)
+        monkeypatch.setattr(observability_module, attribute, counted(name, original))
+    return made
