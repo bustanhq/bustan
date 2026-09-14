@@ -1,6 +1,6 @@
 # Why The Benchmark Gate Uses A Ratio
 
-The benchmark gate compares a ratio rather than a wall-clock number, and refuses a change at twenty percent rather than at some tighter figure. Both choices are deliberate and neither is obvious.
+The benchmark gate compares a ratio rather than a wall-clock number, and refuses a change at twenty percent rather than at some tighter figure. Both choices are deliberate and neither is obvious. Two measurements beside the gate choose differently, a comparison with Litestar that nothing judges and a count of calls with no threshold at all, and the reasons for both close this page.
 
 For running the benchmarks and reading a failure, see [Run The Benchmarks](../how-to/run-benchmarks.md).
 
@@ -78,3 +78,46 @@ should come down as runs accumulate.
 What the threshold buys, and what it does not: a change that makes a request 20% slower
 is caught, and one that makes it 5% slower is not. A gate that tripped on 5% would trip
 on the fleet instead, get muted, and then catch nothing at all.
+
+## Why Litestar Is Printed And Not Judged
+
+The gate prints each Bustan route as a multiple of Litestar serving the same request, and
+no verdict reads it, because it answers a different question. The gate asks whether a
+change made Bustan slower than it was. The multiple says how far Bustan is from another
+framework, which is a distance to close rather than a regression to catch.
+
+It also moves for reasons that are not a change to Bustan. Upgrading Litestar in the
+benchmark lockfile moves it, and so does the machine class: on identical code the simple
+route's multiple was 2.43 on a runner with an AMD EPYC 7763 and 1.84 on an Apple M4 Pro.
+A threshold on it would judge Litestar and the fleet.
+
+Nothing is divided out of it, because the machine is already on both sides of the
+division: both medians in a row were measured on the same machine in the same job.
+
+The two Bustan routes that are new beside it, the synchronous and hundred-items routes,
+are not judged either, for a different reason: nothing has measured their spread on the
+runner, and a threshold is chosen against one. A benchmark joins the gate by being named
+in `GATED` in `benchmarks/gate.py` before a baseline is captured.
+
+## Why The Call Budget Has No Threshold
+
+**A route fails the call budget when one request to it starts more of `bustan`'s
+functions than its committed count, by any number, one included.**
+
+A timing needs the ratio and the threshold above because it moves with the machine. A
+count of calls does not: which functions a request starts is decided by the code and the
+locked dependencies, not by clock speed, cache behaviour or a busy neighbour. That was
+measured rather than assumed. The counts first committed were the same on an Apple M4 Pro
+under CPython 3.13 and 3.14, the same under three different hash seeds, the same on every
+warm request, and the same on a Linux runner with an AMD EPYC 7763 the first time CI ran
+the check. With nothing to absorb, a threshold would only hide calls.
+
+The count sees less than a timing does, and that is the trade. Work that is not a Python
+call into `bustan`'s own code is invisible to it: a call into C, a check the standard
+library makes on `bustan`'s behalf, the thread a synchronous handler waits on. A change
+can slow a request without adding a call, and the gate is what catches that.
+
+The count covers the opposite case. The gate fails only a regression past twenty percent,
+so a change that makes a request ten percent cheaper leaves nothing behind that would stop
+the next change from spending the saving. A count that drops is written into the budget
+by the change that dropped it, and climbing back fails.

@@ -25,6 +25,21 @@ class UsersController:
 
 By default controllers are singleton-scoped. Bustan reuses the same controller instance across requests unless you opt into request scope on the controller.
 
+## Coroutine And Synchronous Handlers
+
+A handler can be written with `async def` or with `def`, and both are served. A coroutine handler runs on the event loop. A synchronous handler is sent to a worker thread, so that a handler which blocks does not stall every other request the loop is serving; at most `sync_handler_threads` of them run at once, forty unless [the request limits](request-pipeline.md#request-limits) say otherwise.
+
+The hand-off costs more than the rest of a request does. The benchmark suite serves one route both ways with nothing else changed - routing, an injected service, a path parameter, a handler that does almost nothing, JSON serialization - and measures whole requests:
+
+| Machine | `async def` | `def` | `def` costs |
+| --- | --- | --- | --- |
+| GitHub-hosted runner, AMD EPYC 7763 | 185.6 us | 580.7 us | 3.1 times as much |
+| Apple M4 Pro | 78.0 us | 203.8 us | 2.6 times as much |
+
+The difference is the thread and the scheduling on either side of it, not work the framework does: a request to the synchronous route makes one more call into `bustan` than a request to the coroutine route. How the two are measured is in [Coroutine And Synchronous Handlers Side By Side](../how-to/run-benchmarks.md#coroutine-and-synchronous-handlers-side-by-side).
+
+Write a handler with `def` anyway when it blocks: when it calls a synchronous database driver or HTTP client, reads or writes files, sleeps, or computes for long enough that other requests would notice. On the loop, a handler doing any of those holds up every request the process is serving for as long as it runs, which costs far more than the hand-off. Write it with `async def` when it awaits its I/O or does none - it returns data it already holds, or calls an asynchronous client - which is most handlers.
+
 ## Inferred Binding Rules
 
 When you do not use explicit binding markers, Bustan infers a source from the parameter shape:
