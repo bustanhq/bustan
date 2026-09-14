@@ -39,7 +39,7 @@ link shortener, from a scaffold to something you could deploy. The finished code
 4. [Links that survive a restart](tutorials/a-datastore-and-a-readiness-probe.md) - a database opened
    and closed at named points, and a readiness probe that tells the truth.
 5. [Deciding who may create a link](tutorials/before-the-handler-runs.md) - middleware on every
-   request, then a working authenticator that leaves short links public.
+   route, then a working authenticator that leaves short links public.
 6. [Letting the API describe itself](tutorials/openapi-and-swagger-ui.md) - an OpenAPI document and a
    browsable page, generated from the routes you already wrote.
 
