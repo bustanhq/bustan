@@ -64,6 +64,31 @@ def test_no_starlette_object_is_reachable_through_the_request_contract(
     assert isinstance(request.client, HttpClientInfo)
 
 
+def test_every_read_of_the_headers_is_handed_one_mapping_holding_what_arrived(
+    build_request: RequestFactory,
+) -> None:
+    """The mapping is built on the first read and handed to every read after it.
+
+    Several stages of one request read its headers, and a mapping built for each read
+    decodes every header again each time. What the one mapping holds is what the
+    transport received: a name looked up without regard to case, a repeated name kept as
+    every value sent under it, and each name reported as it first arrived.
+    """
+
+    request = build_request(
+        headers=[(b"host", b"testserver"), (b"x-tag", b"first"), (b"X-Tag", b"second")]
+    )
+    wrapped = StarletteHttpRequest(request)
+
+    first = wrapped.headers
+
+    assert wrapped.headers is first
+    assert first == Headers(request.headers.items())
+    assert first.getlist("x-tag") == ["first", "second"]
+    assert first["X-TAG"] == "first, second"
+    assert list(first) == ["host", "x-tag"]
+
+
 def test_the_url_reports_the_parts_the_request_arrived_with(
     build_request: RequestFactory,
 ) -> None:

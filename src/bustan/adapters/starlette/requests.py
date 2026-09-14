@@ -44,10 +44,11 @@ class StarletteHttpRequest:
     request, and to anything that reads the Starlette request directly.
     """
 
-    __slots__ = ("_request", "_state")
+    __slots__ = ("_headers", "_request", "_state")
 
     def __init__(self, request: Request) -> None:
         self._request = request
+        self._headers: Headers | None = None
         self._state: RequestState | None = None
 
     @property
@@ -83,10 +84,25 @@ class StarletteHttpRequest:
         )
 
     @property
-    def headers(self) -> Mapping[str, str]:
-        """The request headers, looked up without regard to case."""
+    def headers(self) -> Headers:
+        """The request headers, looked up without regard to case.
 
-        return Headers(self._request.headers.items())
+        The mapping is built the first time it is read, and every later read is handed that
+        same one, because several stages of one request read the headers and each would
+        otherwise decode all of them again. Handing one mapping to every reader is safe
+        because a ``Headers`` cannot be changed once it is built.
+
+        It is decoded from the header list on the connection itself. Starlette's own header
+        object holds the same pairs, but building one copies that list into the scope, and a
+        request read only through this wrapper never needs one.
+        """
+
+        if self._headers is None:
+            self._headers = Headers(
+                (name.decode("latin-1"), value.decode("latin-1"))
+                for name, value in self._request.scope["headers"]
+            )
+        return self._headers
 
     @property
     def query_params(self) -> QueryParams:

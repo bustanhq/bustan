@@ -93,6 +93,60 @@ def test_a_route_carrying_no_handler_is_refused_by_name() -> None:
         build_starlette_routes([AdapterRoute(path="/nothing", methods=("GET",))])
 
 
+def test_a_route_serves_through_its_endpoint_with_no_request_response_wrapper() -> None:
+    """Starlette calls the endpoint as the route's application, with nothing around it.
+
+    A function endpoint is wrapped in Starlette's request-response adapter, which adds an
+    exception-handling layer that every message of the response passes through. An
+    endpoint that is not a function is kept as the route's application unchanged, so a
+    route's response passes through no second layer.
+    """
+
+    (registered,) = build_starlette_routes(
+        [AdapterRoute(path="/users", methods=("GET",), name="users", handler=_handler)]
+    )
+
+    assert isinstance(registered, Route)
+    assert registered.app is registered.endpoint
+
+
+def test_a_failure_escaping_a_handler_is_answered_by_the_applications_exception_handler() -> None:
+    """What leaves a route is caught by the exception middleware around every route.
+
+    The framework's handler answers its own failures, so what escapes it is a transport's
+    failure, and the Starlette application's exception handlers are what answer that.
+    """
+
+    class TeapotError(Exception):
+        pass
+
+    async def failing(request: HttpRequest) -> HttpResponse:
+        raise TeapotError
+
+    async def answer_teapot(request: Request, exc: Exception) -> Response:
+        return Response(content=b"short and stout", status_code=418)
+
+    adapter = StarletteAdapter(Starlette(exception_handlers={TeapotError: answer_teapot}))
+    adapter.register_routes(
+        [AdapterRoute(path="/brew", methods=("GET",), name="brew", handler=failing)]
+    )
+
+    with cast(Any, adapter.create_test_client()) as client:
+        response = client.get("/brew")
+
+    assert response.status_code == 418
+    assert response.content == b"short and stout"
+
+
+def test_a_route_given_no_name_is_not_named_after_the_class_serving_it() -> None:
+    (registered,) = build_starlette_routes(
+        [AdapterRoute(path="/users", methods=("GET",), handler=_handler)]
+    )
+
+    assert isinstance(registered, Route)
+    assert registered.name == "endpoint"
+
+
 def test_middleware_is_added_to_the_underlying_application() -> None:
     adapter = StarletteAdapter()
 

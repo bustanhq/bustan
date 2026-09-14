@@ -277,7 +277,9 @@ class StarletteAdapter(AbstractHttpAdapter):
         """Serve one ASGI connection through the Starlette application."""
 
         scope, receive, send = connection
-        await self._app(cast(Any, scope), cast(Any, receive), cast(Any, send))
+        # One cast of the application rather than one of each argument: a cast is a
+        # function call, and this runs for every request the application serves.
+        await cast(Any, self._app)(scope, receive, send)
 
 
 async def _refuse_unmatched_route(request: Request, _exc: Exception) -> Response:
