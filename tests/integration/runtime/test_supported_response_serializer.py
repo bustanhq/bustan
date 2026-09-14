@@ -13,6 +13,7 @@ middleware raised before the route was ever entered.
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
 
 from bustan import (
@@ -215,3 +216,44 @@ def test_a_route_that_returns_its_own_response_is_not_serialized() -> None:
     assert response.json() == {"title": "a note"}
     assert _ENVELOPE_HEADER not in response.headers
     assert serializer.serialized == []
+
+
+def test_a_returned_value_is_encoded_by_msgspec_and_a_built_response_by_json_dumps() -> None:
+    """What reaches the wire from each writer a route's response can come from.
+
+    A value the handler returns is encoded by msgspec, which spells a large float without the
+    plus sign ``json.dumps`` gives it. A response the handler builds with ``HttpResponse.json``
+    and the problem document a refusal is answered with are encoded by ``json.dumps``, escapes
+    included.
+    """
+
+    detail = "caf\N{LATIN SMALL LETTER E WITH ACUTE} is closed"
+
+    @Controller("/weights")
+    class WeightsController:
+        @Get("/returned")
+        def returned(self) -> dict[str, float]:
+            return {"grams": 1e16}
+
+        @Get("/built")
+        def built(self) -> HttpResponse:
+            return HttpResponse.json({"grams": 1e16})
+
+        @Get("/refused")
+        def refused(self) -> dict[str, float]:
+            raise BadRequestException(detail)
+
+    @Module(controllers=[WeightsController])
+    class AppModule:
+        pass
+
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        returned = client.get("/weights/returned")
+        built = client.get("/weights/built")
+        refused = client.get("/weights/refused")
+
+    assert returned.content == b'{"grams":1e16}'
+    assert built.content == b'{"grams":1e+16}'
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == detail
+    assert refused.content == json.dumps(refused.json(), separators=(",", ":")).encode("utf-8")
