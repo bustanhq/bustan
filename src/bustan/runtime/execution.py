@@ -32,14 +32,14 @@ from ..observability.correlation import (
     correlation_from_headers,
     reset_correlation,
 )
-from ..observability.observability import ObservabilityHooks
+from ..observability.observability import _SILENT_HOOKS, ObservabilityHooks
 from ..pipeline.context import ExecutionContext
 from ..pipeline.filters import ExceptionFilter, ProblemDetails, handle_exception
 from ..pipeline.guards import run_guards
-from ..pipeline.interceptors import call_with_interceptors
+from ..pipeline.interceptors import Interceptor, call_with_interceptors
 from ..pipeline.metadata import PipelineMetadata
 from ..pipeline.middleware import Middleware, ResolvedRouteMiddleware
-from ..pipeline.pipes import Pipe, run_pipes
+from ..pipeline.pipes import Pipe, _resolved_pipes, run_pipes
 from .compiler import (
     GlobalPipelineProvider,
     PipelinePlan,
@@ -51,6 +51,7 @@ from .controller_factory import ControllerFactory, PipelineMemo
 from .params import (
     BoundParameter,
     HandlerBindingPlan,
+    ParameterBinding,
     ParameterSource,
     RequestBodyTooLargeError,
     RequestLimits,
@@ -224,8 +225,8 @@ class ExecutionPlan:
 
     A route is compiled once and served many times, so everything a request would
     otherwise rebuild for itself is built here instead: the three slices of the
-    pipeline the runtime resolves at different points, and the memo the components it
-    resolves are kept in.
+    pipeline the runtime resolves at different points, which stages the route declares
+    at all, and the memo the components it resolves are kept in.
     """
 
     route_contract: RouteContract
@@ -243,6 +244,18 @@ class ExecutionPlan:
     remainder_plan: PipelinePlan = field(init=False, compare=False, repr=False)
     # What renders a failure, which is all the error path needs.
     filter_plan: PipelinePlan = field(init=False, compare=False, repr=False)
+    # Whether the gate and the remainder declare anything to resolve. A slice declaring
+    # nothing is never resolved, because an override registry substitutes the components
+    # a route declared and so cannot put one into a slice that declared none.
+    declares_gate: bool = field(init=False, compare=False, repr=False)
+    declares_remainder: bool = field(init=False, compare=False, repr=False)
+    # Whether a custom decorator computes any parameter, each of which is handed a context.
+    binds_custom_parameters: bool = field(init=False, compare=False, repr=False)
+    # One flag per handler parameter saying whether it is piped: the first for a request
+    # whose route runs pipes, the second for one whose route runs none, where only the
+    # framework's own validation can apply. A parameter left unmarked is used as bound.
+    piped_parameters: tuple[bool, ...] = field(init=False, compare=False, repr=False)
+    validated_parameters: tuple[bool, ...] = field(init=False, compare=False, repr=False)
     # Resolved pipeline components this route may serve every request from. It holds
     # only what cannot come out differently for the next one, so it is a record of how
     # often the container is asked rather than of what it answers.
@@ -261,6 +274,20 @@ class ExecutionPlan:
             PipelinePlan(pipes=plan.pipes, interceptors=plan.interceptors),
         )
         object.__setattr__(self, "filter_plan", PipelinePlan(filters=plan.filters))
+        object.__setattr__(self, "declares_gate", bool(plan.guards or plan.filters))
+        object.__setattr__(self, "declares_remainder", bool(plan.pipes or plan.interceptors))
+        bindings = self.binding_plan.parameters
+        object.__setattr__(
+            self,
+            "binds_custom_parameters",
+            any(binding.source is ParameterSource.CUSTOM for binding in bindings),
+        )
+        object.__setattr__(
+            self,
+            "piped_parameters",
+            tuple(binding.source is not ParameterSource.REQUEST for binding in bindings),
+        )
+        object.__setattr__(self, "validated_parameters", _validated_parameters(self))
 
     @property
     def handler_name(self) -> str:
@@ -277,7 +304,12 @@ class ExecutionPlan:
 
 @dataclass(frozen=True, slots=True)
 class HttpExecutionResult:
-    """Result produced by the adapter-neutral HTTP execution engine."""
+    """Result produced by the adapter-neutral HTTP execution engine.
+
+    ``context`` is the context the filters were handed when the request failed. When it
+    was served, it is the one the stages after the controller's construction were handed,
+    or ``None`` when no such stage was handed one.
+    """
 
     response: RuntimeResponse
     context: ExecutionContext | None
@@ -361,13 +393,20 @@ def create_route_handler(
             _application_runtime(request.app)
         )
         try:
-            return await run_middleware_chain(
-                request,
-                middleware_chain,
-                factory,
-                run_route,
-                exception_handler=render_error,
-            )
+            if middleware_chain:
+                return await run_middleware_chain(
+                    request,
+                    middleware_chain,
+                    factory,
+                    run_route,
+                    exception_handler=render_error,
+                )
+            # A route with no middleware is the whole chain, so what escapes it is answered
+            # here as the end of a chain answers it, with no chain built to do the asking.
+            try:
+                return await run_route(request)
+            except Exception as exc:
+                return await render_error(request, exc)
         finally:
             # The request is over only once the outermost middleware has returned, so
             # what was scoped to it is released here rather than inside the route.
@@ -430,7 +469,14 @@ async def execute_http_route(
     execution_plan: ExecutionPlan,
     request: HttpRequest,
 ) -> HttpExecutionResult:
-    """Execute one compiled HTTP route through the shared runtime pipeline."""
+    """Execute one compiled HTTP route through the shared runtime pipeline.
+
+    A request enters only the stages its route declares, and an execution context is
+    built only for a stage that is handed one. The observation and the guards are handed
+    one naming no controller, every stage after the controller exists is handed one naming
+    it, and the filters answering a failure are handed the one belonging to the stage the
+    failure reached, built for them when no earlier stage needed it.
+    """
 
     # The request is bound for the whole execution, not merely for the duration of one
     # resolve call, so anything running inside the route - a handler, a guard, an
@@ -439,6 +485,10 @@ async def execute_http_route(
     request_token, application_token = _bind_route_scopes(
         container.scope_manager, request, application
     )
+    # What a guard, a filter or an injected RESPONSE writes headers and a status onto
+    # before the real response exists. It is built for every request: the container hands
+    # it to any class it builds while the request runs, including one a handler asks it
+    # for, so nothing known when the route is compiled says that nothing will write to it.
     response_context = HttpResponse()
     response_token = container.scope_manager.push_response(response_context)
     # Everything the application declared is read from the one object found behind the
@@ -447,7 +497,10 @@ async def execute_http_route(
     observability = _observability_hooks_on(application)
     limits = _request_limits_on(application)
     response_handler = _response_handler_on(application)
+    # The context of the stage the request has reached, once a stage has been handed one,
+    # and the controller that stage names, which is None until the controller exists.
     context: ExecutionContext | None = None
+    controller: object = None
     filters: tuple[ExceptionFilter, ...] | None = None
     observation = None
     created_durable_partitions: set[object] | None = None
@@ -459,38 +512,39 @@ async def execute_http_route(
         # handler does. Rendering the refusal happens outside the scope, so the
         # filters that answer a timeout are not themselves running out of time.
         with move_on_after(limits.timeout_seconds):
-            # The context and the observation come first, before anything a request pays
-            # for can fail. An exception raised while a constructor runs then has the same
-            # context, the same filter chain and the same metrics as one raised inside the
-            # handler, instead of leaving the route with nothing to answer it with.
-            context = _http_context(
-                execution_plan,
-                request=request,
-                response_context=response_context,
-                container=container,
-                controller=None,
-            )
-            observation = observability.start_request(context)
+            # The observation comes first, before anything a request pays for can fail, so
+            # an exception raised while a constructor runs is measured as one raised inside
+            # the handler is. Hooks that record nothing read nothing, and are not asked.
+            if observability is not _SILENT_HOOKS:
+                context = _http_context(execution_plan, request, response_context, container)
+                observation = observability.start_request(context)
 
             # Guards decide whether the request is served at all, so they and the filters
             # that render their verdict are the only components resolved before that
             # decision. Everything the request would consume once it is admitted - the
             # controller, whatever it injects, the pipes and the interceptors - is built
             # after, so a refused caller pays for none of it and leaves nothing behind.
-            with _durable_partitions_created(container, execution_plan) as created:
-                created_durable_partitions = created
-                gate = await factory.resolve_pipeline_async(
-                    execution_plan.gate_plan,
-                    module=execution_plan.module_key,
-                    request=request,
-                    memo=execution_plan.pipeline_memo,
-                )
-                filters = gate.filters
-
-                await run_guards(context, gate.guards)
-            # The request was admitted, so anything cached from here on is work it asked
-            # for and is not undone if a later stage fails.
-            created_durable_partitions = None
+            if execution_plan.declares_gate:
+                with _durable_partitions_created(container, execution_plan) as created:
+                    created_durable_partitions = created
+                    gate = await factory.resolve_pipeline_async(
+                        execution_plan.gate_plan,
+                        module=execution_plan.module_key,
+                        request=request,
+                        memo=execution_plan.pipeline_memo,
+                    )
+                    filters = gate.filters
+                    if gate.guards:
+                        if context is None:
+                            context = _http_context(
+                                execution_plan, request, response_context, container
+                            )
+                        await run_guards(context, gate.guards)
+                # The request was admitted, so anything cached from here on is work it asked
+                # for and is not undone if a later stage fails.
+                created_durable_partitions = None
+            else:
+                filters = ()
 
             controller_instance = await factory.instantiate_async(
                 execution_plan.controller_cls,
@@ -498,50 +552,69 @@ async def execute_http_route(
                 request=request,
             )
             handler = getattr(controller_instance, execution_plan.handler_name)
-            # The controller exists only now, so the context every later stage sees is
-            # rebuilt around it; guards saw the one that could not name an instance yet.
-            context = _http_context(
-                execution_plan,
-                request=request,
-                response_context=response_context,
-                container=container,
-                controller=controller_instance,
-            )
+            # The controller exists only now, so every later stage is handed a context that
+            # names it; the guards were handed one that could not name an instance yet.
+            controller, context = controller_instance, None
 
-            remainder = await factory.resolve_pipeline_async(
-                execution_plan.remainder_plan,
-                module=execution_plan.module_key,
-                request=request,
-                memo=execution_plan.pipeline_memo,
-            )
+            pipes: tuple[Pipe, ...] = ()
+            interceptors: tuple[Interceptor, ...] = ()
+            if execution_plan.declares_remainder:
+                remainder = await factory.resolve_pipeline_async(
+                    execution_plan.remainder_plan,
+                    module=execution_plan.module_key,
+                    request=request,
+                    memo=execution_plan.pipeline_memo,
+                )
+                pipes, interceptors = remainder.pipes, remainder.interceptors
 
-            bound_parameters = await bind_handler_parameters(
-                request,
-                execution_plan.binding_plan,
-                context,
-                limits,
-            )
-            piped_parameters = await _apply_pipes(
-                bound_parameters,
-                context,
-                remainder.pipes,
-                execution_plan.binding_plan,
-            )
-            positional_arguments, keyword_arguments = separate_bound_parameters(piped_parameters)
-
-            async def final_handler() -> object:
-                if execution_plan.is_async_handler:
-                    return await handler(*positional_arguments, **keyword_arguments)
-                return await to_thread.run_sync(
-                    partial(handler, *positional_arguments, **keyword_arguments),
-                    limiter=_sync_handler_limiter(limits),
+            positional_arguments: tuple[object, ...] = ()
+            keyword_arguments: dict[str, object] = {}
+            if execution_plan.binding_plan.parameters:
+                if context is None and execution_plan.binds_custom_parameters:
+                    context = _http_context(
+                        execution_plan, request, response_context, container, controller
+                    )
+                bound_parameters = await bind_handler_parameters(
+                    request, execution_plan.binding_plan, context, limits
+                )
+                piped = (
+                    execution_plan.piped_parameters
+                    if pipes
+                    else execution_plan.validated_parameters
+                )
+                if any(piped):
+                    if context is None:
+                        context = _http_context(
+                            execution_plan, request, response_context, container, controller
+                        )
+                    bound_parameters = await _apply_pipes(
+                        bound_parameters, context, pipes, execution_plan.binding_plan, piped
+                    )
+                positional_arguments, keyword_arguments = separate_bound_parameters(
+                    bound_parameters
                 )
 
-            result = await call_with_interceptors(
-                context,
-                remainder.interceptors,
-                final_handler,
-            )
+            if interceptors:
+                if context is None:
+                    context = _http_context(
+                        execution_plan, request, response_context, container, controller
+                    )
+                result = await call_with_interceptors(
+                    context,
+                    interceptors,
+                    partial(
+                        _call_handler,
+                        execution_plan,
+                        handler,
+                        positional_arguments,
+                        keyword_arguments,
+                        limits,
+                    ),
+                )
+            else:
+                result = await _call_handler(
+                    execution_plan, handler, positional_arguments, keyword_arguments, limits
+                )
             response = response_handler.write(
                 result=result, response_plan=execution_plan.response_plan
             )
@@ -565,6 +638,12 @@ async def execute_http_route(
     except Exception as exc:
         if isinstance(exc, GuardRejectedError):
             _evict_durable_partitions(container, created_durable_partitions)
+        if context is None:
+            # No stage the request reached was handed a context, so nothing has seen the
+            # one the filters are handed, and it is built for them now.
+            context = _http_context(
+                execution_plan, request, response_context, container, controller
+            )
         response = await _render_failure(
             exc,
             context=context,
@@ -626,13 +705,7 @@ async def execute_http_exception(
         # The context comes first, before anything that can fail while it is built, so
         # the filters have something to answer with whatever else goes wrong. It names
         # no controller because none was constructed for this request.
-        context = _http_context(
-            execution_plan,
-            request=request,
-            response_context=response_context,
-            container=container,
-            controller=None,
-        )
+        context = _http_context(execution_plan, request, response_context, container)
         resolved_pipeline = await factory.resolve_pipeline_async(
             execution_plan.filter_plan,
             module=execution_plan.module_key,
@@ -732,11 +805,10 @@ async def _render_failure(
 
 def _http_context(
     execution_plan: ExecutionPlan,
-    *,
     request: HttpRequest,
     response_context: HttpResponse,
     container: Container,
-    controller: object,
+    controller: object = None,
 ) -> ExecutionContext:
     """Build the execution context for one request at the stage it has reached.
 
@@ -1094,25 +1166,26 @@ async def _apply_pipes(
     context: ExecutionContext,
     pipes: tuple[Pipe, ...],
     binding_plan: HandlerBindingPlan,
+    piped: tuple[bool, ...],
 ) -> tuple[BoundParameter, ...]:
-    if not pipes and binding_plan.validation_mode.value != "auto":
-        return bound_parameters
+    """Pipe every parameter *piped* marks, handing each a context built for it alone.
+
+    A context carries the parameter it was built for, so one shared between parameters
+    would change under a pipe that kept it: reading the context it was handed for one
+    parameter once the next had been piped, the pipe would read the next one. A
+    parameter *piped* leaves unmarked reaches the handler as it was bound.
+    """
 
     transformed_parameters: list[BoundParameter] = []
-    for bound_parameter in bound_parameters:
-        if bound_parameter.binding.source is ParameterSource.REQUEST:
+    for bound_parameter, is_piped in zip(bound_parameters, piped, strict=True):
+        if not is_piped:
             transformed_parameters.append(bound_parameter)
             continue
 
         transformed_value = await run_pipes(
             bound_parameter.value,
-            context.with_parameter(
-                name=bound_parameter.binding.name,
-                source=bound_parameter.binding.source.value,
-                annotation=bound_parameter.binding.annotation,
-                value=bound_parameter.value,
-                validation_mode=binding_plan.validation_mode.value,
-                validate_custom_decorators=binding_plan.validate_custom_decorators,
+            _parameter_context(
+                context, bound_parameter.binding, binding_plan, bound_parameter.value
             ),
             pipes,
         )
@@ -1121,6 +1194,71 @@ async def _apply_pipes(
         )
 
     return tuple(transformed_parameters)
+
+
+def _parameter_context(
+    context: ExecutionContext,
+    binding: ParameterBinding,
+    binding_plan: HandlerBindingPlan,
+    value: object,
+) -> ExecutionContext:
+    """Return the context the pipes transforming one parameter are handed."""
+
+    return context.with_parameter(
+        name=binding.name,
+        source=binding.source.value,
+        annotation=binding.annotation,
+        value=value,
+        validation_mode=binding_plan.validation_mode.value,
+        validate_custom_decorators=binding_plan.validate_custom_decorators,
+    )
+
+
+def _validated_parameters(execution_plan: ExecutionPlan) -> tuple[bool, ...]:
+    """Return, for each handler parameter, whether the framework validates it unasked.
+
+    Whether a parameter is validated when its route runs no pipe of its own follows from
+    what the parameter declares - where it is read from, its annotation and the validation
+    settings of its controller - and from nothing a request brings. The pipeline is asked
+    once, here, through a context that names the route and the parameter and has no
+    request, response, controller or container to name.
+    """
+
+    route = ExecutionContext.create_http(
+        request=None,
+        response=None,
+        handler=execution_plan.route_definition.handler,
+        controller_cls=execution_plan.controller_cls,
+        module=execution_plan.module_key,
+        controller=None,
+        container=cast(Container, None),
+        route=execution_plan.route_definition,
+        route_contract=execution_plan.route_contract,
+        policy_plan=execution_plan.policy_plan,
+    )
+    binding_plan = execution_plan.binding_plan
+    return tuple(
+        binding.source is not ParameterSource.REQUEST
+        and bool(_resolved_pipes(_parameter_context(route, binding, binding_plan, None), ()))
+        for binding in binding_plan.parameters
+    )
+
+
+async def _call_handler(
+    execution_plan: ExecutionPlan,
+    handler: Callable[..., Any],
+    positional_arguments: tuple[object, ...],
+    keyword_arguments: Mapping[str, object],
+    limits: RequestLimits,
+) -> object:
+    """Call the handler once with its arguments, on a worker thread when it is synchronous."""
+
+    if execution_plan.is_async_handler:
+        return await handler(*positional_arguments, **keyword_arguments)
+    return await to_thread.run_sync(
+        partial(handler, *positional_arguments, **keyword_arguments),
+        limiter=_sync_handler_limiter(limits),
+    )
 
 
 def _apply_rate_limit_headers(request: HttpRequest, response: RuntimeResponse) -> None:

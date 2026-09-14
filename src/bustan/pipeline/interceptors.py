@@ -47,9 +47,15 @@ async def call_with_interceptors(
     interceptors: tuple[Interceptor, ...],
     final_handler: CallNext | CallHandler,
 ) -> object:
-    """Execute a handler through a nested interceptor chain."""
+    """Execute a handler through a nested interceptor chain.
+
+    A chain with no interceptors calls the handler directly, so nothing is built to link
+    links that do not exist.
+    """
 
     terminal_handler = _as_call_handler(final_handler)
+    if not interceptors:
+        return await terminal_handler.handle()
 
     async def invoke(index: int) -> object:
         if index >= len(interceptors):
