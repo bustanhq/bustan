@@ -3,6 +3,35 @@
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`.
 
+## [2.0.2](https://github.com/bustanhq/bustan/compare/v2.0.1...v2.0.2) (2026-09-14)
+
+A patch: two repairs, no breaking change and no new command. Upgrading from 2.0.1 gets two things.
+A generated test suite that survives the first module a project adds. And README links that open
+the documentation for the version installed rather than the release before it.
+
+The module test `bustan init` writes asserted that the application had exactly one route and read
+that route by position, so the first module a project added with a controller of its own turned the
+generated suite red on `assert 2 == 1`. The test now looks for the root controller serving `/` among
+the application's routes. It still fails when that route is genuinely gone, and its failure lists
+the routes the application does serve. A project scaffolded before 2.0.2 keeps the old test,
+because `bustan init` keeps a file it finds; the change reaches it only by hand.
+
+Every pinned link in the 2.0.1 README, the two wordmark images included, named `v2.0.0`. The package
+index renders the README from the uploaded distribution, so the 2.0.1 page sent a reader to the
+first tutorial as it stood at 2.0.0, which says to add the transport extra by hand and to put the
+entry points in the package's `__init__.py`, contradicting what `bustan init` had just done. The
+links now name `v2.0.2`, and the link checker holds every one of them to the version
+`pyproject.toml` packages, so a release whose README pins another version fails its own pull
+request.
+
+### Bug Fixes
+
+* the generated module test fails as soon as a project adds a route ([#361](https://github.com/bustanhq/bustan/issues/361))
+
+### Documentation
+
+* README links stay on 2.0.0 and nothing moves them at a release ([#360](https://github.com/bustanhq/bustan/issues/360))
+
 ## [2.0.1](https://github.com/bustanhq/bustan/compare/v2.0.0...v2.0.1) (2026-09-12)
 
 A patch: repairs and documentation, no breaking change and no new command. Upgrading from 2.0.0
