@@ -97,10 +97,17 @@ and for nothing else, which is what a test uses; it does not redirect another re
 
 ## Correlation
 
-Every request is named before anything runs for it, and the name is bound for as long as
-the request is. Every log record and every span the request produces carries it -
-including the ones a middleware writes before the route is reached and the ones a
-failure writes after it is left.
+Every request a route handles is named before its middleware runs, and the name is bound
+for as long as the request is. Every log record and every span the request produces
+carries it - including the ones a middleware writes before the handler is reached and the
+ones a failure writes after it is left.
+
+A request no route handles is never named, because it is answered before any route runs:
+a path no route serves is answered with a 404, a method no route at that path serves with
+a 405, a path one trailing slash away from a route with a redirect, a version no route at
+that path serves with a 404, and a CORS preflight by the cross-origin policy. Nothing
+written about such a request carries a correlation id, and neither the metrics sink nor
+the tracer is called for it.
 
 **Incoming headers, in the order they are consulted:**
 
@@ -137,12 +144,12 @@ app = create_app(
 ```
 
 The hooks belong to that application rather than to the process, so a second
-application in the same process can report somewhere else. Left out, requests are still
-correlated, but none is measured, because nothing is listening.
+application in the same process can report somewhere else. Left out, the requests a
+route handles are still correlated, but none is measured, because nothing is listening.
 
 ### `MetricsSink`
 
-One call per finished request, whatever it was answered with.
+One call per finished request a route handles, whatever it was answered with.
 
 ```python
 from collections.abc import Mapping
@@ -213,9 +220,11 @@ an exception.
 whole trace. A caller that already sampled the request is honoured; a request that
 arrived without a decision gets one derived from its trace id and the ratio.
 
-**Sampling decides spans, not metrics.** An unsampled request is still counted and still
-timed, because the metric is what every request costs and the span is what one request
-is worth keeping.
+**Sampling decides spans, not metrics.** With a metrics sink attached, an unsampled
+request is still measured and counted, because the metric is what every request costs and
+the span is what one request is worth keeping. With a tracer and no metrics sink, an
+unsampled request is neither measured nor counted: no span was started for it, and no
+sink is attached to record it.
 
 ## Health And Readiness
 

@@ -211,9 +211,12 @@ class ObservabilityHooks:
     def start_request(self, context: ExecutionContext) -> ActiveObservation:
         """Begin observing one request, and start its server span when it is sampled.
 
-        An unsampled request is still measured and still counted; what head sampling
-        decides is whether a span is started for it, because the metric is what every
-        request costs and the span is what one request is worth keeping.
+        Head sampling decides whether a span is started, not whether the request is
+        measured. With a metrics sink attached an unsampled request is still measured
+        and counted, because the metric is what every request costs and the span is
+        what one request is worth keeping. Hooks with a tracer and no metrics sink
+        measure and count nothing for an unsampled request: no span was started for it,
+        and no sink is attached to record it.
         """
 
         if self._metrics is None and self._tracer is None:
