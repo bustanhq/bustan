@@ -2,17 +2,29 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
+import math
+import sys
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
-from contextlib import contextmanager
-from contextvars import ContextVar, Token
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager, suppress
+from contextvars import ContextVar, Token, copy_context
 from dataclasses import asdict, dataclass, field
 from functools import cache, partial
 from inspect import iscoroutinefunction
 from typing import Any, cast, get_protocol_members
 
-from anyio import CapacityLimiter, move_on_after, to_thread
+from anyio import (
+    CancelScope,
+    CapacityLimiter,
+    WouldBlock,
+    current_effective_deadline,
+    move_on_after,
+    to_thread,
+)
+from anyio.lowlevel import checkpoint_if_cancelled
 
 from ..common.metadata import ControllerRouteDefinition
 from ..common.types import PipelineOverrides
@@ -217,6 +229,14 @@ _DEFAULT_REQUEST_LIMITS = RequestLimits()
 # The members an assembled application carries, taken from the protocol that declares them
 # so that recognising one here cannot drift from the declaration.
 _APPLICATION_MEMBERS = get_protocol_members(ApplicationRuntime)
+# The threads a synchronous handler runs on when the loop serving it is asyncio's. The pool
+# sets no bound of its own: every handler holds one of its loop's thread tokens while it runs,
+# so the loop's limiter is what bounds them, and the pool only grows to meet the handlers that
+# are running. A bound here would sit under that ceiling and quietly lower a figure an
+# application raised.
+_SYNC_HANDLER_POOL = ThreadPoolExecutor(
+    max_workers=sys.maxsize, thread_name_prefix="bustan-sync-handler"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -385,8 +405,10 @@ def create_route_handler(
     async def handle(request: HttpRequest) -> RuntimeResponse:
         # The request is named before anything runs for it, and the name is bound for
         # as long as the request is, so every log record and every span it produces
-        # carries the same correlation id - including the ones a middleware writes
-        # before the route is reached and the ones a failure writes after it is left.
+        # carries the same correlation id - including the ones this route's middleware
+        # writes before the handler runs and the ones a failure writes once the handler
+        # is left. Routing chose this route before calling it, so no request that no
+        # route handles reaches this point or its middleware.
         correlation_token = bind_correlation(correlation_from_headers(request.headers))
         request_token = container.scope_manager.push_request(request)
         application_token = container.scope_manager.push_application(
@@ -1059,10 +1081,11 @@ def _sync_handler_limiter(limits: RequestLimits) -> CapacityLimiter:
     """Return the limiter that bounds how many synchronous handlers run at once.
 
     This is the running loop's own default thread limiter rather than a second one
-    beside it. A synchronous handler is offloaded to a thread, and so is everything
-    else in the process that offloads work the same way; a private limiter would bound
-    the handlers while the total number of threads stayed whatever the two limiters
-    happened to add up to, which is not a ceiling anyone set.
+    beside it. A synchronous handler holds one of its tokens for as long as it runs,
+    whichever pool its thread comes from, and so does everything else that offloads work
+    through anyio; a private limiter would bound the handlers while the total number of
+    threads stayed whatever the two limiters happened to add up to, which is not a
+    ceiling anyone set.
 
     It follows that this one bound is per event loop where the rest are per application:
     two applications serving on one loop share it, and the last of them to serve a
@@ -1251,14 +1274,55 @@ async def _call_handler(
     keyword_arguments: Mapping[str, object],
     limits: RequestLimits,
 ) -> object:
-    """Call the handler once with its arguments, on a worker thread when it is synchronous."""
+    """Call the handler once with its arguments, on a worker thread when it is synchronous.
+
+    A synchronous handler runs in a copy of its request's context and holds one of its loop's
+    thread tokens until it returns. On asyncio's loop, uvloop included, the thread is reached
+    through the loop itself, which costs a fraction of what anyio's offload does; on any other
+    loop anyio offloads it.
+
+    A thread cannot be interrupted, so the deadline reaches a synchronous handler once it has
+    returned, and is delivered then. Were it delivered only at the request's next wait, a
+    request with nothing left to wait for would be served however late its handler returned;
+    were the handler let go at the deadline, it would hand its token back while it still
+    occupied the thread.
+    """
 
     if execution_plan.is_async_handler:
         return await handler(*positional_arguments, **keyword_arguments)
-    return await to_thread.run_sync(
-        partial(handler, *positional_arguments, **keyword_arguments),
-        limiter=_sync_handler_limiter(limits),
-    )
+    call = partial(handler, *positional_arguments, **keyword_arguments)
+    limiter = _sync_handler_limiter(limits)
+    try:
+        task = asyncio.current_task()
+    except RuntimeError:
+        # No asyncio loop is running this request. anyio holds a cancellation back until
+        # the thread returns, and the checkpoint delivers it as soon as it has.
+        result = await to_thread.run_sync(call, limiter=limiter)
+        await checkpoint_if_cancelled()
+        return result
+    # A free token is taken without a turn of the loop, which is the usual case; a request
+    # that finds none queues for one exactly as anyio's offload would.
+    try:
+        limiter.acquire_on_behalf_of_nowait(task)
+    except WouldBlock:
+        await limiter.acquire_on_behalf_of(task)
+    try:
+        running = _SYNC_HANDLER_POOL.submit(copy_context().run, call)
+        try:
+            return await asyncio.wrap_future(running)
+        except asyncio.CancelledError:
+            # A native cancellation, such as a server's when its drain window closes, is let
+            # through at once and the thread runs on without the request, as anyio's offload
+            # lets one through. An anyio cancellation, the deadline's included, waits for the
+            # handler, which keeps its token for as long as it occupies the thread; whatever
+            # it returns or raises by then answers nobody.
+            if current_effective_deadline() != -math.inf:
+                raise
+            with CancelScope(shield=True), suppress(Exception):
+                await asyncio.wrap_future(running)
+            raise
+    finally:
+        limiter.release_on_behalf_of(task)
 
 
 def _apply_rate_limit_headers(request: HttpRequest, response: RuntimeResponse) -> None:
