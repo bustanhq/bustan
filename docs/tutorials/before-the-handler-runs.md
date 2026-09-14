@@ -7,14 +7,14 @@ Two different jobs need doing before a handler runs, and the framework has a dif
 each. This tutorial does both, in the order they happen, because putting one in the other's place is
 the mistake worth avoiding.
 
-## Something That Happens To Every Request
+## Something That Happens On Every Route
 
 Start with the simpler job. When something goes wrong you want to trace one request through your
 logs, which means every request needs an id, and the caller needs to see it so they can quote it.
 
 That work is genuinely universal: it applies to every route, and it does not care which handler is
-about to run. Middleware is the stage for exactly that, and it runs first, before routing has chosen
-anything.
+about to run. Middleware is the stage for exactly that. It runs for every request a route handles,
+once routing has chosen that route and before anything else the route does.
 
 Create `src/my_app/request_id_middleware.py`:
 
@@ -34,10 +34,10 @@ class RequestIdMiddleware(Middleware):
         return response
 ```
 
-`call_next` is the rest of the application. Everything before that line happens on the way in,
-everything after it on the way out, which is why middleware can touch the response as well as the
-request. Honouring an incoming `x-request-id` matters if anything sits in front of you, so a trace
-started at your load balancer continues here rather than restarting.
+`call_next` is the rest of the route, down to its handler and back. Everything before that line
+happens on the way in, everything after it on the way out, which is why middleware can touch the
+response as well as the request. Honouring an incoming `x-request-id` matters if anything sits in
+front of you, so a trace started at your load balancer continues here rather than restarting.
 
 Register it from the root module. `configure` is a method on `AppModule` itself: the `@Module`
 decorator above it and everything in its lists stay exactly as they are.
@@ -68,24 +68,31 @@ curl -si http://127.0.0.1:3000/nope | grep -i x-request-id
 x-request-id: 4e8f1a90-2c31-4b7e-9a55-1f0c7b3d2a64
 ```
 
-That is the `404` from tutorial two, stamped like anything else. Middleware runs before routing, so
-it neither knows nor cares which handler answered or whether one did, and a refusal is exactly the
-response somebody will want to quote at you. Ask again and the id changes. Send your own and it
+That is the `404` from tutorial two, stamped because a route answered it: `/nope` is a single path
+segment, so the redirect controller's `GET /{code}` serves it, and its handler raised the `404`
+for a code nobody created. Middleware wraps whatever the route sends back, and a refusal is exactly
+the response somebody will want to quote at you. Ask again and the id changes. Send your own and it
 comes back unchanged.
+
+A request answered before a route is chosen never reaches middleware, so it carries no id. No route
+serves `/nothing/here`, which is two segments, and none answers `DELETE /nope`: the framework
+refuses both without choosing a route, as
+[Refusals Before A Handler Runs](../reference/routing.md#refusals-before-a-handler-runs) describes.
 
 ## Something That Depends On Which Route Was Chosen
 
 Now the harder job. Creating a link should need permission; following one should not, because a short
 link nobody can click is not a short link.
 
-That is a per-route decision, and middleware cannot make it. Middleware runs before routing, so it
-does not know which handler is coming, which means it cannot know whether this particular route is
-public. You would end up matching on URL patterns inside your middleware, re-implementing the router
-badly.
+That is a per-route decision, and middleware is the wrong stage for it. A middleware is handed the
+request and `call_next`, and nothing naming the handler about to run or what its route declares,
+so it cannot tell whether this particular route is public. You would end up matching on URL
+patterns inside your middleware, re-implementing the router badly.
 
-The stage that runs after routing, and knows the handler, is a guard. The framework already ships the
-guard that enforces policy; what it cannot know is how *your* application decides who a caller is.
-That is the piece you write.
+The stage that is handed the handler is a guard. It runs after middleware, and the
+`ExecutionContext` it receives names the controller and the handler, so it can read what the route
+declares. The framework already ships the guard that enforces policy; what it cannot know is how
+*your* application decides who a caller is. That is the piece you write.
 
 Which stage a job belongs in is a recurring question, and
 [Choose A Pipeline Hook](../how-to/choose-a-pipeline-hook.md) is the short answer for all of them.
@@ -292,9 +299,13 @@ a guard nobody has checked, and a guard that stops working fails silently and pe
 The second follows the code it was handed rather than choosing one, because `CreateLinkPayload`
 declares a `url` and nothing else: a `code` in that body is a field the model does not have.
 
+The third passes for the same reason the `curl` printed an id: `/nothing-here` is a single segment,
+so the redirect route serves it and its handler answers the `404`. Pointed at a path no route
+serves, such as `/nothing/here`, it would fail.
+
 ## Where This Leaves You
 
-Every response is traceable, creating links needs a token, and following one does not.
+Every response a route sends is traceable, creating links needs a token, and following one does not.
 
 The API works and nothing describes it, which is the last thing:
 [Letting The API Describe Itself](openapi-and-swagger-ui.md).
