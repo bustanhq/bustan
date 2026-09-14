@@ -66,10 +66,10 @@ DEFAULT_MAX_BODY_BYTES = 1024 * 1024
 DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 DEFAULT_MAX_UPLOAD_FILES = 20
 DEFAULT_TIMEOUT_SECONDS = 30.0
-# anyio offloads a synchronous handler onto its own default limiter, which allows this
-# many threads. Matching it means an application that configures nothing keeps exactly
-# the concurrency it had, and one that configures anything no longer has to reach into
-# anyio to say so.
+# A synchronous handler holds one token of its loop's default thread limiter for as long
+# as it runs, and anyio creates that limiter with this many tokens. Matching it means an
+# application that configures nothing keeps exactly the concurrency it had, and one that
+# configures anything no longer has to reach into anyio to say so.
 DEFAULT_SYNC_HANDLER_THREADS = 40
 
 
