@@ -15,26 +15,33 @@ from bustan import (
     APP_GUARD,
     APP_PIPE,
     ApplicationContext,
+    BadRequestException,
     ClassProvider,
     Controller,
+    DefaultResponseSerializer,
     ExceptionFilter,
     ExecutionContext,
     FactoryProvider,
     Get,
     Guard,
+    HttpResponse,
     Injectable,
+    Middleware,
+    MiddlewareConsumer,
     Module,
     Pipe,
+    Post,
     Scope,
     UseGuards,
     create_app,
 )
-from bustan.contracts import HttpRequest
+from bustan.contracts import ApplicationRuntime, HttpRequest
 from bustan.errors import GuardRejectedError
 from bustan.kernel.errors import MethodNotAllowedException, NotFoundException
 from bustan.kernel.ioc.container import Container, build_container
 from bustan.kernel.module.graph import build_module_graph
 from bustan.observability.correlation import current_correlation_id
+from bustan.observability.observability import ObservabilityHooks
 from bustan.pipeline.filters import handle_exception
 from bustan.runtime.compiler import GlobalPipelineProvider, compile_route_contracts
 from bustan.runtime.controller_factory import ControllerFactory
@@ -43,18 +50,25 @@ from bustan.runtime.execution import (
     RequestLimitExceptionFilter,
     RequestTimeoutError,
     _application_runtime,
+    _is_application,
     _with_limit_filter,
     compile_execution_plans,
     execute_http_route,
     method_not_allowed_response,
     not_found_response,
+    observability_hooks_of,
     request_limits_of,
+    response_handler_of,
+    set_observability_hooks,
     set_request_limits,
+    set_response_serializer,
 )
 from bustan.runtime.params import RequestBodyTooLargeError, RequestLimits
 from bustan.testing import AsgiTestClient
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from bustan.kernel.ioc.scopes import DurableKey
     from tests.conftest import HttpRequestFactory
 
@@ -62,6 +76,77 @@ if TYPE_CHECKING:
 class AllowEveryone(Guard):
     def can_activate(self, context: ExecutionContext) -> bool:
         return True
+
+
+class RecordingMetrics:
+    """A metric sink keeping the status of every request it is told about."""
+
+    def __init__(self) -> None:
+        self.statuses: list[str] = []
+
+    def record_request(self, *, labels: Mapping[str, str], duration_seconds: float) -> None:
+        self.statuses.append(labels["status"])
+
+
+class Envelope:
+    """Write what a handler returns inside an envelope naming the application.
+
+    Anything else, such as the response a refusal is rendered as, is written the default
+    way, so an envelope appears only where a handler's return value was serialized.
+    """
+
+    def __init__(self, name: str) -> None:
+        self._name = name
+        self._default = DefaultResponseSerializer()
+
+    def serialize(self, value: object) -> HttpResponse:
+        if isinstance(value, dict):
+            return HttpResponse.json({"envelope": self._name, "data": value})
+        return cast(HttpResponse, self._default.serialize(value))
+
+
+class RefuseEveryRequest(Middleware):
+    """Refuse the request before the route it fronts is entered."""
+
+    async def use(self, request: HttpRequest, call_next: Any) -> Any:
+        raise BadRequestException("refused before the route")
+
+
+def _notes_module() -> type[object]:
+    """Return a module whose routes take each path a request can take through the runtime.
+
+    ``GET /notes`` returns a value, ``POST /notes`` binds a body read under the
+    application's limits, ``GET /notes/broken`` fails inside its handler, and
+    ``GET /refused`` is refused by a middleware before its route is entered. Each call
+    builds new classes, so two applications never share a module.
+    """
+
+    @Controller("/notes")
+    class NotesController:
+        @Get("/")
+        async def read(self) -> dict[str, str]:
+            return {"title": "a note"}
+
+        @Post("/")
+        async def create(self, title: str) -> dict[str, str]:
+            return {"title": title}
+
+        @Get("/broken")
+        async def broken(self) -> dict[str, str]:
+            raise RuntimeError("the handler failed")
+
+    @Controller("/refused")
+    class RefusedController:
+        @Get("/")
+        async def read(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    @Module(controllers=[NotesController, RefusedController])
+    class NotesModule:
+        def configure(self, consumer: MiddlewareConsumer) -> None:
+            consumer.apply(RefuseEveryRequest).for_routes("/refused*")
+
+    return NotesModule
 
 
 def test_compile_execution_plans_marks_sync_and_async_handlers() -> None:
@@ -132,6 +217,62 @@ def test_an_object_that_is_not_a_bustan_application_is_never_taken_for_one() -> 
     assert _application_runtime(partial) is partial
     assert _application_runtime(carrying_a_stranger) is carrying_a_stranger
     assert _application_runtime(nothing_attached) is nothing_attached
+
+
+def test_each_object_is_recognised_by_what_it_carries_as_the_protocol_recognises_it() -> None:
+    """What a class declares is read once per type, and whatever it leaves out from each object.
+
+    Each candidate sits beside an object of the same type that is answered the other way,
+    and the list is judged forwards and then backwards, so the first object of a type
+    never decides for the next. ``ApplicationRuntime``'s own check is the reference.
+    """
+
+    class HalfDeclared:
+        # The class declares one member and leaves the other to each instance.
+        def __init__(self, *, carries_module_graph: bool) -> None:
+            if carries_module_graph:
+                self.module_graph = object()
+
+        @property
+        def container(self) -> object:
+            return object()
+
+    class Slotted:
+        # A slot is declared on the class, so every instance carries both members.
+        __slots__ = ("container", "module_graph")
+
+    application = create_app(_notes_module())
+    candidates = [
+        application,
+        application.get_http_server(),
+        ApplicationContext(application.container),
+        Starlette(),
+        SimpleNamespace(container=object(), module_graph=object()),
+        SimpleNamespace(container=object()),
+        HalfDeclared(carries_module_graph=True),
+        HalfDeclared(carries_module_graph=False),
+        Slotted(),
+        object(),
+        None,
+    ]
+    judged = [*candidates, *reversed(candidates)]
+
+    verdicts = [_is_application(candidate) for candidate in judged]
+
+    assert verdicts == [isinstance(candidate, ApplicationRuntime) for candidate in judged]
+    assert verdicts[: len(candidates)] == [
+        True,
+        False,
+        True,
+        False,
+        True,
+        False,
+        True,
+        False,
+        True,
+        False,
+        False,
+    ]
 
 
 def test_a_global_component_only_a_factory_can_build_is_named_by_its_token() -> None:
@@ -459,6 +600,85 @@ def test_request_limits_are_read_back_from_the_application_they_were_set_on() ->
     assert request_limits_of(application.get_http_server()) is limits
 
 
+def test_settings_are_read_back_through_the_server_and_defaults_are_shared() -> None:
+    """Hooks and a writer come back from the server exactly as from the application.
+
+    What an application left undeclared comes back as one shared default, the same object
+    for every such application, so no request builds one for itself.
+    """
+
+    declared = create_app(_notes_module())
+    hooks = ObservabilityHooks(metrics=RecordingMetrics())
+    set_observability_hooks(declared, hooks)
+    set_response_serializer(declared, Envelope("notes"))
+    first, second = create_app(_notes_module()), create_app(_notes_module())
+
+    assert observability_hooks_of(declared.get_http_server()) is hooks
+    assert response_handler_of(declared.get_http_server()) is response_handler_of(declared)
+    assert response_handler_of(declared) is not response_handler_of(first)
+    assert response_handler_of(first) is response_handler_of(second.get_http_server())
+    assert request_limits_of(first) is request_limits_of(second.get_http_server())
+
+
+def test_what_an_application_declares_while_serving_governs_its_next_request() -> None:
+    """Limits, hooks and a serializer are read for each request, never kept from an earlier one.
+
+    The application serves requests before anything is declared on it, so a setting read
+    once and then kept would still be the default for the requests after the declarations.
+    """
+
+    metrics = RecordingMetrics()
+    application = create_app(_notes_module())
+
+    with AsgiTestClient(cast(Any, application)) as client:
+        assert client.get("/notes").json() == {"title": "a note"}
+        assert client.post("/notes", json={"title": "ada"}).status_code == 200
+
+        set_request_limits(application, RequestLimits(max_body_bytes=8))
+        set_observability_hooks(application, ObservabilityHooks(metrics=metrics))
+        set_response_serializer(application, Envelope("notes"))
+        served = client.get("/notes")
+        refused = client.post("/notes", json={"title": "ada"})
+
+    assert served.json() == {"envelope": "notes", "data": {"title": "a note"}}
+    assert refused.status_code == 413
+    assert metrics.statuses == ["200", "413"]
+
+
+def test_two_applications_in_one_process_are_served_under_their_own_settings() -> None:
+    """Two applications are objects of the same types, so no setting may be kept by type.
+
+    Requests alternate between the two while both are serving, which is what would show a
+    setting one application declared being served to the other.
+    """
+
+    first_metrics, second_metrics = RecordingMetrics(), RecordingMetrics()
+    first = create_app(
+        _notes_module(),
+        observability=ObservabilityHooks(metrics=first_metrics),
+        response_serializer=Envelope("first"),
+    )
+    second = create_app(
+        _notes_module(),
+        observability=ObservabilityHooks(metrics=second_metrics),
+        request_limits=RequestLimits(max_body_bytes=8),
+        response_serializer=Envelope("second"),
+    )
+
+    with (
+        AsgiTestClient(cast(Any, first)) as first_client,
+        AsgiTestClient(cast(Any, second)) as second_client,
+    ):
+        for _ in range(2):
+            assert first_client.get("/notes").json()["envelope"] == "first"
+            assert second_client.get("/notes").json()["envelope"] == "second"
+            assert first_client.post("/notes", json={"title": "ada"}).status_code == 200
+            assert second_client.post("/notes", json={"title": "ada"}).status_code == 413
+
+    assert first_metrics.statuses == ["200", "200", "200", "200"]
+    assert second_metrics.statuses == ["200", "413", "200", "413"]
+
+
 def test_the_limit_filter_answers_an_oversized_body_with_413() -> None:
     context = cast(Any, SimpleNamespace(request=SimpleNamespace(path="/uploads")))
     error = RequestBodyTooLargeError("The request body declares 9 bytes, over the 4 byte limit")
@@ -556,6 +776,159 @@ def test_the_request_entry_point_names_the_request_and_releases_the_name() -> No
     assert response.status_code == 200
     assert seen == ["req-42"]
     assert current_correlation_id() is None
+
+
+def test_no_request_runs_the_application_protocols_instance_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The application behind a request is found without asking ``ApplicationRuntime``.
+
+    The requests take every path through the runtime - a returned value, a body read under
+    the application's limits, a handler that fails and a middleware's refusal - after one
+    pass has served each of them once, and none of them may run the protocol's check.
+    """
+
+    protocol = type(ApplicationRuntime)
+    instancecheck = protocol.__instancecheck__
+    checked: list[object] = []
+
+    def counted(cls: type, instance: object) -> bool:
+        if cls is ApplicationRuntime:
+            checked.append(instance)
+        return instancecheck(cls, instance)
+
+    def serve_every_path(client: AsgiTestClient) -> list[int]:
+        return [
+            client.get("/notes").status_code,
+            client.post("/notes", json={"title": "ada"}).status_code,
+            client.get("/notes/broken").status_code,
+            client.get("/refused").status_code,
+        ]
+
+    with AsgiTestClient(cast(Any, create_app(_notes_module()))) as client:
+        assert serve_every_path(client) == [200, 200, 500, 400]
+        monkeypatch.setattr(protocol, "__instancecheck__", counted)
+        assert serve_every_path(client) == [200, 200, 500, 400]
+
+    assert checked == []
+
+
+def test_a_route_reached_through_the_entry_point_runs_inside_the_bindings_it_made(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The route uses the request and application the entry point bound, not a second binding.
+
+    The handler still finds the request it serves and the application it runs inside, and a
+    refusal rendered for a route that never ran is bound only by the entry point as well.
+    """
+
+    seen: list[tuple[bool, object]] = []
+
+    @Controller("/notes")
+    class NotesController:
+        @Get("/")
+        async def read(self, request: HttpRequest) -> dict[str, str]:
+            bound = application.container.scope_manager
+            seen.append((bound.active_request.get() is request, bound.active_application.get()))
+            return {"title": "a note"}
+
+    @Controller("/refused")
+    class RefusedController:
+        @Get("/")
+        async def read(self) -> dict[str, str]:
+            return {"status": "never reached"}
+
+    @Module(controllers=[NotesController, RefusedController])
+    class AppModule:
+        def configure(self, consumer: MiddlewareConsumer) -> None:
+            consumer.apply(RefuseEveryRequest).for_routes("/refused*")
+
+    application = create_app(AppModule)
+    scopes = application.container.scope_manager
+    push_request, push_application = scopes.push_request, scopes.push_application
+    pushed: list[str] = []
+
+    def counted_push_request(request: HttpRequest | None) -> object:
+        pushed.append("request")
+        return push_request(request)
+
+    def counted_push_application(running: object) -> object:
+        pushed.append("application")
+        return push_application(running)
+
+    with AsgiTestClient(cast(Any, application)) as client:
+        monkeypatch.setattr(scopes, "push_request", counted_push_request)
+        monkeypatch.setattr(scopes, "push_application", counted_push_application)
+        served = client.get("/notes").status_code
+        served_pushes = pushed.copy()
+        pushed.clear()
+        refused = client.get("/refused").status_code
+        refused_pushes = pushed.copy()
+
+    assert (served, served_pushes) == (200, ["request", "application"])
+    assert (refused, refused_pushes) == (400, ["request", "application"])
+    [(request_was_bound, running_application)] = seen
+    assert request_was_bound
+    assert running_application is application
+
+
+@pytest.mark.anyio
+async def test_a_route_run_directly_binds_the_request_and_application_it_is_given(
+    build_http_request: HttpRequestFactory,
+) -> None:
+    """A caller that runs a route itself still has its request and application bound for it.
+
+    So does a request other than the one bound further out: the route binds it for as long
+    as it runs and then leaves the outer binding as it found it.
+    """
+
+    seen: list[tuple[object, object]] = []
+
+    @Controller("/notes")
+    class NotesController:
+        @Get("/")
+        async def read(self) -> dict[str, str]:
+            bound = container.scope_manager
+            seen.append((bound.active_request.get(), bound.active_application.get()))
+            return {"title": "a note"}
+
+    @Module(controllers=[NotesController])
+    class AppModule:
+        pass
+
+    graph = build_module_graph(AppModule)
+    container = build_container(graph)
+    scopes = container.scope_manager
+    context = ApplicationContext(container)
+    factory = ControllerFactory(container)
+    [plan] = compile_execution_plans(compile_route_contracts(graph, container))
+    outer = build_http_request(path=plan.path)
+    inner = build_http_request(path=plan.path)
+
+    async def run(request: HttpRequest) -> HttpExecutionResult:
+        return await execute_http_route(
+            application_runtime=context,
+            container=container,
+            factory=factory,
+            execution_plan=plan,
+            request=request,
+        )
+
+    assert (await run(outer)).error is None
+    outer_token = scopes.push_request(outer)
+    try:
+        assert (await run(inner)).error is None
+        assert scopes.active_request.get() is outer
+    finally:
+        scopes.pop_request(outer_token)
+
+    [(first_request, first_application), (second_request, second_application)] = seen
+    assert first_request is outer
+    assert second_request is inner
+    assert first_application is context
+    assert second_application is context
+    assert scopes.active_request.get() is None
+    assert scopes.active_application.get() is None
 
 
 def _counting_resolutions(container: Container, resolutions: list[object]) -> None:
