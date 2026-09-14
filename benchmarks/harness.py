@@ -6,7 +6,9 @@ are not the subject of the measurement.
 
 The transport is the raw ASGI adapter and the event loop belongs to the driver, so what a
 measurement covers is the framework's own work - routing, injection, the pipeline,
-serialization - and not a web server, a socket, an HTTP parser or a thread hand-off.
+serialization - and not a web server, a socket or an HTTP parser, and the driver adds no
+thread hand-off of its own. A Litestar twin is served by the same driver through the same
+scope, so each framework pays the same for everything that is not its own work.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from bustan import create_app
 from bustan.adapters.asgi import AsgiAdapter
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Awaitable, Callable, Sequence
 
     from bustan.adapters.asgi.types import AsgiApp
     from bustan.app.application import Application
@@ -66,31 +68,51 @@ async def _receive() -> dict[str, Any]:
 
 
 class RequestDriver:
-    """Serves requests to one application on a private event loop, one at a time.
+    """Serves requests to one ASGI application on a private event loop, one at a time.
 
     Built as a context manager so that application startup and every request it serves
     run on the same loop, which is what a server would do and what anything the
-    application built during startup expects.
+    application built during startup expects. ``start`` is awaited on that loop before the
+    first request and ``stop`` after the last; an application with nothing to start is
+    given neither.
 
     ``send_request`` is the callable a benchmark times. It returns the response status so
     that a benchmark can assert the application actually served the route rather than
     timing an error path that happens to be fast.
     """
 
-    __slots__ = ("_application", "_asgi", "_loop", "_scope")
+    __slots__ = ("_asgi", "_loop", "_scope", "_start", "_stop")
 
-    def __init__(self, root_module: type[object], path: str) -> None:
-        self._application, self._asgi = build_application(root_module)
+    def __init__(
+        self,
+        asgi: AsgiApp,
+        path: str,
+        *,
+        start: Callable[[], Awaitable[object]] | None = None,
+        stop: Callable[[], Awaitable[object]] | None = None,
+    ) -> None:
+        self._asgi = asgi
         self._scope = build_scope(path)
+        self._start = start
+        self._stop = stop
         self._loop = asyncio.new_event_loop()
 
+    @classmethod
+    def for_module(cls, root_module: type[object], path: str) -> RequestDriver:
+        """Serve ``path`` from a Bustan application built around ``root_module``."""
+
+        application, asgi = build_application(root_module)
+        return cls(asgi, path, start=application.init, stop=application.close)
+
     def __enter__(self) -> RequestDriver:
-        self._loop.run_until_complete(self._application.init())
+        if self._start is not None:
+            self._loop.run_until_complete(self._start())
         return self
 
     def __exit__(self, *exception: object) -> None:
         try:
-            self._loop.run_until_complete(self._application.close())
+            if self._stop is not None:
+                self._loop.run_until_complete(self._stop())
         finally:
             self._loop.close()
 

@@ -15,14 +15,18 @@ from typing import Any
 
 import pytest
 from applications import (
+    HUNDRED_ITEMS_PATH,
     ITEM_PATH,
+    HundredItemsModule,
     PipelineModule,
     RequestScopedModule,
     ResolutionModule,
     SimpleModule,
+    SyncModule,
 )
 from calibration import CalibrationDriver
 from harness import RequestDriver, build_application
+from litestar_applications import HundredItemsTwin, SimpleTwin, SyncTwin, build_twin
 
 from bustan.app.application import Application
 
@@ -35,19 +39,49 @@ def calibration_driver() -> Iterator[CalibrationDriver]:
 
 @pytest.fixture
 def simple_route_driver() -> Iterator[RequestDriver]:
-    with RequestDriver(SimpleModule, ITEM_PATH) as driver:
+    with RequestDriver.for_module(SimpleModule, ITEM_PATH) as driver:
+        yield driver
+
+
+@pytest.fixture
+def sync_route_driver() -> Iterator[RequestDriver]:
+    with RequestDriver.for_module(SyncModule, ITEM_PATH) as driver:
+        yield driver
+
+
+@pytest.fixture
+def hundred_items_route_driver() -> Iterator[RequestDriver]:
+    with RequestDriver.for_module(HundredItemsModule, HUNDRED_ITEMS_PATH) as driver:
         yield driver
 
 
 @pytest.fixture
 def pipeline_route_driver() -> Iterator[RequestDriver]:
-    with RequestDriver(PipelineModule, ITEM_PATH) as driver:
+    with RequestDriver.for_module(PipelineModule, ITEM_PATH) as driver:
         yield driver
 
 
 @pytest.fixture
 def request_scoped_driver() -> Iterator[RequestDriver]:
-    with RequestDriver(RequestScopedModule, ITEM_PATH) as driver:
+    with RequestDriver.for_module(RequestScopedModule, ITEM_PATH) as driver:
+        yield driver
+
+
+@pytest.fixture
+def simple_route_litestar_driver() -> Iterator[RequestDriver]:
+    with RequestDriver(build_twin(SimpleTwin), ITEM_PATH) as driver:
+        yield driver
+
+
+@pytest.fixture
+def sync_route_litestar_driver() -> Iterator[RequestDriver]:
+    with RequestDriver(build_twin(SyncTwin), ITEM_PATH) as driver:
+        yield driver
+
+
+@pytest.fixture
+def hundred_items_route_litestar_driver() -> Iterator[RequestDriver]:
+    with RequestDriver(build_twin(HundredItemsTwin), HUNDRED_ITEMS_PATH) as driver:
         yield driver
 
 

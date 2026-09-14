@@ -12,6 +12,7 @@ description = "Throughput and latency benchmarks for the bustan framework"
 requires-python = ">=3.13"
 dependencies = [
     "bustan",
+    "litestar>=2.24.0,<3.0.0",
     "pytest>=9.0.3,<10.0.0",
     "pytest-benchmark>=5.1.0,<6.0.0",
 ]

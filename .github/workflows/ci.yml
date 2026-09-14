@@ -551,3 +551,56 @@ jobs:
           name: benchmark-results
           path: benchmarks/.benchmark-results/
           include-hidden-files: true
+
+  call-budget:
+    name: Request call budget
+    runs-on: ubuntu-latest
+
+    # Pinned like the benchmark job, so that this job and the command the benchmarks how-to
+    # gives count under the same conditions.
+    env:
+      PYTHONHASHSEED: "0"
+
+    defaults:
+      run:
+        working-directory: benchmarks
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      # Before any `uv run`, for the same reason the benchmark job checks it first.
+      - name: Check the benchmark lockfile is current
+        run: uv lock --check
+
+      - name: Install the benchmark project
+        run: uv sync --frozen
+
+      # Blocking, and with no threshold: a count does not depend on the runner, so a route
+      # one call over its budget is a change to the request path. pipefail, because a
+      # step's default shell does not set it and the pipeline's status would be tee's.
+      - name: Check each route against its call budget
+        run: |
+          set -o pipefail
+          uv run python call_budget.py | tee call-budget-report.txt
+
+      # On the run summary whether the check passed or failed, because a route under its
+      # budget passes and is only named there, and a gain nobody reads is not held.
+      - name: Summarise the call budget
+        if: always()
+        run: |
+          {
+            echo '### Request call budget'
+            echo
+            echo '```'
+            cat call-budget-report.txt 2>/dev/null || echo 'The check did not run. An earlier step failed.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
