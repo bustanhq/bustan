@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
+import itertools
 import json
+from collections import Counter
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -16,6 +19,7 @@ from bustan import (
     APP_PIPE,
     ApplicationContext,
     BadRequestException,
+    CallHandler,
     ClassProvider,
     Controller,
     DefaultResponseSerializer,
@@ -26,13 +30,17 @@ from bustan import (
     Guard,
     HttpResponse,
     Injectable,
+    Interceptor,
     Middleware,
     MiddlewareConsumer,
     Module,
     Pipe,
     Post,
     Scope,
+    UseFilters,
     UseGuards,
+    UseInterceptors,
+    UsePipes,
     create_app,
 )
 from bustan.contracts import ApplicationRuntime, HttpRequest
@@ -43,6 +51,7 @@ from bustan.kernel.module.graph import build_module_graph
 from bustan.observability.correlation import current_correlation_id
 from bustan.observability.observability import ObservabilityHooks
 from bustan.pipeline.filters import handle_exception
+from bustan.runtime import execution
 from bustan.runtime.compiler import GlobalPipelineProvider, compile_route_contracts
 from bustan.runtime.controller_factory import ControllerFactory
 from bustan.runtime.execution import (
@@ -67,7 +76,7 @@ from bustan.runtime.params import RequestBodyTooLargeError, RequestLimits
 from bustan.testing import AsgiTestClient
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from bustan.kernel.ioc.scopes import DurableKey
     from tests.conftest import HttpRequestFactory
@@ -560,6 +569,247 @@ def test_guards_run_before_the_controller_and_its_providers_are_constructed() ->
 
     assert response.status_code == 200
     assert events == ["guard", "provider", "controller", "handler"]
+
+
+# The stages a route may declare. The order test below turns each of them on and off.
+_STAGES = ("middleware", "guard", "pipe", "interceptor", "parameter", "filter")
+
+
+class _HandlerFailed(LookupError):
+    """Raised by a handler a test has asked to fail."""
+
+
+def _staged_module(stages: frozenset[str], events: list[str], *, fails: bool) -> type[object]:
+    """Return a module whose routes declare exactly *stages*, each recording itself as it runs.
+
+    ``GET /items/named`` binds one parameter and ``GET /items/plain`` binds none. Every
+    other stage is declared on the controller, so both routes carry it. The controller is
+    request-scoped, so building it is recorded for every request.
+    """
+
+    class RecordingMiddleware(Middleware):
+        async def use(self, request: HttpRequest, call_next: Any) -> Any:
+            events.append("middleware:before")
+            response = await call_next(request)
+            events.append("middleware:after")
+            return response
+
+    class RecordingGuard(Guard):
+        def can_activate(self, context: ExecutionContext) -> bool:
+            events.append("guard")
+            return True
+
+    class RecordingPipe(Pipe):
+        def transform(self, value: object, context: ExecutionContext) -> object:
+            events.append("pipe")
+            return value
+
+    class RecordingInterceptor(Interceptor):
+        async def intercept(self, context: ExecutionContext, next: CallHandler) -> object:
+            events.append("interceptor:before")
+            result = await next.handle()
+            events.append("interceptor:after")
+            return result
+
+    class RecordingFilter(ExceptionFilter):
+        exception_types = (_HandlerFailed,)
+
+        def catch(self, exc: Exception, context: ExecutionContext) -> object:
+            events.append("filter")
+            return HttpResponse.json({"handled": True}, status_code=418)
+
+    def answer() -> dict[str, str]:
+        events.append("handler")
+        if fails:
+            raise _HandlerFailed("the handler failed")
+        return {"status": "ok"}
+
+    @Controller("/items", scope=Scope.REQUEST)
+    class ItemsController:
+        def __init__(self) -> None:
+            events.append("controller")
+
+        @Get("/named")
+        async def named(self, name: str) -> dict[str, str]:
+            return answer()
+
+        @Get("/plain")
+        async def plain(self) -> dict[str, str]:
+            return answer()
+
+    declarations = {
+        "guard": UseGuards(RecordingGuard()),
+        "pipe": UsePipes(RecordingPipe()),
+        "interceptor": UseInterceptors(RecordingInterceptor()),
+        "filter": UseFilters(RecordingFilter()),
+    }
+    for stage, declare in declarations.items():
+        if stage in stages:
+            declare(ItemsController)
+
+    class StagedModule:
+        def configure(self, consumer: MiddlewareConsumer) -> None:
+            if "middleware" in stages:
+                consumer.apply(RecordingMiddleware).for_routes("/items*")
+
+    return Module(controllers=[ItemsController])(StagedModule)
+
+
+def _expected_events(stages: frozenset[str], *, fails: bool) -> list[str]:
+    """Return the order one request runs the stages of a route declaring *stages* in."""
+
+    events = ["middleware:before"] if "middleware" in stages else []
+    if "guard" in stages:
+        events.append("guard")
+    events.append("controller")
+    if {"pipe", "parameter"} <= stages:
+        events.append("pipe")
+    if "interceptor" in stages:
+        events.append("interceptor:before")
+    events.append("handler")
+    if fails and "filter" in stages:
+        events.append("filter")
+    if not fails and "interceptor" in stages:
+        events.append("interceptor:after")
+    if "middleware" in stages:
+        events.append("middleware:after")
+    return events
+
+
+def test_every_combination_of_declared_stages_runs_in_one_order() -> None:
+    """Whichever stages a route declares, the ones it declares run in the same order.
+
+    Every combination of middleware, a guard, a pipe, an interceptor, a bound parameter
+    and a filter is served once and failed once. A route leaving a stage out runs the
+    rest exactly as a route declaring all of them does, and a failure is answered by the
+    filter after the handler and before the middleware returns.
+    """
+
+    mismatches: list[tuple[list[str], bool, int, list[str]]] = []
+    for size in range(len(_STAGES) + 1):
+        for chosen in itertools.combinations(_STAGES, size):
+            stages = frozenset(chosen)
+            for fails in (False, True):
+                events: list[str] = []
+                path = "/items/named?name=ada" if "parameter" in stages else "/items/plain"
+                with AsgiTestClient(
+                    cast(Any, create_app(_staged_module(stages, events, fails=fails)))
+                ) as client:
+                    events.clear()
+                    status = client.get(path).status_code
+                expected_status = (418 if "filter" in stages else 500) if fails else 200
+                if (status, events) != (expected_status, _expected_events(stages, fails=fails)):
+                    mismatches.append((sorted(stages), fails, status, events))
+
+    assert mismatches == []
+
+
+def _counted(calls: Counter[str], name: str, function: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap *function* so that every call to it is tallied under *name*."""
+
+    if inspect.iscoroutinefunction(function):
+
+        async def counted_coroutine(*args: Any, **kwargs: Any) -> Any:
+            calls[name] += 1
+            return await function(*args, **kwargs)
+
+        return counted_coroutine
+
+    def counted(*args: Any, **kwargs: Any) -> Any:
+        calls[name] += 1
+        return function(*args, **kwargs)
+
+    return counted
+
+
+def test_a_route_enters_no_stage_it_does_not_declare(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stage a route does not declare costs its requests nothing, not even an empty pass.
+
+    The first route declares no middleware, guard, pipe, interceptor or parameter, so no
+    execution context is built for it and neither chain is entered. The second binds one
+    parameter that nothing transforms, so binding is the only stage it enters.
+    """
+
+    @Controller("/bare")
+    class BareController:
+        @Get("/")
+        async def read(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+    @Controller("/items")
+    class ItemsController:
+        @Get("/{item_id}")
+        async def read(self, item_id: int) -> dict[str, int]:
+            return {"item_id": item_id}
+
+    @Module(controllers=[BareController, ItemsController])
+    class AppModule:
+        pass
+
+    calls: Counter[str] = Counter()
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        # What a route builds for its first request is not what a request costs it.
+        assert client.get("/bare").status_code == 200
+        assert client.get("/items/7").status_code == 200
+        for name in (
+            "run_middleware_chain",
+            "run_guards",
+            "bind_handler_parameters",
+            "run_pipes",
+            "call_with_interceptors",
+        ):
+            monkeypatch.setattr(execution, name, _counted(calls, name, getattr(execution, name)))
+        monkeypatch.setattr(
+            ExecutionContext,
+            "__init__",
+            _counted(calls, "ExecutionContext", ExecutionContext.__init__),
+        )
+        monkeypatch.setattr(
+            ControllerFactory,
+            "resolve_pipeline_async",
+            _counted(calls, "resolve_pipeline_async", ControllerFactory.resolve_pipeline_async),
+        )
+        assert client.get("/bare").json() == {"status": "ok"}
+        bare = dict(calls)
+        calls.clear()
+        assert client.get("/items/7").json() == {"item_id": 7}
+        items = dict(calls)
+
+    assert bare == {}
+    assert items == {"bind_handler_parameters": 1}
+
+
+def test_a_failure_while_answering_a_failure_is_answered_on_a_route_with_no_middleware() -> None:
+    """What escapes a route with no middleware is still answered by the error model.
+
+    A filter that answers with a value no response can be written from fails while the
+    first failure is being answered, and that second failure leaves the route itself. The
+    entry point answers it, as it answers one escaping a middleware, rather than letting
+    it reach the transport.
+    """
+
+    class Unwritable(ExceptionFilter):
+        exception_types = (_HandlerFailed,)
+
+        def catch(self, exc: Exception, context: ExecutionContext) -> object:
+            return object()
+
+    @Controller("/broken")
+    class BrokenController:
+        @UseFilters(Unwritable())
+        @Get("/")
+        async def read(self) -> dict[str, str]:
+            raise _HandlerFailed("the handler failed")
+
+    @Module(controllers=[BrokenController])
+    class AppModule:
+        pass
+
+    with AsgiTestClient(cast(Any, create_app(AppModule))) as client:
+        response = client.get("/broken")
+
+    assert response.status_code == 500
+    assert response.headers["content-type"] == "application/problem+json"
 
 
 def test_request_limits_default_when_an_application_declares_none() -> None:
