@@ -10,10 +10,11 @@ from $package_name.app_service import AppService
 async def _check_module_wiring() -> None:
     compiled = await create_testing_module(AppModule).compile()
     try:
+        # The root controller is looked for among the routes rather than counted,
+        # because each module the project adds brings routes of its own.
         routes = compiled.snapshot_routes()
-        assert len(routes) == 1
-        assert routes[0]["controller"] == AppController.__name__
-        assert routes[0]["path"] == "/"
+        served = {(route["controller"], route["path"]) for route in routes}
+        assert (AppController.__name__, "/") in served
         assert isinstance(compiled.get(AppService), AppService)
     finally:
         await compiled.close()
