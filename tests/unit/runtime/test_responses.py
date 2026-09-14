@@ -2,13 +2,64 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import datetime
+import decimal
+import enum
+import json
+import math
+import uuid
+from collections import OrderedDict
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass
 
 import pytest
 from starlette.responses import PlainTextResponse
 
 from bustan.contracts import HttpResponse
 from bustan.runtime.responses import coerce_response
+
+
+def _dumps(value: object) -> bytes:
+    """Return the body ``HttpResponse.json`` writes for ``value``."""
+
+    return json.dumps(value, separators=(",", ":")).encode("utf-8")
+
+
+class Colour(enum.StrEnum):
+    RED = "red"
+
+
+class Priority(enum.IntEnum):
+    HIGH = 3
+
+
+class Permission(enum.IntFlag):
+    READ = 1
+    WRITE = 2
+
+
+class Weekday(enum.Enum):
+    MONDAY = "monday"
+
+
+class Label(str):
+    pass
+
+
+class Access(enum.Flag):
+    READ = 1
+    WRITE = 2
+
+
+class ReversedIteration(list[int]):
+    def __iter__(self) -> Iterator[int]:
+        return reversed(list(super().__iter__()))
+
+
+@dataclass(frozen=True, slots=True)
+class Point:
+    x: int
+    y: int
 
 
 def test_coerce_response_passes_a_transport_built_response_through_untouched() -> None:
@@ -50,3 +101,167 @@ def test_coerce_response_converts_none_to_no_content() -> None:
 def test_coerce_response_rejects_unsupported_values() -> None:
     with pytest.raises(TypeError, match="Unsupported handler return type"):
         coerce_response("ok")
+
+
+_NOT_ASCII_NAME = "Zo\N{LATIN SMALL LETTER E WITH DIAERESIS}"
+
+
+# Values whose body is the one json.dumps writes, whichever encoder wrote it: msgspec writes
+# the same text for some, and for the rest it raises or writes a character json.dumps
+# escapes, so json.dumps writes the body.
+_WRITTEN_AS_JSON_DUMPS_WRITES: dict[str, object] = {
+    "text that is not ASCII": {"name": _NOT_ASCII_NAME, "greeting": "\N{WAVING HAND SIGN}"},
+    "U+2028 and U+2029": [
+        "line\N{LINE SEPARATOR}separator",
+        "paragraph\N{PARAGRAPH SEPARATOR}separator",
+    ],
+    "control characters": ["".join(map(chr, range(0x20))) + "\x7f"],
+    "a lone surrogate": ["\ud800"],
+    "large integers": [2**63 - 1, 2**64, -(2**63) - 1, 10**30, -(10**30)],
+    "bool and None keys": {True: "yes", False: "no", None: "unknown"},
+    "int and float keys": {1: "one", -2: "minus two", 0.5: "a half"},
+    "enums": [Colour.RED, Priority.HIGH, Permission.READ | Permission.WRITE],
+    "enum keys": {Colour.RED: 1, Priority.HIGH: 2},
+    "a str subclass": [Label("label")],
+    "a str subclass key": {Label("label"): 1},
+    "floats msgspec spells as json.dumps does": [0.0, -0.0, 0.1, 1e15, 0.0001, 1e-10],
+    "nested containers": {"items": [{"id": 1, "tags": ("a", "b")}], "empty": {}},
+    "NaN beside text that is not ASCII": {"name": _NOT_ASCII_NAME, "ratio": math.nan},
+}
+
+
+@pytest.mark.parametrize(
+    "value",
+    list(_WRITTEN_AS_JSON_DUMPS_WRITES.values()),
+    ids=list(_WRITTEN_AS_JSON_DUMPS_WRITES),
+)
+def test_coerce_response_writes_the_bytes_json_dumps_writes(value: object) -> None:
+    response = coerce_response(value)
+
+    assert isinstance(response, HttpResponse)
+    assert response.body == _dumps(value)
+
+
+def test_coerce_response_writes_a_dataclass_as_json_dumps_writes_its_fields() -> None:
+    @dataclass(frozen=True, slots=True)
+    class Shipment:
+        origin: Point
+        crates: int
+        note: str
+
+    for shipment in (
+        Shipment(origin=Point(1, 2), crates=2**64, note="plain"),
+        Shipment(origin=Point(3, 4), crates=1, note="caf\N{LATIN SMALL LETTER E WITH ACUTE}\x7f"),
+    ):
+        response = coerce_response(shipment)
+
+        assert isinstance(response, HttpResponse)
+        assert response.body == _dumps(asdict(shipment))
+
+
+def test_coerce_response_writes_non_finite_floats_as_null_and_exponents_unpadded() -> None:
+    value = [math.nan, math.inf, -math.inf, 1e16, -2.5e300, 1e-7]
+
+    response = coerce_response(value)
+
+    assert isinstance(response, HttpResponse)
+    assert _dumps(value) == b"[NaN,Infinity,-Infinity,1e+16,-2.5e+300,1e-07]"
+    assert response.body == b"[null,null,null,1e16,-2.5e300,1e-7]"
+
+
+def test_coerce_response_writes_small_floats_non_finite_keys_and_containers_as_stored() -> None:
+    reordered = OrderedDict(first=1, second=2)
+    reordered.move_to_end("first")
+    value = {
+        "ratio": 1.5e-5,
+        "keyed": {math.inf: 1, -math.inf: 2, math.nan: 3},
+        "reordered": reordered,
+        "reversed": ReversedIteration([1, 2]),
+    }
+
+    response = coerce_response(value)
+
+    assert isinstance(response, HttpResponse)
+    assert _dumps(value) == (
+        b'{"ratio":1.5e-05,"keyed":{"Infinity":1,"-Infinity":2,"NaN":3},'
+        b'"reordered":{"second":2,"first":1},"reversed":[2,1]}'
+    )
+    assert response.body == (
+        b'{"ratio":0.000015,"keyed":{"inf":1,"-inf":2,"nan":3},'
+        b'"reordered":{"first":1,"second":2},"reversed":[1,2]}'
+    )
+
+
+# Values json.dumps refuses and msgspec encodes, each with the text msgspec writes for it.
+_ENCODED_ONLY_BY_MSGSPEC: dict[str, tuple[object, bytes]] = {
+    "datetime": (
+        datetime.datetime(
+            2026, 9, 14, 12, 0, 0, 500, tzinfo=datetime.timezone(datetime.timedelta(hours=2))
+        ),
+        b'"2026-09-14T12:00:00.000500+02:00"',
+    ),
+    "date": (datetime.date(2026, 9, 14), b'"2026-09-14"'),
+    "time": (datetime.time(12, 30), b'"12:30:00"'),
+    "timedelta": (datetime.timedelta(days=1, seconds=5), b'"P1DT5S"'),
+    "UUID": (uuid.UUID(int=1), b'"00000000-0000-0000-0000-000000000001"'),
+    "Decimal": (decimal.Decimal("1.50"), b'"1.50"'),
+    "bytes": (b"ab", b'"YWI="'),
+    "set": ({1}, b"[1]"),
+    "frozenset": (frozenset({2}), b"[2]"),
+    "Enum without a mixin": (Weekday.MONDAY, b'"monday"'),
+    "Flag": (Access.READ | Access.WRITE, b"3"),
+    "dataclass inside a list": (Point(1, 2), b'{"x":1,"y":2}'),
+}
+
+
+@pytest.mark.parametrize(
+    ("value", "encoded"),
+    list(_ENCODED_ONLY_BY_MSGSPEC.values()),
+    ids=list(_ENCODED_ONLY_BY_MSGSPEC),
+)
+def test_a_value_only_msgspec_encodes_is_written_the_same_beside_text_that_is_not_ascii(
+    value: object, encoded: bytes
+) -> None:
+    with pytest.raises(TypeError):
+        _dumps([value])
+
+    in_ascii = coerce_response([value, "Zoe"])
+    beside_not_ascii = coerce_response([value, _NOT_ASCII_NAME])
+
+    assert isinstance(in_ascii, HttpResponse)
+    assert isinstance(beside_not_ascii, HttpResponse)
+    assert in_ascii.body == b"[" + encoded + b',"Zoe"]'
+    assert beside_not_ascii.body == b"[" + encoded + b"," + _dumps(_NOT_ASCII_NAME) + b"]"
+
+
+def test_coerce_response_encodes_a_key_json_dumps_refuses_in_an_ascii_body() -> None:
+    value = {uuid.UUID(int=1): "first"}
+
+    with pytest.raises(TypeError):
+        _dumps(value)
+
+    response = coerce_response(value)
+
+    assert isinstance(response, HttpResponse)
+    assert response.body == b'{"00000000-0000-0000-0000-000000000001":"first"}'
+
+
+def test_coerce_response_builds_the_response_http_response_json_builds() -> None:
+    value = {"status": "ok", "count": 2}
+
+    response = coerce_response(value)
+    expected = HttpResponse.json(value)
+
+    assert isinstance(response, HttpResponse)
+    assert response.status_code == expected.status_code == 200
+    assert response.headers == expected.headers == {}
+    assert response.media_type == expected.media_type == "application/json"
+    assert response.body == expected.body
+    assert response.headers is not coerce_response(value).headers
+
+
+def test_a_response_built_with_http_response_json_keeps_the_bytes_json_dumps_writes() -> None:
+    response = HttpResponse.json([math.nan, 1e16, 1.5e-5, "\x7f"])
+
+    assert coerce_response(response) is response
+    assert response.body == b'[NaN,1e+16,1.5e-05,"\\u007f"]'

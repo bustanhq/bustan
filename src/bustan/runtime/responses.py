@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import asdict, is_dataclass
 from os import PathLike
 from pathlib import Path
 from typing import Protocol, cast
+
+import msgspec
 
 from ..contracts import (
     HttpFileResponse,
@@ -67,15 +70,37 @@ def coerce_response(value: object) -> HttpResponse | NativeHttpResponse:
         return HttpResponse.empty()
 
     if is_dataclass(value) and not isinstance(value, type):
-        return HttpResponse.json(asdict(value))
+        return _json_response(asdict(value))
 
     if isinstance(value, (dict, list)):
-        return HttpResponse.json(value)
+        return _json_response(value)
 
     if isinstance(value, NativeHttpResponse):
         return value
 
     raise TypeError(f"Unsupported handler return type: {type(value).__name__}")
+
+
+def _json_response(payload: object) -> HttpResponse:
+    # The response HttpResponse.json builds, with the body encoded by msgspec, which writes
+    # a hundred-item body several times faster than json.dumps. Where json.dumps writes a
+    # value, msgspec writes the same text except in three ways: NaN and Infinity become
+    # null, and a non-finite key becomes "nan", "inf" or "-inf"; a float takes msgspec's
+    # spelling, 1e16, 1e-7 or 0.000015 for 1e+16, 1e-07 or 1.5e-05; and a container is
+    # written in the order it stores its members, where json.dumps follows an OrderedDict
+    # reordered by move_to_end or a subclass overriding items() or __iter__. Otherwise
+    # msgspec raises, or writes a character past "~" that json.dumps escapes, and json.dumps
+    # writes the body instead. It asks msgspec for each value it cannot write itself, so a
+    # datetime, a UUID or any other value only msgspec encodes is written the same in either
+    # body, while a key json.dumps cannot write still raises.
+    try:
+        body = msgspec.json.encode(payload)
+    except Exception:
+        body = None
+    if body is None or not body.isascii() or b"\x7f" in body:
+        text = json.dumps(payload, separators=(",", ":"), default=msgspec.to_builtins)
+        body = text.encode("utf-8")
+    return HttpResponse(body=body, media_type="application/json")
 
 
 def _coerce_raw_response(value: object) -> CoercedResponse:
