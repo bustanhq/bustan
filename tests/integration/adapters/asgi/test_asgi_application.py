@@ -253,6 +253,47 @@ def test_the_adapter_answers_a_request_no_route_matched() -> None:
     assert wrong_method.headers["allow"] == "GET, HEAD"
 
 
+def test_a_parameterised_route_declared_before_a_static_route_it_matches_still_answers() -> None:
+    """Registration order decides between two routes that answer one path.
+
+    The parameterised handler is declared first, so it answers the path the static one
+    names as well. A static path that no pattern answers is served by its own route, and
+    its other spelling is still redirected there.
+    """
+
+    @Controller("/users")
+    class UsersController:
+        @Get("/{user_id}")
+        async def read_user(self, user_id: str) -> dict[str, str]:
+            return {"answered_by": "read_user", "user_id": user_id}
+
+        @Get("/me")
+        async def read_me(self) -> dict[str, str]:
+            return {"answered_by": "read_me"}
+
+    @Controller("/status")
+    class StatusController:
+        @Get("/")
+        async def read(self) -> dict[str, str]:
+            return {"answered_by": "status"}
+
+    @Module(controllers=[UsersController, StatusController])
+    class AppModule:
+        pass
+
+    _application, client = _build(AppModule)
+
+    with client:
+        me = client.get("/users/me")
+        status = client.get("/status")
+        redirected = client.get("/status/", follow_redirects=False)
+
+    assert me.json() == {"answered_by": "read_user", "user_id": "me"}
+    assert status.json() == {"answered_by": "status"}
+    assert redirected.status_code == 307
+    assert redirected.headers["location"] == "/status"
+
+
 def test_an_application_can_be_driven_without_ever_starting_its_lifespan() -> None:
     @Controller("/health")
     class HealthController:
