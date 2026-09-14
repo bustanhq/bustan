@@ -66,8 +66,8 @@ class SpanContext:
 class MetricsSink(Protocol):
     """Metric sink used by the observability hooks.
 
-    One call per finished request, carrying the route labels, the status it was
-    answered with, and how long it took in seconds.
+    One call per finished request a route handles, carrying the route labels, the
+    status it was answered with, and how long it took in seconds.
     """
 
     def record_request(self, *, labels: Mapping[str, str], duration_seconds: float) -> None:

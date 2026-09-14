@@ -1538,8 +1538,8 @@ Defined in `bustan.observability.observability`.
 
 Metric sink used by the observability hooks.
 
-One call per finished request, carrying the route labels, the status it was
-answered with, and how long it took in seconds.
+One call per finished request a route handles, carrying the route labels, the
+status it was answered with, and how long it took in seconds.
 
 ##### Methods
 
