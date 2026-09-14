@@ -3,6 +3,94 @@
 > [!IMPORTANT]
 > Versions `1.0.0` and `1.0.1` were unintentionally released during CI/CD setup. Treat them as early alpha orphans. The first production-ready, non-alpha release target remains `2.0.0`.
 
+## [2.0.3](https://github.com/bustanhq/bustan/compare/v2.0.2...v2.0.3) (2026-09-14)
+
+A patch that brings what a request costs the framework close to Litestar's, with no API change and
+no new command. Measured in-process on one machine, with the event loop turning after each request,
+on the raw ASGI adapter and against 2.0.2: a simple asynchronous route costs 13.1 us instead of
+40.2, a synchronous route 46.7 us of wall time instead of 106.8, and a route answering a 100-item
+JSON body 22.5 us instead of 73.1, where Litestar 2.24.0 costs 10.4, 45.2 and 16.9. On the
+Starlette adapter, the default, the simple route costs 14.3 us instead of 45.0.
+
+The time came out of work the request path repeated. A request no longer rediscovers its
+application through runtime-checkable Protocol checks for each setting it reads. Correlation reads
+its headers without scanning them and draws its ids from one read of the random source. A route
+keeps its settled pipeline between requests and enters only the stages it declares. The raw ASGI
+adapter decodes a request's headers once and answers a static path from a table, and the Starlette
+adapter serves each route as an ASGI app. Observability builds no labels, span context or timestamp
+for a request when neither a metrics sink nor a tracer is attached. On asyncio's loop, uvloop
+included, a synchronous handler reaches its thread through the loop rather than through anyio,
+under the same per-loop thread ceiling. A JSON result is encoded by msgspec, which joins the runtime
+dependencies as `msgspec>=0.21.1,<1`.
+
+**Four behaviour changes an upgrade from 2.0.2 can notice.** A synchronous handler that returns
+after `timeout_seconds` has passed is answered with the timeout, a 504 by default, where 2.0.2
+served the value it returned with a 200. A thread cannot be interrupted, so the answer still waits
+for the handler to return.
+
+On asyncio's loop, uvloop included, a synchronous handler no longer runs on an anyio worker thread.
+Inside one, `anyio.from_thread.run` and `anyio.from_thread.run_sync` raise `NoEventLoopError`
+unless they are passed the loop's token, taken on that loop with `anyio.lowlevel.current_token()`,
+and `anyio.from_thread.check_cancelled`, which accepts no token, always raises it there. On any
+other event loop the handler still runs on an anyio worker thread, and all three behave as before.
+
+A dict, list or dataclass a handler returns is encoded by msgspec where 2.0.2 used `json.dumps`, and
+an ASCII body is written differently in four ways. NaN, Infinity and -Infinity become `null`, where
+2.0.2 wrote `NaN`, `Infinity` and `-Infinity`, which are not JSON. A float is spelled as msgspec
+spells it: `1e16`, `1e-7` and `0.000015` where 2.0.2 wrote `1e+16`, `1e-07` and `1.5e-05`. A
+non-finite float key becomes `"nan"`, `"inf"` or `"-inf"`. A mapping whose iteration order differs
+from its storage order, such as an `OrderedDict` after `move_to_end`, is written in storage order.
+A body holding text that is not ASCII, or a value msgspec refuses such as a `None` key, is still
+written by `json.dumps` with 2.0.2's spellings, after msgspec has tried it, so the 100-item figure
+above holds for ASCII text. Every response built with `HttpResponse.json`, problem documents
+included, keeps `json.dumps`.
+
+Values `json.dumps` refused now encode, where 2.0.2 failed the request with a 500: a `datetime`,
+`date` or `time` as ISO 8601 text, a `timedelta` as an ISO 8601 duration, a `UUID` as its canonical
+text, a `Decimal` as a string, `bytes` as base64, a `set` or `frozenset` as an array, and an `Enum`
+member as its value. Each is written the same way beside text that is not ASCII.
+
+A project `bustan init` scaffolds declares `uvicorn[standard]`, which installs httptools, and
+uvloop where the platform supports it. Its controller's handler is `async def`, so a request no
+longer takes a worker thread, and its `start` script runs the application on uvloop's loop wherever
+uvloop imports. A `bustan` requirement naming some other extra now gains `starlette` beside it. A
+project scaffolded before 2.0.3 keeps its synchronous handler and its `start` script, because
+`bustan init` keeps a file it finds; running the command again adds `uvicorn[standard]` to the
+manifest and keeps every file.
+
+CI holds each benchmarked route to a call budget. `benchmarks/call_budget.json` records how many
+calls into `bustan` one request makes on each of the five routes, and a route that makes one more
+fails the build on any runner. The benchmark suite gains a synchronous route and a 100-item route,
+times both and the simple route beside Litestar twins, and prints each multiple without gating it.
+
+### Performance
+
+* nothing measures what a synchronous handler costs per request ([#258](https://github.com/bustanhq/bustan/issues/258))
+* two per-request allocations remain, and nothing has measured their cost ([#268](https://github.com/bustanhq/bustan/issues/268)), closed with its measurement: the placeholder response costs 0.224 us per request and the per-parameter execution context 0.691 us per parameter, and neither justifies changing what a pipeline component observes
+* measure the request path against Litestar and budget its calls ([#369](https://github.com/bustanhq/bustan/issues/369))
+* a scaffolded project serves without uvloop, httptools or async handlers ([#370](https://github.com/bustanhq/bustan/issues/370))
+* the scaffold's `start` script serves on asyncio's loop, not uvloop ([#372](https://github.com/bustanhq/bustan/issues/372))
+* every request rediscovers its application through Protocol checks ([#375](https://github.com/bustanhq/bustan/issues/375))
+* correlating a request scans every header and draws three random ids ([#376](https://github.com/bustanhq/bustan/issues/376))
+* a route's pipeline is resolved twice per request even when it is empty ([#377](https://github.com/bustanhq/bustan/issues/377))
+* the ASGI request rebuilds its headers and scans every route per request ([#378](https://github.com/bustanhq/bustan/issues/378))
+* observability builds labels and spans for requests nothing records ([#379](https://github.com/bustanhq/bustan/issues/379))
+* a route runs every pipeline stage whether or not it declares one ([#390](https://github.com/bustanhq/bustan/issues/390))
+* the Starlette adapter adds 7 us to every request over `AsgiAdapter` ([#391](https://github.com/bustanhq/bustan/issues/391))
+* the thread hop and the per-request deadline cost more than they need ([#401](https://github.com/bustanhq/bustan/issues/401))
+* a 100-item response spends two thirds of its time in `json.dumps` ([#403](https://github.com/bustanhq/bustan/issues/403))
+
+### Bug Fixes
+
+* an unrelated extra hides the transport one from `bustan init` ([#348](https://github.com/bustanhq/bustan/issues/348))
+
+### Documentation
+
+* two pages still say a request with no hooks is measured ([#384](https://github.com/bustanhq/bustan/issues/384))
+* the observability guide says every request is correlated and counted ([#389](https://github.com/bustanhq/bustan/issues/389))
+* the middleware tutorial says middleware runs before routing ([#393](https://github.com/bustanhq/bustan/issues/393))
+* the `MetricsSink` docstring says every finished request is recorded ([#395](https://github.com/bustanhq/bustan/issues/395))
+
 ## [2.0.2](https://github.com/bustanhq/bustan/compare/v2.0.1...v2.0.2) (2026-09-14)
 
 A patch: two repairs, no breaking change and no new command. Upgrading from 2.0.1 gets two things.
