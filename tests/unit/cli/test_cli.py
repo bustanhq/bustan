@@ -201,6 +201,48 @@ def test_init_writes_tests_pytest_can_collect_and_run(tmp_path: Path) -> None:
     assert not (tmp_path / "tests" / "hello_bustan" / "__init__.py").exists()
 
 
+# A feature module as a project adds one once it grows past the scaffold: a controller of
+# its own serving a route of its own, and nothing the scaffolded tests know about.
+_USERS_MODULE = """\
+from bustan import Controller, Get, Module
+
+
+@Controller("/users")
+class UsersController:
+    @Get("/")
+    def list_users(self) -> dict[str, str]:
+        return {"users": "none yet"}
+
+
+@Module(controllers=[UsersController])
+class UsersModule:
+    pass
+"""
+
+
+def test_scaffolded_tests_still_pass_once_the_project_adds_a_module(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "hello-bustan")
+    assert _init(tmp_path) == 0
+    package_directory = tmp_path / "src" / "hello_bustan"
+    (package_directory / "users_module.py").write_text(_USERS_MODULE, encoding="utf-8")
+
+    # Wired into the root module the scaffolder wrote, not into a replacement for it, so
+    # the generated tests run against everything that module declares plus one route. An
+    # edit that matched nothing would leave a fresh scaffold, which passes without proving
+    # anything, so the edit is checked to have landed.
+    root_module = package_directory / "app_module.py"
+    scaffolded = root_module.read_text(encoding="utf-8")
+    wired = scaffolded.replace("@Module(\n", "@Module(\n    imports=[UsersModule],\n")
+    assert wired != scaffolded, scaffolded
+    root_module.write_text(f"from .users_module import UsersModule\n{wired}", encoding="utf-8")
+
+    suite, output = _run_scaffolded_tests(tmp_path)
+
+    assert suite is not None, output
+    assert suite.get("errors") == "0", output
+    assert suite.get("failures") == "0", output
+
+
 def test_scaffolded_project_needs_no_reformatting(tmp_path: Path) -> None:
     _write_pyproject(tmp_path, "hello-bustan")
     old_cwd = os.getcwd()
