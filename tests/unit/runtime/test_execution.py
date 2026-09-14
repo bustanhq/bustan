@@ -5,12 +5,16 @@ from __future__ import annotations
 import inspect
 import itertools
 import json
+import threading
+import time
 from collections import Counter
+from contextvars import ContextVar
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import anyio
 import pytest
+from anyio import to_thread
 from starlette.applications import Starlette
 
 from bustan import (
@@ -77,6 +81,8 @@ from bustan.testing import AsgiTestClient
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+
+    from anyio import CapacityLimiter
 
     from bustan.kernel.ioc.scopes import DurableKey
     from tests.conftest import HttpRequestFactory
@@ -1026,6 +1032,104 @@ def test_the_request_entry_point_names_the_request_and_releases_the_name() -> No
     assert response.status_code == 200
     assert seen == ["req-42"]
     assert current_correlation_id() is None
+
+
+# Bound by a guard on the loop and read back by a synchronous handler on its thread.
+_BOUND_BY_A_GUARD: ContextVar[str | None] = ContextVar("bound_by_a_guard", default=None)
+
+
+def test_a_synchronous_handler_reads_the_context_variables_its_request_bound() -> None:
+    """A synchronous handler runs on a thread of its own, in a copy of its request's context.
+
+    The entry point binds the correlation id and the request, a guard binds a variable of its
+    own, and the handler reads all three on a thread other than the one the guard ran on.
+    """
+
+    guard_threads: list[int] = []
+    seen: list[tuple[str | None, str | None, bool, bool]] = []
+
+    class BindTenant(Guard):
+        def can_activate(self, context: ExecutionContext) -> bool:
+            guard_threads.append(threading.get_ident())
+            _BOUND_BY_A_GUARD.set("acme")
+            return True
+
+    @Controller("/orders")
+    class OrdersController:
+        @UseGuards(BindTenant())
+        @Get("/")
+        def read(self, request: HttpRequest) -> dict[str, str]:
+            bound = application.container.scope_manager
+            seen.append(
+                (
+                    _BOUND_BY_A_GUARD.get(),
+                    current_correlation_id(),
+                    bound.active_request.get() is request,
+                    threading.get_ident() in guard_threads,
+                )
+            )
+            return {"status": "ok"}
+
+    @Module(controllers=[OrdersController])
+    class AppModule:
+        pass
+
+    application = create_app(AppModule)
+    with AsgiTestClient(cast(Any, application)) as client:
+        response = client.get("/orders", headers={"x-correlation-id": "req-7"})
+
+    assert response.status_code == 200
+    assert seen == [("acme", "req-7", True, False)]
+
+
+def test_a_synchronous_handler_is_offloaded_through_anyio_on_any_other_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Off asyncio's loop a synchronous handler goes to anyio, and still meets its deadline.
+
+    trio is not installed, so another loop is stood in for by the one thing that tells the
+    offload it is not on asyncio's: asyncio finds no running task. The requests are still
+    served, through anyio, and the one whose handler outlasts the deadline is answered with
+    the timeout once the handler has returned.
+    """
+
+    offloaded: list[str] = []
+
+    class RecordingOffload:
+        current_default_thread_limiter = staticmethod(to_thread.current_default_thread_limiter)
+
+        @staticmethod
+        async def run_sync(function: Callable[[], object], *, limiter: CapacityLimiter) -> object:
+            offloaded.append("anyio")
+            return await to_thread.run_sync(function, limiter=limiter)
+
+    def no_running_task() -> None:
+        raise RuntimeError("no running event loop")
+
+    @Controller("/work")
+    class WorkController:
+        @Get("/quick")
+        def quick(self) -> dict[str, str]:
+            return {"status": "ok"}
+
+        @Get("/slow")
+        def slow(self) -> dict[str, str]:
+            time.sleep(0.2)
+            return {"status": "too late"}
+
+    @Module(controllers=[WorkController])
+    class AppModule:
+        pass
+
+    application = create_app(AppModule, request_limits=RequestLimits(timeout_seconds=0.1))
+    monkeypatch.setattr(execution, "to_thread", RecordingOffload)
+    monkeypatch.setattr(execution, "asyncio", SimpleNamespace(current_task=no_running_task))
+    with AsgiTestClient(cast(Any, application)) as client:
+        quick = client.get("/work/quick")
+        slow = client.get("/work/slow")
+
+    assert (quick.status_code, slow.status_code) == (200, 504)
+    assert offloaded == ["anyio", "anyio"]
 
 
 def test_no_request_runs_the_application_protocols_instance_check(
