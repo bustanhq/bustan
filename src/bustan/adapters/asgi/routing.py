@@ -137,15 +137,37 @@ Resolution = Matched | MethodMismatch | Redirect | Unmatched
 
 
 class AsgiRouter:
-    """The routes registered on one application, matched in registration order."""
+    """The routes registered on one application, matched in registration order.
+
+    A path with no parameters in it is looked up in a table before any pattern is tried, so
+    answering it costs the same wherever its route was registered. The table only ever
+    gives the answer registration order gives. A route is entered in it only while no route
+    registered ahead of it answers the same path by a pattern, and a request that none of
+    the table's routes accept is decided by trying every pattern in order, as if there were
+    no table.
+    """
 
     def __init__(self) -> None:
         self.routes: list[AsgiRoute] = []
+        # The routes with no parameters, keyed by their path, in registration order. Each
+        # list is the start of what trying every pattern in order finds for that path.
+        self._static: dict[str, list[AsgiRoute]] = {}
+        # Paths that a route matched by a pattern also answers. A route with no parameters
+        # registered for one of them after that route waits behind it, so it is kept out of
+        # the table, where it would be answered first.
+        self._shadowed: set[str] = set()
+        self._patterned: list[AsgiRoute] = []
 
     def add(self, routes: Iterable[AsgiRoute]) -> None:
-        """Append routes, which are matched after every route already registered."""
+        """Append routes, which are matched after every route already registered.
 
-        self.routes.extend(routes)
+        Routes are only ever appended, and that is what keeps the table true: a route added
+        at the end cannot come before any route the table already answers with.
+        """
+
+        for route in routes:
+            self.routes.append(route)
+            self._enter(route)
 
     def resolve(self, path: str, method: str) -> Resolution:
         """Decide which route, if any, serves one request.
@@ -156,6 +178,11 @@ class AsgiRouter:
         behalf.
         """
 
+        static = self._static.get(path)
+        if static is not None:
+            for route in static:
+                if method in route.methods:
+                    return Matched(route, {})
         allowed: set[str] = set()
         for route in self.routes:
             path_params = route.match(path)
@@ -170,6 +197,35 @@ class AsgiRouter:
         if alternate and any(route.match(alternate) is not None for route in self.routes):
             return Redirect(alternate)
         return Unmatched()
+
+    def _enter(self, route: AsgiRoute) -> None:
+        """Enter a newly registered route in the table, or note the paths it shadows."""
+
+        if not _is_static(route.path):
+            self._patterned.append(route)
+            self._shadowed.update(path for path in self._static if route.match(path) is not None)
+            return
+        path = route.path
+        if path in self._shadowed:
+            return
+        if path not in self._static and any(
+            earlier.match(path) is not None for earlier in self._patterned
+        ):
+            self._shadowed.add(path)
+            return
+        self._static.setdefault(path, []).append(route)
+
+
+def _is_static(path: str) -> bool:
+    """Say whether a route for *path* can be looked up by its path instead of matched.
+
+    A path ending in a newline cannot, although it has no parameter in it: a pattern's
+    ``$`` also matches just before a final newline, so the route written without that
+    newline answers the path too, and only trying the patterns in order says which of the
+    two comes first.
+    """
+
+    return _PARAMETER.search(path) is None and not path.endswith("\n")
 
 
 def build_asgi_routes(routes: Sequence[AdapterRoute]) -> list[AsgiRoute]:

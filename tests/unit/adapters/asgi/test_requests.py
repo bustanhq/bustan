@@ -111,6 +111,62 @@ def test_headers_are_looked_up_without_regard_to_case_and_keep_repeats(
     assert headers.getlist("x-tag") == ["one", "two"]
 
 
+def test_every_read_of_the_headers_is_handed_one_mapping_holding_what_arrived(
+    build_scope: ScopeFactory,
+) -> None:
+    """Several stages of one request read the headers, and each reads the same mapping.
+
+    What it holds is unchanged by being kept: every byte decoded as latin-1, the way a
+    header that is not ASCII has always been read here, under the name as it arrived.
+    """
+
+    raw = [
+        (b"Host", b"example.test"),
+        (b"X-Tag", b"one"),
+        (b"x-tag", b"caf\xc3\xa9"),
+        (b"cookie", b"theme=dark"),
+    ]
+    request = AsgiHttpRequest(build_scope(headers=raw), _empty_receive)
+
+    headers = request.headers
+
+    assert request.cookies == {"theme": "dark"}
+    assert request.url.host == "example.test"
+    assert request.headers is headers
+    assert headers == Headers(
+        (name.decode("latin-1"), value.decode("latin-1")) for name, value in raw
+    )
+    assert list(headers.items()) == [
+        ("Host", "example.test"),
+        ("X-Tag", "one, caf\xc3\xa9"),
+        ("cookie", "theme=dark"),
+    ]
+
+
+class _MethodName:
+    """A method name as a scope carries it, counting how often it is folded to upper case."""
+
+    def __init__(self, name: str) -> None:
+        self._name = name
+        self.folds = 0
+
+    def upper(self) -> str:
+        self.folds += 1
+        return self._name.upper()
+
+
+def test_the_method_is_folded_to_upper_case_once_however_often_it_is_read(
+    build_scope: ScopeFactory,
+) -> None:
+    method = _MethodName("post")
+    scope = build_scope()
+    scope["method"] = method
+    request = AsgiHttpRequest(scope, _empty_receive)
+
+    assert [request.method for _ in range(3)] == ["POST", "POST", "POST"]
+    assert method.folds == 1
+
+
 def test_query_parameters_keep_every_value_of_a_repeated_key(
     build_scope: ScopeFactory,
 ) -> None:
