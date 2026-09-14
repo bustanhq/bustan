@@ -31,6 +31,7 @@ Three ways, and they differ in who owns the process.
 
 ```python
 import asyncio
+import importlib
 
 from bustan import create_app
 
@@ -43,10 +44,18 @@ async def bootstrap(reload: bool = False) -> None:
 
 
 def main() -> None:
-    asyncio.run(bootstrap())
+    # listen() serves on the event loop that runs it, so the loop is chosen here.
+    # uvicorn's standard extra installs uvloop wherever the platform supports it, and
+    # its loop serves when it can be imported; asyncio's own loop serves otherwise. It
+    # is imported by name because a type checker rejects an import it cannot resolve.
+    try:
+        loop_factory = importlib.import_module("uvloop").new_event_loop
+    except ImportError:
+        loop_factory = None
+    asyncio.run(bootstrap(), loop_factory=loop_factory)
 ```
 
-This is what `bustan init` scaffolds, behind the project's `start` and `dev` scripts.
+This is what `bustan init` scaffolds behind the project's `start` script.
 `listen` runs the server until it is signalled or stopped, and handles `SIGINT` and
 `SIGTERM` itself. It is the only one of the three that gives you the drain sequence
 described below.

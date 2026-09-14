@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 
 import uvicorn
 from bustan import Application, create_app
@@ -19,7 +20,15 @@ async def bootstrap() -> None:
 
 
 def main() -> None:
-    asyncio.run(bootstrap())
+    # listen() serves on the event loop that runs it, so the loop is chosen here.
+    # uvicorn's standard extra installs uvloop wherever the platform supports it, and
+    # its loop serves when it can be imported; asyncio's own loop serves otherwise. It
+    # is imported by name because a type checker rejects an import it cannot resolve.
+    try:
+        loop_factory = importlib.import_module("uvloop").new_event_loop
+    except ImportError:
+        loop_factory = None
+    asyncio.run(bootstrap(), loop_factory=loop_factory)
 
 
 def dev() -> None:

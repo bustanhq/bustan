@@ -2,14 +2,18 @@
 
 import argparse
 import ast
+import asyncio
 import builtins
 import importlib
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
+import time
 import tomllib
+import urllib.request
 from pathlib import Path
 from string import Template
 from types import SimpleNamespace
@@ -1087,6 +1091,120 @@ def test_scaffolded_dev_script_hands_the_server_an_import_string(tmp_path: Path)
         if isinstance(node, ast.Call) and ast.unparse(node.func).endswith("listen")
     )
     assert "reload" not in {keyword.arg for keyword in listen.keywords}
+
+
+# A scaffolded project's `start` script calls `main()`, so this calls it the same way, in a
+# process of its own. The first argument is the port and the second says whether uvloop can
+# be imported. The stand-in keeps uvloop's own names, a `Loop` built by `new_event_loop`, so
+# the loop a handler names reads as it does under the real package. Binding the name to None
+# instead makes the import fail whatever the developing environment has installed. The
+# scaffolded service is made to name the loop it is called on, so the request still passes
+# through the scaffolded controller, module and entry point exactly as they were written.
+_START_NAMING_ITS_LOOP = """\
+import asyncio
+import sys
+import types
+
+if sys.argv[2] == "installed":
+
+    class Loop(asyncio.SelectorEventLoop):
+        __module__ = "uvloop"
+
+    stand_in = types.ModuleType("uvloop")
+    stand_in.Loop = Loop
+    stand_in.new_event_loop = Loop
+    sys.modules["uvloop"] = stand_in
+else:
+    sys.modules["uvloop"] = None
+
+from hello_bustan import app_main
+from hello_bustan.app_service import AppService
+
+
+def name_the_running_loop(self):
+    loop = type(asyncio.get_running_loop())
+    return {"loop": f"{loop.__module__}.{loop.__qualname__}"}
+
+
+AppService.get_message = name_the_running_loop
+app_main.PORT = int(sys.argv[1])
+app_main.main()
+"""
+
+# Long enough for a slow machine to import the application and bind its port, short enough
+# that a server which never starts fails the test rather than hanging the run.
+_SERVER_PATIENCE_SECONDS = 15.0
+
+
+def _free_port() -> int:
+    """Return a loopback port nothing is listening on."""
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def _accepts_connections(port: int) -> bool:
+    """Return whether something is listening on this loopback port."""
+
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def _loop_scaffolded_start_serves_on(project: Path, *, uvloop_installed: bool) -> str:
+    """Serve a scaffolded project through `main()` and return the loop its handler ran on."""
+
+    port = _free_port()
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = str(project / "src")
+    uvloop = "installed" if uvloop_installed else "absent"
+    process = subprocess.Popen(
+        [sys.executable, "-c", _START_NAMING_ITS_LOOP, str(port), uvloop],
+        cwd=project,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + _SERVER_PATIENCE_SECONDS
+        while process.poll() is None and time.monotonic() < deadline:
+            if _accepts_connections(port):
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5) as response:
+                    return json.load(response)["loop"]
+            time.sleep(0.05)
+    finally:
+        process.terminate()
+        try:
+            output, _ = process.communicate(timeout=_SERVER_PATIENCE_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            output, _ = process.communicate()
+    raise AssertionError(f"main() never began serving on port {port}:\n{output}")
+
+
+def test_scaffolded_start_serves_on_uvloop_where_it_is_installed(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "hello-bustan")
+    assert _init(tmp_path) == 0
+
+    # `listen()` serves on whichever loop is running it, and uvicorn picks uvloop only for a
+    # loop it creates itself, so `main()` is the one place the scaffold can ask for uvloop.
+    assert _loop_scaffolded_start_serves_on(tmp_path, uvloop_installed=True) == "uvloop.Loop"
+
+
+def test_scaffolded_start_serves_on_asyncios_loop_without_uvloop(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "hello-bustan")
+    assert _init(tmp_path) == 0
+
+    # uvicorn's standard extra leaves uvloop out on platforms uvloop does not support, and a
+    # project may drop the extra, so a missing uvloop has to leave asyncio's own loop serving.
+    default_loop = asyncio.new_event_loop()
+    default_loop.close()
+    default = f"{type(default_loop).__module__}.{type(default_loop).__qualname__}"
+    assert _loop_scaffolded_start_serves_on(tmp_path, uvloop_installed=False) == default
 
 
 def test_main_prints_help_when_no_command_is_supplied(capsys) -> None:
