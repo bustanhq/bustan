@@ -59,10 +59,12 @@ def create_app(
 
     ``observability`` attaches a metrics backend and a tracer. Build it with the sinks
     you have - ``ObservabilityHooks(metrics=..., tracer=...)`` - and every request this
-    application serves is counted, timed and traced through them. The hooks belong to
-    this application rather than to the process, so a second application in the same
-    process can report somewhere else. Left out, requests are still correlated, but
-    none is measured, because nothing is listening.
+    application's routes handle is measured and counted through the metrics sink, and
+    traced when it is sampled. With a tracer and no metrics sink, an unsampled request
+    is neither measured nor counted. The hooks belong to this application rather than
+    to the process, so a second application in the same process can report somewhere
+    else. Left out, the requests its routes handle are still correlated, but none is
+    measured, because nothing is listening.
 
     ``request_limits`` chooses what this application will spend on a single request:
     how many body bytes it reads, how many uploaded parts it binds, how long it runs
