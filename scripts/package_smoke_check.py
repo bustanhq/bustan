@@ -188,6 +188,7 @@ def _verify_scaffold(smoke_root: Path) -> None:
         'start = "smoke_app.app_main:main"',
         'dev = "smoke_app.app_main:dev"',
         "bustan[starlette]",
+        "uvicorn[standard]",
     )
     missing_entries = [entry for entry in expected_entries if entry not in pyproject_text]
     if missing_entries:

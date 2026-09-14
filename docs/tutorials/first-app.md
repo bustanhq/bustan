@@ -40,7 +40,7 @@ Kept:
 Pass --force to replace a file that was kept.
 ```
 
-Three lines after that name what it changed in `pyproject.toml`, and the last three are the next
+Four lines after that name what it changed in `pyproject.toml`, and the last three are the next
 steps: `uv sync`, `uv run start`, `uv run dev`.
 
 **Kept means kept.** `uv init` has already written `README.md` and `src/my_app/__init__.py`, and a
@@ -52,9 +52,12 @@ included.
 
 **The manifest declares what the project needs.** Serving HTTP needs a transport, so the plain
 `bustan` requirement `uv add` wrote becomes `bustan[starlette]`, the extra for the adapter this
-package ships. Testing, linting and type-checking need tools, so a `dev` dependency group gains
-pytest, ruff and ty. Running the app needs entry points, so `[project.scripts]` gains `start` and
-`dev`. None of that is a second install step: the one `uv sync` above installs all of it.
+package ships. That adapter serves through uvicorn, which parses HTTP in pure Python unless its
+`standard` extra is installed, so `uvicorn[standard]` joins the dependencies, bringing httptools
+and, where the platform supports it, uvloop. Testing, linting and type-checking need tools, so a
+`dev` dependency group gains pytest, ruff and ty. Running the app needs entry points, so
+`[project.scripts]` gains `start` and `dev`. None of that is a second install step: the one
+`uv sync` above installs all of it.
 
 Generated layout:
 
@@ -112,8 +115,10 @@ class AppController:
     def __init__(self, app_service: AppService):
         self.app_service = app_service
 
+    # Async because it never blocks. A handler that does blocking work, such as a
+    # synchronous database call, is written with def and run on a worker thread.
     @Get("/")
-    def get_message(self) -> dict[str, str]:
+    async def get_message(self) -> dict[str, str]:
         return self.app_service.get_message()
 ```
 

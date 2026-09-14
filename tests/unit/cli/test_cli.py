@@ -120,9 +120,10 @@ def test_scaffolded_readme_gives_the_same_commands_init_prints(tmp_path: Path, c
 
 # Installed alongside a scaffolded project's tests to hide the HTTP client packages
 # that starlette's own test client needs. A scaffolded manifest declares bustan with the
-# transport extra, plus ty, ruff and pytest, and nothing else, so a generated test that
-# only passes because one of these happens to be present in the developing environment
-# is not passing for a user, and this plugin makes that difference visible here.
+# transport extra and uvicorn with its standard extra, plus ty, ruff and pytest, and
+# nothing else, so a generated test that only passes because one of these happens to be
+# present in the developing environment is not passing for a user, and this plugin makes
+# that difference visible here.
 _NO_HTTP_CLIENT_PLUGIN = """\
 import sys
 from importlib.abc import MetaPathFinder
@@ -241,6 +242,27 @@ def test_scaffolded_tests_still_pass_once_the_project_adds_a_module(tmp_path: Pa
     assert suite is not None, output
     assert suite.get("errors") == "0", output
     assert suite.get("failures") == "0", output
+
+
+def test_scaffolded_handler_is_async_and_its_service_stays_synchronous(tmp_path: Path) -> None:
+    _write_pyproject(tmp_path, "hello-bustan")
+    assert _init(tmp_path) == 0
+    package_directory = tmp_path / "src" / "hello_bustan"
+
+    def get_message(module: str) -> ast.AST:
+        source = (package_directory / module).read_text(encoding="utf-8")
+        return next(
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            and node.name == "get_message"
+        )
+
+    # A plain def handler is handed to a worker thread on every request, which buys
+    # nothing for a handler that never blocks, so the generated one is asynchronous. The
+    # service it calls does no waiting of its own and stays an ordinary method.
+    assert isinstance(get_message("app_controller.py"), ast.AsyncFunctionDef)
+    assert isinstance(get_message("app_service.py"), ast.FunctionDef)
 
 
 def test_scaffolded_project_needs_no_reformatting(tmp_path: Path) -> None:
@@ -440,17 +462,24 @@ def test_init_adds_scripts_to_pyproject(tmp_path: Path) -> None:
     assert manifest["project"]["scripts"]["dev"] == "my_app.app_main:dev"
 
 
-def test_init_declares_the_transport_so_one_sync_can_serve(tmp_path: Path) -> None:
+def test_init_declares_the_transport_and_uvicorn_standard_so_one_sync_can_serve(
+    tmp_path: Path, capsys
+) -> None:
     _write_pyproject(tmp_path, "my-app")
 
     assert _init(tmp_path) == 0
 
     manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
-    # Serving needs a transport. The manifest declares the extra rather than the command
-    # printing a second install step, so the `uv sync` it does print is enough to serve.
-    declared = manifest["project"]["dependencies"]
-    assert [entry for entry in declared if entry.startswith("bustan[starlette]>=")] == declared
+    # Serving needs a transport, and the transport's server parses HTTP with h11 unless
+    # its standard extra is installed. The manifest declares both rather than the command
+    # printing a second install step, so the `uv sync` it does print installs them.
+    transport, server = manifest["project"]["dependencies"]
+    assert transport.startswith("bustan[starlette]>=")
+    assert server == "uvicorn[standard]"
     assert manifest["dependency-groups"]["dev"] == ["pytest", "ruff", "ty"]
+    stdout = capsys.readouterr().out
+    assert f"Manifest: declared {transport} under [project] dependencies." in stdout
+    assert "Manifest: declared uvicorn[standard] under [project] dependencies." in stdout
 
 
 def test_init_adds_the_transport_extra_to_a_declared_bustan(tmp_path: Path) -> None:
@@ -465,7 +494,7 @@ def test_init_adds_the_transport_extra_to_a_declared_bustan(tmp_path: Path) -> N
     # init runs. It names no extra and so installs no web server, while the scaffolded
     # entry point imports one, which left the project unable to start at all.
     manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
-    assert manifest["project"]["dependencies"] == ["bustan[starlette]"]
+    assert manifest["project"]["dependencies"] == ["uvicorn[standard]", "bustan[starlette]"]
 
 
 def test_init_keeps_the_bound_on_a_declared_bustan_it_adds_the_extra_to(tmp_path: Path) -> None:
@@ -480,23 +509,107 @@ def test_init_keeps_the_bound_on_a_declared_bustan_it_adds_the_extra_to(tmp_path
     # Only the extra is added. The bound is the project's own, and so is every other
     # entry and the order they are written in.
     manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
-    assert manifest["project"]["dependencies"] == ["httpx", "bustan[starlette]>=2.0.0"]
+    assert manifest["project"]["dependencies"] == [
+        "uvicorn[standard]",
+        "httpx",
+        "bustan[starlette]>=2.0.0",
+    ]
 
 
-def test_init_leaves_a_requirement_that_already_names_an_extra_alone(tmp_path: Path) -> None:
+@pytest.mark.parametrize("requirement", ["bustan[starlette]", "bustan[starlette]>=2.0.0"])
+def test_init_leaves_a_requirement_that_already_names_the_transport_extra_alone(
+    tmp_path: Path, requirement: str
+) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "demo-app"\ndependencies = ["bustan[starlette]>=2.0.0"]\n\n'
+        f'[project]\nname = "demo-app"\ndependencies = ["{requirement}"]\n\n' + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+
+    assert _init(tmp_path) == 0
+
+    # A project that asked for the extra asked for it deliberately, bound included, so
+    # the entry stands as written, byte for byte, while the entries beside it are added.
+    content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'dependencies = ["uvicorn[standard]", "{requirement}"]\n' in content
+    manifest = tomllib.loads(content)
+    assert manifest["project"]["scripts"]["start"] == "demo_app.app_main:main"
+
+
+def test_init_adds_the_transport_extra_beside_an_unrelated_one(tmp_path: Path) -> None:
+    requirement = "Bustan[otel]>=2.0.0 ; python_version >= '3.13'"
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo-app"\n'
+        f'dependencies = [\n    "httpx",\n    "{requirement}",\n    "uvicorn[standard]",\n]\n\n'
         + _BUILD_SYSTEM,
         encoding="utf-8",
     )
 
     assert _init(tmp_path) == 0
 
-    # A project that asked for an extra asked for it deliberately, bound included, so
-    # the entry stands as written even while the scripts beside it are added.
+    # Some other extra declares no transport, so leaving the entry as written would
+    # scaffold a project that reports success and cannot serve. The transport extra joins
+    # the one already named, and the bound, the marker, the casing of the name and the
+    # entry's place in the array all stay as the project wrote them.
     manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
-    assert manifest["project"]["dependencies"] == ["bustan[starlette]>=2.0.0"]
-    assert manifest["project"]["scripts"]["start"] == "demo_app.app_main:main"
+    assert manifest["project"]["dependencies"] == [
+        "httpx",
+        "Bustan[otel,starlette]>=2.0.0 ; python_version >= '3.13'",
+        "uvicorn[standard]",
+    ]
+
+
+def test_init_adds_the_standard_extra_to_a_declared_uvicorn_keeping_its_bound(
+    tmp_path: Path, capsys
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo-app"\ndependencies = ["bustan", "uvicorn>=0.34"]\n\n'
+        + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+
+    assert _init(tmp_path) == 0
+
+    # A uvicorn the project already declares is the one it keeps: the extra is added to
+    # that entry, the way the transport extra is added to a plain bustan, and the bound
+    # stays the project's own.
+    manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
+    assert manifest["project"]["dependencies"] == ["bustan[starlette]", "uvicorn[standard]>=0.34"]
+    stdout = capsys.readouterr().out
+    assert "Manifest: changed the declared bustan to bustan[starlette], so " in stdout
+    assert "Manifest: changed the declared uvicorn>=0.34 to uvicorn[standard]>=0.34, so " in stdout
+
+
+@pytest.mark.parametrize(
+    "dependencies",
+    [
+        '["bustan[starlette]", "uvicorn[standard]"]',
+        '["bustan[starlette]>=2.0.0", "uvicorn[standard]"]',
+        '["bustan[starlette]>=2.0.0", "uvicorn[standard]>=0.34"]',
+    ],
+)
+def test_init_leaves_requirements_already_naming_their_extras_byte_identical(
+    tmp_path: Path, dependencies: str
+) -> None:
+    manifest_path = tmp_path / "pyproject.toml"
+    manifest_path.write_text(
+        f'[project]\nname = "demo-app"\ndependencies = {dependencies}\n\n'
+        '[project.scripts]\nstart = "demo_app.app_main:main"\ndev = "demo_app.app_main:dev"\n\n'
+        '[dependency-groups]\ndev = ["pytest", "ruff", "ty"]\n\n' + _BUILD_SYSTEM,
+        encoding="utf-8",
+    )
+    before = manifest_path.read_bytes()
+
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        report = scaffold_service.init_project(package_name="demo_app")
+    finally:
+        os.chdir(old_cwd)
+
+    # Both extras are already asked for, with a bound or without one, so there is nothing
+    # to add and the manifest is not written at all.
+    assert report.manifest_edits == ()
+    assert manifest_path.read_bytes() == before
 
 
 def test_package_name_from_pyproject_returns_none_for_blank_project_name(tmp_path: Path) -> None:
@@ -544,7 +657,8 @@ def test_init_project_preserves_existing_readme_and_scripts_section(tmp_path: Pa
 
 def test_init_project_does_not_duplicate_existing_start_and_dev_scripts(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "demo-app"\ndependencies = ["bustan[starlette]"]\n\n'
+        '[project]\nname = "demo-app"\n'
+        'dependencies = ["bustan[starlette]", "uvicorn[standard]"]\n\n'
         '[project.scripts]\nstart = "demo_app:serve"\ndev = "demo_app:watch"\n\n'
         "[dependency-groups]\ndev = []\n\n" + _BUILD_SYSTEM,
         encoding="utf-8",
@@ -706,10 +820,11 @@ def test_init_adds_the_transport_to_a_multi_line_dependency_array(tmp_path: Path
 
     content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
     manifest = tomllib.loads(content)
-    assert manifest["project"]["dependencies"][1:] == ["httpx>=0.28"]
-    # The entry joins the array the way the entries already in it are written, so the
+    assert manifest["project"]["dependencies"][1:] == ["uvicorn[standard]", "httpx>=0.28"]
+    # The entries join the array the way the entries already in it are written, so the
     # manifest a project keeps does not come back reflowed by a command it ran once.
     assert '  "bustan[starlette]>=' in content
+    assert '  "uvicorn[standard]",\n' in content
 
 
 def test_init_declares_dependencies_where_the_manifest_names_none(tmp_path: Path) -> None:
@@ -722,7 +837,7 @@ def test_init_declares_dependencies_where_the_manifest_names_none(tmp_path: Path
 
     lines = (tmp_path / "pyproject.toml").read_text(encoding="utf-8").splitlines()
     manifest = tomllib.loads("\n".join(lines))
-    assert len(manifest["project"]["dependencies"]) == 1
+    assert len(manifest["project"]["dependencies"]) == 2
     # The key joins the table it belongs to rather than displacing the first key in it.
     assert lines.index('version = "0.1.0"') < lines.index(
         next(line for line in lines if line.startswith("dependencies = "))
@@ -786,7 +901,8 @@ def test_init_refuses_a_manifest_whose_scripts_are_an_inline_table(tmp_path: Pat
 
 def test_init_adds_only_what_the_manifest_is_missing(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "demo-app"\ndependencies = ["bustan[starlette]==2.0.0"]\n\n'
+        '[project]\nname = "demo-app"\n'
+        'dependencies = ["bustan[starlette]==2.0.0", "uvicorn[standard]"]\n\n'
         '[project.scripts]\nstart = "demo_app.app_main:main"\n'
         'dev = "demo_app.app_main:dev"\n\n' + _BUILD_SYSTEM,
         encoding="utf-8",
@@ -802,7 +918,7 @@ def test_init_adds_only_what_the_manifest_is_missing(tmp_path: Path) -> None:
     assert report.manifest_edits == ("added pytest, ruff, ty to the 'dev' dependency group",)
     # The pin the project chose is the project's, so it survives untouched.
     manifest = tomllib.loads((tmp_path / "pyproject.toml").read_text(encoding="utf-8"))
-    assert manifest["project"]["dependencies"] == ["bustan[starlette]==2.0.0"]
+    assert manifest["project"]["dependencies"] == ["bustan[starlette]==2.0.0", "uvicorn[standard]"]
 
 
 def test_init_declares_dependencies_in_a_project_table_that_ends_the_file(
@@ -816,7 +932,7 @@ def test_init_declares_dependencies_in_a_project_table_that_ends_the_file(
     assert _init(tmp_path) == 0
 
     lines = (tmp_path / "pyproject.toml").read_text(encoding="utf-8").splitlines()
-    assert len(tomllib.loads("\n".join(lines))["project"]["dependencies"]) == 1
+    assert len(tomllib.loads("\n".join(lines))["project"]["dependencies"]) == 2
     assert lines.index('version = "0.1.0"') < lines.index(
         next(line for line in lines if line.startswith("dependencies = "))
     )
@@ -854,35 +970,43 @@ def test_init_refuses_a_manifest_whose_dependencies_are_not_an_array(
 
 
 def test_scaffold_refuses_an_insertion_point_it_cannot_locate() -> None:
-    add = scaffold_service._with_transport_requirement
-    requirement = "bustan[starlette]>=2.0.0"
+    add = scaffold_service._with_requirements_added
+    requirements = ["bustan[starlette]>=2.0.0"]
 
     # A [project] table declared as root dotted keys has no header line to insert under,
     # and a dependencies line holding no array open has nowhere in it to insert. Neither
     # is guessed at: an insertion point that cannot be located refuses the edit.
-    assert add('project.name = "demo-app"\n', requirement, {"dependencies": []}) is None
-    assert add('[project]\nname = "demo-app"\n', requirement, {"dependencies": []}) is None
-    assert add("[project]\ndependencies = truncated\n", requirement, {"dependencies": []}) is None
+    assert add('project.name = "demo-app"\n', requirements, {"dependencies": []}) is None
+    assert add('[project]\nname = "demo-app"\n', requirements, {"dependencies": []}) is None
+    assert add("[project]\ndependencies = truncated\n", requirements, {"dependencies": []}) is None
 
     # Rewriting a declared requirement needs the same two landmarks, for the same reason.
-    edit = scaffold_service._TransportEdit(requirement="bustan[starlette]", replaces="bustan")
-    rewrite = scaffold_service._with_transport_extra
+    edit = scaffold_service._RequirementEdit("bustan[starlette]", "a transport", replaces="bustan")
+    rewrite = scaffold_service._with_requirement_rewritten
     assert rewrite('project.name = "demo-app"\n', edit) is None
     assert rewrite('[project]\nname = "demo-app"\n', edit) is None
 
 
 def test_scaffold_adds_the_extra_after_the_distribution_name() -> None:
-    with_extra = scaffold_service._requirement_with_extra
-    declares = scaffold_service._declares_an_extra
+    def with_extra(requirement: str) -> str:
+        return scaffold_service._requirement_with_extra(requirement, "starlette")
+
+    def names_extra(requirement: str) -> bool:
+        return scaffold_service._names_extra(requirement, "starlette")
 
     assert with_extra("bustan") == "bustan[starlette]"
     assert with_extra("bustan>=2.0.0") == "bustan[starlette]>=2.0.0"
     # A marker is part of the requirement, not part of the name, so it stays behind the
     # extra rather than being treated as one.
     assert with_extra('bustan ; python_version >= "3.13"').startswith("bustan[starlette] ;")
-    assert not declares('bustan ; extra == "x"')
-    assert declares("bustan[starlette]")
-    assert declares("bustan [starlette]")
+    # Beside extras the entry already names, the new one ends that same list.
+    assert with_extra("bustan[otel]>=2.0.0") == "bustan[otel,starlette]>=2.0.0"
+    assert with_extra("bustan [otel, tracing]") == "bustan [otel, tracing,starlette]"
+    assert with_extra("bustan[]") == "bustan[starlette]"
+    assert not names_extra('bustan ; extra == "starlette"')
+    assert not names_extra("bustan[otel]")
+    assert names_extra("bustan[starlette]")
+    assert names_extra("bustan [otel, Starlette]")
     # A string naming nothing is returned untouched rather than corrupted.
     assert with_extra("") == ""
 
@@ -918,6 +1042,9 @@ def test_init_help_says_what_is_written_and_that_existing_files_are_kept(capsys)
     assert "tests/<package>" in help_text
     assert "kept" in help_text
     assert "--force" in help_text
+    # What the manifest gains is named, so the server's extra is named with it.
+    assert "bustan[starlette]" in help_text
+    assert "uvicorn[standard]" in help_text
 
 
 def test_init_app_main_contains_bootstrap_and_scripts(tmp_path: Path) -> None:
