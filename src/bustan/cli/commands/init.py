@@ -15,10 +15,11 @@ from ..services.scaffold import ScaffoldReport, init_project, package_name_from_
 _DESCRIPTION = (
     "Write a Bustan application into the uv project in the current directory: an entry "
     "point, a root module, a controller and a service under src/<package>, a test for "
-    "each of them under tests/<package>, and a README. The manifest gains the transport "
-    "dependency, a 'dev' dependency group and the 'start' and 'dev' scripts wherever it "
-    "does not already declare them. A file already there is kept and reported rather than "
-    "overwritten, so running this again destroys no work; pass --force to replace it."
+    "each of them under tests/<package>, and a README. The manifest gains "
+    "bustan[starlette], uvicorn[standard], a 'dev' dependency group and the 'start' and "
+    "'dev' scripts wherever it does not already declare them. A file already there is kept "
+    "and reported rather than overwritten, so running this again destroys no work; pass "
+    "--force to replace it."
 )
 
 _NO_PROJECT_MESSAGE = (

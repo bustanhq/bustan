@@ -56,8 +56,9 @@ uv run dev
 
 `bustan init` writes a runnable application and its tests, and declares in `pyproject.toml`
 everything the project needs to serve, test, lint and type-check: the transport extra on the
-`bustan` requirement, the `start` and `dev` scripts, and a `dev` group holding pytest, ruff and ty.
-That is why one `uv sync` follows it and no second install step does. Call the app:
+`bustan` requirement, `uvicorn[standard]`, the `start` and `dev` scripts, and a `dev` group holding
+pytest, ruff and ty. That is why one `uv sync` follows it and no second install step does. Call the
+app:
 
 ```bash
 curl http://127.0.0.1:3000/

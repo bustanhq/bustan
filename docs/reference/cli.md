@@ -181,14 +181,19 @@ replaces a file that would have been kept.
 
 ### What it edits in the manifest
 
-Three entries, each added only where the manifest does not already declare it, and each
+Four entries, each added only where the manifest does not already declare it, and each
 reported by name in the output:
 
 - **The transport.** `bustan[starlette]` under `[project]` dependencies, because the entry
   point serves on the adapter this package ships and installing `bustan` installs no web
-  server. A manifest already naming `bustan` without an extra has the extra added to that
-  entry and keeps whatever bound it carries; one that already asks for an extra is left
-  exactly as it stands.
+  server. A manifest already naming `bustan` has the extra added to that entry, beside any
+  other extra it names, and keeps whatever bound it carries; one that already asks for
+  `starlette` is left exactly as it stands.
+- **The server's standard extra.** `uvicorn[standard]` under `[project]` dependencies. The
+  transport extra installs uvicorn without it, and uvicorn then parses HTTP with h11 in pure
+  Python; the extra brings httptools, and uvloop where the platform supports it. A manifest
+  already naming `uvicorn` has the extra added to that entry in the same way and keeps its
+  bound; one that already asks for `standard` is left exactly as it stands.
 - **The scripts.** `start` and `dev` under `[project.scripts]`, both naming the entry point
   module rather than the package, so a package whose `__init__.py` came from somewhere else
   keeps whatever `main` it already meant.
@@ -218,6 +223,7 @@ Kept:
   src/my_service/__init__.py
 Pass --force to replace a file that was kept.
 Manifest: declared bustan[starlette]>=2.0.0 under [project] dependencies.
+Manifest: declared uvicorn[standard] under [project] dependencies.
 Manifest: added the 'start' and 'dev' script entries under [project.scripts].
 Manifest: added pytest, ruff, ty to the 'dev' dependency group.
 Next steps:
@@ -227,7 +233,8 @@ Next steps:
 ```
 
 The bound on the transport requirement is the version of the `bustan` that ran, so a run
-prints whatever is installed rather than the figure above.
+prints whatever is installed rather than the figure above. `uvicorn[standard]` is written
+without one, because the transport extra already bounds uvicorn.
 
 One `uv sync` is the whole install. The manifest now declares what a scaffolded project
 needs in order to serve, test, lint and type-check, so there is no dependency to add by

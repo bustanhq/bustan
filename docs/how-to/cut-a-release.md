@@ -169,10 +169,10 @@ step of the run.
    something that has to be remembered. That workflow can still be run on its own with a
    version number, which is how a version published before this chain existed is checked.
    The job installs the package, scaffolds a project with `bustan init`, and then runs
-   that project's own tests with only the dependencies the scaffolder prints, read back
-   out of its own output rather than restated in the workflow, so a scaffolded project
-   that cannot run its tests fails the release rather than passing on the files being
-   present.
+   that project's own tests with only the dependencies the scaffolder declared, read back
+   out of the manifest it wrote rather than restated in the workflow, so a scaffolded
+   project that cannot run its tests fails the release rather than passing on the files
+   being present.
 2. If manual verification is needed, install the package in a clean environment.
 3. Verify `import bustan` succeeds.
 4. Verify `bustan --help` succeeds.
@@ -182,13 +182,13 @@ step of the run.
    files. `app_main.py` is the module both scripts name, so a project without it carries two
    script entries that resolve to nothing.
 7. Run exactly what the scaffolder printed under `Next steps` and nothing else. Today the
-   install is one line, `uv sync`, because the scaffolder declares the transport extra and
-   the `dev` tool group in the manifest rather than leaving them to be added; the two lines
-   printed after it, `uv run start` and `uv run dev`, run the application rather than
-   install anything. Then run `uv run pytest` in the scaffolded project, and every one of
-   its generated tests must pass. Read the lines off the scaffolder's own output rather than
-   from here: installing anything it did not name makes the run prove less than a new user's
-   first run does, and leaving out something it did name makes the run fail for a reason no
-   user would hit.
+   install is one line, `uv sync`, because the scaffolder declares the transport extra,
+   `uvicorn[standard]` and the `dev` tool group in the manifest rather than leaving them to
+   be added; the two lines printed after it, `uv run start` and `uv run dev`, run the
+   application rather than install anything. Then run `uv run pytest` in the scaffolded
+   project, and every one of its generated tests must pass. Read the lines off the
+   scaffolder's own output rather than from here: installing anything it did not name makes
+   the run prove less than a new user's first run does, and leaving out something it did
+   name makes the run fail for a reason no user would hit.
 8. Publish or verify the GitHub release notes.
 9. Announce the release if it is externally relevant.
