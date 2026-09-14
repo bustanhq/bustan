@@ -72,7 +72,9 @@ class AsgiHttpRequest:
 
     __slots__ = (
         "_body",
+        "_headers",
         "_max_body_bytes",
+        "_method",
         "_path_params",
         "_receive",
         "_scope",
@@ -90,9 +92,13 @@ class AsgiHttpRequest:
     ) -> None:
         self._scope = scope
         self._receive = receive
+        # A request's method does not change while it is served, and the router and every
+        # stage that decides by method read it, so it is folded to upper case once, here.
+        self._method = cast(str, scope.get("method", "GET")).upper()
         self._path_params: dict[str, str] = dict(path_params or {})
         self._max_body_bytes = max_body_bytes
         self._body: bytes | None = None
+        self._headers: Headers | None = None
         self._state: RequestState | None = None
         self._streamed = False
 
@@ -118,7 +124,7 @@ class AsgiHttpRequest:
     def method(self) -> str:
         """The HTTP method, upper case."""
 
-        return cast(str, self._scope.get("method", "GET")).upper()
+        return self._method
 
     @property
     def path(self) -> str:
@@ -141,10 +147,20 @@ class AsgiHttpRequest:
 
     @property
     def headers(self) -> Headers:
-        """The request headers, looked up without regard to case."""
+        """The request headers, looked up without regard to case.
 
-        raw = cast("list[tuple[bytes, bytes]]", self._scope.get("headers", []))
-        return Headers((name.decode("latin-1"), value.decode("latin-1")) for name, value in raw)
+        The mapping is built the first time it is read, and every later read is handed that
+        same one, because several stages of one request read the headers and each would
+        otherwise decode all of them again. Handing one mapping to every reader is safe
+        because a ``Headers`` cannot be changed once it is built.
+        """
+
+        if self._headers is None:
+            raw = cast("list[tuple[bytes, bytes]]", self._scope.get("headers", []))
+            self._headers = Headers(
+                (name.decode("latin-1"), value.decode("latin-1")) for name, value in raw
+            )
+        return self._headers
 
     @property
     def query_params(self) -> QueryParams:
