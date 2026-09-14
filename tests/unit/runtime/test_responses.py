@@ -9,6 +9,7 @@ import json
 import math
 import uuid
 from collections import OrderedDict
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 
 import pytest
@@ -43,6 +44,16 @@ class Weekday(enum.Enum):
 
 class Label(str):
     pass
+
+
+class Access(enum.Flag):
+    READ = 1
+    WRITE = 2
+
+
+class ReversedIteration(list[int]):
+    def __iter__(self) -> Iterator[int]:
+        return reversed(list(super().__iter__()))
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,59 +172,78 @@ def test_coerce_response_writes_non_finite_floats_as_null_and_exponents_unpadded
 def test_coerce_response_writes_small_floats_non_finite_keys_and_containers_as_stored() -> None:
     reordered = OrderedDict(first=1, second=2)
     reordered.move_to_end("first")
-    value = {"ratio": 1.5e-5, "keyed": {math.inf: 1, math.nan: 2}, "reordered": reordered}
+    value = {
+        "ratio": 1.5e-5,
+        "keyed": {math.inf: 1, -math.inf: 2, math.nan: 3},
+        "reordered": reordered,
+        "reversed": ReversedIteration([1, 2]),
+    }
 
     response = coerce_response(value)
 
     assert isinstance(response, HttpResponse)
     assert _dumps(value) == (
-        b'{"ratio":1.5e-05,"keyed":{"Infinity":1,"NaN":2},"reordered":{"second":2,"first":1}}'
+        b'{"ratio":1.5e-05,"keyed":{"Infinity":1,"-Infinity":2,"NaN":3},'
+        b'"reordered":{"second":2,"first":1},"reversed":[2,1]}'
     )
     assert response.body == (
-        b'{"ratio":0.000015,"keyed":{"inf":1,"nan":2},"reordered":{"first":1,"second":2}}'
+        b'{"ratio":0.000015,"keyed":{"inf":1,"-inf":2,"nan":3},'
+        b'"reordered":{"first":1,"second":2},"reversed":[1,2]}'
     )
+
+
+# Values json.dumps refuses and msgspec encodes, each with the text msgspec writes for it.
+_ENCODED_ONLY_BY_MSGSPEC: dict[str, tuple[object, bytes]] = {
+    "datetime": (
+        datetime.datetime(
+            2026, 9, 14, 12, 0, 0, 500, tzinfo=datetime.timezone(datetime.timedelta(hours=2))
+        ),
+        b'"2026-09-14T12:00:00.000500+02:00"',
+    ),
+    "date": (datetime.date(2026, 9, 14), b'"2026-09-14"'),
+    "time": (datetime.time(12, 30), b'"12:30:00"'),
+    "timedelta": (datetime.timedelta(days=1, seconds=5), b'"P1DT5S"'),
+    "UUID": (uuid.UUID(int=1), b'"00000000-0000-0000-0000-000000000001"'),
+    "Decimal": (decimal.Decimal("1.50"), b'"1.50"'),
+    "bytes": (b"ab", b'"YWI="'),
+    "set": ({1}, b"[1]"),
+    "frozenset": (frozenset({2}), b"[2]"),
+    "Enum without a mixin": (Weekday.MONDAY, b'"monday"'),
+    "Flag": (Access.READ | Access.WRITE, b"3"),
+    "dataclass inside a list": (Point(1, 2), b'{"x":1,"y":2}'),
+}
 
 
 @pytest.mark.parametrize(
-    ("value", "body"),
-    [
-        (
-            [datetime.datetime(2026, 9, 14, 12, 30, tzinfo=datetime.UTC)],
-            b'["2026-09-14T12:30:00Z"]',
-        ),
-        ([datetime.date(2026, 9, 14)], b'["2026-09-14"]'),
-        ([datetime.time(12, 30)], b'["12:30:00"]'),
-        ([datetime.timedelta(days=1, seconds=5)], b'["P1DT5S"]'),
-        ([uuid.UUID(int=1)], b'["00000000-0000-0000-0000-000000000001"]'),
-        ([decimal.Decimal("1.50")], b'["1.50"]'),
-        ([b"ab"], b'["YWI="]'),
-        ([{1}, frozenset({2})], b"[[1],[2]]"),
-        ([Weekday.MONDAY], b'["monday"]'),
-        ([Point(1, 2)], b'[{"x":1,"y":2}]'),
-        ({uuid.UUID(int=1): "first"}, b'{"00000000-0000-0000-0000-000000000001":"first"}'),
-    ],
-    ids=[
-        "datetime",
-        "date",
-        "time",
-        "timedelta",
-        "UUID",
-        "Decimal",
-        "bytes",
-        "set and frozenset",
-        "Enum without a mixin",
-        "dataclass inside a list",
-        "UUID key",
-    ],
+    ("value", "encoded"),
+    list(_ENCODED_ONLY_BY_MSGSPEC.values()),
+    ids=list(_ENCODED_ONLY_BY_MSGSPEC),
 )
-def test_coerce_response_encodes_values_json_dumps_refuses(value: object, body: bytes) -> None:
+def test_a_value_only_msgspec_encodes_is_written_the_same_beside_text_that_is_not_ascii(
+    value: object, encoded: bytes
+) -> None:
+    with pytest.raises(TypeError):
+        _dumps([value])
+
+    in_ascii = coerce_response([value, "Zoe"])
+    beside_not_ascii = coerce_response([value, _NOT_ASCII_NAME])
+
+    assert isinstance(in_ascii, HttpResponse)
+    assert isinstance(beside_not_ascii, HttpResponse)
+    assert in_ascii.body == b"[" + encoded + b',"Zoe"]'
+    assert beside_not_ascii.body == b"[" + encoded + b"," + _dumps(_NOT_ASCII_NAME) + b"]"
+
+
+def test_coerce_response_encodes_a_key_json_dumps_refuses_in_an_ascii_body() -> None:
+    value = {uuid.UUID(int=1): "first"}
+
     with pytest.raises(TypeError):
         _dumps(value)
 
     response = coerce_response(value)
 
     assert isinstance(response, HttpResponse)
-    assert response.body == body
+    assert response.body == b'{"00000000-0000-0000-0000-000000000001":"first"}'
 
 
 def test_coerce_response_builds_the_response_http_response_json_builds() -> None:
