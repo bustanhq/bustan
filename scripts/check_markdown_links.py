@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from collections import Counter
+from functools import cache
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -22,20 +24,36 @@ EXCLUDED_DIRECTORIES = {
 FENCE_RE = re.compile(r"^(```|~~~)")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
+# A badge is an image inside a link, `[![alt](image)](target)`. Link text ends at the
+# image's own `]`, which would take the image's source for the link's target, so every
+# image is replaced before links are read; an image is not a link, and is not checked.
+# Nesting the image pattern inside the link pattern instead backtracks exponentially.
+IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+# An HTML image names its URL in a `src` or `srcset` attribute, which no Markdown link
+# syntax reaches. Only the first candidate of a `srcset` is read.
+HTML_SOURCE_RE = re.compile(r"\b(?:srcset|src)=\"\s*([^\"\s]+)")
 # A README shipped to a package index is read on that index's host, so its links to
 # repository documents are absolute. Those URLs address files in this repository, so they
 # are checked like relative targets: the path is resolved from the repository root and the
-# anchor validated against the target file's headings.
+# anchor validated against the target file's headings. A raw URL addresses the same file as
+# the blob URL with its ref and path, and is checked the same way.
 #
-# The ref is deliberately opaque. `actions/checkout@v7` fetches neither tags nor history,
-# so a CI checkout cannot resolve `v2.0.0` and a check that tried would pass locally and
-# fail there. Only the path and the anchor are validated.
+# The ref is never resolved. `actions/checkout@v7` fetches neither tags nor history, so a
+# CI checkout cannot resolve `v2.0.0` and a check that tried would pass locally and fail
+# there. The path and the anchor are validated against the working tree.
+#
+# The README's refs are still read. The package index renders that file from the
+# distribution a release uploads, so each of its URLs must name the tag the release is cut
+# from: `v` followed by the version pyproject.toml packages, the only tag the publish
+# workflow accepts for that version. Any other document may pin any ref, a historical tag
+# included.
 #
 # A trailing link title is tolerated and ignored, as normalize_target does for a relative
 # target: a URL the pattern does not match is skipped, and a skip is what this check exists
 # to avoid.
-REPO_BLOB_URL_RE = re.compile(
-    r"^https://github\.com/bustanhq/bustan/blob/[^/\s]+/(\S+?)(?:\s+\S.*)?$"
+REPO_URL_RE = re.compile(
+    r"^https://(?:github\.com/bustanhq/bustan/blob|raw\.githubusercontent\.com/bustanhq/bustan)"
+    r"/([^/\s]+)/(\S+?)(?:\s+\S.*)?$"
 )
 
 
@@ -110,10 +128,13 @@ def validate_markdown_target(
         return None
 
     base_directory = source_file.parent
-    blob_url_target = repo_blob_url_target(normalized_target)
-    if blob_url_target is not None:
+    repo_url = repo_url_target(normalized_target)
+    if repo_url is not None:
+        ref, normalized_target = repo_url
+        ref_error = readme_ref_error(source_file, ref)
+        if ref_error is not None:
+            return format_error(source_file, line_number, target, ref_error)
         base_directory = REPO_ROOT
-        normalized_target = blob_url_target
     elif normalized_target.startswith(("http://", "https://", "mailto:")):
         return None
 
@@ -132,19 +153,43 @@ def validate_markdown_target(
     return None
 
 
-def repo_blob_url_target(target: str) -> str | None:
-    """Return the repository-root-relative target a self-referential blob URL addresses.
+def repo_url_target(target: str) -> tuple[str, str] | None:
+    """Return the ref and the repository-root-relative target a self-referential URL names.
 
     A URL naming another host, another repository, or this repository without a path
     below the ref is not repo-local, and returns None so the caller skips it.
     """
 
-    match = REPO_BLOB_URL_RE.match(target)
+    match = REPO_URL_RE.match(target)
     if match is None:
         return None
 
-    repo_target = match.group(1)
-    return None if repo_target.startswith("#") else repo_target
+    ref, repo_target = match.group(1), match.group(2)
+    return None if repo_target.startswith("#") else (ref, repo_target)
+
+
+def readme_ref_error(source_file: Path, ref: str) -> str | None:
+    """Return why a self-referential URL's ref cannot stand in source_file, or None if it can.
+
+    Only the repository's README is held to a ref: the tag of the version pyproject.toml
+    packages.
+    """
+
+    if source_file != REPO_ROOT / "README.md":
+        return None
+
+    packaged_ref = f"v{packaged_version(REPO_ROOT)}"
+    if ref == packaged_ref:
+        return None
+    return f"ref {ref} is not {packaged_ref}, the version pyproject.toml packages"
+
+
+@cache
+def packaged_version(repo_root: Path) -> str:
+    """Return the version the pyproject.toml under repo_root packages."""
+
+    pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
+    return str(pyproject["project"]["version"])
 
 
 def collect_heading_anchors(markdown_file: Path) -> set[str]:
@@ -197,9 +242,12 @@ def strip_fenced_code_blocks(text: str) -> str:
 
 
 def extract_markdown_targets(line: str) -> list[str]:
-    """Extract raw Markdown link targets from one line."""
+    """Extract raw Markdown link targets and HTML image source URLs from one line."""
 
-    return [match.group(1).strip() for match in LINK_RE.finditer(line)]
+    links = LINK_RE.finditer(IMAGE_RE.sub("image", line))
+    targets = [match.group(1).strip() for match in links]
+    targets.extend(match.group(1) for match in HTML_SOURCE_RE.finditer(line))
+    return targets
 
 
 def normalize_target(target: str) -> str:

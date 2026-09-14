@@ -41,7 +41,7 @@ issues carry the classification labels the notes are grouped by.
 3. Read the `Dependency audit (advisory)` job's run summary in
    [ci.yml](../../.github/workflows/ci.yml) on the commit being tagged, rather than repeating
    the audit by hand. The job audits the resolved dependency set of the root project and of
-   all six examples from their committed lockfiles, and it does not block, so a green checks
+   all seven examples from their committed lockfiles, and it does not block, so a green checks
    list is not the answer: the summary is. A finding names the advisory, the package, the
    installed version and the fixed version. Raise the floor past the fixed version and
    relock in its own pull request, then re-read the summary; do not tag over a finding.
@@ -76,11 +76,23 @@ issues carry the classification labels the notes are grouped by.
    done
    ```
 
-   The release commit therefore carries the changelog entry, `pyproject.toml`, and one
-   changed lockfile per project. `git status --porcelain` after the commands above lists
-   exactly what the commit must contain; a lockfile left out of it is a file left stale.
+   The release commit therefore carries the changelog entry, `pyproject.toml`, one changed
+   lockfile per project, and the README whose pins step 3 moves. `git status --porcelain`
+   once they have moved lists exactly what the commit must contain; a lockfile left out of
+   it is a file left stale.
 
-3. Know which lockfile can fail a publish, because they are not equal. The root
+3. Move the README's pinned links to the new version. The package index renders
+   [README.md](../../README.md) from the uploaded distribution, so every URL in it that
+   addresses this repository, the two wordmark image URLs included, names the tag the
+   release is pushed as, `v<version>`. With the version set, run
+   `uv run python scripts/check_markdown_links.py`: it fails every README URL naming any
+   other ref, and prints that ref beside the version `pyproject.toml` packages, so its
+   output is the list of pins left to move. The release pull request stays red until that
+   list is empty. The tag does not exist until after the merge, and that fails nothing,
+   because no check fetches a link. Only the README is held to the version; another
+   document may pin an older tag.
+
+4. Know which lockfile can fail a publish, because they are not equal. The root
    [uv.lock](../../uv.lock) is the only one
    [publish.yml](../../.github/workflows/publish.yml) reads: `uv lock --check` is its first gate
    after checkout, ahead of the tag-versus-version comparison and ahead of the build. A stale
@@ -99,7 +111,7 @@ issues carry the classification labels the notes are grouped by.
    `scripts/run_examples.py` rewrites the example lockfiles when it runs, so a stale one also
    hands the next person an unexplained dirty tree.
 
-4. Land all of it on `main` through a pull request, reviewed like any other change. This is
+5. Land all of it on `main` through a pull request, reviewed like any other change. This is
    the last point at which the release is reviewable, because a tag is not.
 
 ## Publishing Prerequisites

@@ -52,6 +52,7 @@ def test_check_markdown_links_accepts_self_referential_blob_url(
 ) -> None:
     checker = _load_checker_module()
     monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    _write_pyproject(tmp_path, "2.0.0")
     docs_directory = tmp_path / "docs"
     docs_directory.mkdir()
 
@@ -74,6 +75,7 @@ def test_check_markdown_links_reports_missing_blob_url_path(
 ) -> None:
     checker = _load_checker_module()
     monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    _write_pyproject(tmp_path, "2.0.0")
 
     readme_path = tmp_path / "README.md"
     readme_path.write_text(
@@ -93,6 +95,7 @@ def test_check_markdown_links_reports_missing_blob_url_anchor(
 ) -> None:
     checker = _load_checker_module()
     monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    _write_pyproject(tmp_path, "2.0.0")
     docs_directory = tmp_path / "docs"
     docs_directory.mkdir()
 
@@ -134,6 +137,7 @@ def test_check_markdown_links_checks_a_blob_url_carrying_a_title(
 ) -> None:
     checker = _load_checker_module()
     monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    _write_pyproject(tmp_path, "2.0.0")
 
     readme_path = tmp_path / "README.md"
     readme_path.write_text(
@@ -146,6 +150,101 @@ def test_check_markdown_links_checks_a_blob_url_carrying_a_title(
 
     assert len(errors) == 1
     assert "missing target file" in errors[0]
+
+
+def test_check_markdown_links_checks_the_link_around_a_badge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checker = _load_checker_module()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    _write_pyproject(tmp_path, "2.0.0")
+
+    readme_path = tmp_path / "README.md"
+    readme_path.write_text(
+        "# README\n\n[![Licence](https://img.shields.io/badge/licence-MIT-blue.svg)]"
+        "(https://github.com/bustanhq/bustan/blob/v2.0.0/LICENCE)\n",
+        encoding="utf-8",
+    )
+
+    errors = checker.check_markdown_links([readme_path])
+
+    assert errors == [
+        "README.md:3: missing target file: https://github.com/bustanhq/bustan/blob/v2.0.0/LICENCE"
+    ]
+
+
+def test_check_markdown_links_reports_a_readme_ref_that_is_not_the_packaged_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checker = _load_checker_module()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    _write_pyproject(tmp_path, "2.0.1")
+    (tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")
+
+    readme_path = tmp_path / "README.md"
+    readme_path.write_text(
+        "# README\n\n[MIT](https://github.com/bustanhq/bustan/blob/v2.0.0/LICENSE)\n",
+        encoding="utf-8",
+    )
+
+    errors = checker.check_markdown_links([readme_path])
+
+    assert errors == [
+        "README.md:3: ref v2.0.0 is not v2.0.1, the version pyproject.toml packages: "
+        "https://github.com/bustanhq/bustan/blob/v2.0.0/LICENSE"
+    ]
+
+
+def test_check_markdown_links_checks_raw_urls_in_html_image_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checker = _load_checker_module()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    _write_pyproject(tmp_path, "2.0.1")
+    assets_directory = tmp_path / "docs" / "assets"
+    assets_directory.mkdir(parents=True)
+    (assets_directory / "wordmark.svg").write_text("<svg/>\n", encoding="utf-8")
+
+    raw = "https://raw.githubusercontent.com/bustanhq/bustan"
+    readme_path = tmp_path / "README.md"
+    readme_path.write_text(
+        "<picture>\n"
+        f'  <source srcset="{raw}/v2.0.1/docs/assets/wordmark-dark.svg">\n'
+        f'  <img src="{raw}/v2.0.1/docs/assets/wordmark.svg" alt="Bustan">\n'
+        "</picture>\n"
+        f'<img src="{raw}/v2.0.0/docs/assets/wordmark.svg" alt="Bustan">\n',
+        encoding="utf-8",
+    )
+
+    errors = checker.check_markdown_links([readme_path])
+
+    assert errors == [
+        f"README.md:2: missing target file: {raw}/v2.0.1/docs/assets/wordmark-dark.svg",
+        "README.md:5: ref v2.0.0 is not v2.0.1, the version pyproject.toml packages: "
+        f"{raw}/v2.0.0/docs/assets/wordmark.svg",
+    ]
+
+
+def test_check_markdown_links_leaves_other_documents_free_to_pin_any_ref(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checker = _load_checker_module()
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    _write_pyproject(tmp_path, "2.0.1")
+    (tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")
+    docs_directory = tmp_path / "docs"
+    docs_directory.mkdir()
+
+    docs_index_path = docs_directory / "README.md"
+    docs_index_path.write_text(
+        "# Documentation\n\n[Licence at 1.1.0]"
+        "(https://github.com/bustanhq/bustan/blob/v1.1.0/LICENSE)\n",
+        encoding="utf-8",
+    )
+
+    errors = checker.check_markdown_links([docs_index_path])
+
+    assert errors == []
 
 
 def test_iter_markdown_files_excludes_work_backlog_files(tmp_path: Path) -> None:
@@ -162,6 +261,10 @@ def test_iter_markdown_files_excludes_work_backlog_files(tmp_path: Path) -> None
     work_file.write_text("# Ticket\n", encoding="utf-8")
 
     assert checker.iter_markdown_files(tmp_path) == [docs_file]
+
+
+def _write_pyproject(root: Path, version: str) -> None:
+    (root / "pyproject.toml").write_text(f'[project]\nversion = "{version}"\n', encoding="utf-8")
 
 
 def _load_checker_module() -> ModuleType:
