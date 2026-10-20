@@ -377,14 +377,26 @@ whatever the serving adapter bounds a body at on its own.
 A synchronous handler runs on a thread and Python cannot interrupt a running thread, so
 `timeout_seconds` is enforced for one only once it returns. A synchronous handler that
 blocks for ten minutes runs for ten minutes whatever the budget says, and the timeout is
-observed when it finishes rather than at the deadline. An asynchronous handler is
-cancelled at the deadline.
+observed when it finishes rather than at the deadline. An asynchronous handler that
+awaits is cancelled at the deadline, at its next `await`.
 
 What bounds a synchronous handler that never returns is therefore `sync_handler_threads`
 and nothing else. It caps how many of them may occupy threads at the same time, which
 makes it the figure deciding how many stuck handlers it takes to stop the application
 from serving. Size it with that in mind rather than as a throughput dial, and prefer an
 asynchronous handler wherever the work can be awaited.
+
+### A Handler That Blocks The Loop Is Answered When It Returns
+
+An asynchronous handler that does blocking work, such as `time.sleep` or a synchronous
+database call, does not reach an `await` while it works. The deadline cannot cancel it
+there. The handler runs to its end, and a request that is then past its deadline gets the
+timeout, as a synchronous handler does. The value that the handler returned is discarded.
+
+Such a handler also holds the event loop while it works. No other request on that loop
+is served until it returns, whether that request is in time or not, and `timeout_seconds`
+does not change this. Write blocking work as a synchronous `def` handler, which runs on a
+thread and leaves the loop free.
 
 ### The Thread Ceiling Is Per Event Loop
 

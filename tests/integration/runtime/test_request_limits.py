@@ -248,6 +248,35 @@ def test_a_sync_handler_past_its_deadline_is_answered_with_a_timeout_once_it_ret
     assert response.json()["title"] == "Gateway Timeout"
 
 
+def test_an_async_handler_that_blocks_past_its_deadline_is_answered_with_a_timeout() -> None:
+    # A handler that blocks the loop rather than awaiting reaches no point at which the
+    # deadline can interrupt it, so it runs to its end. The caller is still owed the timeout
+    # rather than the value that came back too late.
+    finished: list[str] = []
+
+    @Controller("/slow")
+    class SlowController:
+        @Get("/")
+        async def read(self) -> dict[str, str]:
+            time.sleep(0.2)
+            finished.append("handler")
+            return {"status": "ok"}
+
+    @Module(controllers=[SlowController])
+    class AppModule:
+        pass
+
+    application = create_app(AppModule)
+    set_request_limits(application, RequestLimits(timeout_seconds=0.05))
+
+    with AsgiTestClient(cast(Any, application)) as client:
+        response = client.get("/slow")
+
+    assert finished == ["handler"]
+    assert response.status_code == 504
+    assert response.json()["title"] == "Gateway Timeout"
+
+
 def test_a_sync_handler_past_its_deadline_keeps_its_thread_until_it_returns() -> None:
     # One thread is allowed. The first handler is held past its deadline; had its request
     # handed the thread back when the deadline passed, the second request's handler would
