@@ -198,8 +198,7 @@ class OtelTracer:
         kind: SpanKind,
         attributes: Mapping[str, str],
         context: SpanContext,
-    ) -> TraceSpan:
-        ...
+    ) -> TraceSpan: ...
 ```
 
 `context` names the trace the span belongs to and the caller's span when the request

@@ -166,6 +166,7 @@ class Link:
 
 Then `LinksService` delegates instead of holding a dictionary, and gains retry-on-collision:
 
+<!-- fmt: off -->
 ```python
     def create_link(self, url: str) -> Link | None:
         for _ in range(5):
@@ -181,6 +182,7 @@ Then `LinksService` delegates instead of holding a dictionary, and gains retry-o
             self._repository.count_visit(code)
         return link
 ```
+<!-- fmt: on -->
 
 `read_link` moved to the repository and what the service hands back is now a `Link` rather than a
 URL string, so both controllers have to catch up. A `Link` is not JSON on its own, and a service
