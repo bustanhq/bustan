@@ -101,6 +101,7 @@ class RedisThrottlerStorage:
     def increment(self, key: str, ttl: int) -> int: ...
     def get_ttl(self, key: str) -> int: ...
 
+
 # 2.0
 from bustan import ThrottleState
 
@@ -220,7 +221,7 @@ class RequestActor:
         self.actor = request.headers.get("x-actor", "anonymous")
 
 
-@Controller("/orders")            # singleton by default
+@Controller("/orders")  # singleton by default
 class OrderController:
     def __init__(self, orders: OrderService, actor: RequestActor) -> None: ...
 ```

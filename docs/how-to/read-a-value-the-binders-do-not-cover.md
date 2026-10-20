@@ -14,9 +14,7 @@ from typing import Annotated
 from bustan import Controller, Get, create_param_decorator
 
 UserAgent = create_param_decorator(
-    lambda data, context: context.switch_to_http()
-    .get_request()
-    .headers.get("user-agent", "")
+    lambda data, context: context.switch_to_http().get_request().headers.get("user-agent", "")
 )
 
 
@@ -43,9 +41,7 @@ marker can serve many handlers:
 
 ```python
 HeaderValue = create_param_decorator(
-    lambda name, context: context.switch_to_http()
-    .get_request()
-    .headers.get(str(name), "")
+    lambda name, context: context.switch_to_http().get_request().headers.get(str(name), "")
 )
 
 

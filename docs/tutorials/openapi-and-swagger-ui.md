@@ -105,13 +105,11 @@ from bustan import ApiBearerAuth, ApiOperation, ApiResponse, ApiTags
 @ApiTags("links")
 @ApiBearerAuth()
 class LinksController:
-
     @Post("/")
     @ApiOperation(summary="Shorten a URL")
     @ApiResponse(status=201, description="The link was created")
     @ApiResponse(status=409, description="No free code was found")
-    def create_link(self, payload: CreateLinkPayload) -> HttpResponse:
-        ...
+    def create_link(self, payload: CreateLinkPayload) -> HttpResponse: ...
 ```
 
 And in `redirect_controller.py`, the two outcomes of following a code:
@@ -124,13 +122,11 @@ from bustan import ApiOperation, ApiResponse, ApiTags
 @Public()
 @ApiTags("redirect")
 class RedirectController:
-
     @Get("/{code}")
     @ApiOperation(summary="Follow a short code to its target")
     @ApiResponse(status=302, description="The target the code points at")
     @ApiResponse(status=404, description="No link with that code")
-    def follow(self, code: str) -> HttpResponse:
-        ...
+    def follow(self, code: str) -> HttpResponse: ...
 ```
 
 `@ApiTags` groups routes under a heading, so the browsable page is not one long list. `@ApiOperation`

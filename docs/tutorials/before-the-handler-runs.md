@@ -195,8 +195,7 @@ from bustan import Auth
 
 @Controller("/links")
 @Auth("bearer")
-class LinksController:
-    ...
+class LinksController: ...
 ```
 
 And in `redirect_controller.py`, the opposite:
@@ -207,8 +206,7 @@ from bustan import Public
 
 @Controller("/")
 @Public()
-class RedirectController:
-    ...
+class RedirectController: ...
 ```
 
 `@Auth` on a class covers every route in it. `@Public` says this one is deliberately open, which is
