@@ -21,6 +21,7 @@ from anyio import (
     CapacityLimiter,
     WouldBlock,
     current_effective_deadline,
+    current_time,
     move_on_after,
     to_thread,
 )
@@ -533,7 +534,7 @@ async def execute_http_route(
         # body that never finishes arriving each hold a worker exactly as a slow
         # handler does. Rendering the refusal happens outside the scope, so the
         # filters that answer a timeout are not themselves running out of time.
-        with move_on_after(limits.timeout_seconds):
+        with move_on_after(limits.timeout_seconds) as deadline:
             # The observation comes first, before anything a request pays for can fail, so
             # an exception raised while a constructor runs is measured as one raised inside
             # the handler is. Hooks that record nothing read nothing, and are not asked.
@@ -646,6 +647,13 @@ async def execute_http_route(
                 default_status_code=execution_plan.response_plan.default_status_code,
             )
             _apply_rate_limit_headers(request, response)
+            # A stage that blocks the loop rather than awaiting, such as an asynchronous
+            # handler doing synchronous work, reaches no checkpoint, so the deadline can pass
+            # without the scope delivering its cancellation. Read the clock once the response
+            # exists, and cancel then, so the request is answered with the timeout.
+            if current_time() >= deadline.deadline:
+                deadline.cancel()
+                await checkpoint_if_cancelled()
 
             if observation is not None:
                 observability.finish_request(
