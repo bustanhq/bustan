@@ -56,9 +56,9 @@ After its verdict the gate prints each pair. From a CI run on a runner with an A
 ```text
 against Litestar, never judged: the lowest median each reached, in microseconds
 benchmark                            bustan   litestar  multiple
-bench_hundred_items_route             214.4       81.8     2.62x
-bench_simple_route                    185.6       76.3     2.43x
-bench_sync_route                      580.7      189.6     3.06x
+bench_hundred_items_route              94.8       83.4     1.14x
+bench_simple_route                     99.4       77.6     1.28x
+bench_sync_route                      242.9      194.6     1.25x
 ```
 
 A multiple is of whole requests through the driver, not of the two frameworks' own work.
@@ -87,7 +87,7 @@ machines:
 
 | Machine | `async def` | `def` | Multiple |
 | --- | --- | --- | --- |
-| GitHub-hosted runner, AMD EPYC 7763 | 185.6 us | 580.7 us | 3.1 |
+| GitHub-hosted runner, AMD EPYC 7763 | 99.4 us | 242.9 us | 2.4 |
 | Apple M4 Pro | 78.0 us | 203.8 us | 2.6 |
 
 On both machines a synchronous handler's hand-off costs more than everything else on its
@@ -119,7 +119,7 @@ uv run python gate.py \
 Anywhere but the runner, the verdict above the comparison judges this machine against the
 runner's baseline, says so in a warning, and can exit non-zero; the comparison is
 unaffected. The multiples are this machine's, and they differ between machine classes the
-way the ratios do: the simple route's was 2.43 on the runner and 1.84 on the M4 Pro.
+way the ratios do: the simple route's was 1.28 on the runner and 1.84 on the M4 Pro.
 
 ## Running Them
 

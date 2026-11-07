@@ -33,7 +33,7 @@ The hand-off costs more than the rest of a request does. The benchmark suite ser
 
 | Machine | `async def` | `def` | `def` costs |
 | --- | --- | --- | --- |
-| GitHub-hosted runner, AMD EPYC 7763 | 185.6 us | 580.7 us | 3.1 times as much |
+| GitHub-hosted runner, AMD EPYC 7763 | 99.4 us | 242.9 us | 2.4 times as much |
 | Apple M4 Pro | 78.0 us | 203.8 us | 2.6 times as much |
 
 The difference is the thread and the scheduling on either side of it, not work the framework does: a request to the synchronous route makes one more call into `bustan` than a request to the coroutine route. How the two are measured is in [Coroutine And Synchronous Handlers Side By Side](../how-to/run-benchmarks.md#coroutine-and-synchronous-handlers-side-by-side).
